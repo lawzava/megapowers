@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# agent-notify <event> [detail...] — Telegram push that an agent wants attention.
+#   event: need|input|permission  -> "🔔 needs input"
+#          done|stop|idle|complete -> "✅ done"
+# Reads creds from ~/.config/agent-notify/telegram.env (TG_BOT_TOKEN, TG_CHAT_ID).
+# Best-effort: never hard-fails on a network blip (so it can't break an agent run).
+set -uo pipefail
+
+# --- local terminal bell: tmux tab highlight + terminal sound/notification --------
+# Emit BEL into the agent's tmux pane. tmux (bell-action any, monitor-bell on)
+# bolds the window tab when it's in the background and forwards the bell to the
+# outer terminal for sound/desktop notification. Best-effort: runs
+# before the Telegram check so it works even if creds are missing/broken.
+if [ -n "${TMUX:-}" ]; then
+  _pane_tty="$(tmux display-message ${TMUX_PANE:+-t "$TMUX_PANE"} -p '#{pane_tty}' 2>/dev/null || true)"
+  [ -n "${_pane_tty:-}" ] && printf '\a' >"$_pane_tty" 2>/dev/null || true
+fi
+
+CFG="${AGENT_NOTIFY_CFG:-$HOME/.config/agent-notify/telegram.env}"
+if [ ! -r "$CFG" ]; then
+  echo "agent-notify: config not found: $CFG" >&2; exit 1
+fi
+# shellcheck disable=SC1090
+. "$CFG"
+if [ -z "${TG_BOT_TOKEN:-}" ] || [ -z "${TG_CHAT_ID:-}" ] \
+   || [ "${TG_BOT_TOKEN}" = "PUT_BOT_TOKEN_HERE" ] || [ "${TG_CHAT_ID}" = "PUT_CHAT_ID_HERE" ]; then
+  echo "agent-notify: set TG_BOT_TOKEN and TG_CHAT_ID in $CFG" >&2; exit 1
+fi
+
+event="${1:-attention}"; shift || true
+detail="$*"
+
+host="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo vps)"
+loc=""
+if [ -n "${TMUX:-}" ] || [ -n "${TMUX_PANE:-}" ]; then
+  loc="$(tmux display-message ${TMUX_PANE:+-t "$TMUX_PANE"} -p '#S ⋮ #W' 2>/dev/null || true)"
+fi
+[ -z "$loc" ] && loc="${AGENT_NOTIFY_LOC:-}"
+
+case "$event" in
+  need*|input|permission|ask) icon="🔔"; label="needs input" ;;
+  done|stop|idle|complete)    icon="✅"; label="done" ;;
+  *)                          icon="🔔"; label="$event" ;;
+esac
+
+text="$icon $host"
+[ -n "$loc" ] && text="$text · $loc"
+text="$text · $label"
+[ -n "$detail" ] && text="$text"$'\n'"$detail"
+
+if curl -fsS --max-time 10 \
+     "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+     --data-urlencode "chat_id=${TG_CHAT_ID}" \
+     --data-urlencode "text=${text}" -o /dev/null; then
+  exit 0
+else
+  echo "agent-notify: send failed (network?)" >&2
+  exit 0   # best-effort: don't break the calling agent
+fi

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Claude Code hook wrapper. Usage in settings.json:
+#   Notification                            -> agent-notify-claude need   (permission prompts)
+#   PreToolUse AskUserQuestion|ExitPlanMode -> agent-notify-claude ask    (questions / plan approval)
+#   Stop                                    -> agent-notify-claude done   (work finished)
+# Claude passes hook JSON on stdin; we read it once and inspect it.
+set -uo pipefail
+event="${1:-attention}"
+detail=""
+ntype=""
+payload=""
+if [ ! -t 0 ]; then
+  payload="$(cat 2>/dev/null || true)"
+  detail="$(printf '%s' "$payload" | jq -r '.message // empty' 2>/dev/null || true)"
+  ntype="$(printf '%s' "$payload" | jq -r '.notification_type // empty' 2>/dev/null || true)"
+fi
+
+# ask: the agent is about to block on the user — a question (AskUserQuestion) or a
+# plan-approval prompt (ExitPlanMode). PreToolUse fires this just before the tool
+# waits, so always notify; pull a short detail from the tool input.
+if [ "$event" = "ask" ]; then
+  tool="$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null || true)"
+  case "$tool" in
+    ExitPlanMode)    detail="plan ready for approval" ;;
+    AskUserQuestion) detail="$(printf '%s' "$payload" | jq -r '.tool_input.questions[0].question // "has a question"' 2>/dev/null | cut -c1-160)" ;;
+    *)               detail="needs your input" ;;
+  esac
+  exec "$(dirname "$0")/agent-notify" need "$detail"
+fi
+
+# Notification fires on every type (permission_prompt, idle_prompt, auth_success,
+# elicitation_*). Only permission prompts here — questions/plans come via the
+# PreToolUse 'ask' path above; idle is covered by Stop ('done'); auth is noise.
+if [ "$event" = "need" ] && [ -n "$ntype" ] && [ "$ntype" != "permission_prompt" ]; then
+  exit 0
+fi
+
+# Stop fires every time the main thread ends a turn — including idle hand-offs to a
+# background workflow/shell task. Suppress that false 'done' while any background
+# task is still running; the real completion fires a later Stop with none running.
+# The Stop payload carries .background_tasks[]={id,type,status,...}; fail open.
+if [ "$event" = "done" ] && [ -n "$payload" ] \
+   && printf '%s' "$payload" | jq -e 'any((.background_tasks // [])[]; .status == "running")' >/dev/null 2>&1; then
+  exit 0
+fi
+
+exec "$(dirname "$0")/agent-notify" "$event" "$detail"

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Codex notify program. Set in ~/.codex/config.toml:
+#   notify = ["$HOME/.local/bin/agent-notify-codex"]
+# Codex invokes this with one arg: a JSON event payload.
+# Known type: "agent-turn-complete" (fires when a turn finishes -> "done").
+# Codex does not emit a notify event for approval prompts, so "needs input"
+# is best-effort (only if a matching type ever appears).
+set -uo pipefail
+payload="${1:-}"
+type="$(printf '%s' "$payload" | jq -r '.type // "event"' 2>/dev/null || echo event)"
+case "$type" in
+  agent-turn-complete)
+    ev="done"
+    det="$(printf '%s' "$payload" | jq -r '."last-assistant-message" // empty' 2>/dev/null | head -c 200)"
+    ;;
+  *approval*|*permission*|*input*)
+    ev="need"; det="" ;;
+  *)
+    ev="$type"; det="" ;;
+esac
+exec "$(dirname "$0")/agent-notify" "$ev" "$det"
