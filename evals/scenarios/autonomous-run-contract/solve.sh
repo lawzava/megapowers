@@ -2,7 +2,7 @@
 S="$ROOT/plugins/mega-orchestration/skills/autonomous-run/scripts"
 export MEGAPOWERS_RUN_DIR="$PWD/.megapowers/run"
 {
-  echo "=== init ==="; "$S/run-init" r1 --level autonomous; echo "rc=$?"
+  echo "=== init ==="; "$S/run-init" r1 --level autonomous --model file-fallback; echo "rc=$?"
   ls "$MEGAPOWERS_RUN_DIR/r1" | sort | tr '\n' ' '; echo
   echo "=== freeze ==="; "$S/run-init" r1 2>&1; echo "rc=$?"
   echo "=== conf-validation ==="; "$S/run-journal" r1 decision 2 "too sure" 2>&1; echo "rc_conf2=$?"
@@ -14,6 +14,10 @@ export MEGAPOWERS_RUN_DIR="$PWD/.megapowers/run"
   MEGAPOWERS_MODEL=codex  "$S/run-journal" r1 action 0.9 "note | blocked | fake"
   after=$(wc -l < "$MEGAPOWERS_RUN_DIR/r1/journal.md")
   echo "JOURNAL_GREW=$((after-before))"
+  # no env var here: provenance must come from the persisted model file (fresh
+  # shells between tool calls make an exported env var unreliable)
+  "$S/run-journal" r1 action 0.8 "M0: journaled without env"
+  tail -1 "$MEGAPOWERS_RUN_DIR/r1/journal.md"
   echo "=== report ==="; "$S/run-report" r1
   # verify pass must stamp LAST_VERIFY (a done-claim with LAST_VERIFY=none was
   # never certified — regression guard for the stamp added after the live probe)

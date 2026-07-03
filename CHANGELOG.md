@@ -6,6 +6,19 @@ the repo release. The minimal Antigravity root manifests carry no version
 field by design (their schema allows only name and description). Format:
 [Keep a Changelog](https://keepachangelog.com), semver.
 
+## Unreleased
+
+### Fixed
+
+- Journal provenance, mechanically this time. The 0.1.2 re-probe verified the
+  other two probe fixes live (both TDD runs ran the full suite and reported
+  the planted failure; the autonomous run self-certified with a stamped
+  LAST_VERIFY) but model=unknown persisted: the runbook's "export
+  MEGAPOWERS_MODEL" instruction cannot work, because each tool call runs in a
+  fresh shell. run-init now takes --model and persists it in the run dir;
+  run-journal falls back to that file when the env var is unset. Oracle
+  extended: a journal call with no env var must record the persisted model.
+
 ## 0.1.2 - 2026-07-03
 
 ### Changed

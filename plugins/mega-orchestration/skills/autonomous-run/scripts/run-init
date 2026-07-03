@@ -5,12 +5,13 @@
 # --force — to genuinely start over, use a new run-id). Portable: bash + coreutils.
 set -uo pipefail
 
-id=""; base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"; level="on-the-loop"
-usage() { echo "usage: run-init <run-id> [--base DIR] [--level autonomous|on-the-loop|in-the-loop]" >&2; }
+id=""; base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"; level="on-the-loop"; model="${MEGAPOWERS_MODEL:-}"
+usage() { echo "usage: run-init <run-id> [--base DIR] [--level autonomous|on-the-loop|in-the-loop] [--model MODEL-ID]" >&2; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --base) [ $# -ge 2 ] || { usage; exit 2; }; base="$2"; shift 2 ;;
     --level) [ $# -ge 2 ] || { usage; exit 2; }; level="$2"; shift 2 ;;
+    --model) [ $# -ge 2 ] || { usage; exit 2; }; model="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     -*) usage; exit 2 ;;
     *) id="$1"; shift ;;
@@ -63,13 +64,18 @@ EOF
 Loop: read status -> next unmet milestone -> do it -> run its acceptance check ->
 journal the result -> advance status. Trust the files over memory after a restart.
 On failure: fix and re-verify, capped at 3 attempts, then mark blocked and move on.
-Once per session, before journaling: export MEGAPOWERS_MODEL=<your model id> so
-every journal entry records who acted (unset logs model=unknown).
+Provenance: init the run with --model <your model id>, or prefix every journal
+call inline (MEGAPOWERS_MODEL=<id> run-journal ...). A plain export does NOT
+survive between tool calls; each runs in a fresh shell.
 Before claiming finished: scripts/run-verify-status <run-id> must pass — it stamps
 LAST_VERIFY into status. STATE=done with LAST_VERIFY=none means never certified.
 EOF
 
 [ -f "$dir/journal.md" ] || printf '# Journal (append-only)\n' > "$dir/journal.md"
 [ -f "$dir/status" ]     || printf 'STATE=initialized\nCURSOR=M1\nLEVEL=%s\nLAST_VERIFY=none\n' "$level" > "$dir/status"
+# persisted provenance: run-journal reads this when MEGAPOWERS_MODEL is unset
+# (tool-call shells are fresh per call, so an env var cannot carry provenance)
+[ -n "$model" ] && [ ! -f "$dir/model" ] && printf '%s\n' "$model" > "$dir/model"
 
-echo "run-init: scaffolded $dir (level=$level)"
+echo "run-init: scaffolded $dir (level=$level${model:+, model=$model})"
+[ -z "$model" ] && echo "run-init: no --model given — pass --model <your model id> (or prefix journal calls with MEGAPOWERS_MODEL=<id>) so journal provenance is recorded"

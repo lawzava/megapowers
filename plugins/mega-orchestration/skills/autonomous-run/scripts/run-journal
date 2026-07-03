@@ -13,7 +13,14 @@ dir="$base/$id"
 case "$kind" in action|decision|result|blocked|paused) ;; *) echo "run-journal: kind must be action|decision|result|blocked|paused" >&2; exit 2 ;; esac
 # confidence must actually be in [0,1]: 0, 0.x, 1, or 1.0(0..) — not 2, 999, 01.2, 1..0
 [[ "$conf" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]] || { echo "run-journal: confidence must be a number in [0.0, 1.0]" >&2; exit 2 ;}
-model="${MEGAPOWERS_MODEL:-unknown}"
+# Provenance fallback chain: env var -> the run's persisted model file (written
+# by run-init --model) -> unknown. The file matters because agent-harness tool
+# calls run in fresh shells, so an exported env var does not survive between
+# calls (observed live: a run whose runbook asked for the export still logged
+# every entry as model=unknown).
+model="${MEGAPOWERS_MODEL:-}"
+[ -z "$model" ] && [ -f "$dir/model" ] && model="$(head -1 "$dir/model" | tr -d '\n\r')"
+model="${model:-unknown}"
 # The journal is pipe-delimited and one-entry-per-line; a message (or model name)
 # containing '|' or a newline could otherwise forge extra fields / fake records that
 # run-report would miscount. Fold newlines to spaces and replace '|' with '/'.
