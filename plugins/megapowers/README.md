@@ -4,45 +4,22 @@ The workflow core: fifteen process skills that take an idea to reviewed,
 tested, merged code. Each phase of the work has its own skill with clear entry
 conditions, so the right practice is applied at the right moment.
 
-## Methodology
+## The skills, by phase
 
-- Understand before building: brainstorm intent, requirements, and design
-  before any code is written.
-- Plan the work: turn a spec into an explicit, reviewable plan before touching
-  code.
-- Execute with discipline: drive implementation through tests first, debug
-  systematically instead of guessing, and hand independent work to subagents
-  or parallel agents when it helps.
-- Verify and review: confirm the work does what it should before claiming
-  completion, then request and receive code review with technical rigor.
-- Integrate cleanly: use isolated worktrees for feature work and follow a
-  structured path to finish and merge a development branch.
-
-## Skills
-
-Process:
-
-- brainstorming
-- writing-plans
-- executing-plans
-- subagent-driven-development
-- dispatching-parallel-agents
-- test-driven-development
-- systematic-debugging
-- verification-before-completion
-- requesting-code-review
-- receiving-code-review
-- using-git-worktrees
-- finishing-a-development-branch
-
-Memory:
-
-- project-memory
-
-Meta:
-
-- using-megapowers
-- writing-skills
+- Understand and design: `brainstorming`
+- Plan: `writing-plans`
+- Execute a plan: `executing-plans` (inline, yourself),
+  `subagent-driven-development` (a fresh subagent per task, with per-task
+  review), `dispatching-parallel-agents` (independent tasks in parallel)
+- Implement: `test-driven-development` (write the failing test first),
+  `systematic-debugging` (root cause before any fix)
+- Verify and review: `verification-before-completion` (evidence before
+  claiming done), `requesting-code-review`, `receiving-code-review`
+- Integrate: `using-git-worktrees` (isolated feature work),
+  `finishing-a-development-branch` (merge, PR, keep, or discard)
+- Memory: `project-memory` (durable project knowledge across sessions)
+- Meta: `using-megapowers` (the session-start check-for-a-skill rule),
+  `writing-skills` (create and test new skills)
 
 ## Discoverability and context cost
 

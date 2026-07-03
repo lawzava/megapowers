@@ -84,4 +84,4 @@ usage.
 ```
 
 mega-guardrails ships only hooks and the statusline, so there are no
-standalone skill entries to install separately.
+standalone skills to install separately.

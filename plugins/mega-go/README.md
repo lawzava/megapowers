@@ -6,10 +6,17 @@ set of technology choices and is written in a consistent style.
 
 ## Skills
 
-| Skill | What it does |
-| --- | --- |
-| `greenfield-go-stack` | An opinionated stack plus bootstrap-order picker for new Go projects. Defaults to the golang-standards project layout, GoFiber at the edge, gRPC with buf for internal services, templ/templui server-side rendering with Tailwind, SQLite via the pure-Go modernc.org/sqlite driver, the Bun ORM, Clerk for auth, Stripe for payments, Cloudflare for email, golangci-lint with the Uber style guide, and Wolfi-based Docker images. |
-| `golang-patterns` | A reference of idiomatic Go patterns: functional options, small interfaces, dependency injection, worker pools and context handling, error wrapping with sentinel and custom errors, and table-driven tests. |
+- `greenfield-go-stack`: an opinionated stack plus bootstrap-order picker for
+  new Go projects. The default stack: the golang-standards project layout,
+  GoFiber at the edge, gRPC with buf for internal services, templ/templui
+  server-side rendering with Tailwind, SQLite via the pure-Go
+  modernc.org/sqlite driver, the Bun ORM, Clerk for auth, Stripe for
+  payments, Cloudflare for email, golangci-lint with the Uber style guide,
+  and Wolfi-based Docker images.
+- `golang-patterns`: a reference of idiomatic Go patterns: functional
+  options, small interfaces, dependency injection, worker pools and context
+  handling, error wrapping with sentinel and custom errors, and table-driven
+  tests.
 
 `greenfield-go-stack` covers the stack and bootstrap order; it delegates Go
 idioms to `golang-patterns` rather than restating them.

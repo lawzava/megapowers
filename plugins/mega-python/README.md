@@ -1,7 +1,7 @@
 # mega-python
 
 Two skills for greenfield Python: an opinionated stack picker and idiomatic
-Python patterns. Hook-free and portable: plain skills any capable model reads.
+Python patterns. No hooks; plain skills that work on any harness.
 
 ## What's inside
 
@@ -16,5 +16,6 @@ Python patterns. Hook-free and portable: plain skills any capable model reads.
 /plugin install mega-python@megapowers
 ```
 
-The `python-patterns` skill is also published as a standalone marketplace entry.
-Install the bundle or the standalone, not both.
+`python-patterns` is also published as a standalone marketplace entry. Install
+the bundle or the standalone skill, not both: a skill installed twice
+registers twice.

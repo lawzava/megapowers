@@ -1,8 +1,8 @@
 # mega-ts
 
-Two skills for greenfield TypeScript: an opinionated stack picker and idiomatic
-TypeScript patterns. Hook-free and portable: plain skills any capable model
-reads.
+Two skills for greenfield TypeScript: an opinionated stack picker and
+idiomatic TypeScript patterns. No hooks; plain skills that work on any
+harness.
 
 ## What's inside
 
@@ -17,5 +17,6 @@ reads.
 /plugin install mega-ts@megapowers
 ```
 
-The `typescript-patterns` skill is also published as a standalone marketplace entry.
-Install the bundle or the standalone, not both.
+`typescript-patterns` is also published as a standalone marketplace entry.
+Install the bundle or the standalone skill, not both: a skill installed twice
+registers twice.
