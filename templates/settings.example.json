@@ -20,5 +20,18 @@
       "files": ["~/.ssh", "~/.aws", "~/.gnupg", "~/.netrc", "~/.pgpass", ".env"],
       "envVars": ["GITHUB_TOKEN", "NPM_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
     }
+  },
+  "autoMode": {
+    "soft_deny": [
+      "$defaults",
+      "Any INSERT, UPDATE, DELETE, TRUNCATE, or DDL statement against a production database host",
+      "Modifying files under ~/.claude or shell profiles unless the user explicitly asked for it"
+    ],
+    "environment": [
+      "$defaults",
+      "REPLACE: one line describing this machine and its primary work (e.g. 'headless Linux VPS; Go services under ~/Code, deployed via CI').",
+      "REPLACE: which databases/hosts are dev (safe to query) and which are PRODUCTION (read-only at most).",
+      "REPLACE: what is routine here (test suites, local containers) so the classifier stops asking about it."
+    ]
   }
 }

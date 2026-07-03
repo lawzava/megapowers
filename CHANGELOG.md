@@ -10,6 +10,19 @@ field by design (their schema allows only name and description). Format:
 
 ### Added
 
+- `templates/agent-notify/`: phone/terminal notifications when an agent needs
+  input or finishes. The transport script (Telegram by default, swappable),
+  a Claude Code hook wrapper that filters noise (permission prompts, questions,
+  plan approvals, done-with-no-background-tasks), and a Codex notify program.
+  Lifted from the maintainer's working setup, sanitized.
+- `autoMode` example block in `templates/settings.example.json`: teach the
+  permission classifier your environment (production hosts, routine
+  operations) instead of leaving it to guess. Placeholders only; copied
+  verbatim it is harmless.
+- Browser-role prerequisite documented: `playwright-cli install --skills`
+  installs Microsoft's own playwright-cli skill. Deliberately not vendored
+  here; Playwright distributes and updates it, and a copy would
+  double-register.
 - `docs/agent-install.md`: the setup guide rewritten as instructions for a
   coding agent, so installation is one pasted line in any harness. Covers
   harness detection, channel choice, the shared-directory double-registration

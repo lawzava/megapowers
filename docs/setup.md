@@ -48,7 +48,11 @@ present.
 - mega-orchestration: the Codex roles (plan/code review, small impl) need
   Codex native subagents when running in Codex, or the Codex CLI/SDK from other
   tools. The visual/browser role needs `playwright-cli` plus a vision-capable
-  model to read the screenshots. Antigravity is documented but disabled until
+  model to read the screenshots: `npm i -g @playwright/cli`, then
+  `playwright-cli install --skills` installs Microsoft's own playwright-cli
+  skill into `.claude/skills/`. megapowers deliberately does not vendor that
+  skill; it is distributed and updated by Playwright itself, and shipping a
+  copy would double-register it. Antigravity is documented but disabled until
   a local `agy` automation path is verified. Roles you don't use don't need
   their tools installed.
 - mega-go: `greenfield-go-stack` optionally uses the context7 MCP server to
@@ -195,6 +199,16 @@ fleet; behavioral guidance can change between versions.
   autonomy, opt in explicitly by adding `"defaultMode": "acceptEdits"`
   (auto-approves file edits) under `permissions` yourself; understand that it
   removes the per-edit prompt before you do.
+- The `autoMode` block in the same file teaches the permission classifier
+  your environment instead of leaving it to guess: which hosts are
+  production (write statements get a confirm), what is routine here (fewer
+  prompts). Replace the three REPLACE lines with facts about your machine;
+  the `$defaults` entries keep the built-in rules. Copied verbatim it is
+  harmless, just useless.
+- `templates/agent-notify/` pushes a notification (Telegram by default,
+  transport swappable) when an agent needs input or finishes, with a
+  noise-filtering wrapper for Claude Code hooks and a Codex notify program.
+  See its [README](../templates/agent-notify/README.md).
 
 ## Updating
 
