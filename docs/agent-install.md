@@ -1,0 +1,122 @@
+# Agent install
+
+You are a coding agent asked to install megapowers on this machine. Follow
+these steps exactly, verify each one, and end with the report at the bottom.
+Human-oriented docs (what megapowers is, updating, fleet sync):
+[`setup.md`](./setup.md).
+
+Ground rules:
+
+- One channel per agent per machine. A skill registered twice fires twice.
+  Before installing, check what is already present (step 1) and never add a
+  second channel for the same harness.
+- Do not widen your own permissions. If a step edits settings or instruction
+  files (step 4), show the user the exact change and get approval first.
+  Everything in steps 2 and 3 is additive plugin/skill installation and needs
+  no such approval beyond your harness's normal prompts.
+- Verify with commands, not assumptions. Every step has a check; run it.
+
+## 1. Detect the environment
+
+Determine which harness you are running in (you know this about yourself:
+Claude Code, Codex, OpenCode, Antigravity, or another Agent Skills harness)
+and check for existing installs:
+
+- Claude Code: `claude plugin list 2>/dev/null | grep -i mega`
+- Codex: `codex plugin list 2>/dev/null | grep -i mega`
+- Skills-CLI installs: `ls ~/.agents/skills 2>/dev/null` and the project's
+  `skills-lock.json`
+- Superpowers: `claude plugin list 2>/dev/null | grep -i superpowers` — the
+  megapowers `megapowers` plugin is a superset of its process core; if the
+  user wants both removed/replaced, uninstall superpowers first (ask, don't
+  assume).
+
+If megapowers is already installed for your harness, skip to step 5 and
+verify instead of reinstalling.
+
+## 2. Install for your harness
+
+**Claude Code** (full bundle: skills + hooks + delegate agents):
+
+```
+claude plugin marketplace add lawzava/megapowers
+claude plugin install megapowers@megapowers
+claude plugin install mega-orchestration@megapowers
+claude plugin install mega-guardrails@megapowers
+```
+
+Add `mega-go`, `mega-python`, `mega-ts` if the user works in those languages.
+Interactive sessions can use `/plugin` instead.
+
+**Codex** (skills + marketplace metadata; hooks do not run here):
+
+```
+git clone https://github.com/lawzava/megapowers "$HOME/.local/share/megapowers"
+cd "$HOME/.local/share/megapowers"
+codex plugin marketplace add ./
+codex plugin add megapowers@megapowers
+codex plugin add mega-orchestration@megapowers
+```
+
+The verb is `add`, not `install`. Updates: `git pull` in that clone, then
+re-run `codex plugin add` for each installed plugin.
+
+**OpenCode, Antigravity, or any other Agent Skills harness** (skills only):
+
+```
+npx skills add lawzava/megapowers -g -y -s '*' -a <your-agent-name>
+```
+
+CAUTION first: the skills CLI installs several agents into the shared
+`~/.agents/skills/` directory, and Claude Code scans that directory too. If
+step 1 found the Claude Code plugins on this machine, do NOT install globally
+into the shared directory — every skill would register twice for Claude Code.
+Use a tool-specific path instead (for OpenCode, symlink from a checkout into
+`~/.config/opencode/skills/`), or install per-project without `-g`.
+
+## 3. Verify the install
+
+Run the same probe the repo's install-smoke study uses: load the
+test-driven-development skill and quote its core principle sentence verbatim.
+The sentence exists nowhere but inside the skill body, so a correct quote
+proves discovery and loading end to end. Expected sentence:
+
+> if you didn't watch the test fail, you don't know whether it tests the
+> right thing
+
+Also confirm the listing: `claude plugin list` / `codex plugin list` shows
+the plugins with matching versions, or the skills directory contains the
+skill folders.
+
+## 4. Optional, with explicit user approval
+
+Present these to the user; apply only what they approve:
+
+- Statusline (Claude Code, Linux): point `statusLine.command` in
+  `~/.claude/settings.json` at
+  `~/.claude/plugins/marketplaces/megapowers/plugins/mega-guardrails/statusline.sh`.
+- Settings baseline: merge wanted keys from
+  [`templates/settings.example.json`](../templates/settings.example.json)
+  (attribution off, secret-path denies, sandbox credential blocks). The
+  `permissions.allow` entries widen agent permissions; never add those
+  without the user's explicit yes.
+- Instructions baseline: offer [`templates/CLAUDE.md`](../templates/CLAUDE.md)
+  as the project or global instruction file. Merge, don't overwrite; back up
+  the existing file first.
+- Remove superseded duplicates: if the user previously hand-installed copies
+  of these hooks or skills (session-start, deny-destructive, auto-format, or
+  standalone skill folders that the bundles now provide), list them and offer
+  to remove the old copies. Duplicates run twice.
+
+## 5. Report
+
+End with this table, filled with actual command output, plus anything you
+skipped and why:
+
+| Check | Result |
+|---|---|
+| Harness + channel used | e.g. Claude Code, native marketplace |
+| Plugins/skills installed | names + versions from the list command |
+| First-task probe (step 3) | quoted sentence matched: yes/no |
+| Duplicates found/avoided | e.g. none; or "~/.agents/skills skipped, Claude plugins present" |
+| Optional steps applied | which of step 4, with user approval noted |

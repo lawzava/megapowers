@@ -8,6 +8,15 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Added
+
+- `docs/agent-install.md`: the setup guide rewritten as instructions for a
+  coding agent, so installation is one pasted line in any harness. Covers
+  harness detection, channel choice, the shared-directory double-registration
+  trap, the install-smoke verification probe, and an explicit-approval rule
+  for anything that widens permissions. Linked from the README quickstart;
+  guarded as a required file by validate.sh.
+
 ### Fixed
 
 - Journal provenance, mechanically this time. The 0.1.2 re-probe verified the

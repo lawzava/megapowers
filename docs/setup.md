@@ -1,5 +1,9 @@
 # Setup
 
+Prefer to delegate this? [`agent-install.md`](./agent-install.md) is this
+document rewritten as instructions for a coding agent: paste its URL into any
+agent and it installs, verifies, and reports.
+
 ## Claude Code marketplace
 
 ```

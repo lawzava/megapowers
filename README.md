@@ -27,6 +27,17 @@ What you will see change:
 Install, update, uninstall, verification, and per-tool details:
 [`docs/setup.md`](./docs/setup.md).
 
+Or hand the install to the agent itself. Paste this into any coding agent, on
+any harness:
+
+> Install megapowers on this machine by fetching and following
+> https://raw.githubusercontent.com/lawzava/megapowers/main/docs/agent-install.md
+
+The guide has the agent detect its harness, pick the right channel, avoid
+double registration, verify with a first-task probe, and report what it did.
+Anything that would widen permissions or edit your settings requires your
+explicit approval.
+
 ## How it works
 
 No framework, no service, no API key. The mechanism:
