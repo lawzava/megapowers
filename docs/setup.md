@@ -13,8 +13,8 @@ agent and it installs, verifies, and reports.
 Then install what you want:
 
 ```
-/plugin install megapowers@megapowers        # workflow methodology
-/plugin install mega-orchestration@megapowers # multi-agent delegation
+/plugin install megapowers@megapowers        # the workflow core
+/plugin install mega-orchestration@megapowers # multi-model orchestration
 /plugin install mega-guardrails@megapowers    # safety hooks + statusline
 /plugin install mega-go@megapowers            # greenfield Go
 /plugin install mega-python@megapowers        # greenfield Python
@@ -24,10 +24,20 @@ Then install what you want:
 Or run `/plugin` and browse Discover.
 
 Verify the install: run `/plugin` and confirm the plugin is listed as
-installed. Then ask the agent to "load the test-driven-development skill and
-quote its core principle". A correct verbatim quote proves skills are
-discoverable and loadable. This is exactly what the install-smoke study
-asserts; see `evals/studies/install-smoke/`.
+installed. Then, from a fresh session (the session-start rule and hooks only
+appear in sessions started after the install), ask the agent to "load the
+test-driven-development skill and quote its core principle". The expected
+sentence, which exists nowhere outside the skill body:
+
+> if you didn't watch the test fail, you don't know whether it tests the
+> right thing
+
+A correct quote proves skills are discoverable and loadable. The probe needs
+the `megapowers` bundle (that skill ships in it); for other plugins, confirm
+the `/plugin` listing or ask for one of their skills instead. This is exactly
+what the install-smoke study asserts; see `evals/studies/install-smoke/`.
+What visibly changes in day-to-day sessions is listed in the
+[README quickstart](../README.md#quickstart-claude-code).
 
 Nine skills are also published as standalone marketplace entries for
 cherry-pickers: `brainstorming`, `systematic-debugging`,
@@ -46,15 +56,15 @@ escalates into delegation, verification, and autonomous runs when both are
 present.
 
 - mega-orchestration: the Codex roles (plan/code review, small impl) need
-  Codex native subagents when running in Codex, or the Codex CLI/SDK from other
-  tools. The visual/browser role needs `playwright-cli` plus a vision-capable
-  model to read the screenshots: `npm i -g @playwright/cli`, then
-  `playwright-cli install --skills` installs Microsoft's own playwright-cli
-  skill into `.claude/skills/`. megapowers deliberately does not vendor that
-  skill; it is distributed and updated by Playwright itself, and shipping a
-  copy would double-register it. Antigravity is documented but disabled until
-  a local `agy` automation path is verified. Roles you don't use don't need
-  their tools installed.
+  Codex native subagents when running in Codex, or the Codex CLI/SDK from
+  other harnesses. The visual/browser role needs `playwright-cli` plus a
+  vision-capable model to read the screenshots: `npm i -g @playwright/cli`,
+  then `playwright-cli install --skills` installs Microsoft's own
+  playwright-cli skill into `.claude/skills/`. megapowers does not vendor
+  that skill: Playwright distributes and updates it, and a shipped copy would
+  register twice. Antigravity is documented but disabled; see the
+  [mega-orchestration README](../plugins/mega-orchestration/README.md). Roles
+  you don't use don't need their tools installed.
 - mega-go: `greenfield-go-stack` optionally uses the context7 MCP server to
   fetch current library docs while scaffolding; it degrades gracefully without it.
 - mega-guardrails: the hooks require `jq`. The auto-format hook additionally
@@ -91,7 +101,7 @@ not listed for Codex because its hook wiring is Claude-specific.
 
 For harnesses without a native plugin marketplace (OpenCode, Antigravity,
 Cursor, Copilot, and the rest of the Agent Skills ecosystem), use the open
-[skills CLI](https://github.com/vercel-labs/skills) (skills.sh):
+[skills CLI](https://github.com/vercel-labs/skills) (published at skills.sh):
 
 ```bash
 npx skills add lawzava/megapowers                # pick skills interactively
@@ -99,6 +109,9 @@ npx skills add lawzava/megapowers -s '*' -y      # everything, non-interactive
 npx skills update                                # update installed skills
 npx skills list                                  # what's installed where
 ```
+
+Without `-g` these install into the current project; `-g` installs globally,
+for every project. The trap below is about global installs.
 
 The CLI reads this repo's `.claude-plugin/marketplace.json` and discovers
 every plugin's skills, grouped by plugin. A skill's `scripts/` and
@@ -138,7 +151,8 @@ ln -s "$(pwd)"/plugins/megapowers/skills/* ~/.config/opencode/skills/
 ```
 
 Symlinks track the checkout: `git pull` updates them in place. Do not load
-every skill body through `instructions`; that defeats progressive disclosure.
+every skill body through `instructions`: bodies are meant to load only when a
+skill is invoked, and inlining them keeps every word in context permanently.
 
 Antigravity root plugin manifests are present as `plugins/*/plugin.json`. Before
 installing them with `agy plugin install`, confirm your local Antigravity CLI
@@ -177,8 +191,8 @@ being hand-configured:
   runs, and install non-interactively:
   `npx skills add lawzava/megapowers -s '*' -y`.
 
-Whatever the channel, read the [changelog](../CHANGELOG.md) before updating a
-fleet; behavioral guidance can change between versions.
+Whatever the channel, follow [Updating](#updating) below before rolling a
+fleet forward.
 
 ## Optional templates
 
@@ -217,11 +231,12 @@ Plugins are versioned (see each `.claude-plugin/plugin.json` /
 before updating; behavioral guidance can change between versions.
 
 - Claude Code: `/plugin marketplace update megapowers` refreshes the
-  marketplace, then reinstall or update the plugin from `/plugin`. Installed
-  plugins are copies: local edits you made inside an installed plugin are
-  overwritten on update. Keep customizations in a fork instead.
-- Codex: update the local checkout (`git pull`), then refresh from
-  `/plugins` in Codex.
+  marketplace, then update the plugin from the `/plugin` installed list.
+  Installed plugins are copies: local edits you made inside an installed
+  plugin are overwritten on update. Keep customizations in a fork instead.
+- Codex: update the local checkout (`git pull`), then refresh each installed
+  plugin: re-run `codex plugin add <plugin>@megapowers`, or use `/plugins`
+  inside Codex.
 - skills CLI installs: `npx skills update` (all skills, interactive) or
   `npx skills update <name> -y`.
 - OpenCode / Antigravity (symlinked skills): `git pull` the checkout;
@@ -234,7 +249,11 @@ before updating; behavioral guidance can change between versions.
 
 - Claude Code: `/plugin` → installed → remove the plugin. Removal
   unregisters its skills, hooks, and agents; confirm no `megapowers`-named
-  entries remain under `/plugin`.
+  entries remain under `/plugin`. To drop the marketplace registration too:
+  `claude plugin marketplace remove megapowers`. If you enabled the
+  statusline or the Fleet settings block, also delete the `statusLine`,
+  `extraKnownMarketplaces`, and `enabledPlugins` keys you added to
+  `settings.json`.
 - Codex: remove the plugin in `/plugins`; remove the marketplace with
   `codex plugin marketplace remove megapowers` if you no longer want the repo
   listed.
