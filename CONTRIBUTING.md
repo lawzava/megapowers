@@ -1,7 +1,7 @@
 # Contributing
 
-Contributions are welcome. The bar is the same one the repo holds itself to:
-measured, not vibed.
+Contributions are welcome. The bar is the one the repo holds itself to: a
+claim of effect needs a run behind it.
 
 ## Before you open a PR
 
@@ -12,9 +12,9 @@ measured, not vibed.
    bash evals/run-all.sh    # behavioral: deterministic scenarios with the mock agent
    ```
 
-2. If you change **behavioral guidance** in a skill (a rule, prohibition,
+2. If you change behavioral guidance in a skill (a rule, prohibition,
    recipe, or conditional meant to shape agent behavior), follow
-   `plugins/megapowers/skills/writing-skills` — baseline the failure first,
+   `plugins/megapowers/skills/writing-skills`: baseline the failure first,
    then write the guidance. Editorial changes (typos, links, rewording that
    preserves meaning) need no pressure test.
 
@@ -35,8 +35,8 @@ measured, not vibed.
 - Conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`).
 - One concern per commit; explain the why in the body.
 - Cross-plugin skill references are soft: guard them with "if installed".
-- No unsourced statistics in skills. A claim of effect needs a run behind it
-  (see `evals/RESULTS.md` for the format).
+- No unsourced statistics in skills. See `evals/RESULTS.md` for the format a
+  claim of effect needs.
 
 ## What gets merged
 

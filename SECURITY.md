@@ -1,14 +1,14 @@
 # Security
 
-## Scope, honestly
+## Scope
 
 Nothing in this repository is a security boundary.
 
-- `mega-guardrails`' `deny-destructive` hook is a **tripwire against accidents**,
-  not a sandbox: it string-matches obviously catastrophic commands and can be
-  bypassed by anyone trying. Real containment comes from your runtime's sandbox
-  and OS permissions.
-- The `effect-broker` skill gates irreversible actions by **declared** action
+- `mega-guardrails`' `deny-destructive` hook is a tripwire against accidents,
+  not a sandbox. It string-matches obviously catastrophic commands and can be
+  bypassed by anyone trying. Real containment comes from your runtime's
+  sandbox and OS permissions.
+- The `effect-broker` skill gates irreversible actions by declared action
   class; a model that misdeclares is not stopped by it.
 - Hooks are Claude Code only and fail open by absence on other harnesses.
 
