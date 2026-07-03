@@ -109,6 +109,16 @@ Two rules:
   native marketplace and the skills CLI: a skill registered twice fires
   twice, same as the bundle-vs-standalone rule above.
 
+The second rule has a trap on mixed machines: the skills CLI installs several
+agents (OpenCode, Antigravity, Codex among them) into the SHARED
+`~/.agents/skills/` directory, and Claude Code scans that directory too. If
+the Claude Code plugins are installed on the same machine, a global skills-CLI
+install into `~/.agents/skills/` double-registers every skill for Claude Code.
+Found the hard way on this project's own machine. On a machine that runs
+Claude Code with the plugins, give other harnesses a tool-specific path
+instead: the symlink fallback below into e.g. `~/.config/opencode/skills/`,
+or project-level installs (`npx skills add` without `-g`).
+
 ### Manual fallback: symlinks from a checkout
 
 Where you'd rather track a checkout (or a fork) directly, symlink the
