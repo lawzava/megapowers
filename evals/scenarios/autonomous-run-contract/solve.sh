@@ -15,5 +15,9 @@ export MEGAPOWERS_RUN_DIR="$PWD/.megapowers/run"
   after=$(wc -l < "$MEGAPOWERS_RUN_DIR/r1/journal.md")
   echo "JOURNAL_GREW=$((after-before))"
   echo "=== report ==="; "$S/run-report" r1
+  # verify pass must stamp LAST_VERIFY (a done-claim with LAST_VERIFY=none was
+  # never certified — regression guard for the stamp added after the live probe)
+  echo "=== verify-stamp ==="; "$S/run-verify-status" r1; echo "rc_verify=$?"
+  grep '^LAST_VERIFY=' "$MEGAPOWERS_RUN_DIR/r1/status"
 } > out.txt 2>&1
 cat out.txt

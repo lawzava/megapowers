@@ -6,6 +6,26 @@ the repo release. The minimal Antigravity root manifests carry no version
 field by design (their schema allows only name and description). Format:
 [Keep a Changelog](https://keepachangelog.com), semver.
 
+## Unreleased
+
+### Changed
+
+- First live e2e probes of the installed suite (5 real-session runs: trigger
+  precision, organic TDD x2, brainstorming, autonomous-run) produced three
+  fixes:
+  - test-driven-development "verify green" now says to run the project's full
+    suite (its canonical entrypoint), not only the new test file. One probe
+    run reported clean over a red suite because it only ran its own module —
+    the scoped-true-claims decay mode the gauntlet study predicted. Gauntlet
+    keyed re-run recommended before citing its numbers for this skill version.
+  - run-verify-status now stamps LAST_VERIFY into the status file on pass, and
+    run-derive-status says so when it derives STATE=done. A run that finishes
+    without certification is now visible (done + LAST_VERIFY=none). Covered by
+    the autonomous-run-contract oracle.
+  - run-init's runbook template tells the agent to export MEGAPOWERS_MODEL
+    once per session; without it every journal entry logs model=unknown
+    (observed in the live probe).
+
 ## 0.1.1 - 2026-07-03
 
 ### Fixed

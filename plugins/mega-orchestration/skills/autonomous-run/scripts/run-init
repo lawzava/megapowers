@@ -63,6 +63,10 @@ EOF
 Loop: read status -> next unmet milestone -> do it -> run its acceptance check ->
 journal the result -> advance status. Trust the files over memory after a restart.
 On failure: fix and re-verify, capped at 3 attempts, then mark blocked and move on.
+Once per session, before journaling: export MEGAPOWERS_MODEL=<your model id> so
+every journal entry records who acted (unset logs model=unknown).
+Before claiming finished: scripts/run-verify-status <run-id> must pass — it stamps
+LAST_VERIFY into status. STATE=done with LAST_VERIFY=none means never certified.
 EOF
 
 [ -f "$dir/journal.md" ] || printf '# Journal (append-only)\n' > "$dir/journal.md"

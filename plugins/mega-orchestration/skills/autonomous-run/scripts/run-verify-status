@@ -89,3 +89,10 @@ case "$state" in
     fi
     echo "run-verify-status: OK — the done-claim is supported by the journal trail." ;;
 esac
+
+# Every code path above either passed or exited 1, so stamp the certification:
+# LAST_VERIFY records when this invariant last held. A run whose status says
+# done but LAST_VERIFY=none was never certified.
+now="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
+tmp="$dir/status.verify.$$"
+{ grep -vE '^LAST_VERIFY=' "$dir/status"; printf 'LAST_VERIFY=%s\n' "$now"; } > "$tmp" && mv "$tmp" "$dir/status"

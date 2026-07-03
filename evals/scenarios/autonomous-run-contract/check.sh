@@ -12,4 +12,6 @@ c030=$(awk '/## Decisions/{d=1} d&&/conf=0.30/{print NR; exit}' "$o")
 c085=$(awk '/## Decisions/{d=1} d&&/conf=0.85/{print NR; exit}' "$o")
 [ -n "$c030" ] && [ -n "$c085" ] && [ "$c030" -lt "$c085" ] || { echo "decisions not ranked lowest-confidence first"; exit 1; }
 grep -q "Blocked — needs attention" "$o" || { echo "blocked items not surfaced in report"; exit 1; }
-echo "ok: run contract holds (scaffold, freeze, append-only, provenance, confidence-ranked report)"
+grep -q "rc_verify=0" "$o" || { echo "run-verify-status did not pass on a consistent run"; exit 1; }
+grep -qE "^LAST_VERIFY=[0-9]{4}-" "$o" || { echo "verify pass did not stamp LAST_VERIFY into status"; exit 1; }
+echo "ok: run contract holds (scaffold, freeze, append-only, provenance, verify-stamp, confidence-ranked report)"

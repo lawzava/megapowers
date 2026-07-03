@@ -41,7 +41,7 @@ The cycle, in order:
 1. Red — write one minimal failing test.
 2. Verify red — run it and confirm it fails for the expected reason. If it passes, it's testing existing behavior; fix the test. If it errors (typo, missing import), fix the error and re-run until it fails cleanly.
 3. Green — write the simplest code that makes the test pass.
-4. Verify green — run it and confirm the test passes, other tests still pass, and output is clean. If the test fails, fix the code (not the test). If other tests fail, fix them now.
+4. Verify green — run it and confirm the test passes, the project's full suite still passes, and output is clean. If the test fails, fix the code (not the test). If other tests fail, fix them now.
 5. Refactor — clean up while staying green. Don't add behavior.
 6. Repeat — next failing test for the next behavior.
 
@@ -148,7 +148,10 @@ npm test path/to/test.test.ts
 
 Confirm:
 - Test passes
-- Other tests still pass
+- The full suite still passes — run the project's canonical test entrypoint
+  (`./test.sh`, `make test`, `pytest`/`unittest discover`), not only the file
+  you wrote. A green module over a red suite is how pre-existing failures get
+  claimed as clean.
 - Output is clean (no errors, warnings)
 
 If the test fails, fix the code, not the test.

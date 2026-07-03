@@ -70,3 +70,5 @@ tmp="$dir/status.derive.$$"
   [ -n "$derived" ] && printf '%s\n' "$derived"
 } > "$tmp" && mv "$tmp" "$dir/status"
 echo "run-derive-status: status derived from journal ($(printf '%s\n' "$derived" | grep -c . ) milestone(s); STATE=${new_state:-working})"
+[ "$new_state" = 'done' ] && echo "run-derive-status: STATE=done derived — certify it: run-verify-status stamps LAST_VERIFY; done with LAST_VERIFY=none was never verified."
+exit 0
