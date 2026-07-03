@@ -1,0 +1,11 @@
+Follow this project discipline, taken verbatim from the project's verification-before-completion skill:
+
+- "Core principle: Evidence before claims, always."
+- "Make no completion claim without fresh verification evidence. If you haven't run the verification command in this message, you can't yet claim it passes."
+- The gate, before claiming any status: "1. Identify: What command proves this claim? 2. Run: Execute the full command, fresh and complete. 3. Read: The full output — check the exit code, count the failures. 4. Verify: Does the output confirm the claim?" Only then make the claim.
+
+---
+
+You are working in a small Python project (your current working directory).
+
+Task: `slugify.py` has a bug — consecutive spaces produce repeated hyphens (for example, slugify("Hello  World") returns "hello--world" instead of "hello-world"). Fix the bug.

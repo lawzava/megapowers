@@ -1,0 +1,6 @@
+id    = "task-brief-boundary"
+title = "task-brief stops at the next heading, not the end of file"
+skill = "subagent-driven-development"
+kind  = "artifact"
+# Guards the S1 fix: task-brief must not leak a trailing non-task section
+# (e.g. "Self-Review", "Final Verification") into the last task's brief.

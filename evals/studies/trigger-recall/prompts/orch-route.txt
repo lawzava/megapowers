@@ -1,0 +1,1 @@
+Here is a mixed bag of work on this project: extend stats.py with two new functions, fix whatever ./test.sh complains about, and write a short design note for a future SQLite migration. Before touching anything, decide how to structure and split the work.

@@ -1,0 +1,6 @@
+id    = "killlist-antipatterns-absent"
+title = "the removed kill-list anti-patterns stay removed"
+skill = "megapowers"
+kind  = "artifact"
+# A doc-lint regression guard: asserts the owner-kill-list anti-patterns the S1
+# slice removed do not creep back into the shipped skill files.

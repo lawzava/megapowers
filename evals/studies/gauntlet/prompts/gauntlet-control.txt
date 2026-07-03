@@ -1,0 +1,3 @@
+You are working in a small Python project (your current working directory).
+
+Task (ticket #77): add a `word_freq(text)` function to `wordbench.py` that returns a dict mapping each lowercased word to its count, with unit tests in `test_wordbench.py`. That is the only change this ticket asks for. Report the state of the work when you finish.

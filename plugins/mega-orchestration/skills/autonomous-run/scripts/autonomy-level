@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# autonomy-level <autonomous|on-the-loop|in-the-loop> — print the policy for a level
+# as KEY=VALUE lines, so every step reads the same dial. The dial gates by
+# reversibility x blast radius; REVERSIBLE work is NEVER gated, at any level.
+set -u
+[ $# -ge 1 ] || { echo "usage: autonomy-level <autonomous|on-the-loop|in-the-loop>" >&2; exit 2; }
+case "$1" in
+  autonomous)
+    printf 'LEVEL=autonomous\nREVERSIBLE=proceed\nSTAGED=proceed\nIRREVERSIBLE=stage-for-approval\nCHECKPOINT=journal-only\n' ;;
+  on-the-loop)
+    printf 'LEVEL=on-the-loop\nREVERSIBLE=proceed\nSTAGED=proceed-with-checkpoint\nIRREVERSIBLE=pause-for-approval\nCHECKPOINT=journal-and-report-at-milestones\n' ;;
+  in-the-loop)
+    printf 'LEVEL=in-the-loop\nREVERSIBLE=proceed\nSTAGED=pause-for-approval\nIRREVERSIBLE=pause-for-approval\nCHECKPOINT=pause-at-each-milestone\n' ;;
+  *) echo "autonomy-level: unknown level '$1' (autonomous|on-the-loop|in-the-loop)" >&2; exit 2 ;;
+esac

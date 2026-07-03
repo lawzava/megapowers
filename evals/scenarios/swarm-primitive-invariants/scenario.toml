@@ -1,0 +1,7 @@
+id    = "swarm-primitive-invariants"
+title = "swarm-primitive skills keep their evidence-based invariants (blind, oracle-first, cross-vendor, never-average)"
+skill = "best-of-n"
+kind  = "artifact"
+# Guards the design against silent weakening into the failure modes the research
+# warns about (deliberation/averaging regresses toward weaker members; verifiers
+# that see prior conclusions anchor).

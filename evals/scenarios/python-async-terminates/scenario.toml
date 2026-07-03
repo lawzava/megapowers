@@ -1,0 +1,4 @@
+id    = "python-async-terminates"
+title = "python-patterns bounded worker pool runs to completion (no deadlock)"
+skill = "python-patterns"
+kind  = "artifact"

@@ -1,0 +1,16 @@
+{
+  "name": "mega-ts",
+  "description": "Greenfield TypeScript stack selection and idiomatic TypeScript patterns.",
+  "version": "0.1.0",
+  "author": {
+    "name": "lawzava"
+  },
+  "license": "MIT",
+  "keywords": [
+    "typescript",
+    "greenfield",
+    "stack",
+    "node",
+    "pnpm"
+  ]
+}

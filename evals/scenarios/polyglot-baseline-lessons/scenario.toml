@@ -1,0 +1,4 @@
+id    = "polyglot-baseline-lessons"
+title = "polyglot greenfield skills carry the hard-won mega-go lessons (logging, proxy, async, test-DB)"
+skill = "greenfield-python-stack"
+kind  = "artifact"

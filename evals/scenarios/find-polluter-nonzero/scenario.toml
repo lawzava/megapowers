@@ -1,0 +1,6 @@
+id    = "find-polluter-nonzero"
+title = "find-polluter matches nested tests and never reports 'clean' on zero matches"
+skill = "systematic-debugging"
+kind  = "artifact"
+# Guards the S1 fix: the glob must match './'-prefixed paths at any depth, and a
+# zero-match must be a loud error (exit 2), never a false 'all tests clean'.

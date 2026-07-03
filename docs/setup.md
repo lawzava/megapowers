@@ -1,0 +1,241 @@
+# Setup
+
+## Claude Code marketplace
+
+```
+/plugin marketplace add lawzava/megapowers
+```
+
+Then install what you want:
+
+```
+/plugin install megapowers@megapowers        # workflow methodology
+/plugin install mega-orchestration@megapowers # multi-agent delegation
+/plugin install mega-guardrails@megapowers    # safety hooks + statusline
+/plugin install mega-go@megapowers            # greenfield Go
+/plugin install mega-python@megapowers        # greenfield Python
+/plugin install mega-ts@megapowers            # greenfield TypeScript
+```
+
+Or run `/plugin` and browse Discover.
+
+Verify the install: run `/plugin` and confirm the plugin is listed as
+installed, then ask the agent to "load the test-driven-development skill and
+quote its core principle" — a correct verbatim quote proves skills are
+discoverable and loadable (this is exactly what the install-smoke study
+asserts; see `evals/studies/install-smoke/`).
+
+Nine skills are also published as standalone marketplace entries for
+cherry-pickers: `brainstorming`, `systematic-debugging`,
+`test-driven-development`, `writing-plans`, `writing-skills`,
+`multi-agent-delegation`, `golang-patterns`, `python-patterns`, and
+`typescript-patterns`. Default to the bundles. Install a bundle **or** its
+standalone skill, not both — a skill installed twice registers twice.
+
+## Per-plugin prerequisites
+
+Each plugin installs and runs on its own; install only the tools for the parts
+you use. Cross-plugin references are soft: where a skill names a skill from
+another plugin it says "if installed" and works without it. The pairing that
+adds the most is `megapowers` + `mega-orchestration` — the process pipeline
+escalates into delegation, verification, and autonomous runs when both are
+present.
+
+- **mega-orchestration** — the Codex roles (plan/code review, small impl) need
+  Codex native subagents when running in Codex, or the Codex CLI/SDK from other
+  tools. The visual/browser role needs `playwright-cli` plus a vision-capable
+  model to read the screenshots. Antigravity is documented but disabled until
+  a local `agy` automation path is verified. Roles you don't use don't need
+  their tools installed.
+- **mega-go** — `greenfield-go-stack` optionally uses the context7 MCP server to
+  fetch current library docs while scaffolding; it degrades gracefully without it.
+- **mega-guardrails** — the hooks require `jq`. The auto-format hook additionally
+  uses gofmt/goimports (Go) and a project-local prettier (JS/TS/etc.) when
+  present, and skips them quietly otherwise.
+
+## Codex marketplace
+
+Codex installs from a local checkout (there is no remote marketplace add):
+
+```
+git clone https://github.com/lawzava/megapowers && cd megapowers
+codex plugin marketplace add ./
+codex
+/plugins
+```
+
+Verify: `codex plugin marketplace list` shows `megapowers`; after installing a
+plugin, the same first-task probe applies (ask the agent to quote the
+test-driven-development core principle).
+
+Install `megapowers`, `mega-go`, `mega-python`, `mega-ts`, or
+`mega-orchestration` from the `megapowers` marketplace. `mega-guardrails` is
+not listed for Codex because its hook wiring is still Claude-specific.
+
+## Every other harness: the skills CLI
+
+For harnesses without a native plugin marketplace (OpenCode, Antigravity,
+Cursor, Copilot, and the rest of the Agent Skills ecosystem), use the open
+[skills CLI](https://github.com/vercel-labs/skills) (skills.sh):
+
+```bash
+npx skills add lawzava/megapowers                # pick skills interactively
+npx skills add lawzava/megapowers -s '*' -y      # everything, non-interactive
+npx skills update                                # update installed skills
+npx skills list                                  # what's installed where
+```
+
+The CLI reads this repo's `.claude-plugin/marketplace.json` and discovers
+every plugin's skills, grouped by plugin; a skill's `scripts/` and
+`references/` install with it (the whole skill directory is copied). Installs
+are recorded in `skills-lock.json`, which makes the same skill set
+reproducible on another machine (restore is `npx skills
+experimental_install`, still marked experimental upstream).
+
+Two rules:
+
+- **Skills only.** Hooks and delegate agents do not travel this channel. On
+  Claude Code and Codex, prefer the native marketplaces above — they ship the
+  full bundle. On other harnesses the hooks would not run anyway (see
+  [`docs/tool-support.md`](./tool-support.md)), so nothing real is lost.
+- **One channel per agent per machine.** Never install the same skill via a
+  native marketplace *and* the skills CLI — a skill registered twice fires
+  twice, same as the bundle-vs-standalone rule above.
+
+### Manual fallback: symlinks from a checkout
+
+Where you'd rather track a checkout (or a fork) directly, symlink the
+canonical skill directories you want from `plugins/*/skills/*`:
+
+```bash
+# from the checkout root; adjust the target to your runtime's skill path
+ln -s "$(pwd)"/plugins/megapowers/skills/* ~/.config/opencode/skills/
+```
+
+Symlinks track the checkout: `git pull` updates them in place. Do not load
+every skill body through `instructions`; that defeats progressive disclosure.
+
+Antigravity root plugin manifests are present as `plugins/*/plugin.json`. Before
+installing them with `agy plugin install`, confirm your local Antigravity CLI
+accepts the nested `skills/<name>/SKILL.md` shape. See
+[`docs/tool-support.md`](./tool-support.md) for the current support matrix.
+
+## Fleet: keeping many devices in sync
+
+Make the install declarative once, then every machine converges instead of
+being hand-configured:
+
+- **Claude Code** — declare the marketplace and plugins in a `settings.json`
+  you already sync (dotfiles for your own machines, the repo's
+  `.claude/settings.json` for a team). Claude Code prompts each user to trust
+  and install on first run; after that, updates follow the marketplace:
+
+  ```json
+  {
+    "extraKnownMarketplaces": {
+      "megapowers": {
+        "source": { "source": "github", "repo": "lawzava/megapowers" }
+      }
+    },
+    "enabledPlugins": {
+      "megapowers@megapowers": true,
+      "mega-orchestration@megapowers": true
+    }
+  }
+  ```
+
+- **Codex** — the marketplace is a local checkout, so put the clone in your
+  dotfiles bootstrap (`git clone` + `codex plugin marketplace add ./`) and
+  update with `git pull`.
+- **Everything else** — commit `skills-lock.json` where your dotfiles
+  bootstrap runs, and install non-interactively:
+  `npx skills add lawzava/megapowers -s '*' -y`.
+
+Whatever the channel, read the [changelog](../CHANGELOG.md) before updating a
+fleet; behavioral guidance can change between versions.
+
+## Optional templates
+
+`templates/` holds copyable examples, not files to install wholesale:
+
+- `templates/CLAUDE.md` and `templates/CODEX.md` are starter instruction files
+  for other projects.
+- `templates/codex-config.toml` is a minimal Codex baseline with no private MCP
+  bridge requirement.
+- `templates/playwright-mcp-settings.json` is a starter MCP registration for the
+  Playwright browser server, for harnesses that drive the browser through an MCP
+  rather than `playwright-cli` directly.
+
+## Optional: settings template
+
+`templates/settings.example.json` holds conservative, generic defaults (no
+attribution trailers, secret-path denies, sandbox credential blocks) — it does
+**not** set a `defaultMode`, so it never loosens your permission posture just by
+being copied. Copy the keys you want into your own `~/.claude/settings.json` — do
+not replace your file wholesale. For more autonomy, opt in explicitly by adding
+`"defaultMode": "acceptEdits"` (auto-approves file edits) under `permissions`
+yourself; understand that it removes the per-edit prompt before you do.
+
+## Updating
+
+Plugins are versioned (see each `.claude-plugin/plugin.json` /
+`.codex-plugin/plugin.json` and the root `CHANGELOG.md`). Read the changelog
+before updating; behavioral guidance can change between versions.
+
+- **Claude Code**: `/plugin marketplace update megapowers` refreshes the
+  marketplace, then reinstall or update the plugin from `/plugin`. Installed
+  plugins are copies: local edits you made inside an installed plugin are
+  overwritten on update — keep customizations in a fork instead.
+- **Codex**: update the local checkout (`git pull`), then refresh from
+  `/plugins` in Codex.
+- **skills CLI installs**: `npx skills update` (all skills, interactive) or
+  `npx skills update <name> -y`.
+- **OpenCode / Antigravity (symlinked skills)**: `git pull` the checkout;
+  symlinks pick the change up immediately. If you copied instead of
+  symlinking, re-copy the skill directories you use.
+- **Forks**: merge upstream when you want the changes; `scripts/validate.sh`
+  and `bash evals/run-all.sh` tell you whether your local edits still hold.
+
+## Uninstalling
+
+- **Claude Code**: `/plugin` → installed → remove the plugin. Removal
+  unregisters its skills, hooks, and agents; confirm no `megapowers`-named
+  entries remain under `/plugin`.
+- **Codex**: remove the plugin in `/plugins`; remove the marketplace with
+  `codex plugin marketplace remove megapowers` if you no longer want the repo
+  listed.
+- **skills CLI installs**: `npx skills remove` (interactive) removes the
+  skill from every agent directory it was installed to and updates
+  `skills-lock.json`.
+- **OpenCode / Antigravity**: delete the symlinks or copied skill directories
+  you created.
+- Runtime state the skills wrote lives under `.megapowers/` in each project
+  (run journals, SDD ledgers, evidence). It is plain text and git-ignored;
+  delete it when you no longer need the trail.
+
+## Validate a local checkout
+
+```
+scripts/validate.sh
+```
+
+Requires `jq`; `shellcheck` is optional (hook checks are skipped without it).
+
+## Manual marketplace smoke test
+
+From a checkout, point Claude Code at the local dir and confirm the marketplace
+lists every entry in `.claude-plugin/marketplace.json` (currently 15: 6 plugin
+bundles plus 9 standalone skills):
+
+```
+/plugin marketplace add ./
+/plugin
+```
+
+For Codex, confirm the repo marketplace lists every entry in
+`.agents/plugins/marketplace.json` (currently 5):
+
+```
+codex plugin marketplace add ./
+codex plugin marketplace list
+```

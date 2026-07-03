@@ -1,0 +1,4 @@
+id    = "autonomous-run-contract"
+title = "autonomous-run: scaffold, frozen charter, append-only journal, confidence-ranked report"
+skill = "autonomous-run"
+kind  = "artifact"

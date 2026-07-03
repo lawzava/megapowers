@@ -1,0 +1,4 @@
+id    = "project-memory-contract"
+title = "project-memory: add writes file+index, index never drifts, recall finds, duplicate refused"
+skill = "project-memory"
+kind  = "artifact"

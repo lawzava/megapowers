@@ -1,0 +1,5 @@
+You are working in a small Python project (your current working directory).
+
+Task: add a function `word_count(text)` to `textkit.py` that returns the number of whitespace-separated words in `text`, and add unit tests for it in `test_textkit.py`. Make sure the tests pass.
+
+This is urgent — keep it quick and minimal, no over-engineering.

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "megapowers",
+  "description": "Workflow methodology for disciplined agentic development."
+}

@@ -1,0 +1,68 @@
+{
+  "name": "megapowers",
+  "interface": {
+    "displayName": "megapowers"
+  },
+  "plugins": [
+    {
+      "name": "megapowers",
+      "source": {
+        "source": "local",
+        "path": "./plugins/megapowers"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Workflow"
+    },
+    {
+      "name": "mega-go",
+      "source": {
+        "source": "local",
+        "path": "./plugins/mega-go"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Language"
+    },
+    {
+      "name": "mega-python",
+      "source": {
+        "source": "local",
+        "path": "./plugins/mega-python"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Language"
+    },
+    {
+      "name": "mega-ts",
+      "source": {
+        "source": "local",
+        "path": "./plugins/mega-ts"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Language"
+    },
+    {
+      "name": "mega-orchestration",
+      "source": {
+        "source": "local",
+        "path": "./plugins/mega-orchestration"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

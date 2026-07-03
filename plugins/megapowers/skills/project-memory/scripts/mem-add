@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# mem-add <slug> --title T --hook H [--type TYPE] [--update]   (body read from stdin)
+# Write one project-memory file (.megapowers/memory/<slug>.md) with frontmatter, then
+# regenerate the index so it can't drift. One fact per file. Portable: bash + coreutils.
+# TYPE: decision | constraint | preference | gotcha | reference (default reference)
+set -euo pipefail
+base="${MEGAPOWERS_MEMORY_DIR:-.megapowers/memory}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+slug=""; title=""; hook=""; type="reference"; update=0
+usage(){ echo "usage: mem-add <slug> --title T --hook H [--type decision|constraint|preference|gotcha|reference] [--update]  (body on stdin)" >&2; }
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --title) [ $# -ge 2 ] || { usage; exit 2; }; title="$2"; shift 2 ;;
+    --hook)  [ $# -ge 2 ] || { usage; exit 2; }; hook="$2"; shift 2 ;;
+    --type)  [ $# -ge 2 ] || { usage; exit 2; }; type="$2"; shift 2 ;;
+    --update) update=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) usage; exit 2 ;;
+    *) slug="$1"; shift ;;
+  esac
+done
+[ -n "$slug" ] && [ -n "$title" ] && [ -n "$hook" ] || { usage; exit 2; }
+[[ "$slug" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || { echo "mem-add: slug must be lowercase-kebab, e.g. my-note (a-z 0-9, single hyphens, no leading/trailing/double hyphen)" >&2; exit 2; }
+case "$type" in decision|constraint|preference|gotcha|reference) ;; *) echo "mem-add: bad --type '$type'" >&2; exit 2 ;; esac
+
+# fold newlines and escape for a double-quoted YAML scalar, so ':' and '#' in a
+# title/hook can't break or truncate the frontmatter (mem-index/mem-recall unquote).
+yq(){ printf '%s' "$1" | tr '\n\r' '  ' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+title="$(yq "$title")"; hook="$(yq "$hook")"
+
+mkdir -p "$base"
+f="$base/$slug.md"
+if [ -f "$f" ] && [ "$update" -ne 1 ]; then
+  echo "mem-add: $f already exists — pass --update to overwrite, or pick a new slug." >&2
+  exit 3
+fi
+body="$(cat)"
+# atomic write: temp then mv, so a failed write never leaves a half-file (set -e
+# aborts on any failure, so success is only reported when every step succeeded).
+tmp="$(mktemp "$base/.mem.XXXXXX")"
+printf -- '---\nname: %s\ntitle: "%s"\nhook: "%s"\ntype: %s\n---\n%s\n' "$slug" "$title" "$hook" "$type" "$body" > "$tmp"
+mv "$tmp" "$f"
+"$here/mem-index" >/dev/null
+echo "mem-add: wrote $f (index updated)"

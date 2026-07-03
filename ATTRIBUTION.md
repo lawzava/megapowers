@@ -1,0 +1,75 @@
+# Attribution
+
+megapowers builds on the work of others. This file records upstream sources
+and the licenses they are used under.
+
+## Superpowers (the `megapowers` workflow plugin)
+
+The `megapowers` workflow plugin is a fork and restyling of **Superpowers** by
+Jesse Vincent (obra) — https://github.com/obra/superpowers.
+
+- Upstream license: MIT
+- Required notice, retained here per that license:
+
+  > MIT License
+  >
+  > Copyright (c) 2025 Jesse Vincent
+  >
+  > Permission is hereby granted, free of charge, to any person obtaining a copy
+  > of this software and associated documentation files (the "Software"), to deal
+  > in the Software without restriction, including without limitation the rights
+  > to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  > copies of the Software, and to permit persons to whom the Software is
+  > furnished to do so, subject to the following conditions:
+  >
+  > The above copyright notice and this permission notice shall be included in all
+  > copies or substantial portions of the Software.
+  >
+  > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  > IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  > FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  > AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  > SOFTWARE.
+
+The methodology (brainstorming, planning, TDD, systematic debugging, review,
+worktrees, subagent orchestration) originates with Superpowers. megapowers
+rewrites the prose style and renames the skills; the underlying process is
+Jesse Vincent's.
+
+## golang-patterns (in the `mega-go` plugin)
+
+The `golang-patterns` skill is vendored from **Everything Claude Code** by
+Affaan Mustafa — https://github.com/affaan-m/everything-claude-code
+(path `.kiro/skills/golang-patterns`).
+
+- Upstream license: MIT
+- Required notice, retained per that license:
+
+  > MIT License
+  >
+  > Copyright (c) 2026 Affaan Mustafa
+  >
+  > Permission is hereby granted, free of charge, to any person obtaining a copy
+  > of this software and associated documentation files (the "Software"), to deal
+  > in the Software without restriction, including without limitation the rights
+  > to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  > copies of the Software, and to permit persons to whom the Software is
+  > furnished to do so, subject to the following conditions:
+  >
+  > The above copyright notice and this permission notice shall be included in all
+  > copies or substantial portions of the Software.
+  >
+  > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  > IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  > FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  > AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  > SOFTWARE.
+
+## Other sources
+
+Additional upstream credits are added as further modules land, once their
+upstream licenses are confirmed.

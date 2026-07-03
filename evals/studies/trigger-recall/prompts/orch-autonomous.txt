@@ -1,0 +1,1 @@
+Work through this unattended and keep going until it is done, without stopping to check in: add median(nums), variance(nums), and mode(nums) to stats.py, each with tests, then write CHANGES.md summarizing what changed. If something blocks you, record it and move on.

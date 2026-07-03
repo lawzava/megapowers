@@ -1,0 +1,1 @@
+I want to add a tagging feature to this project (tag data files, filter by tag). Work out the design and approach, then implement it.

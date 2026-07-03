@@ -1,0 +1,4 @@
+id    = "autonomy-slider"
+title = "autonomy dial gates by reversibility x blast-radius; reversible work never gated"
+skill = "autonomous-run"
+kind  = "artifact"

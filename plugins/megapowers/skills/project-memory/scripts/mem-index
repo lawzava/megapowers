@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# mem-index — rebuild .megapowers/memory/INDEX.md from the VALID memory files'
+# frontmatter (a file missing its closing '---' is skipped with a warning, not
+# misparsed). Idempotent. Portable: bash + awk/sed.
+set -euo pipefail
+base="${MEGAPOWERS_MEMORY_DIR:-.megapowers/memory}"
+[ -d "$base" ] || { echo "mem-index: no memory dir at $base" >&2; exit 2; }
+idx="$base/INDEX.md"
+tmp="$(mktemp "${TMPDIR:-/tmp}/memidx.XXXXXX")"
+printf '# Project Memory Index\n\n' > "$tmp"
+
+# extract frontmatter ONLY if both '---' delimiters are present (else empty).
+fm_extract() { awk 'NR==1 && /^---/{f=1; next} f && /^---/{d=1; exit} f{buf=buf $0 "\n"} END{if(d) printf "%s", buf}' "$1"; }
+# read a scalar key; unquote a double-quoted YAML scalar and unescape \" and \\.
+fm_get() {
+  local v; v="$(printf '%s\n' "$1" | sed -n "s/^$2:[[:space:]]*//p" | head -1)"
+  case "$v" in '"'*'"') v="${v#\"}"; v="${v%\"}"; v="$(printf '%s' "$v" | sed 's/\\"/"/g; s/\\\\/\\/g')" ;; esac
+  printf '%s' "$v"
+}
+
+n=0
+for f in "$base"/*.md; do
+  [ -f "$f" ] || continue
+  bn="$(basename "$f")"; [ "$bn" = "INDEX.md" ] && continue
+  fm="$(fm_extract "$f")"
+  if [ -z "$fm" ]; then echo "mem-index: skipping $bn (no valid frontmatter)" >&2; continue; fi
+  slug="${bn%.md}"
+  title="$(fm_get "$fm" title)"; [ -n "$title" ] || title="$slug"
+  hook="$(fm_get "$fm" hook)"
+  # link to the ACTUAL filename (not the frontmatter name); angle-bracket if it has spaces
+  case "$slug" in *" "*) dest="<$slug.md>" ;; *) dest="$slug.md" ;; esac
+  printf -- '- [%s](%s) — %s\n' "$title" "$dest" "$hook" >> "$tmp"
+  n=$((n + 1))
+done
+mv "$tmp" "$idx"
+echo "mem-index: $idx rebuilt ($n memories)"

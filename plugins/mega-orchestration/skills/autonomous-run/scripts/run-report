@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# run-report <run-id> — emit a skimmable markdown report for a run: status, activity
+# counts, anything blocked, and decisions ranked by confidence (lowest first — that's
+# where a human should look). Makes supervision cost a glance. Portable: bash + awk.
+set -uo pipefail
+base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+[ $# -ge 1 ] || { echo "usage: run-report <run-id>" >&2; exit 2; }
+id="$1"; dir="$base/$id"
+[ -d "$dir" ] || { echo "run-report: no run at $dir" >&2; exit 2; }
+jr="$dir/journal.md"
+
+echo "# Run report: $id"
+echo
+if [ -f "$dir/status" ]; then
+  echo "## Status"; echo '```'; cat "$dir/status"; echo '```'; echo
+fi
+
+if [ -f "$jr" ]; then
+  # Parse by field position (fields split on " | "): $2=kind, $3="conf=X". This is
+  # robust to a stray "|" or "conf=" inside a message — the kind is always field 2.
+  echo "## Activity"
+  for k in action decision result blocked; do
+    n="$(awk -F' \\| ' -v k="$k" '$2==k{c++} END{print c+0}' "$jr")"
+    echo "- $k: $n"
+  done
+  echo
+
+  if awk -F' \\| ' '$2=="blocked"{f=1} END{exit !f}' "$jr"; then
+    echo "## Blocked — needs attention"
+    awk -F' \\| ' '$2=="blocked"' "$jr" | sed 's/^/- /'
+    echo
+  fi
+
+  echo "## Decisions — lowest confidence first"
+  # malformed/absent confidence sorts to the top as "needs attention", not silently as 0.
+  decisions="$(awk -F' \\| ' '
+    $2=="decision" {
+      c=$3; sub(/^conf=/,"",c)
+      if (c ~ /^(0(\.[0-9]+)?|1(\.0+)?)$/) printf "%s\t%s\n", c, $0
+      else                                 printf "-1\t[conf?] %s\n", $0
+    }' "$jr" | sort -n | cut -f2-)"
+  if [ -n "$decisions" ]; then printf '%s\n' "$decisions" | sed 's/^/- /'; else echo "- (none recorded)"; fi
+fi

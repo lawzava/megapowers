@@ -1,0 +1,1 @@
+Thinking about letting users pin favorite data files in this tool. I'm not sure what shape that should take; help me think it through, then build it.

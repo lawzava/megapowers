@@ -1,0 +1,1 @@
+stats.py needs a variance(nums) helper. I care that it is properly covered by automated checks in test_stats.py before you consider it finished.

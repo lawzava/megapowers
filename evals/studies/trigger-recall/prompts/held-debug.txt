@@ -1,0 +1,1 @@
+./test.sh went red on this repo and I have no idea why. Get it back to green the right way, not by papering over it.

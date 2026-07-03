@@ -1,0 +1,1 @@
+I need a robust parse_row(line) for stats.py and there are several plausible ways to build it, with real tradeoffs. Produce a few independent candidate implementations and keep whichever one wins on the tests; discard the rest.

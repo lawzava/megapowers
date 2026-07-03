@@ -1,0 +1,5 @@
+id    = "delegate-resolve"
+title = "delegate-resolve executes the routing table: resolves, lists, and flags disabled/unknown"
+skill = "multi-agent-delegation"
+kind  = "artifact"
+# Guards the routing resolver: routing must be executable, not just eyeballed.

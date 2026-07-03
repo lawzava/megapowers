@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "mega-ts",
+  "description": "Greenfield TypeScript stack selection and idiomatic TypeScript patterns."
+}

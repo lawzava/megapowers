@@ -1,0 +1,76 @@
+<!-- Recommended baseline — adapt to your project; pairs with the megapowers marketplace. -->
+
+# Project instructions
+
+This is a starting baseline. Copy it to your project root as `CLAUDE.md`, or merge
+the sections you want into `~/.claude/CLAUDE.md`, then edit to fit your stack. It
+assumes the [megapowers](https://github.com/lawzava/megapowers) plugins are installed
+and leans on them instead of restating their content.
+
+## Workflow
+
+Let the megapowers process skills lead; don't paraphrase or pre-empt them.
+
+- Creating or changing behavior → start with **brainstorming**, then **writing-plans**.
+- Implementing → **test-driven-development** (write the failing test first).
+- Something's broken → **systematic-debugging** before proposing a fix.
+- Wrapping up → **requesting-code-review**, **verification-before-completion**, then
+  **finishing-a-development-branch**.
+- Isolated or parallel work → **using-git-worktrees**, **subagent-driven-development**,
+  **dispatching-parallel-agents**.
+
+When a skill applies, invoke it before answering. It owns the procedure; these notes
+just say when to reach for which.
+
+## Delegation
+
+Route specialized work to the best model via the mega-orchestration plugin rather than
+doing everything inline. Routing and run presets live in
+`mega-orchestration/skills/multi-agent-delegation/delegates.toml` — which role (plan review, code review,
+small implementation, visual, browser test) goes to which backend, and how each
+delegate runs. Edit that file to change models or backends; the delegation skill and
+agents read it.
+
+Single-writer rule: delegates write only inside worktrees or return patches. The lead
+owns integration and commits. Always run the tests yourself and confirm the output —
+never trust a self-reported pass.
+
+For very large audits, migrations, or repeatable multi-agent research, prefer Claude
+Code dynamic workflows (`ultracode` or saved workflows) over hand-managed delegation.
+Use ordinary skills and direct subagents for small or medium tasks.
+
+## Git
+
+- Branch per feature or fix. Never commit directly to `main`.
+- Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`), atomic —
+  one logical change each.
+- Commit at the human's direction, not as a side effect of a skill step.
+- No attribution, co-author, or session-link trailers in commit messages or PR bodies.
+- Stage explicit paths. Don't force-add ignored files or bypass hooks.
+
+## Review & verification
+
+- Get an independent review for risky logic — auth, billing, concurrency, anything
+  with security or data-integrity stakes. This is what **requesting-code-review** and
+  **receiving-code-review** are for; take review feedback with technical rigor, not
+  reflexive agreement.
+- Show evidence before claiming done. Run the command, read the output, then report —
+  the discipline **verification-before-completion** enforces. Assertions without
+  evidence don't count as complete.
+
+## Safety
+
+The mega-guardrails deny-destructive hook is an accident backstop — it blocks a handful
+of obviously destructive commands. It is not a sandbox and not a security boundary.
+Don't rely on it to contain untrusted input or risky operations; think before you run.
+
+## Style
+
+- Terse. No filler, no preamble, no hedging. Status updates in one line.
+- Write the minimum code that solves the problem. No speculative features, single-use
+  abstractions, or premature configurability.
+- Surgical changes: touch only what the request requires. No drive-by refactors or
+  reformatting. Match the surrounding style. Clean up your own orphans; leave
+  pre-existing dead code alone (but mention it).
+- Run the tests after every meaningful change. If three attempts at one approach fail,
+  stop and summarize what you tried, what failed, and the next idea.

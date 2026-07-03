@@ -1,0 +1,7 @@
+id    = "delegate-nudge-suppression"
+title = "delegate-nudge suppresses on real delegation, nags on a prose-only mention"
+skill = "multi-agent-delegation"
+kind  = "artifact"
+# Guards the S1 fix: the suppression must match mcp__codex__codex-reply and any
+# codex/delegate subagent_type (JSON tool-call structure), but a prose mention of
+# 'codex exec' must still trigger the nudge.

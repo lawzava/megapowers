@@ -1,0 +1,15 @@
+{
+  "name": "mega-go",
+  "description": "Greenfield Go: an opinionated stack picker plus idiomatic Go patterns.",
+  "version": "0.1.0",
+  "author": {
+    "name": "lawzava"
+  },
+  "license": "MIT",
+  "keywords": [
+    "go",
+    "golang",
+    "greenfield",
+    "stack"
+  ]
+}

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# run-journal <run-id> <action|decision|result|blocked|paused> <confidence 0-1> <message...>
+# Appends one structured, timestamped line to the run's append-only journal. Records
+# the acting model (MEGAPOWERS_MODEL env) as provenance. Portable: bash + coreutils.
+# kind=paused marks a deliberate checkpoint/pause; run-derive-status derives
+# STATE=paused from a trailing paused entry, and any later entry resumes.
+set -uo pipefail
+base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+[ $# -ge 4 ] || { echo "usage: run-journal <run-id> <action|decision|result|blocked|paused> <confidence 0-1> <message...>" >&2; exit 2; }
+id="$1"; kind="$2"; conf="$3"; shift 3; msg="$*"
+dir="$base/$id"
+[ -f "$dir/journal.md" ] || { echo "run-journal: no journal at $dir (run run-init first)" >&2; exit 2; }
+case "$kind" in action|decision|result|blocked|paused) ;; *) echo "run-journal: kind must be action|decision|result|blocked|paused" >&2; exit 2 ;; esac
+# confidence must actually be in [0,1]: 0, 0.x, 1, or 1.0(0..) — not 2, 999, 01.2, 1..0
+[[ "$conf" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]] || { echo "run-journal: confidence must be a number in [0.0, 1.0]" >&2; exit 2 ;}
+model="${MEGAPOWERS_MODEL:-unknown}"
+# The journal is pipe-delimited and one-entry-per-line; a message (or model name)
+# containing '|' or a newline could otherwise forge extra fields / fake records that
+# run-report would miscount. Fold newlines to spaces and replace '|' with '/'.
+san() { printf '%s' "$1" | tr '\n\r|' '  /'; }
+msg="$(san "$msg")"; model="$(san "$model")"
+ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
+printf '%s | %s | conf=%s | model=%s | %s\n' "$ts" "$kind" "$conf" "$model" "$msg" >> "$dir/journal.md"

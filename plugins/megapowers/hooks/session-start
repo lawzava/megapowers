@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# SessionStart hook for the megapowers plugin (Claude Code only).
+
+set -euo pipefail
+
+# Determine plugin root directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Read using-megapowers content
+using_megapowers_content=$(cat "${PLUGIN_ROOT}/skills/using-megapowers/SKILL.md" 2>&1 || echo "Error reading using-megapowers skill")
+
+# Escape string for JSON embedding using bash parameter substitution.
+# Each ${s//old/new} is a single C-level pass - orders of magnitude
+# faster than the character-by-character loop this replaces.
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request -- including clarifying questions or exploring code -- check whether a skill applies and, if so, follow it."
+
+using_megapowers_escaped=$(escape_for_json "$using_megapowers_content")
+preface_escaped=$(escape_for_json "$preface")
+session_context="${preface_escaped}\n\n${using_megapowers_escaped}"
+
+# Output context injection as JSON for Claude Code.
+# Claude Code reads hookSpecificOutput.additionalContext (nested).
+#
+# Uses printf instead of heredoc to work around bash 5.3+ heredoc hang.
+printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context"
+
+exit 0

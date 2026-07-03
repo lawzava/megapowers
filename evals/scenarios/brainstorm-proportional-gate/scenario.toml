@@ -1,0 +1,8 @@
+id     = "brainstorm-proportional-gate"
+title  = "brainstorming proceeds on reversible work without per-section sign-off"
+skill  = "brainstorming"
+kind   = "behavior"
+prompt = "Add a --verbose flag to an existing CLI (small, reversible, test-covered). Use the brainstorming skill, then proceed."
+# Behavior eval: a compliant agent should present the design and proceed (the
+# proportional Gate), NOT stop for a sign-off after every section. Runs against a
+# real agent with --agent; the shipped mock proves the pipeline in CI.

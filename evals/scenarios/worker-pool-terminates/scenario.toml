@@ -1,0 +1,7 @@
+id    = "worker-pool-terminates"
+title = "golang-patterns worker pool does not deadlock in the natural synchronous shape"
+skill = "golang-patterns"
+kind  = "artifact"
+# Guards the S1 fix: closing results from a separate goroutine so a synchronous
+# caller (workerPool(...); for r := range results) terminates instead of deadlocking.
+# Skips cleanly (indeterminate) if the Go toolchain is unavailable.

@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "mega-python",
+  "description": "Greenfield Python stack selection and idiomatic Python patterns."
+}

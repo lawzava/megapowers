@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# run-derive-status <run-id> — regenerate the run's status from the journal.
+# The journal is the only hand-written record; status is DERIVED, so it cannot
+# disagree with the trail. For every milestone tag seen in journal messages
+# ("M2: ...", "step-3: ..."), the last result/blocked entry decides its state:
+#   result -> done, blocked -> blocked, only action/decision -> in-progress.
+# STATE is fully derived, in precedence order:
+#   blocked (any milestone blocked) > paused (last journal entry is kind
+#   paused) > done (>=1 milestone and all derive done) > working (any tagged
+#   activity) > previous value (empty journal, e.g. initialized).
+# A hand-edited STATE that the journal does not support is overwritten here.
+# CURSOR/LEVEL/LAST_VERIFY lines are preserved. Portable: bash + coreutils + awk.
+set -uo pipefail
+base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+[ $# -ge 1 ] || { echo "usage: run-derive-status <run-id>" >&2; exit 2; }
+dir="$base/$1"
+[ -f "$dir/journal.md" ] || { echo "run-derive-status: no journal at $dir (run run-init first)" >&2; exit 2; }
+[ -f "$dir/status" ]     || { echo "run-derive-status: no status at $dir (run run-init first)" >&2; exit 2; }
+
+summary="$(awk -F' \\| ' '
+  function tag(msg) { if (match(msg, /^[A-Za-z][A-Za-z0-9_-]*:/)) return substr(msg, 1, RLENGTH - 1); return "" }
+  $2 == "result" || $2 == "blocked" || $2 == "action" || $2 == "decision" || $2 == "paused" {
+    last = $2
+    t = tag($5); if (t == "") next
+    if (!(t in seen)) { order[++n] = t; seen[t] = 1 }
+    if ($2 == "result") state[t] = "done"
+    else if ($2 == "blocked") state[t] = "blocked"
+    else if (!(t in state)) state[t] = "in-progress"
+  }
+  END {
+    done = 0
+    for (i = 1; i <= n; i++) if (state[order[i]] == "done") done++
+    printf "LAST_KIND=%s\nN_MILESTONES=%d\nN_DONE=%d\n", last, n, done
+    for (i = 1; i <= n; i++) printf "MILESTONE_%s=%s\n", order[i], state[order[i]]
+  }
+' "$dir/journal.md")"
+derived="$(printf '%s\n' "$summary" | grep '^MILESTONE_' || true)"
+last_kind="$(printf '%s\n' "$summary" | sed -n 's/^LAST_KIND=//p')"
+n_ms="$(printf '%s\n' "$summary" | sed -n 's/^N_MILESTONES=//p')"
+n_done="$(printf '%s\n' "$summary" | sed -n 's/^N_DONE=//p')"
+
+# "done" must cover the DECLARED plan, not just the tags that happen to appear
+# in the journal: a run that only ever journals M1 must not derive done while
+# plan.md declares M2. Declared tags are the "## <tag>: ..." headings.
+undeclared_undone=0
+if [ -f "$dir/plan.md" ]; then
+  while IFS= read -r dtag; do
+    [ -n "$dtag" ] || continue
+    printf '%s\n' "$derived" | grep -qx "MILESTONE_${dtag}=done" || undeclared_undone=$((undeclared_undone + 1))
+  done < <(sed -n 's/^## \([A-Za-z][A-Za-z0-9_-]*\):.*$/\1/p' "$dir/plan.md")
+fi
+
+old_state="$(sed -n 's/^STATE=//p' "$dir/status" | head -1)"
+if printf '%s\n' "$derived" | grep -q '=blocked$'; then
+  new_state=blocked
+elif [ "$last_kind" = paused ]; then
+  new_state=paused
+elif [ "${n_ms:-0}" -gt 0 ] && [ "$n_ms" = "$n_done" ] && [ "$undeclared_undone" -eq 0 ]; then
+  new_state='done'
+elif [ -n "$last_kind" ]; then
+  new_state=working   # activity in the trail, not all milestones done
+else
+  new_state="$old_state"   # empty journal: keep e.g. initialized
+fi
+
+tmp="$dir/status.derive.$$"
+{
+  printf 'STATE=%s\n' "${new_state:-working}"
+  grep -E '^(CURSOR|LEVEL|LAST_VERIFY)=' "$dir/status" 2>/dev/null
+  [ -n "$derived" ] && printf '%s\n' "$derived"
+} > "$tmp" && mv "$tmp" "$dir/status"
+echo "run-derive-status: status derived from journal ($(printf '%s\n' "$derived" | grep -c . ) milestone(s); STATE=${new_state:-working})"

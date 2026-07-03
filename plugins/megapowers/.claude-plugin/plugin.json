@@ -1,0 +1,16 @@
+{
+  "name": "megapowers",
+  "description": "Workflow methodology: process skills for brainstorming, planning, TDD, debugging, review, worktrees, and subagent orchestration. A restyled fork of Superpowers (MIT, (c) 2025 Jesse Vincent).",
+  "version": "0.1.0",
+  "author": {
+    "name": "lawzava"
+  },
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "methodology",
+    "tdd",
+    "planning",
+    "review"
+  ]
+}

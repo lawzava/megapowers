@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# run-init <run-id> [--base DIR] [--level LEVEL] — scaffold a durable run directory
+# (.megapowers/run/<id>/) with the file contract. Refuses to overwrite an existing
+# charter.md: the charter is frozen, and a changed goal is a new run (so there is no
+# --force — to genuinely start over, use a new run-id). Portable: bash + coreutils.
+set -uo pipefail
+
+id=""; base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"; level="on-the-loop"
+usage() { echo "usage: run-init <run-id> [--base DIR] [--level autonomous|on-the-loop|in-the-loop]" >&2; }
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base) [ $# -ge 2 ] || { usage; exit 2; }; base="$2"; shift 2 ;;
+    --level) [ $# -ge 2 ] || { usage; exit 2; }; level="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) usage; exit 2 ;;
+    *) id="$1"; shift ;;
+  esac
+done
+[ -n "$id" ] || { usage; exit 2; }
+case "$level" in autonomous|on-the-loop|in-the-loop) ;; *) echo "run-init: unknown level '$level'" >&2; exit 2 ;; esac
+
+dir="$base/$id"
+if [ -f "$dir/charter.md" ]; then
+  echo "run-init: $dir/charter.md exists — the charter is frozen. Use a new run-id to start over." >&2
+  exit 3
+fi
+mkdir -p "$dir"
+# self-ignoring: run state is runtime data, never committed (works in any project)
+[ -f "$base/.gitignore" ] || printf '*\n' > "$base/.gitignore"
+ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
+
+cat > "$dir/charter.md" <<EOF
+# Charter: $id
+Created: $ts  (FROZEN — do not edit; a changed goal is a new run)
+
+## Goal
+<what this run must achieve — one paragraph>
+
+## Done when (acceptance criteria)
+- [ ] <criterion 1 — prefer an executable check>
+- [ ] <criterion 2>
+
+## Autonomy level
+$level
+
+## Caps
+- budget: <token/cost cap or "none">
+- turns: <max turns or "none">
+- blast radius: <what this run may NOT touch — e.g. no prod, no external sends>
+EOF
+
+[ -f "$dir/plan.md" ] || cat > "$dir/plan.md" <<'EOF'
+# Plan
+Milestones (each with its own acceptance check; prefer an executable oracle):
+
+## M1: <name>
+- acceptance: <test/compile/eval that decides done>
+- status: pending
+EOF
+
+[ -f "$dir/runbook.md" ] || cat > "$dir/runbook.md" <<'EOF'
+# Runbook
+Loop: read status -> next unmet milestone -> do it -> run its acceptance check ->
+journal the result -> advance status. Trust the files over memory after a restart.
+On failure: fix and re-verify, capped at 3 attempts, then mark blocked and move on.
+EOF
+
+[ -f "$dir/journal.md" ] || printf '# Journal (append-only)\n' > "$dir/journal.md"
+[ -f "$dir/status" ]     || printf 'STATE=initialized\nCURSOR=M1\nLEVEL=%s\nLAST_VERIFY=none\n' "$level" > "$dir/status"
+
+echo "run-init: scaffolded $dir (level=$level)"

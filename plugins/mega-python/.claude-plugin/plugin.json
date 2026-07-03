@@ -1,0 +1,16 @@
+{
+  "name": "mega-python",
+  "description": "Greenfield Python stack selection and idiomatic Python patterns.",
+  "version": "0.1.0",
+  "author": {
+    "name": "lawzava"
+  },
+  "license": "MIT",
+  "keywords": [
+    "python",
+    "greenfield",
+    "stack",
+    "fastapi",
+    "uv"
+  ]
+}

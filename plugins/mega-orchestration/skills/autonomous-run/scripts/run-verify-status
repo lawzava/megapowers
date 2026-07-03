@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# run-verify-status <run-id> — the status-must-match-journal invariant, executable.
+# Fails (exit 1) when the journal trail records an UNRESOLVED blocker but the
+# status file does not say so. Missing files also fail — a run with no trail
+# cannot claim anything.
+#
+# Resolution matching: journal messages that start with a milestone tag
+# ("M2: ...", "step-3: ...") are matched per step — a blocked entry is resolved
+# only by a LATER result entry carrying the SAME tag. Untagged blocked entries
+# fall back to positional matching (any later result). Tag your messages.
+#
+# Fail-closed: with an unresolved blocker, only an explicitly in-progress/blocked
+# STATE passes (blocked|paused|working|in-progress|in_progress|initialized|
+# running); done/complete/success/anything-else — including a missing STATE —
+# fails. Portable: bash + coreutils + awk.
+set -uo pipefail
+base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+[ $# -ge 1 ] || { echo "usage: run-verify-status <run-id>" >&2; exit 2; }
+dir="$base/$1"
+[ -f "$dir/status" ]     || { echo "run-verify-status: FAIL — no status file at $dir" >&2; exit 1; }
+[ -f "$dir/journal.md" ] || { echo "run-verify-status: FAIL — no journal at $dir" >&2; exit 1; }
+
+state="$(sed -n 's/^STATE=//p' "$dir/status" | head -1)"
+
+unresolved="$(awk -F' \\| ' '
+  function tag(msg) { if (match(msg, /^[A-Za-z][A-Za-z0-9_-]*:/)) return substr(msg, 1, RLENGTH - 1); return "" }
+  $2 == "blocked" { n++; bline[n] = NR; btag[n] = tag($5) }
+  $2 == "result"  { m++; rline[m] = NR; rtag[m] = tag($5) }
+  END {
+    bad = 0
+    for (i = 1; i <= n; i++) {
+      ok = 0
+      for (j = 1; j <= m; j++) {
+        if (rline[j] <= bline[i]) continue
+        if (btag[i] == "" || rtag[j] == btag[i]) { ok = 1; break }
+      }
+      if (!ok) bad++
+    }
+    print bad
+  }' "$dir/journal.md")"
+
+if [ "${unresolved:-0}" -gt 0 ]; then
+  case "$state" in
+    blocked|paused|working|in-progress|in_progress|initialized|running)
+      echo "run-verify-status: OK — $unresolved unresolved blocker(s), and STATE=$state says so." ;;
+    *)
+      echo "run-verify-status: FAIL — $unresolved unresolved blocked entr(y/ies) in the journal but STATE=${state:-unset}; report the run blocked or resolve the blocker first." >&2
+      exit 1 ;;
+  esac
+else
+  echo "run-verify-status: OK — no unresolved blockers; STATE=${state:-unset} is consistent with the journal trail."
+fi
+
+# A done-claim needs a supporting trail: at least one result entry and no
+# milestone whose last entry left it short of done. A hand-edited STATE=done
+# fails here (and the next run-derive-status would overwrite it anyway).
+case "$state" in
+  done|complete|completed|success)
+    unsupported="$(awk -F' \\| ' '
+      function tag(msg) { if (match(msg, /^[A-Za-z][A-Za-z0-9_-]*:/)) return substr(msg, 1, RLENGTH - 1); return "" }
+      $2 == "result" { results++ }
+      $2 == "result" || $2 == "blocked" || $2 == "action" || $2 == "decision" || $2 == "paused" {
+        t = tag($5); if (t == "") next
+        if (!(t in seen)) { order[++n] = t; seen[t] = 1 }
+        if ($2 == "result") state[t] = "done"
+        else if ($2 == "blocked") state[t] = "blocked"
+        else if (!(t in state)) state[t] = "in-progress"
+      }
+      END {
+        bad = 0
+        for (i = 1; i <= n; i++) if (state[order[i]] != "done") bad++
+        if (results == 0) bad++
+        if (n == 0) bad++   # untagged results alone cannot support a done-claim
+        for (i = 1; i <= n; i++) printf "DONETAG_%s\n", (state[order[i]] == "done" ? order[i] : "")
+        print "BAD=" bad
+      }' "$dir/journal.md")"
+    bad_count="$(printf '%s\n' "$unsupported" | sed -n 's/^BAD=//p')"
+    # every milestone DECLARED in plan.md must be derived done, not just the
+    # tags that happen to appear in the journal
+    if [ -f "$dir/plan.md" ]; then
+      while IFS= read -r dtag; do
+        [ -n "$dtag" ] || continue
+        printf '%s\n' "$unsupported" | grep -qx "DONETAG_${dtag}" || bad_count=$((bad_count + 1))
+      done < <(sed -n 's/^## \([A-Za-z][A-Za-z0-9_-]*\):.*$/\1/p' "$dir/plan.md")
+    fi
+    if [ "${bad_count:-1}" -gt 0 ]; then
+      echo "run-verify-status: FAIL — STATE=$state but the journal does not support it (no tagged results, a milestone not derived done, or a declared plan milestone never completed). Journal the results and re-run run-derive-status." >&2
+      exit 1
+    fi
+    echo "run-verify-status: OK — the done-claim is supported by the journal trail." ;;
+esac

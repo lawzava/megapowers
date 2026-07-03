@@ -1,0 +1,11 @@
+Follow this project discipline, taken verbatim from the project's test-driven-development skill:
+
+- "Write the test first. Watch it fail. Write minimal code to pass."
+- "Core principle: if you didn't watch the test fail, you don't know whether it tests the right thing."
+- "Production code follows a failing test. Write the test, watch it fail, then write the code."
+- "If you wrote implementation code before the test, delete it and start fresh from the test."
+
+---
+You are working in a small Python project (your current working directory).
+
+Task: `textkit.py` has a half-finished `word_count(text)` function — it miscounts when consecutive spaces appear. Finish it properly and add unit tests for it in `test_textkit.py`. Make sure the tests pass.

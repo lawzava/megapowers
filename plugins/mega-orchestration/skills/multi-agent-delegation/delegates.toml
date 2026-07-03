@@ -1,0 +1,50 @@
+# megapowers delegate routing.
+# Last reviewed: 2026-07-03 (model IDs and routes age; scripts/check-freshness.sh
+# fails a scheduled CI run when this date is older than 90 days).
+# Edit this file to change which model handles which role. Nothing auto-executes
+# it: the multi-agent-delegation skill and the delegate agents READ it to decide
+# where to send work. Keep it in sync with the runtimes you actually have.
+# It ships inside the multi-agent-delegation skill directory so the skill stays
+# self-contained when installed on its own (Agent Skills standard).
+
+# --- Providers: how to reach each backend ---
+[providers.codex]
+model   = "gpt-5.5"
+channel = "native-or-cli"
+notes   = "Use native Codex subagents inside Codex. From another tool, use codex exec or an explicitly configured private bridge."
+
+# Browser / visual work: drive the UI with playwright-cli and reason over the
+# screenshots with a vision-capable model (the lead itself when it is vision-capable,
+# e.g. Claude; otherwise route the screenshot to one). Depends only on a standalone
+# CLI, not on any single vendor's browser agent.
+[providers.browser]
+channel = "playwright-cli"
+notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .megapowers/evidence/. See agents/browser-delegate.md."
+
+# Alternative browser/visual backend, disabled by default. Use only after verifying
+# your local `agy` automation path and approval behavior.
+[providers.antigravity]
+model   = "configured-in-agy"
+channel = "agy-cli"
+enabled = false
+
+# NOTE: the Gemini CLI route was removed — the Gemini CLI was discontinued for
+# consumer use in mid-2026. Visual/browser roles now go through the vendor-neutral
+# `browser` provider above (or Antigravity once verified).
+
+# --- Roles: which provider handles what ---
+[roles]
+plan_review    = "codex"     # review a plan before implementing
+code_review    = "codex"     # review a diff
+small_impl     = "codex"     # well-scoped, small-sized implementation
+visual         = "browser"   # UI / visual work
+browser_test   = "browser"   # browser / end-to-end testing
+verify         = "codex"     # cross-model-verification: adversarial refute pass (must differ from the author's vendor)
+judge          = "codex"     # best-of-n: blind judge when no oracle decides (prefer a vendor none of the authors used)
+council_member = "codex"     # council-adjudication: independent answer + blind ranking member
+
+# --- Presets: how a delegate runs (referenced by the skill/agents) ---
+# read_only    : sandbox read-only, approval never   -> reviews & verification
+# build        : workspace-write in a worktree, approval never -> small impl; the lead runs tests and integrates
+# parallel     : one worktree-isolated delegate per task (cap 3-5); collect patches, integrate serially
+# single_writer: delegates write only in worktrees or return patches; the lead owns integration and commits

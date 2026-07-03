@@ -1,0 +1,34 @@
+{
+  "name": "mega-ts",
+  "version": "0.1.0",
+  "description": "Greenfield TypeScript stack selection and idiomatic TypeScript patterns.",
+  "author": {
+    "name": "lawzava"
+  },
+  "repository": "https://github.com/lawzava/megapowers",
+  "license": "MIT",
+  "keywords": [
+    "typescript",
+    "greenfield",
+    "stack",
+    "node",
+    "pnpm"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "mega-ts",
+    "shortDescription": "Opinionated TypeScript stack and design guidance.",
+    "longDescription": "Skills for choosing a greenfield TypeScript stack (pnpm, strict tsconfig, vitest, Hono, zod) and applying idiomatic TypeScript patterns around types, error handling, promise/async correctness, and testing.",
+    "developerName": "lawzava",
+    "category": "Language",
+    "capabilities": [
+      "Skills",
+      "TypeScript guidance"
+    ],
+    "defaultPrompt": [
+      "Use mega-ts to scaffold this service.",
+      "Use mega-ts to review this TypeScript design."
+    ],
+    "brandColor": "#3178C6"
+  }
+}

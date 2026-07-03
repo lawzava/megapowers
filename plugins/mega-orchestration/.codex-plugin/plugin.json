@@ -1,0 +1,34 @@
+{
+  "name": "mega-orchestration",
+  "version": "0.1.0",
+  "description": "Config-driven multi-agent delegation guidance for Codex, a vendor-neutral browser delegate, and Antigravity-aware workflows.",
+  "author": {
+    "name": "lawzava"
+  },
+  "repository": "https://github.com/lawzava/megapowers",
+  "license": "MIT",
+  "keywords": [
+    "orchestration",
+    "multi-agent",
+    "codex",
+    "browser",
+    "delegation"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "mega-orchestration",
+    "shortDescription": "Route scoped work to the right agent runtime.",
+    "longDescription": "A provider-agnostic delegation skill and config for deciding when to use Codex, a vendor-neutral browser/visual delegate (playwright-cli plus a vision-capable model), Antigravity, or same-model subagents for review, implementation, visual, and browser work.",
+    "developerName": "lawzava",
+    "category": "Productivity",
+    "capabilities": [
+      "Skills",
+      "Multi-agent guidance"
+    ],
+    "defaultPrompt": [
+      "Use mega-orchestration to review this plan.",
+      "Use mega-orchestration to delegate this safely."
+    ],
+    "brandColor": "#7C3AED"
+  }
+}

@@ -1,0 +1,1 @@
+Add a charge_total(items) billing function to stats.py with tests. Because this is billing logic, do not declare it done on your own say-so: have a genuinely independent model from another vendor try to refute the implementation first.

@@ -1,0 +1,22 @@
+# Editor / IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent planning artifacts — not part of the published repo.
+# The skills write specs/plans under docs/megapowers/{specs,plans}; the bare
+# docs/{plans,specs} paths are kept for older layouts.
+docs/megapowers/
+docs/plans/
+docs/specs/
+
+# Runtime state written by skills (sdd ledgers, autonomous-run dirs, evidence,
+# brainstorm servers) — never part of the published repo.
+.megapowers/
+
+# Sandbox/agent workspace artifacts that materialize inside study dirs — never real content.
+evals/studies/**/.claude/
+evals/studies/**/.mcp.json

@@ -1,0 +1,16 @@
+{
+  "name": "mega-guardrails",
+  "description": "Safety hooks and dev tooling: block destructive commands, auto-format on save, and a rich statusline.",
+  "version": "0.1.0",
+  "author": {
+    "name": "lawzava"
+  },
+  "license": "MIT",
+  "keywords": [
+    "hooks",
+    "safety",
+    "guardrails",
+    "formatting",
+    "statusline"
+  ]
+}

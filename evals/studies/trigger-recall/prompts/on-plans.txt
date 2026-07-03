@@ -1,0 +1,1 @@
+Write an implementation plan for migrating this project's storage to SQLite, and save it as PLAN.md. Do not implement it yet.

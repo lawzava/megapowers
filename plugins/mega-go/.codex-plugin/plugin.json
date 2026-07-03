@@ -1,0 +1,33 @@
+{
+  "name": "mega-go",
+  "version": "0.1.0",
+  "description": "Greenfield Go stack selection and idiomatic Go patterns.",
+  "author": {
+    "name": "lawzava"
+  },
+  "repository": "https://github.com/lawzava/megapowers",
+  "license": "MIT",
+  "keywords": [
+    "go",
+    "golang",
+    "greenfield",
+    "stack"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "mega-go",
+    "shortDescription": "Opinionated Go stack and design guidance.",
+    "longDescription": "Skills for choosing a greenfield Go stack and applying idiomatic Go patterns around interfaces, dependency wiring, errors, concurrency, and package layout.",
+    "developerName": "lawzava",
+    "category": "Language",
+    "capabilities": [
+      "Skills",
+      "Go guidance"
+    ],
+    "defaultPrompt": [
+      "Use mega-go to scaffold this service.",
+      "Use mega-go to review this Go design."
+    ],
+    "brandColor": "#00ADD8"
+  }
+}

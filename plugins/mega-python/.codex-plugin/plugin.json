@@ -1,0 +1,34 @@
+{
+  "name": "mega-python",
+  "version": "0.1.0",
+  "description": "Greenfield Python stack selection and idiomatic Python patterns.",
+  "author": {
+    "name": "lawzava"
+  },
+  "repository": "https://github.com/lawzava/megapowers",
+  "license": "MIT",
+  "keywords": [
+    "python",
+    "greenfield",
+    "stack",
+    "fastapi",
+    "uv"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "mega-python",
+    "shortDescription": "Opinionated Python stack and design guidance.",
+    "longDescription": "Skills for choosing a greenfield Python stack (uv, ruff, pyright, pytest, FastAPI) and applying idiomatic Python patterns around typing, async correctness, error handling, and testing.",
+    "developerName": "lawzava",
+    "category": "Language",
+    "capabilities": [
+      "Skills",
+      "Python guidance"
+    ],
+    "defaultPrompt": [
+      "Use mega-python to scaffold this service.",
+      "Use mega-python to review this Python design."
+    ],
+    "brandColor": "#3776AB"
+  }
+}

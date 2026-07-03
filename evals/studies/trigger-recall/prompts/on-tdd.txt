@@ -1,0 +1,1 @@
+Add a `median(nums)` function to stats.py in this project, with unit tests in test_stats.py. Make sure the tests pass.

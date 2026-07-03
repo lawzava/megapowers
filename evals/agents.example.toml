@@ -1,0 +1,20 @@
+# Agent command templates. Copy to agents.toml and edit for your environment.
+# The runner substitutes {{PROMPT}}, {{WORKDIR}}, and {{MODE}} (skill|control),
+# runs the command with cwd = the scenario's throwaway workdir, and captures its
+# stdout/stderr as the trace that check.sh inspects.
+#
+# The harness is agent-agnostic: any CLI that accepts a prompt and works in a dir
+# can be wired here. Express skill-vs-control however your harness allows (e.g. a
+# profile that (dis)ables the skill), keyed on {{MODE}}.
+
+# Claude Code, headless. Point --add-dir / a profile at the skills for skill mode.
+claude = "claude -p '{{PROMPT}}' --max-turns 20 --output-format text"
+
+# Codex CLI, non-interactive with JSON trace.
+codex = "codex exec --json '{{PROMPT}}'"
+
+# OpenCode, headless run.
+opencode = "opencode run '{{PROMPT}}'"
+
+# 'mock' is built in (evals/lib/mock-agent.sh via each scenario's mock/actions.sh)
+# and needs no entry here.

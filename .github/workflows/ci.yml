@@ -1,0 +1,39 @@
+name: ci
+
+# Enforce the suite's own quality gates on every push/PR: structural validation
+# (manifests, skill frontmatter, cross-references, hook wiring, hook test suites)
+# plus the eval harness (deterministic scenarios + mock-agent behavior scenarios).
+# Everything here is portable bash + Go stdlib; no secrets, no external services.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps (jq, shellcheck)
+        run: sudo apt-get update && sudo apt-get install -y jq shellcheck
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Structural validation
+        run: scripts/validate.sh
+
+      - name: Eval suite (deterministic + mock agent)
+        run: bash evals/run-all.sh
+
+      - name: Eval scorecard
+        if: always()
+        run: |
+          bash evals/run-all.sh --json results.jsonl || true
+          go run evals/score.go results.jsonl

@@ -1,0 +1,21 @@
+# Minimal ~/.codex/config.toml baseline for using Codex with megapowers.
+# Copy only the keys you want into ~/.codex/config.toml.
+
+# Let Codex choose the current best model by default. Pin only when a workflow
+# needs reproducibility.
+# model = "gpt-5.5"
+
+# Reasoning depth. "high" balances quality and latency for development work.
+model_reasoning_effort = "high"
+
+# Sandbox: allow writes within the workspace (needed for build/apply roles).
+sandbox_mode = "workspace-write"
+
+# Ask before actions that fall outside the sandbox policy.
+approval_policy = "on-request"
+
+# Empty string disables Codex commit co-author/attribution trailers.
+commit_attribution = ""
+
+# No Codex MCP server is required for native Codex subagents or `codex exec`.
+# Configure a private bridge separately if another runtime needs to drive Codex.

@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# delegate-resolve <role> — resolve a role to its provider + invocation details by
+# reading this skill's delegates.toml. Makes routing EXECUTED rather than eyeballed:
+# any harness can run this (or read its KEY=VALUE output) to learn where a role goes
+# and how to reach it. Portable: bash + awk, no external deps.
+#
+# Reads a restricted TOML subset matching delegates.toml: [section] and
+# [section.name] headers (internal whitespace tolerated), one `key = value` per
+# line, values either bare or single/double quoted, `#` comments outside quotes.
+# Multi-line strings, inline tables, and arrays are not parsed.
+#
+# Usage: delegate-resolve <role> [--config <delegates.toml>] [--list]
+# Exit:  0 resolved · 2 usage/config error · 3 unknown role · 4 provider disabled
+set -uo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+toml="${DELEGATES_TOML:-$here/../delegates.toml}"   # scripts/../delegates.toml
+
+usage() { echo "usage: delegate-resolve <role> [--config <delegates.toml>] [--list]" >&2; }
+
+role=""; list=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
+              toml="$2"; shift 2 ;;
+    --list) list=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) usage; exit 2 ;;
+    *) role="$1"; shift ;;
+  esac
+done
+[ -f "$toml" ] || { echo "delegate-resolve: no config at $toml" >&2; exit 2; }
+
+# does a [section] (or [section.name]) header exist? (internal whitespace tolerated)
+section_exists() { awk -v sec="[$1]" '{h=$0; gsub(/[[:space:]]/,"",h)} h==sec {found=1; exit} END{exit !found}' "$toml"; }
+
+list_roles() { awk '{h=$0; gsub(/[[:space:]]/,"",h)} h=="[roles]"{r=1;next} /^[[:space:]]*\[/{r=0} r && /=/{l=$0;sub(/=.*/,"",l);gsub(/[[:space:]]/,"",l);if(l!="")print l}' "$toml"; }
+
+if [ "$list" -eq 1 ]; then list_roles; exit 0; fi
+[ -n "$role" ] || { usage; exit 2; }
+
+# read a scalar key from a named [section] (handles [roles] and [providers.name];
+# tolerates internal header whitespace; unquotes single- or double-quoted values).
+section_val() {  # $1=section header (e.g. "roles" | "providers.codex") $2=key
+  awk -v sec="[$1]" -v key="$2" '
+    { hn=$0; gsub(/[[:space:]]/,"",hn) }                 # header, whitespace-normalized
+    hn==sec {inx=1; next}
+    /^[[:space:]]*\[/ {inx=0}
+    inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
+      rest=$0; sub(/^[^=]*=[[:space:]]*/,"",rest)        # value side of key = value
+      if (rest ~ /^"/)      { sub(/^"/,"",rest); sub(/".*/,"",rest); print rest; exit }
+      else if (rest ~ /^'\''/) { sub(/^'\''/,"",rest); sub(/'\''.*/,"",rest); print rest; exit }
+      else { sub(/#.*/,"",rest); gsub(/[[:space:]]+$/,"",rest); print rest; exit }
+    }
+  ' "$toml"
+}
+
+provider="$(section_val roles "$role")"
+if [ -z "$provider" ]; then
+  echo "delegate-resolve: no route for role '$role' in $toml" >&2
+  echo "roles available:" >&2
+  list_roles | sed 's/^/  /' >&2
+  exit 3
+fi
+
+# the routed provider must actually have a [providers.<name>] section
+if ! section_exists "providers.$provider"; then
+  echo "delegate-resolve: role '$role' routes to provider '$provider', but no [providers.$provider] section exists in $toml" >&2
+  exit 2
+fi
+
+model="$(section_val "providers.$provider" model)"
+channel="$(section_val "providers.$provider" channel)"
+enabled="$(section_val "providers.$provider" enabled)"
+notes="$(section_val "providers.$provider" notes)"
+
+echo "ROLE=$role"
+echo "PROVIDER=$provider"
+echo "MODEL=${model:-}"
+echo "CHANNEL=${channel:-}"
+echo "ENABLED=${enabled:-true}"
+[ -n "$notes" ] && echo "NOTES=$notes"
+
+if [ "${enabled:-true}" = "false" ]; then
+  echo "delegate-resolve: provider '$provider' for role '$role' is DISABLED in config — enable it or re-route the role before dispatching." >&2
+  exit 4
+fi

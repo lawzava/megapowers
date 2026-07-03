@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# effect-broker <reversible|staged|irreversible> [--level LEVEL] — print the protocol
+# required before performing a real-world side effect of a DECLARED class. Keyed on
+# what the action IS (the caller declares it), not on parsing a shell command — that
+# is the honest place to enforce irreversibility. Composes with the autonomy dial
+# from mega-orchestration:autonomous-run. Portable: pure bash.
+#
+# Classes:
+#   reversible   local edits/reads/scoped temp writes; a `git revert` undoes it.
+#   staged       has a native dry-run/plan/preview (terraform plan, kubectl
+#                --dry-run, a migration with up/down, a push to a branch).
+#   irreversible no undo and real blast (prod deploy, email/notify send, payment,
+#                DROP/DELETE without backup, DNS cutover).
+#
+# Exit: 0 ok · 2 usage error
+set -u
+level="on-the-loop"; class=""
+usage() { echo "usage: effect-broker <reversible|staged|irreversible> [--level autonomous|on-the-loop|in-the-loop]" >&2; }
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --level) [ $# -ge 2 ] || { usage; exit 2; }; level="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) usage; exit 2 ;;
+    *) [ -z "$class" ] || { echo "effect-broker: unexpected extra argument '$1'" >&2; usage; exit 2; }
+       class="$1"; shift ;;
+  esac
+done
+case "$class" in reversible|staged|irreversible) ;; *) echo "effect-broker: class must be reversible|staged|irreversible" >&2; exit 2 ;; esac
+case "$level" in autonomous|on-the-loop|in-the-loop) ;; *) echo "effect-broker: unknown level '$level'" >&2; exit 2 ;; esac
+
+echo "CLASS=$class"
+echo "LEVEL=$level"
+case "$class" in
+  reversible)
+    printf 'DRY_RUN=n/a\nIDEMPOTENCY=n/a\nJOURNAL=optional\nAPPROVAL=none\nPROCEED=yes\n'
+    ;;
+  staged)
+    # a dry-run + diff is always required; a human only gates it at in-the-loop.
+    # IDEMPOTENCY/BLAST_RADIUS are disciplines the CALLER applies (this helper prints
+    # the required protocol; it does not itself verify API support or charter bounds).
+    approval=none; [ "$level" = "in-the-loop" ] && approval=required
+    printf 'DRY_RUN=required\nIDEMPOTENCY=recommended-if-supported\nBLAST_RADIUS=caller-enforced-vs-charter\nJOURNAL=required\nAPPROVAL=%s\nPROCEED=after-dry-run-diff\n' "$approval"
+    ;;
+  irreversible)
+    # irreversible ALWAYS stages a plan and needs approval — at EVERY level, including
+    # autonomous. It never auto-fires; blast-radius caps come from the run charter.
+    printf 'DRY_RUN=required\nIDEMPOTENCY=required-if-supported\nBLAST_RADIUS=caller-enforced-vs-charter\nJOURNAL=required\nAPPROVAL=required\nPROCEED=after-staged-approval\n'
+    ;;
+esac

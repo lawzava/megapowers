@@ -1,0 +1,116 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "megapowers",
+  "owner": { "name": "lawzava" },
+  "description": "An opinionated, à-la-carte collection of Claude Code skills, plugins, and hooks. A snapshot of one workflow — not a maintained universal framework.",
+  "plugins": [
+    {
+      "name": "megapowers",
+      "source": "./plugins/megapowers",
+      "description": "Workflow methodology: process skills for brainstorming, planning, TDD, debugging, review, worktrees, and subagent orchestration. A restyled fork of Superpowers.",
+      "category": "workflow"
+    },
+    {
+      "name": "mega-go",
+      "source": "./plugins/mega-go",
+      "description": "Greenfield Go: an opinionated stack picker plus idiomatic Go patterns.",
+      "category": "language"
+    },
+    {
+      "name": "mega-python",
+      "source": "./plugins/mega-python",
+      "description": "Greenfield Python: an opinionated stack picker (uv, ruff, pyright, pytest, FastAPI) plus idiomatic Python patterns.",
+      "category": "language"
+    },
+    {
+      "name": "mega-ts",
+      "source": "./plugins/mega-ts",
+      "description": "Greenfield TypeScript: an opinionated stack picker (pnpm, strict tsconfig, vitest, Hono, zod) plus idiomatic TypeScript patterns.",
+      "category": "language"
+    },
+    {
+      "name": "mega-orchestration",
+      "source": "./plugins/mega-orchestration",
+      "description": "Multi-agent delegation: route roles (plan/code review, small impl, visual/browser) to the right model via a provider-agnostic config.",
+      "category": "orchestration"
+    },
+    {
+      "name": "mega-guardrails",
+      "source": "./plugins/mega-guardrails",
+      "description": "Safety hooks and dev tooling: block destructive commands, auto-format on save, and a rich statusline (Linux-only, opt-in).",
+      "category": "safety"
+    },
+    {
+      "name": "golang-patterns",
+      "source": "./plugins/mega-go",
+      "strict": false,
+      "skills": ["./skills/golang-patterns"],
+      "description": "Idiomatic Go patterns as a standalone skill: functional options, small interfaces, DI, worker pools/context, error wrapping. Derived from Everything Claude Code (MIT, (c) 2026 Affaan Mustafa). Also in the mega-go bundle; install one, not both.",
+      "category": "language"
+    },
+    {
+      "name": "python-patterns",
+      "source": "./plugins/mega-python",
+      "strict": false,
+      "skills": ["./skills/python-patterns"],
+      "description": "Idiomatic Python patterns as a standalone skill: typing, error handling, async correctness, a non-deadlocking worker pool, testing. Also in the mega-python bundle; install one, not both.",
+      "category": "language"
+    },
+    {
+      "name": "typescript-patterns",
+      "source": "./plugins/mega-ts",
+      "strict": false,
+      "skills": ["./skills/typescript-patterns"],
+      "description": "Idiomatic TypeScript patterns as a standalone skill: discriminated unions, result-vs-throw, promise/async correctness, no floating promises, testing. Also in the mega-ts bundle; install one, not both.",
+      "category": "language"
+    },
+    {
+      "name": "brainstorming",
+      "source": "./plugins/megapowers",
+      "strict": false,
+      "skills": ["./skills/brainstorming"],
+      "category": "workflow",
+      "description": "Explore intent, requirements, and design before any creative or implementation work begins. Also in the megapowers bundle; install one, not both."
+    },
+    {
+      "name": "systematic-debugging",
+      "source": "./plugins/megapowers",
+      "strict": false,
+      "skills": ["./skills/systematic-debugging"],
+      "category": "workflow",
+      "description": "Diagnose bugs, test failures, and unexpected behavior by root cause before proposing a fix. Also in the megapowers bundle; install one, not both."
+    },
+    {
+      "name": "test-driven-development",
+      "source": "./plugins/megapowers",
+      "strict": false,
+      "skills": ["./skills/test-driven-development"],
+      "category": "workflow",
+      "description": "Drive any feature or bugfix by writing failing tests before the implementation code. Also in the megapowers bundle; install one, not both."
+    },
+    {
+      "name": "writing-plans",
+      "source": "./plugins/megapowers",
+      "strict": false,
+      "skills": ["./skills/writing-plans"],
+      "category": "workflow",
+      "description": "Turn a spec or requirements into an explicit, reviewable plan before touching code. Also in the megapowers bundle; install one, not both."
+    },
+    {
+      "name": "writing-skills",
+      "source": "./plugins/megapowers",
+      "strict": false,
+      "skills": ["./skills/writing-skills"],
+      "category": "workflow",
+      "description": "Create, edit, and verify Claude Code skills before deployment. Also in the megapowers bundle; install one, not both."
+    },
+    {
+      "name": "multi-agent-delegation",
+      "source": "./plugins/mega-orchestration",
+      "strict": false,
+      "skills": ["./skills/multi-agent-delegation"],
+      "category": "orchestration",
+      "description": "Route work to the right model: Codex for plan/code review and small implementation, a vendor-neutral browser delegate (playwright-cli + a vision-capable model) for visual/browser. Provider-agnostic and config-driven. Also in the mega-orchestration bundle; install one, not both."
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "megapowers",
+  "version": "0.1.0",
+  "description": "Workflow methodology: brainstorming, planning, TDD, debugging, review, worktrees, and subagent orchestration.",
+  "author": {
+    "name": "lawzava"
+  },
+  "repository": "https://github.com/lawzava/megapowers",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "methodology",
+    "tdd",
+    "planning",
+    "review"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "megapowers",
+    "shortDescription": "Workflow skills for disciplined agentic development.",
+    "longDescription": "An opinionated set of reusable process skills for brainstorming, planning, TDD, debugging, review, worktrees, verification, and branch finishing.",
+    "developerName": "lawzava",
+    "category": "Workflow",
+    "capabilities": [
+      "Skills",
+      "Workflow guidance"
+    ],
+    "defaultPrompt": [
+      "Use megapowers to plan this change.",
+      "Use megapowers to debug this failure.",
+      "Use megapowers to review this branch."
+    ],
+    "brandColor": "#1F6FEB"
+  }
+}

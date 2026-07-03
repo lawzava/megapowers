@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# mem-recall <query> — print project memories whose title/hook/slug match the query
+# (case-insensitive substring), so recall is executable rather than eyeballed.
+set -uo pipefail
+base="${MEGAPOWERS_MEMORY_DIR:-.megapowers/memory}"
+[ $# -ge 1 ] || { echo "usage: mem-recall <query>" >&2; exit 2; }
+q="$1"
+[ -d "$base" ] || { echo "(no project memory yet)"; exit 0; }
+fm_extract() { awk 'NR==1 && /^---/{f=1; next} f && /^---/{d=1; exit} f{buf=buf $0 "\n"} END{if(d) printf "%s", buf}' "$1"; }
+fm_get() {
+  local v; v="$(printf '%s\n' "$1" | sed -n "s/^$2:[[:space:]]*//p" | head -1)"
+  case "$v" in '"'*'"') v="${v#\"}"; v="${v%\"}"; v="$(printf '%s' "$v" | sed 's/\\"/"/g; s/\\\\/\\/g')" ;; esac
+  printf '%s' "$v"
+}
+matched=0
+for f in "$base"/*.md; do
+  [ -f "$f" ] || continue
+  [ "$(basename "$f")" = "INDEX.md" ] && continue
+  fm="$(fm_extract "$f")"
+  title="$(fm_get "$fm" title)"; hook="$(fm_get "$fm" hook)"
+  hay="$title $hook $(basename "$f" .md)"
+  # match on the metadata OR anywhere in the memory body, so a fact buried in the
+  # body is still recalled (case-insensitive, fixed-string, safe for metachar queries)
+  if printf '%s' "$hay" | grep -qiF -- "$q" || grep -qiF -- "$q" "$f"; then
+    printf -- '- %s (%s) — %s\n' "$title" "$(basename "$f")" "$hook"
+    matched=1
+  fi
+done
+[ "$matched" -eq 1 ] || echo "(no memory matches '$q')"
