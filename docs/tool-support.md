@@ -2,16 +2,15 @@
 
 Last reviewed: 2026-07-02.
 
-This repo is intentionally cross-tool, but not every runtime has the same
-extension surface.
+This repo is cross-tool, but not every runtime has the same extension surface.
 
 `mega-guardrails` is Claude Code only: its value is Claude Code hook scripts
 (PreToolUse/PostToolUse) plus a Linux statusline, none of which run on Codex,
 OpenCode, or Antigravity. It therefore ships no Codex, OpenCode, or Antigravity
-manifest — installing it elsewhere would advertise protection that does not
-exist. Note also that the Gemini CLI was discontinued for consumer use in
-mid-2026 and is no longer a target; visual/browser work routes through
-`playwright-cli` plus a vision-capable model (see `mega-orchestration`).
+manifest; installing it elsewhere would advertise protection that does not
+exist. The Gemini CLI was discontinued for consumer use in mid-2026 and is no
+longer a target; visual/browser work routes through `playwright-cli` plus a
+vision-capable model (see `mega-orchestration`).
 
 ## Claude Code
 
@@ -74,10 +73,10 @@ Status: documented with minimal manifests.
 ## Operating systems
 
 Skills are plain markdown and work wherever the host tool runs. Everything
-executable — hooks, skill helper scripts, the eval harness — is bash (plus
-jq/git/grep), developed on Linux and exercised in CI on Linux only. macOS is
+executable (hooks, skill helper scripts, the eval harness) is bash plus
+jq/git/grep, developed on Linux and exercised in CI on Linux only. macOS is
 expected to work (the destructive-command guard knows macOS paths and device
-names) but is not CI-covered. **Windows is untested**: the hooks and helper
+names) but is not CI-covered. Windows is untested: the hooks and helper
 scripts have not been run under Git Bash or WSL, and native Windows (no bash)
 will not execute them at all. The `run-hook.cmd` polyglot wrapper finds Git
 Bash on Windows and runs the SessionStart hook through it (silent no-op when

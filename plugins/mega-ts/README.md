@@ -1,8 +1,8 @@
 # mega-ts
 
 Two skills for greenfield TypeScript: an opinionated stack picker and idiomatic
-TypeScript patterns. Hook-free and portable — the guidance is skills any capable
-model reads.
+TypeScript patterns. Hook-free and portable: plain skills any capable model
+reads.
 
 ## What's inside
 
@@ -18,4 +18,4 @@ model reads.
 ```
 
 The `typescript-patterns` skill is also published as a standalone marketplace entry.
-Install the bundle **or** the standalone, not both.
+Install the bundle or the standalone, not both.

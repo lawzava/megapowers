@@ -1,20 +1,21 @@
 # megapowers evals
 
-A small, portable harness that **scores the suite so every change is measured, not
-vibed** — and makes the "best-in-class" claim falsifiable. No framework: pure bash
-plus a Go stdlib scorer.
+A small, portable harness that scores the suite, so a change to a skill is a
+measured effect rather than an opinion. No framework: pure bash plus a Go
+stdlib scorer.
 
 Two layers, in order of value:
 
-1. **Deterministic oracles (the spine).** Each scenario ships a `check.sh` that
+1. Deterministic oracles (the spine). Each scenario ships a `check.sh` that
    inspects the finished workdir (files, git state, script output) and returns a
-   hard verdict. No model, no API key — so the whole pipeline runs in CI and guards
-   against regressions. Many seed scenarios are *artifact* tests that exercise the
-   scripts/hooks a skill ships and double as regression guards for real bugs we fixed.
-2. **Behavior evals (optional, per-harness).** A scenario can instead hand a task
+   hard verdict. No model, no API key, so the whole pipeline runs in CI and guards
+   against regressions. Many seed scenarios are artifact tests that exercise the
+   scripts and hooks a skill ships; they double as regression guards for real bugs
+   fixed during development.
+2. Behavior evals (optional, per-harness). A scenario can instead hand a task
    prompt to a real coding agent (`claude -p`, `codex exec --json`, `opencode run`)
-   and check what it produced — with a paired `--control` run (skill withheld) so we
-   can compute the **effect size** of a skill, not just assert it fires. A shipped
+   and check what it produced, with a paired `--control` run (skill withheld) so we
+   can compute the effect size of a skill, not just assert it fires. A shipped
    `mock` agent proves this path end-to-end without burning tokens.
 
 ## Layout
@@ -46,19 +47,21 @@ evals/
 
 ## Scenario kinds
 
-- `artifact` — deterministic. `solve.sh` runs a shipped script/hook against a seeded
-  `$WORKDIR`; `check.sh` asserts the result. Runs in CI, no agent.
-- `behavior` — the runner invokes an agent with `prompt`; `check.sh` asserts on the
-  workdir/trace. Runs against a real agent, or the mock (`mock/actions.sh`) in CI.
-- `trigger` — a negative behavior test: the skill must NOT fire off-topic. `check.sh`
-  greps the trace for the skill's activation signature and passes when it is absent.
+- `artifact`: deterministic. `solve.sh` runs a shipped script or hook against a
+  seeded `$WORKDIR`; `check.sh` asserts the result. Runs in CI, no agent.
+- `behavior`: the runner invokes an agent with `prompt`; `check.sh` asserts on
+  the workdir/trace. Runs against a real agent, or the mock (`mock/actions.sh`)
+  in CI.
+- `trigger`: a negative behavior test. The skill must NOT fire off-topic;
+  `check.sh` greps the trace for the skill's activation signature and passes
+  when it is absent.
 
 ## check.sh contract
 
 `check.sh` runs with cwd `$WORKDIR` and these env vars:
 `$WORKDIR` (agent's finished tree), `$TRACE` (captured stdout/transcript, may be empty),
 `$SCENARIO_DIR` (the scenario's own dir), `$MODE` (`skill` or `control`).
-Exit `0` pass, `1` fail, `77` indeterminate (couldn't decide — never counts as pass).
+Exit `0` pass, `1` fail, `77` indeterminate (couldn't decide, never counts as pass).
 
 ## Run
 
@@ -73,7 +76,7 @@ evals/run.sh brainstorm-proportional-gate --agent claude  # behavior: real agent
 evals/run.sh brainstorm-proportional-gate --agent claude --control   # paired control
 
 # score the collected rows into a scorecard. Add --paired so behavior/trigger
-# scenarios also run in CONTROL mode (skill withheld) — that paired data is what
+# scenarios also run in CONTROL mode (skill withheld); that paired data is what
 # score.go needs to compute a skill-vs-control effect size. With the mock agent the
 # control run is indeterminate (the mock does nothing without the skill), so a real
 # effect size needs a real --agent; the wiring is the same either way:
@@ -81,12 +84,12 @@ evals/run-all.sh --paired --json results.jsonl && go run evals/score.go results.
 ```
 
 Agent command templates live in `agents.example.toml`; copy to `agents.toml` and edit.
-The harness is agent-agnostic — point it at any CLI that takes a prompt and works in a dir.
+The harness is agent-agnostic: point it at any CLI that takes a prompt and works in a dir.
 
 ## Adding a scenario
 
 Create `scenarios/<id>/` with a `scenario.toml` and a `check.sh`. Make `check.sh`
-*able to fail* (mutation-test it once). Prefer a deterministic oracle; reach for a
+able to fail (mutation-test it once). Prefer a deterministic oracle; reach for a
 model-graded rubric only when quality can't be captured in code, and when you do,
-grade the final artifact **blind** (no reasoning trace) — verifiers that see prior
+grade the final artifact blind (no reasoning trace): verifiers that see prior
 conclusions anchor to them.
