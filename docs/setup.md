@@ -64,6 +64,13 @@ codex
 /plugins
 ```
 
+Or install non-interactively (the verb is `add`, not `install`):
+
+```
+codex plugin add megapowers@megapowers
+codex plugin add mega-orchestration@megapowers
+```
+
 Verify: `codex plugin marketplace list` shows `megapowers`; after installing a
 plugin, the same first-task probe applies (ask the agent to quote the
 test-driven-development core principle).
@@ -145,8 +152,9 @@ being hand-configured:
   ```
 
 - **Codex** — the marketplace is a local checkout, so put the clone in your
-  dotfiles bootstrap (`git clone` + `codex plugin marketplace add ./`) and
-  update with `git pull`.
+  dotfiles bootstrap (`git clone` + `codex plugin marketplace add ./` +
+  `codex plugin add <plugin>@megapowers` per plugin) and update with
+  `git pull`.
 - **Everything else** — commit `skills-lock.json` where your dotfiles
   bootstrap runs, and install non-interactively:
   `npx skills add lawzava/megapowers -s '*' -y`.
