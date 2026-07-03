@@ -1,7 +1,7 @@
 # Skill authoring artifacts (not shipped)
 
 Development-only material kept out of the installed skill tree. These are the
-authoring byproducts of the skills under `plugins/` — creation logs and the
+authoring byproducts of the skills under `plugins/`: creation logs and the
 pressure-scenario fixtures used to test a skill's guidance against a
 no-guidance control (see `writing-skills/testing-skills-with-subagents.md`).
 

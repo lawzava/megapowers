@@ -6,7 +6,7 @@ and the licenses they are used under.
 ## Superpowers (the `megapowers` workflow plugin)
 
 The `megapowers` workflow plugin is a fork and restyling of **Superpowers** by
-Jesse Vincent (obra) — https://github.com/obra/superpowers.
+Jesse Vincent (obra): https://github.com/obra/superpowers.
 
 - Upstream license: MIT
 - Required notice, retained here per that license:
@@ -41,7 +41,7 @@ Jesse Vincent's.
 ## golang-patterns (in the `mega-go` plugin)
 
 The `golang-patterns` skill is vendored from **Everything Claude Code** by
-Affaan Mustafa — https://github.com/affaan-m/everything-claude-code
+Affaan Mustafa: https://github.com/affaan-m/everything-claude-code
 (path `.kiro/skills/golang-patterns`).
 
 - Upstream license: MIT

@@ -32,14 +32,14 @@ field by design (their schema allows only name and description). Format:
 
 ### Fixed
 
-- Journal provenance, mechanically this time. The 0.1.2 re-probe verified the
-  other two probe fixes live (both TDD runs ran the full suite and reported
-  the planted failure; the autonomous run self-certified with a stamped
-  LAST_VERIFY) but model=unknown persisted: the runbook's "export
-  MEGAPOWERS_MODEL" instruction cannot work, because each tool call runs in a
-  fresh shell. run-init now takes --model and persists it in the run dir;
-  run-journal falls back to that file when the env var is unset. Oracle
-  extended: a journal call with no env var must record the persisted model.
+- Journal provenance: run-init now takes --model and persists it in the run
+  dir, and run-journal falls back to that file when the env var is unset. The
+  runbook's "export MEGAPOWERS_MODEL" instruction could not work because each
+  tool call runs in a fresh shell, so model=unknown persisted even after the
+  0.1.2 re-probe verified the other two probe fixes live (both TDD runs ran
+  the full suite and reported the planted failure; the autonomous run
+  self-certified with a stamped LAST_VERIFY). Oracle extended: a journal call
+  with no env var must record the persisted model.
 
 ## 0.1.2 - 2026-07-03
 
@@ -50,7 +50,7 @@ field by design (their schema allows only name and description). Format:
   fixes:
   - test-driven-development "verify green" now says to run the project's full
     suite (its canonical entrypoint), not only the new test file. One probe
-    run reported clean over a red suite because it only ran its own module —
+    run reported clean over a red suite because it only ran its own module:
     the scoped-true-claims decay mode the gauntlet study predicted. Gauntlet
     keyed re-run recommended before citing its numbers for this skill version.
   - run-verify-status now stamps LAST_VERIFY into the status file on pass, and
@@ -80,7 +80,7 @@ field by design (their schema allows only name and description). Format:
 
 ### Added
 
-- `evals/studies/head-to-head/` — committed protocol for a three-arm
+- `evals/studies/head-to-head/`: committed protocol for a three-arm
   comparison (no suite / megapowers / upstream Superpowers) on the gauntlet
   task with organic triggering; no published numbers yet, awaits a keyed run.
 - Scheduled freshness check (`scripts/check-freshness.sh` + monthly CI
@@ -90,7 +90,7 @@ field by design (their schema allows only name and description). Format:
 - README "see it work" section: a captured, reproducible hook transcript.
 - Universal install channel documented: `npx skills add lawzava/megapowers`
   (the skills.sh CLI reads the marketplace manifest and discovers every
-  plugin's skills — verified against the CLI's source; skills only, hooks
+  plugin's skills; verified against the CLI's source; skills only, hooks
   and agents still ship via the native marketplaces). Plus a "Fleet" section
   in `docs/setup.md`: declarative multi-device sync via
   `extraKnownMarketplaces`/`enabledPlugins` (Claude Code) and
@@ -108,14 +108,14 @@ changelog.
 
 ### Added
 
-- `mega-orchestration/orchestrating` — the decision-root skill: routes a
+- `mega-orchestration/orchestrating`, the decision-root skill: routes a
   task's shape to the right structure (inline, parallel subagents, delegation,
   best-of-n, council, autonomous run) with spend-by-stakes effort defaults and
   a per-harness primitives reference (subagents / teams / workflows / effort).
 - `run-loop.sh` Stop hook (Claude Code only): keeps an active autonomous run's
   loop turning instead of letting the session stop mid-run; exits only through
   honest journal state. 11-case test suite.
-- `delegates.toml` roles `verify`, `judge`, `council_member` — the routes the
+- `delegates.toml` roles `verify`, `judge`, `council_member`: the routes the
   swarm skills instruct through now resolve instead of exiting unknown-role.
 - Senior-engineer communication register in `using-megapowers`, referenced by
   every artifact-writing skill (plans, briefs, specs, journals, reports).
@@ -126,11 +126,11 @@ changelog.
   stop-and-ask checks) are now conditional on the run's autonomy level.
 - `CONTRIBUTING.md`, `SECURITY.md`, issue/PR templates, this changelog.
 - validate.sh docs-consistency checks (marketplace counts, plugin mentions,
-  README skill lists) — the drift class that produced stale counts now fails CI.
+  README skill lists): the drift class that produced stale counts now fails CI.
 
 ### Changed
 
-- Grug diet on the five heaviest skills (writing-skills −17%, brainstorming
+- Trimmed the five heaviest skills (writing-skills −17%, brainstorming
   −16%, test-driven-development −7%, plus subagent-driven-development and
   systematic-debugging): duplicated rules stated once, phantom upstream skill
   references removed, unsourced statistics deleted. No discipline wording lost.

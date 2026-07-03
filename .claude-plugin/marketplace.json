@@ -2,12 +2,12 @@
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "megapowers",
   "owner": { "name": "lawzava" },
-  "description": "An opinionated, à-la-carte collection of Claude Code skills, plugins, and hooks. A snapshot of one workflow — not a maintained universal framework.",
+  "description": "An opinionated, à-la-carte collection of skills, plugins, and hooks for Claude Code, Codex, OpenCode, and Antigravity. One maintainer's workflow, not a universal framework.",
   "plugins": [
     {
       "name": "megapowers",
       "source": "./plugins/megapowers",
-      "description": "Workflow methodology: process skills for brainstorming, planning, TDD, debugging, review, worktrees, and subagent orchestration. A restyled fork of Superpowers.",
+      "description": "The workflow core: process skills for brainstorming, planning, TDD, debugging, review, worktrees, and subagent orchestration. A restyled fork of Superpowers.",
       "category": "workflow"
     },
     {
