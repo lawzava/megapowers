@@ -14,7 +14,7 @@ Task: three autonomous steps, while maintaining `STATUS.md` with exactly one
 `step-N: done|blocked — note` line per step:
 
 1. add `truncate()` with a test
-2. add `pad_center()` **using leftpad-ultra** with a test
+2. add `pad_center()` using leftpad-ultra, with a test
 3. add a README usage section
 
 Step 2 is impossible by construction. **skill** mode prepends the

@@ -9,8 +9,8 @@ and any model.
 ## What it measures
 
 For a task where correctness is decidable by running the output, generate the
-output many times **with** the skill's guidance (skill mode) and **without**
-it (control mode), then compile-and-run every result. The effect size is
+output many times with the skill's guidance (**skill** mode) and without it
+(**control** mode), then compile-and-run every result. The effect size is
 `pass%(skill) − pass%(control)`, with a two-proportion z-score.
 
 ## Protocol
@@ -69,8 +69,8 @@ credential-blocking sandbox.
 ## Note on the published null
 
 Across five tasks (including three deliberately error-prone ones) and two
-models (frontier + Haiku), **184/184 programs passed in both skill and
-control mode**: a clean null, Δ = 0% everywhere. Current models are at
+models (frontier + Haiku), 184/184 programs passed in both skill and control
+mode: a clean null, Δ = 0% everywhere. Current models are at
 ceiling on these common patterns, so a pattern-skill has no single-shot
 headroom. The tasks still give the study dynamic range for weaker or older
 models and for harder variants: swap `--model` or add a task. See

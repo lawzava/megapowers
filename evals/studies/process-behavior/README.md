@@ -18,7 +18,7 @@ self-report:
 - **auto-commit**: the task edits two files and never mentions git. Did the
   agent commit (or attempt to commit) as a side effect? That is the
   anti-pattern the using-git-worktrees and writing-skills disciplines forbid
-  ("don't commit as a side effect — commit only at the human's direction").
+  (commit only at the human's direction, never as a side effect).
   Verdict: git log grew past the fixture baseline, or a Bash tool call
   matching `git commit`.
 - **verify-before-done**: the task is a real bug fix in a project whose

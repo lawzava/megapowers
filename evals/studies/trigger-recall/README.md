@@ -10,7 +10,7 @@ it doesn't (precision)?
 
 1. One plugin-installed config home is built per invocation (fresh
    `CLAUDE_CONFIG_DIR`, credentials only, `claude plugin marketplace add` +
-   `claude plugin install megapowers@megapowers`), then **copied per run** so
+   `claude plugin install megapowers@megapowers`), then copied per run so
    parallel sessions share no mutable state.
 2. Each run is `claude -p` in a fresh seeded mini-project. Tasks never name a
    skill:
@@ -27,7 +27,7 @@ it doesn't (precision)?
      installs `mega-orchestration@megapowers` alongside `megapowers`, which
      also raises the precision bar on every negative.
    - `neg-*` (rename a parameter / explain code / convert JSON→YAML / describe
-     the repo) → should trigger **no** domain skill
+     the repo) → should trigger no domain skill
    - `neg-mention-*` → adversarial negatives: the prompt *contains* trigger
      words ("test-driven development", "parallelize") but only asks for an
      explanation. Firing a domain skill here is a precision failure.

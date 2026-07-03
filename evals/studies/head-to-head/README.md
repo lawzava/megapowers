@@ -1,7 +1,7 @@
 # Head-to-head: bare vs megapowers vs upstream Superpowers
 
-**Status: committed protocol, no published numbers yet; it awaits a keyed
-run.** The protocol is committed before any run so that anyone with an API key
+**Status**: committed protocol, no published numbers yet; it awaits a keyed
+run. The protocol is committed before any run so that anyone with an API key
 can test the comparison the README's positioning implies, including against
 the upstream suite this repo forked from. `RESULTS.md` will not cite this
 study until real runs exist.
@@ -44,7 +44,7 @@ evals/studies/gauntlet/oracle.sh /tmp/h2h
 ## Interpreting the result
 
 - The gauntlet showed the *wording* moves TDD ordering to 100%. If an
-  installed arm scores below its wording ceiling, the gap is **delivery**
+  installed arm scores below its wording ceiling, the gap is delivery
   (the description didn't trigger the skill), not discipline; read
   `skills-invoked.txt` to split trigger-misses from follow-misses.
 - The two suites share process-core ancestry, so similar scores on shared

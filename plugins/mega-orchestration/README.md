@@ -117,8 +117,10 @@ not a bare name match).
 the session's git diff touches risky logic (auth, OAuth, JWT, billing,
 payments, Stripe, webhooks, concurrency) and the transcript shows no
 independent review by a delegate (neither a Codex pass via `codex exec`, the
-`mcp__codex__codex` channel, or a configured bridge, nor an Antigravity pass),
-it blocks the stop and asks for an independent review before finishing.
+`mcp__codex__codex` channel, or a private bridge as defined in
+[`docs/tool-support.md`](../../docs/tool-support.md), nor an Antigravity
+pass), it blocks the stop and asks for an independent review before
+finishing.
 
 ## Install
 

@@ -79,8 +79,10 @@ Use a tool-specific path instead (for OpenCode, symlink from a checkout into
 
 Run the same probe the repo's install-smoke study uses: load the
 test-driven-development skill and quote its core principle sentence verbatim.
-The sentence exists nowhere but inside the skill body, so a correct quote
-proves discovery and loading end to end. Expected sentence:
+Outside this guide and the setup doc, the sentence exists only inside the
+skill body, so run the probe in a fresh session or a subagent that does not
+have this guide in context; a correct quote from there proves discovery and
+loading end to end. Expected sentence:
 
 > if you didn't watch the test fail, you don't know whether it tests the
 > right thing

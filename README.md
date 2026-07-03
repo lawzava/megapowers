@@ -10,8 +10,8 @@ best model per role, run long tasks unattended. Works on Claude Code, Codex,
 OpenCode, and Google Antigravity; install only the parts you want.
 
 Every claim of effect has a published, reproducible run behind it, including
-the null results, the runs where a skill measurably bought nothing
-([`evals/RESULTS.md`](./evals/RESULTS.md)).
+the null results (runs where a skill measurably bought nothing):
+[`evals/RESULTS.md`](./evals/RESULTS.md).
 
 ## Quickstart (Claude Code)
 
@@ -33,17 +33,19 @@ What you will see change, starting with your next session:
   writes the failing test first, watches it fail, then implements.
 - `/plugin` lists the installed plugins and their skills.
 
-Install, update, uninstall, verification, and per-harness details:
+Install, update, uninstall, verification, and details for each harness (the
+program the agent runs in: Claude Code, Codex, an IDE agent):
 [`docs/setup.md`](./docs/setup.md).
 
 Or hand the install to the agent itself. Paste this into any coding agent, on
-any harness (the program the agent runs in: Claude Code, Codex, an IDE agent):
+any harness:
 
 > Install megapowers on this machine by fetching and following
 > https://raw.githubusercontent.com/lawzava/megapowers/main/docs/agent-install.md
 
-The guide has the agent detect its harness, pick the right channel, avoid
-double registration, verify with a first-task probe, and report what it did.
+The guide has the agent detect its harness, install through the right
+channel, avoid registering any skill twice, verify by asking for a sentence
+that exists only inside an installed skill, and report what it did.
 Anything that would widen permissions or edit your settings requires your
 explicit approval.
 
@@ -68,8 +70,9 @@ No framework, no service, no API key of its own. The mechanism:
   can run any hook by hand from a checkout.
 
 The multi-model features drive agent CLIs you already have installed and
-authenticated (Codex for the GPT-5.5 roles). megapowers adds no key or
-service; roles whose tools you lack simply sit unused.
+authenticated; for example, the Codex CLI serves the roles (kinds of
+delegated work, like code review) routed to GPT-5.5. megapowers adds no key
+or service; roles whose tools you lack simply sit unused.
 
 ## Vocabulary
 
@@ -79,6 +82,9 @@ These docs use a few terms consistently, defined here once.
   Antigravity). "Eval harness" is a different thing: the test runner under
   [`evals/`](./evals/README.md).
 - **Marketplace**: this repo, a catalog a harness installs plugins from.
+- **Channel**: the path an install travels: a harness's native plugin
+  marketplace, or the skills CLI for everything else. One channel per harness
+  per machine; two channels register every skill twice.
 - **Plugin** (or bundle): one installable unit, a directory shipping skills
   plus, where applicable, hooks and delegate agents.
 - **Standalone entry**: a marketplace entry that republishes a single skill
@@ -89,9 +95,9 @@ These docs use a few terms consistently, defined here once.
   before a tool call, on stop). Deterministic: it fires whether or not the
   model remembers. Claude Code only.
 - **Delegate agent**: an agent definition (a markdown file under a plugin's
-  `agents/`) that hands one role, such as code review or browser work, to
-  another model or CLI. The lead (the session you are talking to) dispatches
-  it and owns integration.
+  `agents/`) that hands one role (a kind of delegated work, such as code
+  review or browser testing) to another model or CLI. The lead (the session
+  you are talking to) dispatches it and owns integration.
 - **Eval scenario**: a deterministic pass/fail check under `evals/scenarios/`,
   run in CI with no model involved.
 - **Study**: a protocol under `evals/studies/` that runs real agents and
@@ -199,7 +205,7 @@ published, including "upstream wins".
 
 ## Scope
 
-- This is one maintainer's setup, shared because it is useful, and maintained:
+- This is one maintainer's setup, shared and maintained:
   CI gates every change (structural validation plus the eval suite), plugins
   are versioned with a [changelog](./CHANGELOG.md), and behavioral changes are
   baseline-tested before they ship ([CONTRIBUTING.md](./CONTRIBUTING.md)).
@@ -219,8 +225,9 @@ The opinions are meant to be edited. The edit points:
 - Stacks: the greenfield pickers live in `plugins/mega-go`,
   `plugins/mega-python`, and `plugins/mega-ts`. Swap frameworks, database,
   auth, or payments there.
-- Hooks: each plugin's `hooks/hooks.json` maps harness events to the scripts
-  in the same directory. Edit or remove entries there.
+- Hooks: each hook-shipping plugin's `hooks/hooks.json` (megapowers,
+  mega-orchestration, mega-guardrails) maps harness events to the scripts in
+  the same directory. Edit or remove entries there.
 - Marketplace entries: `.claude-plugin/marketplace.json` lists every bundle
   and standalone entry. A standalone entry reuses a bundle's `source` with
   `"strict": false` plus a `skills` list naming the one skill it exposes;
