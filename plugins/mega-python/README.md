@@ -1,7 +1,7 @@
 # mega-python
 
-Two skills for greenfield Python: an opinionated stack picker and idiomatic Python
-patterns. Hook-free and portable — the guidance is skills any capable model reads.
+Two skills for greenfield Python: an opinionated stack picker and idiomatic
+Python patterns. Hook-free and portable: plain skills any capable model reads.
 
 ## What's inside
 
@@ -17,4 +17,4 @@ patterns. Hook-free and portable — the guidance is skills any capable model re
 ```
 
 The `python-patterns` skill is also published as a standalone marketplace entry.
-Install the bundle **or** the standalone, not both.
+Install the bundle or the standalone, not both.
