@@ -1,16 +1,15 @@
 # megapowers eval results
 
-Published results from running the eval harness in this repo. Everything here is
-reproducible with the commands shown; no numbers are asserted without a run behind
-them. Honest nulls are reported as nulls.
+Published results from running the eval harness in this repo. Every number is
+reproducible with the commands shown, and nulls are published as nulls.
 
 Last run: 2026-07-02.
 
-**The headline in three lines.** Process disciplines that today's harnesses
-don't enforce move behavior completely (test-first ordering: 0/36 → 36/36
-across three models, §3). Pattern advice frontier models have internalized
-measures at zero (184/184 null, §2). Both are published because knowing what a
-skill does *not* buy is as load-bearing as knowing what it does.
+The headline: process disciplines that today's harnesses don't enforce move
+behavior completely (test-first ordering: 0/36 → 36/36 across three models,
+§3), while pattern advice frontier models have internalized measures at zero
+(184/184 null, §2). Knowing what a skill does *not* buy matters as much as
+knowing what it does.
 
 ---
 
