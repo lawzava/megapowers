@@ -1,10 +1,10 @@
 # Trigger-recall study
 
-Every effect-size study in this repo *prepends* a skill's wording to the task.
-This study measures the step before that — the delivery assumption everything
-else rests on: **with the plugin installed, does an agent organically reach for
-the right skill when the task matches (recall), and stay quiet when it doesn't
-(precision)?**
+Every effect-size study in this repo *prepends* a skill's wording to the
+task. This study measures the step before that, the delivery assumption
+everything else rests on: with the plugin installed, does an agent organically
+reach for the right skill when the task matches (recall), and stay quiet when
+it doesn't (precision)?
 
 ## Protocol
 
@@ -32,9 +32,10 @@ the right skill when the task matches (recall), and stay quiet when it doesn't
      words ("test-driven development", "parallelize") but only asks for an
      explanation. Firing a domain skill here is a precision failure.
 3. Oracle: `Skill` tool invocations extracted from the stream-json transcript.
-   HIT = expected skill invoked; FALSE_FIRE = any domain skill on a negative
-   (dispatcher invocations are excluded from false-fire and reported
-   separately). Triggering happens early in a run, so turn-capped runs still
+   HIT = expected skill invoked; FALSE_FIRE = any domain skill on a negative.
+   Dispatcher invocations (the `using-megapowers` meta-skill, which fires by
+   design on every task) are excluded from false-fire and reported
+   separately. Triggering happens early in a run, so turn-capped runs still
    count; only an empty transcript is indeterminate.
 
 ```bash
@@ -44,13 +45,12 @@ evals/studies/trigger-recall/oracle.sh /tmp/recall
 
 ## Why this matters
 
-Recall below 100% is not a bug to hide — it is the tuning loop: the skill
-*description* is the interface that decides triggering, so a low-recall skill
-gets its description sharpened and re-measured. Precision matters equally: a
-suite that fires on everything taxes every task. Published numbers in
-`../../RESULTS.md`.
+Recall below 100% is the tuning loop: the skill *description* is the
+interface that decides triggering, so a low-recall skill gets its description
+sharpened and re-measured. Precision matters equally: a suite that fires on
+everything taxes every task. Published numbers in `../../RESULTS.md`.
 
-## Honest scope
+## Scope and limits
 
 - Claude Code subjects only for now (the Skill-tool invocation is the clean,
   deterministic trigger signal; other harnesses surface skills differently).
@@ -60,6 +60,5 @@ suite that fires on everything taxes every task. Published numbers in
   with a human nudging ("use your skills") will sit higher.
 - The published numbers in `../../RESULTS.md` predate the `held-*`, `orch-*`,
   and `neg-mention-*` extensions and were measured with only `megapowers`
-  installed. The extended protocol has **no published numbers yet** (it needs
-  a keyed run outside the sandbox); do not quote extended-set recall until a
-  run lands.
+  installed. The extended protocol has no published numbers yet; it needs a
+  keyed run first.
