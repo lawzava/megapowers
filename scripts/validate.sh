@@ -289,7 +289,7 @@ for pdir in plugins/*/; do
 done
 
 echo "== required files =="
-for f in LICENSE ATTRIBUTION.md README.md AGENTS.md CLAUDE.md docs/setup.md docs/tool-support.md docs/agent-install.md templates/settings.example.json "$codex_mp"; do
+for f in LICENSE ATTRIBUTION.md README.md AGENTS.md CLAUDE.md docs/setup.md docs/harness-support.md docs/agent-install.md templates/settings.example.json "$codex_mp"; do
   if [[ -f $f ]]; then ok "$f present"; else bad "$f missing"; fi
 done
 if grep -q "Jesse Vincent" ATTRIBUTION.md 2>/dev/null; then ok "ATTRIBUTION credits Superpowers"; else bad "ATTRIBUTION missing Superpowers credit"; fi

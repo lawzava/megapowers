@@ -143,7 +143,8 @@ published number is reproducible from them. The two results that frame what
 these skills buy:
 
 - Where the harness does not already enforce a discipline, a skill's wording
-  moves behavior completely. Asked to add a function and its tests, agents
+  has moved behavior completely on every model tested. Asked to add a
+  function and its tests, agents
   wrote the failing test first in 0/36 control runs and 36/36 runs with the
   test-driven-development skill's wording in context, identically on frontier
   Claude (`claude-fable-5` in the published runs), Claude Haiku, and GPT-5.5.
@@ -210,7 +211,7 @@ published, including "upstream wins".
   are versioned with a [changelog](./CHANGELOG.md), and behavioral changes are
   baseline-tested before they ship ([CONTRIBUTING.md](./CONTRIBUTING.md)).
 - The opinions age. Stack picks, model IDs, and delegate routes are
-  time-stamped in [`docs/tool-support.md`](./docs/tool-support.md); fork and
+  time-stamped in [`docs/harness-support.md`](./docs/harness-support.md); fork and
   adapt rather than tracking blindly.
 - This is not an Anthropic product, is not officially supported, and is not a
   stable API.
@@ -235,7 +236,7 @@ The opinions are meant to be edited. The edit points:
   `scripts/validate.sh` checks the wiring.
 - Settings: `templates/settings.example.json` holds safe, generic defaults.
   Copy the keys you want into your own `~/.claude/settings.json`.
-- Tool support: `docs/tool-support.md` records what is native to each harness
+- Tool support: `docs/harness-support.md` records what is native to each harness
   and what is intentionally documented-only.
 
 ## Attribution and license

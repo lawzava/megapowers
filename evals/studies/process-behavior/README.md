@@ -70,8 +70,8 @@ positive Δ = the skill helps.
    evals/studies/process-behavior/run-study.sh --out /tmp/pb-results --n 12
    ```
 
-   Defaults: both probes, `claude-fable-5` + `claude-haiku-4-5`, both modes,
-   4-way parallel. Jobs are enumerated repeat-major so cells interleave in
+   Defaults: all three probes, `claude-fable-5` + `claude-haiku-4-5`, both
+   modes, 4-way parallel. Jobs are enumerated repeat-major so cells interleave in
    time. Re-running with a larger `--n` tops up cells; existing runs are
    never redone.
 4. **Score.**

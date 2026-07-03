@@ -51,7 +51,7 @@ The visual/browser route drives the UI with `playwright-cli` (a standalone
 CLI) and reasons over the screenshots with a vision-capable model: the lead
 itself when it is vision-capable (e.g. Claude), otherwise any vision-capable
 model. It replaced the retired Gemini-CLI route (see
-[`docs/tool-support.md`](../../docs/tool-support.md)).
+[`docs/harness-support.md`](../../docs/harness-support.md)).
 
 Antigravity is included as a documented alternative but is disabled until you
 verify a local `agy` automation path, approval behavior, and artifact
@@ -113,12 +113,34 @@ milestone checkpoints belong to the human there. The hook ignores runs the
 current session never touched (it requires the run's path in the transcript,
 not a bare name match).
 
+Watch it work from a checkout, no session required (the hook is a plain
+stdin-to-stdout script). Fake an active run and a Stop event; the output is
+one JSON line, wrapped here for readability:
+
+```console
+$ mkdir -p .megapowers/run/site-migration
+$ printf 'STATE=working\nCURSOR=M3: cut DNS over to the new host\nLEVEL=on-the-loop\n' \
+    > .megapowers/run/site-migration/status
+$ echo 'read .megapowers/run/site-migration/plan.md' > transcript.jsonl
+$ printf '{"transcript_path":"transcript.jsonl","stop_hook_active":false}' \
+    | plugins/mega-orchestration/hooks/run-loop.sh
+{"decision":"block","reason":"Autonomous run site-migration is active
+(STATE=working, CURSOR=M3: cut DNS over to the new host) and its done-when
+criteria are not recorded as met. Continue the loop per its runbook: do the
+next unmet milestone, run its declared acceptance check, journal the result
+(scripts/run-journal), and re-derive status (scripts/run-derive-status — it
+derives done when every milestone is done). If you are pausing deliberately,
+or you are blocked, or a charter cap is reached, journal a paused or blocked
+entry and re-derive status so STATE says so — then stopping is correct.
+Verify a finished run with scripts/run-verify-status."}
+```
+
 `hooks/delegate-nudge.sh` asks for an independent review of risky diffs. When
 the session's git diff touches risky logic (auth, OAuth, JWT, billing,
 payments, Stripe, webhooks, concurrency) and the transcript shows no
 independent review by a delegate (neither a Codex pass via `codex exec`, the
 `mcp__codex__codex` channel, or a private bridge as defined in
-[`docs/tool-support.md`](../../docs/tool-support.md), nor an Antigravity
+[`docs/harness-support.md`](../../docs/harness-support.md), nor an Antigravity
 pass), it blocks the stop and asks for an independent review before
 finishing.
 

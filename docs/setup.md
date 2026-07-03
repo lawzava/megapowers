@@ -125,7 +125,7 @@ Two rules:
 - Skills only. Hooks and delegate agents do not travel this channel. On
   Claude Code and Codex, prefer the native marketplaces above, which ship the
   full bundle. On other harnesses the hooks would not run anyway (see
-  [`docs/tool-support.md`](./tool-support.md)), so nothing real is lost.
+  [`docs/harness-support.md`](./harness-support.md)), so nothing real is lost.
 - One channel per agent per machine. Never install the same skill via a
   native marketplace and the skills CLI: a skill registered twice fires
   twice, same as the bundle-vs-standalone rule above.
@@ -157,7 +157,7 @@ skill is invoked, and inlining them keeps every word in context permanently.
 Antigravity root plugin manifests are present as `plugins/*/plugin.json`. Before
 installing them with `agy plugin install`, confirm your local Antigravity CLI
 accepts the nested `skills/<name>/SKILL.md` shape. See
-[`docs/tool-support.md`](./tool-support.md) for the current support matrix.
+[`docs/harness-support.md`](./harness-support.md) for the current support matrix.
 
 ## Fleet: keeping many devices in sync
 

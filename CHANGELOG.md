@@ -8,6 +8,17 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Changed
+
+- `docs/tool-support.md` renamed to `docs/harness-support.md`: the docs
+  standardized on "harness" for the host program, and the filename now
+  matches. All in-repo references updated (validate.sh required-files list,
+  the freshness check, links).
+- The 0.1.1 README "see it work" hook transcripts (dropped in a later README
+  rewrite without a changelog note) now live in the plugin READMEs:
+  deny-destructive in mega-guardrails, run-loop in mega-orchestration, both
+  re-captured from the current hooks.
+
 ### Added
 
 - `templates/agent-notify/`: phone/terminal notifications when an agent needs

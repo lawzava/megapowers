@@ -29,7 +29,7 @@ requirements unless clearly marked optional.
   JavaScript or TypeScript modules, not these Claude shell hooks.
 - Antigravity CLI plugins use a root `plugin.json`; its native skills are flat
   markdown files under `.agents/skills/` or a plugin `skills/` directory.
-- Full per-harness support details: `docs/tool-support.md` (canonical,
+- Full per-harness support details: `docs/harness-support.md` (canonical,
   freshness-checked).
 
 ## Verification

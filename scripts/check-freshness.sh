@@ -28,7 +28,7 @@ done
 
 # file : the dated line's marker (grep -i). Add a line here when a new file
 # gains time-sensitive opinions.
-FILES='docs/tool-support.md|Last reviewed:
+FILES='docs/harness-support.md|Last reviewed:
 evals/RESULTS.md|Last run:
 plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml|Last reviewed:'
 
