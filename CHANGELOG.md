@@ -6,7 +6,15 @@ the repo release. The minimal Antigravity root manifests carry no version
 field by design (their schema allows only name and description). Format:
 [Keep a Changelog](https://keepachangelog.com), semver.
 
-## Unreleased
+## 0.1.1 - 2026-07-03
+
+### Fixed
+
+- Full shellcheck pass now green in CI (14 scripts): quoting and `local`
+  declaration cleanups, two justified suppressions for intentional patterns,
+  and one real bug in the new head-to-head runner (`local a="$1" b="$a"`
+  expands `$a` before the assignment lands, so the per-arm template path was
+  built from an empty arm name).
 
 ### Removed
 
