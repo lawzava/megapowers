@@ -6,7 +6,7 @@ the repo release. The minimal Antigravity root manifests carry no version
 field by design (their schema allows only name and description). Format:
 [Keep a Changelog](https://keepachangelog.com), semver.
 
-## Unreleased
+## 0.1.2 - 2026-07-03
 
 ### Changed
 

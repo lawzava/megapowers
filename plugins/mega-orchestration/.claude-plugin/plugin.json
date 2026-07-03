@@ -1,7 +1,7 @@
 {
   "name": "mega-orchestration",
   "description": "Multi-agent delegation: role-based routing to Codex, a vendor-neutral browser/visual delegate, and other backends via a provider-agnostic config.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "lawzava"
   },
