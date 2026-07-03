@@ -16,5 +16,5 @@ codex = "codex exec --json '{{PROMPT}}'"
 # OpenCode, headless run.
 opencode = "opencode run '{{PROMPT}}'"
 
-# 'mock' is built in (evals/lib/mock-agent.sh via each scenario's mock/actions.sh)
+# 'mock' is built into run.sh (it executes each scenario's mock/actions.sh)
 # and needs no entry here.
