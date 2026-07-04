@@ -19,10 +19,11 @@ export MEGAPOWERS_RUN_DIR="$PWD/.megapowers/run"
   "$S/run-journal" r1 action 0.8 "M0: journaled without env"
   tail -1 "$MEGAPOWERS_RUN_DIR/r1/journal.md"
   echo "=== report ==="; "$S/run-report" r1
-  # verify pass must stamp LAST_VERIFY (a done-claim with LAST_VERIFY=none was
-  # never certified — regression guard for the stamp added after the live probe)
+  # A verify pass on a NON-done run must NOT stamp LAST_VERIFY: certification is
+  # tied to a done-claim, so an initialized/working run that merely passes the
+  # consistency check was never certified (stamp only a passing done-claim).
   echo "=== verify-stamp ==="; "$S/run-verify-status" r1; echo "rc_verify=$?"
-  grep '^LAST_VERIFY=' "$MEGAPOWERS_RUN_DIR/r1/status"
+  echo "R1_LASTVERIFY: $(grep '^LAST_VERIFY=' "$MEGAPOWERS_RUN_DIR/r1/status")"
 
   # run-init's informational "no --model" echo must never own the exit code
   # (regression guard: previously the last command was the failed test itself)
@@ -57,5 +58,149 @@ EOF
   "$S/run-init" r3 --model test-model >/dev/null
   MEGAPOWERS_MODEL=claude "$S/run-journal" r3 paused 0.9 "M1: pausing for human input"
   echo "=== paused-report ==="; "$S/run-report" r3
+
+  # Unparseable plan headings: a "## " heading that is not a milestone tag
+  # ("## Phase 2: rollout") must not silently drop out of done-derivation. It is
+  # counted into PLAN_WARNINGS, derive refuses STATE=done (needs-attention), and
+  # run-verify-status refuses a done-claim even if STATE is forced to done.
+  echo "=== warn-init ==="
+  mkdir -p "$MEGAPOWERS_RUN_DIR/rwarn"
+  cat > "$MEGAPOWERS_RUN_DIR/rwarn/plan.md" <<'EOF'
+# Plan
+## M1: first
+- acceptance: run the check
+- status: pending
+
+## Phase 2: rollout
+- acceptance: ship it
+- status: pending
+EOF
+  "$S/run-init" rwarn --model test-model >/dev/null
+  MEGAPOWERS_MODEL=claude "$S/run-journal" rwarn result 0.9 "M1: first milestone done"
+  "$S/run-derive-status" rwarn >/dev/null
+  echo "=== warn-derive ==="; cat "$MEGAPOWERS_RUN_DIR/rwarn/status"
+  # even a hand-forced STATE=done must not certify while a heading is unparseable
+  sed -i 's/^STATE=.*/STATE=done/' "$MEGAPOWERS_RUN_DIR/rwarn/status"
+  echo "=== warn-verify ==="; "$S/run-verify-status" rwarn 2>&1; echo "rc_warn_verify=$?"
+
+  # Plan-digest tamper protection: run-init snapshots each milestone heading plus
+  # its acceptance line. Deleting a milestone or weakening an acceptance line after
+  # the snapshot must fail a done-claim, naming the milestone.
+  echo "=== digest-init ==="
+  mkdir -p "$MEGAPOWERS_RUN_DIR/rdig"
+  cat > "$MEGAPOWERS_RUN_DIR/rdig/plan.md" <<'EOF'
+# Plan
+## M1: first
+- acceptance: check one
+- status: pending
+
+## M2: second
+- acceptance: check two
+- status: pending
+EOF
+  "$S/run-init" rdig --model test-model >/dev/null
+  MEGAPOWERS_MODEL=claude "$S/run-journal" rdig result 0.9 "M1: first done"
+  MEGAPOWERS_MODEL=claude "$S/run-journal" rdig result 0.9 "M2: second done"
+  "$S/run-derive-status" rdig >/dev/null
+  echo "=== digest-clean-derive ==="; cat "$MEGAPOWERS_RUN_DIR/rdig/status"
+  echo "=== digest-clean-verify ==="; "$S/run-verify-status" rdig; echo "rc_dig_clean=$?"
+  # a PASSING done-claim verify is exactly what stamps LAST_VERIFY (certification)
+  echo "RDIG_LASTVERIFY: $(grep '^LAST_VERIFY=' "$MEGAPOWERS_RUN_DIR/rdig/status")"
+  # tamper 1: delete milestone M2 entirely (the classic gut-the-plan certify-done)
+  cat > "$MEGAPOWERS_RUN_DIR/rdig/plan.md" <<'EOF'
+# Plan
+## M1: first
+- acceptance: check one
+- status: pending
+EOF
+  echo "=== digest-delete-verify ==="; "$S/run-verify-status" rdig 2>&1; echo "rc_dig_del=$?"
+  # tamper 2: restore M2 verbatim, weaken M1's acceptance line
+  cat > "$MEGAPOWERS_RUN_DIR/rdig/plan.md" <<'EOF'
+# Plan
+## M1: first
+- acceptance: WEAKENED
+- status: pending
+
+## M2: second
+- acceptance: check two
+- status: pending
+EOF
+  echo "=== digest-weaken-verify ==="; "$S/run-verify-status" rdig 2>&1; echo "rc_dig_weak=$?"
+
+  # --replan: re-snapshot the digest after a deliberate plan change. Inverts the
+  # freeze guard (fails when the run does NOT exist), never touches charter.md,
+  # appends a decision entry, and rewrites plan-digest from current plan.md.
+  echo "=== replan-missing ==="
+  "$S/run-init" nope --replan >/dev/null 2>&1; echo "rc_replan_missing=$?"
+  echo "=== init-existing ==="
+  "$S/run-init" r1 >/dev/null 2>&1; echo "rc_init_existing=$?"
+  echo "=== replan-real ==="
+  "$S/run-init" rplan --model test-model >/dev/null
+  cat > "$MEGAPOWERS_RUN_DIR/rplan/plan.md" <<'EOF'
+# Plan
+## A1: alpha
+- acceptance: alpha check
+- status: pending
+EOF
+  jbefore=$(wc -l < "$MEGAPOWERS_RUN_DIR/rplan/journal.md")
+  "$S/run-init" rplan --replan >/dev/null 2>&1; echo "rc_replan=$?"
+  jafter=$(wc -l < "$MEGAPOWERS_RUN_DIR/rplan/journal.md")
+  echo "REPLAN_JOURNAL_GREW=$((jafter-jbefore))"
+  echo "=== replan-digest ==="; cat "$MEGAPOWERS_RUN_DIR/rplan/plan-digest"
+  echo "=== replan-journal ==="; tail -1 "$MEGAPOWERS_RUN_DIR/rplan/journal.md"
+  grep -q 'FROZEN' "$MEGAPOWERS_RUN_DIR/rplan/charter.md" && echo "CHARTER_FROZEN=yes"
+
+  # DEFAULT-FLOW GAP: scaffold, author plan.md in place, never --replan. No
+  # plan-digest is ever frozen, so a gutted-plan done-claim would certify silently.
+  # A done-claim with no plan-digest must FAIL run-verify-status and point at the
+  # freeze remedy (run-init <id> --replan after authoring plan.md).
+  echo "=== nodigest-init ==="
+  "$S/run-init" rnodig --model test-model >/dev/null
+  cat > "$MEGAPOWERS_RUN_DIR/rnodig/plan.md" <<'EOF'
+# Plan
+## M1: only
+- acceptance: the one check
+- status: pending
+EOF
+  MEGAPOWERS_MODEL=claude "$S/run-journal" rnodig result 0.9 "M1: only milestone done"
+  "$S/run-derive-status" rnodig >/dev/null
+  [ -f "$MEGAPOWERS_RUN_DIR/rnodig/plan-digest" ] && echo "RNODIG_HAS_DIGEST=yes" || echo "RNODIG_HAS_DIGEST=no"
+  echo "=== nodigest-derive ==="; cat "$MEGAPOWERS_RUN_DIR/rnodig/status"
+  echo "=== nodigest-verify ==="; "$S/run-verify-status" rnodig 2>&1; echo "rc_nodig_verify=$?"
+
+  # DEFAULT FLOW, DONE RIGHT: scaffold, author plan.md, then freeze with --replan
+  # before working. A clean run certifies; deleting a milestone and weakening an
+  # acceptance line AFTER the freeze makes derive refuse done (needs-attention) —
+  # the reviewer's reproduced attack routed through the --replan freeze path.
+  echo "=== replan-freeze-init ==="
+  "$S/run-init" rrf --model test-model >/dev/null
+  cat > "$MEGAPOWERS_RUN_DIR/rrf/plan.md" <<'EOF'
+# Plan
+## M1: first
+- acceptance: check one
+- status: pending
+
+## M2: second
+- acceptance: check two
+- status: pending
+EOF
+  "$S/run-init" rrf --replan >/dev/null 2>&1
+  [ -f "$MEGAPOWERS_RUN_DIR/rrf/plan-digest" ] && echo "RRF_HAS_DIGEST=yes" || echo "RRF_HAS_DIGEST=no"
+  MEGAPOWERS_MODEL=claude "$S/run-journal" rrf result 0.9 "M1: first done"
+  MEGAPOWERS_MODEL=claude "$S/run-journal" rrf result 0.9 "M2: second done"
+  "$S/run-derive-status" rrf >/dev/null
+  # the --replan decision entry must NOT register as a phantom milestone, or this
+  # flow could never reach done (regression guard on the re-plan journal message)
+  echo "=== replan-freeze-clean-derive ==="; cat "$MEGAPOWERS_RUN_DIR/rrf/status"
+  echo "=== replan-freeze-clean-verify ==="; "$S/run-verify-status" rrf; echo "rc_rrf_clean=$?"
+  # tamper after the freeze: delete M2 and weaken M1's acceptance line in one edit
+  cat > "$MEGAPOWERS_RUN_DIR/rrf/plan.md" <<'EOF'
+# Plan
+## M1: first
+- acceptance: WEAKER
+- status: pending
+EOF
+  "$S/run-derive-status" rrf >/dev/null 2>&1
+  echo "=== replan-freeze-tamper-derive ==="; cat "$MEGAPOWERS_RUN_DIR/rrf/status"
 } > out.txt 2>&1
 cat out.txt

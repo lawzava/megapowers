@@ -34,6 +34,18 @@ Everything for a run lives under `.megapowers/run/<run-id>/`:
 Run `scripts/run-init <run-id>` to scaffold these. It refuses to overwrite an
 existing `charter.md`, so the charter stays frozen.
 
+Milestone headings in `plan.md` must be `## <tag>: <name>`, where `<tag>` matches
+`[A-Za-z][A-Za-z0-9_-]*` (one token, then a colon), for example `## M2: rollout`. A
+`## ` heading that does not parse as a milestone tag (for example `## Phase 2:
+rollout`) silently drops out of done-derivation, so `scripts/run-derive-status`
+counts it into `PLAN_WARNINGS` and refuses to derive `done` while any remain.
+
+Each milestone's acceptance check must sit on a line that starts with `-
+acceptance:`. The plan-digest freeze covers exactly the milestone heading plus its
+`- acceptance:` line(s), so an acceptance check written any other way (say `-
+check:` or free prose) gets heading-only protection: it stays tamperable even with
+a digest present, because weakening it does not change the frozen fingerprint.
+
 ## Where the charter comes from (the spec pipeline joint)
 
 The run does not invent its own goal; it executes one that already survived
@@ -62,11 +74,17 @@ file contract stands on its own.
 
 Read `runbook.md`; the default loop is:
 
-1. Read `status` to find the cursor (the next unmet milestone). After a restart or
+1. The first time through, once you have authored `plan.md`, freeze it: run
+   `scripts/run-init <run-id> --replan` before working the first milestone, so the
+   milestone digest exists to certify the eventual done-claim against. The default
+   scaffold takes no digest, and `run-verify-status` fails a done-claim that has none.
+   Then read `status` to find the cursor (the next unmet milestone). After a restart or
    context compaction, **trust the files, not your memory** — the journal and git
    history are the truth.
-2. Do the next milestone's work (delegate where a different model is better — see
-   mega-orchestration:multi-agent-delegation).
+2. Before starting a new milestone, re-run the acceptance checks of completed
+   milestones (or the declared fast subset); a run whose earlier milestone broke is
+   not progressing, it is regressing. Then do the next milestone's work (delegate
+   where a different model is better; see mega-orchestration:multi-agent-delegation).
 3. **Run that milestone's acceptance check** (an executable oracle where one
    exists — a test, a compile, a megapowers eval). Checks are declared per
    milestone in `plan.md` up front; a result entry must cite the declared
@@ -75,7 +93,10 @@ Read `runbook.md`; the default loop is:
    import path), not just that it imports — a vendored local substitute must
    not satisfy it. Detect failure honestly.
 4. On failure: fix and re-verify (bounded — see the stopping rule). On success:
-   append a journal line and advance the cursor in `status`.
+   journal the result, then re-run `scripts/run-derive-status`, which advances the
+   cursor; never edit status by hand. At each milestone boundary, checkpoint the
+   work (commit on the run's branch, or the workspace's native checkpoint) before
+   starting the next milestone.
 5. Stop when every done-when criterion in `charter.md` is met, the budget/turn cap
    is hit, or you hit a blocker only the human can clear.
 
@@ -113,6 +134,10 @@ radius**, never by "is it simple":
   approval before every staged/irreversible action, and checkpoint at each milestone
   boundary so the human approves the direction before the next milestone.
 
+Scheduled/cloud runners (for example Claude Code routines) execute without permission
+prompts; anything the effect broker would gate must be simulated or deferred to an
+attended session, and say so in the runbook.
+
 The invariant is about **actions, not cadence**: never gate an individual *reversible
 action* on a human just to add friction — at every level, reversible actions proceed.
 What the level sets is the *checkpoint granularity* the user asked for (in-the-loop
@@ -147,6 +172,14 @@ if installed): conclusion first, declarative, self-contained.
 
 - The charter is frozen and the journal is append-only — that's what lets the run be
   trusted and replayed. Don't "tidy" them.
+- Declared milestones are fingerprinted: `run-init` snapshots each milestone heading
+  and its acceptance line into `plan-digest`. A plan authored before init is frozen at
+  once; freeze a scaffolded plan by running `scripts/run-init <id> --replan` after you
+  fill it in. Thereafter `run-verify-status` fails a done-claim (and
+  `run-derive-status` refuses `done`) if a declared milestone vanishes or its
+  acceptance line weakens. `run-journal` never updates the digest; to change the plan
+  deliberately, re-run `--replan`, which re-snapshots and journals a decision, and the
+  charter still never changes.
 - Irreversible actions go through staging appropriate to the autonomy level; the
   effect broker (when present) is the mechanism.
 - This plugin ships a loop driver for Claude Code: the `run-loop.sh` Stop hook

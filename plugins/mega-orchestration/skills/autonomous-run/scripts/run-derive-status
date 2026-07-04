@@ -17,6 +17,25 @@
 # done. LEVEL/LAST_VERIFY are preserved verbatim. Portable: bash + coreutils + awk.
 set -uo pipefail
 base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+
+# plan_digest <plan.md> — "<tag> <sha256>" per milestone (heading + acceptance
+# line(s), whitespace-normalized). Identical to run-init/run-verify-status so the
+# hashes match; compared against the frozen plan-digest to catch plan tampering.
+plan_digest() {
+  awk '
+    function norm(s) { gsub(/[ \t]+/, " ", s); sub(/^ +/, "", s); sub(/ +$/, "", s); return s }
+    /^## [A-Za-z][A-Za-z0-9_-]*:/ {
+      if (tag != "") print tag "\t" buf
+      tag = substr($0, 4, index($0, ":") - 4); buf = norm($0); next
+    }
+    /^## / { if (tag != "") print tag "\t" buf; tag = ""; buf = ""; next }
+    tag != "" && $0 ~ /^[ \t]*-?[ \t]*acceptance:/ { buf = buf " ][ " norm($0) }
+    END { if (tag != "") print tag "\t" buf }
+  ' "$1" | while IFS="$(printf '\t')" read -r t c; do
+    printf '%s %s\n' "$t" "$(printf '%s' "$c" | sha256sum | cut -d' ' -f1)"
+  done
+}
+
 [ $# -ge 1 ] || { echo "usage: run-derive-status <run-id>" >&2; exit 2; }
 dir="$base/$1"
 [ -f "$dir/journal.md" ] || { echo "run-derive-status: no journal at $dir (run run-init first)" >&2; exit 2; }
@@ -74,13 +93,44 @@ fi
 old_cursor="$(sed -n 's/^CURSOR=//p' "$dir/status" | head -1)"
 [ -z "$cursor" ] && cursor="$old_cursor"
 
+# Lint plan.md headings: a "## " heading that is not a milestone tag ("## Tag: ...")
+# silently drops out of done-derivation (it looks like a milestone but is invisible
+# to the coverage check). Count them; a nonzero count blocks a done-derivation, so
+# gutting the plan into unparseable headings cannot certify done.
+plan_warnings=0
+if [ -f "$dir/plan.md" ]; then
+  total_headings="$(awk '/^## /{c++} END{print c+0}' "$dir/plan.md")"
+  milestone_headings="$(awk '/^## [A-Za-z][A-Za-z0-9_-]*:/{c++} END{print c+0}' "$dir/plan.md")"
+  plan_warnings=$((total_headings - milestone_headings))
+  [ "$plan_warnings" -lt 0 ] && plan_warnings=0
+fi
+
+# Tamper check: a declared milestone whose heading/acceptance changed or vanished
+# since plan-digest was snapshotted (run-init, or run-init <id> --replan) must not
+# derive done. run-verify-status recomputes this independently and names the drift.
+digest_mismatch=0
+if [ -f "$dir/plan-digest" ] && [ -f "$dir/plan.md" ]; then
+  current_digest="$(plan_digest "$dir/plan.md")"
+  while read -r stag shash; do
+    [ -n "$stag" ] || continue
+    chash="$(printf '%s\n' "$current_digest" | awk -v t="$stag" '$1==t{print $2; exit}')"
+    if [ -z "$chash" ] || [ "$chash" != "$shash" ]; then digest_mismatch=1; break; fi
+  done < "$dir/plan-digest"
+fi
+
 old_state="$(sed -n 's/^STATE=//p' "$dir/status" | head -1)"
 if printf '%s\n' "$derived" | grep -q '=blocked$'; then
   new_state=blocked
 elif [ "$last_kind" = paused ]; then
   new_state=paused
 elif [ "${n_ms:-0}" -gt 0 ] && [ "$n_ms" = "$n_done" ] && [ "$undeclared_undone" -eq 0 ]; then
-  new_state='done'
+  # every milestone derives done — but a plan warning or a digest mismatch means the
+  # plan itself cannot be trusted, so hold at needs-attention rather than certify.
+  if [ "$plan_warnings" -ne 0 ] || [ "$digest_mismatch" -ne 0 ]; then
+    new_state='needs-attention'
+  else
+    new_state='done'
+  fi
 elif [ -n "$last_kind" ]; then
   new_state=working   # activity in the trail, not all milestones done
 else
@@ -92,8 +142,10 @@ tmp="$dir/status.derive.$$"
   printf 'STATE=%s\n' "${new_state:-working}"
   [ -n "$cursor" ] && printf 'CURSOR=%s\n' "$cursor"
   grep -E '^(LEVEL|LAST_VERIFY)=' "$dir/status" 2>/dev/null
+  printf 'PLAN_WARNINGS=%s\n' "$plan_warnings"
   [ -n "$derived" ] && printf '%s\n' "$derived"
 } > "$tmp" && mv "$tmp" "$dir/status"
 echo "run-derive-status: status derived from journal ($(printf '%s\n' "$derived" | grep -c . ) milestone(s); STATE=${new_state:-working})"
 [ "$new_state" = 'done' ] && echo "run-derive-status: STATE=done derived — certify it: run-verify-status stamps LAST_VERIFY; done with LAST_VERIFY=none was never verified."
+[ "$new_state" = 'needs-attention' ] && echo "run-derive-status: all milestones derive done but the plan is untrustworthy (PLAN_WARNINGS=$plan_warnings, digest_mismatch=$digest_mismatch) — fix the "'##'" heading(s) in plan.md or re-plan with run-init <id> --replan, then re-derive." >&2
 exit 0
