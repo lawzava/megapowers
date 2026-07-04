@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# anonymize-candidates --src <dir> --out <dir> [--marker <s>]... [--marker-file <f>]
+#                      [--seed <int>]
+#
+# Blind a candidate set before a judge ranks it (mega-orchestration:best-of-n step 4,
+# mega-orchestration:council-adjudication step 3). Copies the N immediate children of
+# --src (files or dirs) into --out as candidate-A..N in a SHUFFLED order, strips every
+# caller-supplied authorship marker (case-insensitive, literal) from file contents, and
+# REFUSES if any marker survives in a file's content or in a copied path — a half-blinded
+# set must never reach the judge. The shuffled label->original manifest is printed to
+# stdout; the LEAD keeps it private (it is the de-anonymization key). Portable: bash + awk.
+#
+# Blinding is necessary but not sufficient: self-preference bias persists without author
+# labels (arXiv 2410.21819), so route ranking to a non-author / different-vendor judge.
+#
+# Ordering: the label shuffle is DETERMINISTIC only when --seed is given (for tests and
+# replay). A live run omits --seed and draws its seed from /dev/urandom, so the mapping is
+# not repeatable and never derived from wall-clock time. Exit: 0 ok · 2 usage · 3 refusal.
+set -uo pipefail
+
+src=""; out=""; seed=""; markers=()
+usage() { echo "usage: anonymize-candidates --src <dir> --out <dir> [--marker <s>]... [--marker-file <f>] [--seed <int>]" >&2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --src)         [ $# -ge 2 ] || { usage; exit 2; }; src="$2"; shift 2 ;;
+    --out)         [ $# -ge 2 ] || { usage; exit 2; }; out="$2"; shift 2 ;;
+    --marker)      [ $# -ge 2 ] || { usage; exit 2; }; markers+=("$2"); shift 2 ;;
+    --marker-file) [ $# -ge 2 ] || { usage; exit 2; }
+                   [ -f "$2" ] || { echo "anonymize-candidates: no marker file at $2" >&2; exit 2; }
+                   while IFS= read -r line; do [ -n "$line" ] && markers+=("$line"); done < "$2"; shift 2 ;;
+    --seed)        [ $# -ge 2 ] || { usage; exit 2; }; seed="$2"; shift 2 ;;
+    -h|--help)     usage; exit 0 ;;
+    *) echo "anonymize-candidates: unexpected argument '$1'" >&2; usage; exit 2 ;;
+  esac
+done
+
+[ -n "$src" ] || { usage; exit 2; }
+[ -n "$out" ] || { usage; exit 2; }
+[ -d "$src" ] || { echo "anonymize-candidates: --src is not a directory: $src" >&2; exit 2; }
+[ -e "$out" ] && { echo "anonymize-candidates: --out already exists (refusing to overwrite): $out" >&2; exit 2; }
+[ "${#markers[@]}" -gt 0 ] || { echo "anonymize-candidates: at least one --marker is required" >&2; exit 2; }
+case "$seed" in ''|*[!0-9]*) [ -z "$seed" ] || { echo "anonymize-candidates: --seed must be a non-negative integer" >&2; exit 2; } ;; esac
+
+# canonical starting order: glob-sorted immediate children of --src
+entries=()
+for p in "$src"/*; do [ -e "$p" ] && entries+=("$(basename "$p")"); done
+n="${#entries[@]}"
+[ "$n" -ge 1 ] || { echo "anonymize-candidates: --src has no candidates" >&2; exit 2; }
+[ "$n" -le 26 ] || { echo "anonymize-candidates: more than 26 candidates is unsupported (got $n)" >&2; exit 2; }
+
+# seed: explicit for repeatability, else a non-time draw from /dev/urandom
+if [ -z "$seed" ]; then
+  seed="$(od -An -N4 -tu4 /dev/urandom 2>/dev/null | tr -cd '0-9')"
+  [ -n "$seed" ] || { echo "anonymize-candidates: could not read /dev/urandom for a shuffle seed" >&2; exit 2; }
+  echo "anonymize-candidates: $n candidates, seed=$seed (auto; this live run is not repeatable)" >&2
+else
+  echo "anonymize-candidates: $n candidates, seed=$seed (explicit; repeatable)" >&2
+fi
+
+# Park-Miller LCG Fisher-Yates: identical permutation for a given (seed, n), exact in
+# double precision (16807 * x stays under 2^53). Output: shuffled indices, one per line.
+perm="$(awk -v n="$n" -v seed="$seed" 'BEGIN{
+  m=2147483647; x=(seed % (m-1)); if(x<0) x+=(m-1); x+=1;
+  for(i=0;i<n;i++) a[i]=i;
+  for(i=n-1;i>0;i--){
+    x=(16807*x)%m; j=int(((x-1)/(m-1))*(i+1)); if(j>i)j=i; if(j<0)j=0;
+    t=a[i]; a[i]=a[j]; a[j]=t;
+  }
+  for(i=0;i<n;i++) print a[i];
+}')"
+
+alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+mkdir -p "$out"
+manifest=""; i=0
+while IFS= read -r idx; do
+  [ -n "$idx" ] || continue
+  label="${alpha:i:1}"
+  orig="${entries[$idx]}"
+  cp -R "$src/$orig" "$out/candidate-$label"
+  manifest="$manifest""candidate-$label"$'\t'"$orig"$'\n'
+  i=$((i + 1))
+done <<< "$perm"
+
+# strip every marker (case-insensitive, LITERAL via index()) from candidate file contents
+strip_markers() {  # $1=file
+  local f="$1" tmp
+  tmp="$(mktemp "$f.anon.XXXXXX")"
+  if MARKERS="$(printf '%s\n' "${markers[@]}")" awk '
+    function strip(line, ml,   lo, res, idx, mlen) {
+      lo=tolower(line); mlen=length(ml); if(mlen==0) return line; res="";
+      while((idx=index(lo, ml))>0){
+        res=res substr(line,1,idx-1); line=substr(line,idx+mlen); lo=substr(lo,idx+mlen);
+      }
+      return res line;
+    }
+    BEGIN{ nk=split(ENVIRON["MARKERS"], ks, "\n"); for(k=1;k<=nk;k++) mk[k]=tolower(ks[k]); }
+    { line=$0; for(k=1;k<=nk;k++) if(mk[k]!="") line=strip(line, mk[k]); print line; }
+  ' "$f" > "$tmp"; then
+    mv "$tmp" "$f"
+  else
+    rm -f "$tmp"; return 1
+  fi
+}
+while IFS= read -r f; do [ -n "$f" ] && strip_markers "$f"; done < <(find "$out" -type f)
+
+# refusal net: no marker may survive in any candidate's CONTENT or in a copied PATH.
+# Deletion can re-form a marker at a seam, and a filename can carry authorship; either
+# leaks the author to the judge, so abort and leave nothing half-blinded behind.
+refuse() {  # $1=marker $2=where
+  echo "anonymize-candidates: authorship marker '$1' survived in $2 — aborting (rename/remove it, then re-run)" >&2
+  rm -rf "$out"; exit 3
+}
+paths="$(cd "$out" && find . -mindepth 1)"
+for mk in "${markers[@]}"; do
+  # no -I: binary candidates must be scanned too, or an authorship marker
+  # embedded in a binary file would silently bypass the refusal net.
+  grep -riFl -e "$mk" "$out" >/dev/null 2>&1 && refuse "$mk" "candidate file content"
+  printf '%s\n' "$paths" | grep -iF -e "$mk" >/dev/null 2>&1 && refuse "$mk" "a copied path/filename"
+done
+
+printf '%s' "$manifest"

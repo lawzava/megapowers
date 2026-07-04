@@ -29,7 +29,9 @@ security reasoning, "does this actually do what it claims".
 
 1. **Pick a verifier from a different vendor than the author.** The value is
    diversity of failure modes; a second instance of the same model shares the same
-   blind spots. Resolve the `verify` role via `multi-agent-delegation`'s
+   blind spots, and self-preference bias is largest when a model judges its own
+   family's output; anonymity alone does not remove it (arXiv 2410.21819). Resolve
+   the `verify` role via `multi-agent-delegation`'s
    `scripts/delegate-resolve verify` (e.g. if the author was Claude, send the pass
    to Codex; if the author was Codex, send it to Claude or another model — the
    routed provider must differ from the author's vendor, so re-route when they
@@ -51,7 +53,10 @@ security reasoning, "does this actually do what it claims".
    voting**: any credible refutation — a concrete counterexample or a reproduced
    bug from *any* single lens — kills the claim. A real defect is not outvoted by
    reviewers who happened not to look where it hides; one strong refutation
-   outweighs any number of "looks fine" passes.
+   outweighs any number of "looks fine" passes. The same perspective-diverse panel
+   also drives multi-aspect *selection* (aggregated approvals) in
+   mega-orchestration:best-of-n: there it approves to pick a winner; here one
+   refutation from any lens kills the claim.
 
 5. **Act on the verdict as single writer.** The verifier does not co-author or land
    changes; it reports. The lead (or the author) applies fixes and, for a material

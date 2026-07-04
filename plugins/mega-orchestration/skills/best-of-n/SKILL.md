@@ -14,9 +14,13 @@ description: >-
 Generate several candidate solutions independently, then select the strongest.
 This beats one-attempt-iterated when the solution space is wide and the cost of a
 wrong path is high. The evidence is specific: **selection with an independent
-oracle wins; blending or averaging candidates loses** (a deliberating team tends
-to regress toward its weaker members). So this skill SELECTS a single winner — it
-never merges opinions into a compromise.
+oracle wins; blending or averaging candidates loses**: a deliberating team
+regresses toward its weaker members: self-organizing teams average expert and
+non-expert views, losing up to 41% against their best member (arXiv 2602.01011),
+and single agents match multi-agent systems at equal compute (arXiv 2604.02460).
+The failure mode is interactive *deliberation*, not answer-voting: non-interactive
+majority vote over discrete answers stays valid (step 5 builds on it). So this skill
+SELECTS a single winner: it never merges opinions into a compromise.
 
 ## When to use it (spend by stakes × uncertainty)
 
@@ -57,15 +61,29 @@ candidates stop differing — log it if you cap.
    passes, or go to step 4 to break the tie.
 
 4. **Select — blind judge second (only when the oracle can't decide).** When no
-   oracle exists, or several candidates pass it, hand an independent judge the
-   candidate artifacts **anonymized** — no author labels, no reasoning traces, no
-   deliberation — and have it rank them against the brief's criteria. Blindness is
-   load-bearing: a judge that sees who wrote what, or sees a candidate's own
-   argument for itself, anchors instead of evaluating. Prefer a judge from a
-   different vendor than the authors: resolve the `judge` role via
-   `scripts/delegate-resolve judge` (see mega-orchestration:cross-model-verification).
+   oracle exists, or several candidates pass it, blind the set with
+   `scripts/anonymize-candidates`: it copies the candidates to `candidate-A..N` in
+   randomized order, strips the authorship markers you name, and refuses if any
+   survives; keep the label→author manifest it prints private. Hand an independent
+   judge the anonymized artifacts (no author labels, no reasoning traces, no
+   deliberation) and have it rank them against the brief's criteria. Mitigate
+   position bias: randomize presentation order, or run the ranking twice with the
+   order swapped and treat an order-flipped verdict as a tie. Rank on the criteria,
+   not length: longer answers are not better answers. Blindness is load-bearing: a
+   judge that sees who wrote what, or a candidate's own argument for itself, anchors
+   instead of evaluating. Prefer a judge from a different vendor than the authors:
+   resolve the `judge` role via `scripts/delegate-resolve judge` (see
+   mega-orchestration:cross-model-verification).
 
-5. **Integrate the winner as single writer.** The lead applies the winning
+5. **High-stakes and no oracle? Aggregate verifiers, not one judge.** A single judge
+   is one point of failure. Run several aspect verifiers over the anonymized set
+   (correctness, security, simplicity) and aggregate their approvals, reusing
+   mega-orchestration:cross-model-verification's panel (route each via
+   `scripts/delegate-resolve judge`). Diverse verifiers scale better than one judge or
+   self-consistency (BoN-MAV, arXiv 2502.20379). Selection-by-approval, distinct from
+   that skill's refutation-coverage use of the same panel.
+
+6. **Integrate the winner as single writer.** The lead applies the winning
    candidate. Optionally graft a specific better idea from a runner-up — but only
    as a deliberate, reviewed change, never by blending diffs.
 
@@ -86,6 +104,7 @@ candidates stop differing — log it if you cap.
 |---|---|
 | Executable oracle exists | Run it on every candidate; the passer wins. Judge only breaks ties. |
 | No oracle possible | Blind judge on anonymized candidates; prefer a cross-vendor judge. |
+| No oracle, high stakes | Aggregate aspect verifiers (correctness/security/simplicity), not one judge. |
 | Several candidates pass | Prefer the simplest full-pass, or blind-judge the passers. |
 | Candidates converged | Stop adding N; you've explored the space. Log the cap. |
 | Want to "merge the best of both" | Don't blend diffs — pick one winner, then graft one idea as a reviewed edit. |
