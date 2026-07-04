@@ -94,9 +94,9 @@ makes no network call.
 Releases are tagged. Pin your install to a tag rather than tracking `main`.
 Each tag resolves to an exact commit you can verify with
 `git ls-remote --tags https://github.com/lawzava/megapowers`, `git tag`, or
-`gh release view <tag>`. Tags are not yet signed: signed tags are a planned
-maintainer follow-up, so until then treat an unsigned tag as a stable,
-inspectable ref, not as cryptographic provenance.
+`gh release view <tag>`. Release tags from v0.1.3 on are GPG-signed: verify one
+with `git tag -v <tag>` (the v0.1.1 and v0.1.2 tags predate signing and are
+stable inspectable refs, not cryptographic provenance).
 
 ## Reporting
 
@@ -104,11 +104,8 @@ For anything with real blast radius (the deny-destructive suite passing a
 command that wipes a disk, a hook that fails closed and locks a session, or a
 skill or hook that leaks user data), the preferred channel is GitHub Private
 Vulnerability Reporting: the repository's Security tab, "Report a
-vulnerability". This must be enabled in the repository settings, and that
-maintainer action is still pending, so the private button may not be present
-yet. Until it is, and for non-sensitive tripwire gaps, open a GitHub issue; if a
-finding is sensitive and the private channel is not yet live, open a minimal
-issue that says only that, and a private channel will be arranged.
+vulnerability". For non-sensitive tripwire gaps a GitHub issue is fine; anything
+with real blast radius should go through the private channel.
 
 None of this repo's components hold secrets or run as services, so coordinated
 disclosure is often unnecessary. Please include the exact command/input, the

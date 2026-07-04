@@ -160,8 +160,8 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.1.2`, or, for Claude Code,
-  add `"ref": "v0.1.2"` to the `extraKnownMarketplaces` source (see
+  `codex plugin marketplace add lawzava/megapowers@v0.1.3`, or, for Claude Code,
+  add `"ref": "v0.1.3"` to the `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
   pin, remove the marketplace and re-add it at the new tag.

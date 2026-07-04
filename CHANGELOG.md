@@ -8,6 +8,27 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.1.3 - 2026-07-04
+
+### Security
+
+- `scripts/security-lint.sh` scans skills, hooks, and templates for
+  prompt-injection markers (external-URL fetches in executable context,
+  base64-piped-to-shell, remote `eval`, unicode direction overrides,
+  disable-safety instructions). It runs in CI through `validate.sh`, and refuses
+  to let an allowlist entry silence a shipped `SKILL.md`. CI also gains a
+  SHA-pinned gitleaks secret scan and a `claude plugin validate --strict` job.
+- `SECURITY.md` gains an indirect-prompt-injection threat model, a
+  before-you-install per-plugin capability disclosure (every hook is
+  `network: none`), GitHub Private Vulnerability Reporting as the default
+  reporting channel, and signed release tags.
+- `deny-destructive` gains a prefilter that fast-allows only commands matching
+  no destructive pattern (verified against every deny and ask fixture); an
+  oversized command carrying a trigger token now degrades to ASK rather than the
+  old 20000-char fail-open. A pilot Codex port of the guard ships for manual
+  wiring (`hooks/codex-deny-destructive.sh`), and its adapter never emits the
+  `ask` decision Codex does not support.
+
 ### Changed
 
 - `docs/tool-support.md` renamed to `docs/harness-support.md`: the docs
@@ -37,8 +58,47 @@ field by design (their schema allows only name and description). Format:
   claim matches the verbatim-sentence probe with an honest upstream caveat; and a
   small-n statistics preamble scopes the z / `fisher_p` contrasts. No published
   effect size or result-table number changed.
+- Visual and browser work now routes to Codex (native computer use) as a
+  cost-adjusted default; a vendor-neutral browser delegate runs the cross-vendor
+  `visual_verify` pass and the browser fallback. `delegates.toml` gains a
+  `[defaults] floor`, per-role cross-vendor `[fallbacks]`, and `[presets.*]`.
+- `harness-primitives.md` refreshed against current harness reality: Claude Code
+  forks / `SendMessage` resume / workflows (acceptEdits, `ultracode`) / cloud
+  routines; Codex parallel TOML subagents and `codex mcp-server`; OpenCode
+  discovery paths and per-agent models; Antigravity nested-native skills.
+- Install docs truth pass: the Codex flow is the unpinned
+  `codex plugin marketplace add lawzava/megapowers` with a pinning subsection,
+  double-registration cautions ordered before the commands they govern, and
+  hook-portability stated honestly (the Codex pilot exists, a default install
+  wires no port).
+- README repositioned: the surviving differentiators over upstream Superpowers
+  (published effect sizes with nulls, cross-vendor orchestration, executable
+  done-claim certification), a measured context-cost figure, accurate hook
+  claims, and a paste-line pinned to a release tag rather than mutable `main`.
+- `orchestrating` gains numeric cost anchors (the multi-agent token multiplier
+  and fan-out width heuristics) and a per-harness enforcement-difference note;
+  `dispatching-parallel-agents`, `subagent-driven-development`,
+  `requesting-code-review`, and `project-memory` adopt current native
+  primitives (resumable subagents, forks, native deep review, native memory).
+- `best-of-n`, `council-adjudication`, and `cross-model-verification` gain
+  order-bias mitigation (swap-then-tie), self-rank exclusion, an executable
+  `anonymize-candidates` blinding helper, and live-verified citations for the
+  select-don't-deliberate stance.
 
 ### Added
+
+- Skill license and provenance: `license: MIT` frontmatter on all 28 skills
+  (the agentskills.io optional field), and a traveling origin footer on every
+  Superpowers-derived skill so the MIT notice survives the bare-`SKILL.md`
+  skills-CLI channel.
+- In-repo `.agents/skills/` symlinks (28) so a Codex or OpenCode session inside
+  the checkout sees the skills with zero install.
+- Reference templates: `templates/workflows/` (a best-of-N and an audit-fanout
+  dynamic workflow) and `templates/codex-agents/` (read-only reviewer and
+  worktree builder role TOMLs mapping the delegate presets).
+- `scripts/validate.sh` context-budget guards: per-skill description length, the
+  always-loaded description-plus-session-start total, and the Codex per-plugin
+  skills-list size.
 
 - `templates/agent-notify/`: phone/terminal notifications when an agent needs
   input or finishes. The transport script (Telegram by default, swappable),
@@ -66,6 +126,25 @@ field by design (their schema allows only name and description). Format:
 
 ### Fixed
 
+- Autonomous-run "status cannot lie" contract closed: a frozen plan digest plus
+  a heading lint make a gutted or weakened plan uncertifiable; a no-digest
+  would-be-done run is held at `needs-attention` at derive time (what the
+  run-loop reads) and refused at verify time; `run-verify-status` now mirrors
+  `run-derive-status`'s reopen-on-later-activity clause so a reopened milestone
+  cannot be certified, and `LAST_VERIFY` resets when a run leaves the done state.
+  `run-init` gains `--replan` and a fixed success exit code; the cursor is
+  derived; `run-report` counts `paused`.
+- Hook hot-path cost: `deny-destructive` parsing went from about 1.1s to about
+  20ms on a routine 6KB command with identical verdicts; `auto-format` skips the
+  prettier spawn when no prettier is installed; the session-start injection is
+  trimmed to its budget; `delegate-nudge` interrupts once per risky diff-state
+  (re-arming when the diff changes) with a bounded untracked-file scan and a
+  worktree-safe sentinel.
+- `delegate-resolve` never resolves a role to a delegate whose CLI is absent
+  (`command -v` check), distinguishes a config parse error (exit 2, naming the
+  line) from no available route (exit 3), and reaches a different-vendor route
+  for the cross-vendor roles or fails closed rather than handing work back to the
+  author's vendor.
 - Journal provenance: run-init now takes --model and persists it in the run
   dir, and run-journal falls back to that file when the env var is unset. The
   runbook's "export MEGAPOWERS_MODEL" instruction could not work because each
