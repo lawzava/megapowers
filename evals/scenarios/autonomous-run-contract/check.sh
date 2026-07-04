@@ -67,12 +67,14 @@ replan_d="$(awk '/=== replan-digest ===/{f=1;next} /=== replan-journal ===/{f=0}
 printf '%s\n' "$replan_d" | grep -q '^A1 ' || { echo "--replan must rewrite plan-digest from current plan.md (milestone A1 expected)"; exit 1; }
 grep -q "CHARTER_FROZEN=yes" "$o" || { echo "--replan must leave charter.md frozen (untouched)"; exit 1; }
 
-# fix 1: the DEFAULT-flow gap. Scaffold, author plan.md in place, never --replan =>
-# no plan-digest is ever frozen. derive still reaches done (verify is the gate), but
-# a done-claim with NO plan-digest must FAIL run-verify-status, naming the freeze remedy.
+# the DEFAULT-flow gap. Scaffold, author plan.md in place, never --replan => no
+# plan-digest is ever frozen. fix 3: derive itself now refuses STATE=done without a
+# frozen digest (holds at needs-attention) so the STATE run-loop reads is honest; and
+# a done-claim with NO plan-digest must FAIL run-verify-status too, naming the remedy.
 grep -q "RNODIG_HAS_DIGEST=no" "$o" || { echo "author-then-never-replan flow must leave NO plan-digest (default-flow gap precondition)"; exit 1; }
 nodig_derive="$(awk '/=== nodigest-derive ===/{f=1;next} /=== nodigest-verify ===/{f=0} f' "$o")"
-printf '%s\n' "$nodig_derive" | grep -q '^STATE=done' || { echo "derive should still reach STATE=done without a digest (verify, not derive, is the no-digest gate)"; exit 1; }
+printf '%s\n' "$nodig_derive" | grep -q '^STATE=done' && { echo "fix 3: derive must NOT reach STATE=done without a frozen plan-digest"; exit 1; }
+printf '%s\n' "$nodig_derive" | grep -q '^STATE=needs-attention' || { echo "fix 3: a no-digest run that would derive done must hold STATE at needs-attention"; exit 1; }
 nodig_verify="$(awk '/=== nodigest-verify ===/{f=1;next} /=== replan-freeze-init ===/{f=0} f' "$o")"
 printf '%s\n' "$nodig_verify" | grep -q 'rc_nodig_verify=1' || { echo "a done-claim with no plan-digest must FAIL run-verify-status (gutted plan would otherwise certify silently)"; exit 1; }
 printf '%s\n' "$nodig_verify" | grep -qi 'never frozen' || { echo "no-digest verify failure must say the plan was never frozen"; exit 1; }
@@ -91,4 +93,15 @@ grep -q "rc_rrf_clean=0" "$o" || { echo "a run frozen via --replan must certify 
 rrf_tamper="$(awk '/=== replan-freeze-tamper-derive ===/{f=1} f' "$o")"
 printf '%s\n' "$rrf_tamper" | grep -q '^STATE=needs-attention' || { echo "deleting a milestone + weakening acceptance after a --replan freeze must make derive refuse done (needs-attention)"; exit 1; }
 
-echo "ok: run contract holds (scaffold, freeze, append-only, provenance, done-claim verify-stamp only, confidence-ranked report, init exit code, derived cursor, reopen-on-activity, paused activity count, plan-warnings, plan-digest tamper, no-digest done-claim refused, replan-freeze regression, replan)"
+# fix 1 + fix 2: a milestone RESULTED then reopened by a LATER action. run-verify-status
+# must mirror run-derive-status's reopen (a resulted-then-reopened milestone is not done),
+# so a done-claim must FAIL; and re-deriving the now-non-done run must reset a stale
+# LAST_VERIFY to none (a reopened run is no longer certified).
+grep -qE "RRV_STAMPED: LAST_VERIFY=[0-9]{4}-" "$o" || { echo "fix 2 precondition: the clean done-claim must stamp LAST_VERIFY before the reopen"; exit 1; }
+rv_verify="$(awk '/=== rv-verify ===/{f=1;next} /=== rv-rederive ===/{f=0} f' "$o")"
+printf '%s\n' "$rv_verify" | grep -q 'rc_rrv_verify=1' || { echo "fix 1: run-verify-status must FAIL a done-claim on a milestone reopened by a later action"; exit 1; }
+rv_rederive="$(awk '/=== rv-rederive ===/{f=1} f' "$o")"
+printf '%s\n' "$rv_rederive" | grep -q '^STATE=working' || { echo "fix 2: a reopened run must re-derive to a non-done STATE (working)"; exit 1; }
+printf '%s\n' "$rv_rederive" | grep -q '^LAST_VERIFY=none' || { echo "fix 2: re-deriving a non-done run must reset a stale LAST_VERIFY to none"; exit 1; }
+
+echo "ok: run contract holds (scaffold, freeze, append-only, provenance, done-claim verify-stamp only, confidence-ranked report, init exit code, derived cursor, reopen-on-activity, verify mirrors reopen, reopen resets certification, paused activity count, plan-warnings, plan-digest tamper, no-digest done refused at derive and verify, replan-freeze regression, replan)"

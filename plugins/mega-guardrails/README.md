@@ -67,8 +67,11 @@ system, not the sandbox). Treat `/sandbox` plus OS permissions as the boundary
 and `deny-destructive` as an accident tripwire in front of it.
 
 These are Claude Code hook scripts. Codex, OpenCode, and Antigravity have their
-own hook surfaces, but these scripts are not ported to them, so on those
-harnesses nothing here blocks or gates (see `docs/harness-support.md`).
+own hook surfaces. A manual Codex pilot port of the `deny-destructive` guard
+ships in this plugin (`hooks/codex-deny-destructive.sh`, see the Codex hooks
+section of `docs/setup.md`), but a default install wires no port, so on those
+harnesses nothing here blocks or gates out of the box (see
+`docs/harness-support.md`).
 
 ## auto-format (PostToolUse, Write/Edit)
 

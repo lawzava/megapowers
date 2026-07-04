@@ -1,6 +1,8 @@
 # Harness primitives
 
-What each orchestration concept maps to per runtime, as of 2026-07-04. Names
+Last reviewed: 2026-07-04.
+
+What each orchestration concept maps to per runtime, as of that date. Names
 and availability drift with releases; when a primitive is absent or you cannot
 confirm it, fall back to sequential inline work and say so. Never fabricate a
 call to a primitive the runtime does not expose.

@@ -89,10 +89,13 @@ mkrun r2 working
 printf 'only .megapowers/run/r1/ mentioned here\n' > "$TR"
 check ALLOW "$(j false "$TR")" "other active run not touched this session -> allow"
 
-# Lifecycle integration: after journaling results for every milestone and
-# re-deriving, the state must be done and the hook must allow the stop.
+# Lifecycle integration: after freezing the plan-digest, journaling results for every
+# milestone, and re-deriving, the state must be done and the hook must allow the stop.
+# A done-claim needs a FROZEN plan (--replan snapshots plan-digest); without one derive
+# holds at needs-attention, so the sanctioned finish path freezes before completing.
 if [ -x "$SCRIPTS/run-init" ]; then
   ( cd "$TMP" && "$SCRIPTS/run-init" lc1 >/dev/null 2>&1 )
+  ( cd "$TMP" && "$SCRIPTS/run-init" lc1 --replan >/dev/null 2>&1 )
   ( cd "$TMP" && "$SCRIPTS/run-journal" lc1 result 0.9 "M1: check passed" >/dev/null 2>&1 )
   ( cd "$TMP" && "$SCRIPTS/run-derive-status" lc1 >/dev/null 2>&1 )
   st="$(sed -n 's/^STATE=//p' "$TMP/.megapowers/run/lc1/status" | head -1)"
@@ -106,6 +109,7 @@ if [ -x "$SCRIPTS/run-init" ]; then
   # declares M2 keeps the run working (and blocked from stopping).
   ( cd "$TMP" && "$SCRIPTS/run-init" lc3 >/dev/null 2>&1 )
   printf '# Plan\n## M1: first\n- acceptance: t1\n## M2: second\n- acceptance: t2\n' > "$TMP/.megapowers/run/lc3/plan.md"
+  ( cd "$TMP" && "$SCRIPTS/run-init" lc3 --replan >/dev/null 2>&1 )
   ( cd "$TMP" && "$SCRIPTS/run-journal" lc3 result 0.9 "M1: check passed" >/dev/null 2>&1 )
   ( cd "$TMP" && "$SCRIPTS/run-derive-status" lc3 >/dev/null 2>&1 )
   st3="$(sed -n 's/^STATE=//p' "$TMP/.megapowers/run/lc3/status" | head -1)"

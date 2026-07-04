@@ -30,9 +30,9 @@ scripts/validate.sh        # structural: manifests, frontmatter, cross-refs, hoo
 bash evals/run-all.sh      # 15 scenarios (deterministic + mock-agent) + score.go self-test
 ```
 
-Result (re-run 2026-07-04): **`validate.sh` passed in full** (173 checks at the
+Result (re-run 2026-07-04): **`validate.sh` passed in full** (174 checks at the
 time of that run, with `shellcheck` absent from PATH; the count grows as guards
-are added, and `shellcheck` on PATH adds one shell-lint check per script, 267 in
+are added, and `shellcheck` on PATH adds one shell-lint check per script, 270 in
 total here) · **`run-all.sh` 16/16 passed, 0 failed, 0 indeterminate** (15
 scenarios plus the `score.go` Fisher self-test). These counts are snapshots, not fixed targets: an
 earlier 2026-07-02 baseline was 137 checks, and the total moves as guards land,

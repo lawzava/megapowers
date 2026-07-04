@@ -166,6 +166,10 @@ EOF
   "$S/run-derive-status" rnodig >/dev/null
   [ -f "$MEGAPOWERS_RUN_DIR/rnodig/plan-digest" ] && echo "RNODIG_HAS_DIGEST=yes" || echo "RNODIG_HAS_DIGEST=no"
   echo "=== nodigest-derive ==="; cat "$MEGAPOWERS_RUN_DIR/rnodig/status"
+  # fix 3: derive itself now holds a no-digest would-be-done run at needs-attention
+  # (STATE run-loop reads must be honest without relying on verify being called).
+  # Force STATE=done to prove verify ALSO refuses the no-digest done-claim.
+  sed -i 's/^STATE=.*/STATE=done/' "$MEGAPOWERS_RUN_DIR/rnodig/status"
   echo "=== nodigest-verify ==="; "$S/run-verify-status" rnodig 2>&1; echo "rc_nodig_verify=$?"
 
   # DEFAULT FLOW, DONE RIGHT: scaffold, author plan.md, then freeze with --replan
@@ -202,5 +206,29 @@ EOF
 EOF
   "$S/run-derive-status" rrf >/dev/null 2>&1
   echo "=== replan-freeze-tamper-derive ==="; cat "$MEGAPOWERS_RUN_DIR/rrf/status"
+
+  # fix 1 + fix 2: a milestone RESULTED then reopened by a LATER action. run-verify-status
+  # must mirror run-derive-status's reopen and FAIL a done-claim (fix 1); re-deriving the
+  # now-non-done run must reset a stale LAST_VERIFY to none (fix 2, a reopened run is no
+  # longer certified). A digest is frozen via --replan so the ONLY reason verify fails is
+  # the reopen, not the no-digest gate.
+  echo "=== rv-init ==="
+  "$S/run-init" rrv --model test-model >/dev/null
+  cat > "$MEGAPOWERS_RUN_DIR/rrv/plan.md" <<'EOF'
+# Plan
+## M1: only
+- acceptance: the one check
+- status: pending
+EOF
+  "$S/run-init" rrv --replan >/dev/null 2>&1
+  MEGAPOWERS_MODEL=claude "$S/run-journal" rrv result 0.9 "M1: only milestone done"
+  "$S/run-derive-status" rrv >/dev/null
+  "$S/run-verify-status" rrv >/dev/null 2>&1   # clean done-claim: certifies, stamps LAST_VERIFY
+  echo "RRV_STAMPED: $(grep '^LAST_VERIFY=' "$MEGAPOWERS_RUN_DIR/rrv/status")"
+  MEGAPOWERS_MODEL=claude "$S/run-journal" rrv action 0.9 "M1: reopening, found a regression"
+  sed -i 's/^STATE=.*/STATE=done/' "$MEGAPOWERS_RUN_DIR/rrv/status"   # forged/stale done after the reopen
+  echo "=== rv-verify ==="; "$S/run-verify-status" rrv 2>&1; echo "rc_rrv_verify=$?"
+  "$S/run-derive-status" rrv >/dev/null
+  echo "=== rv-rederive ==="; cat "$MEGAPOWERS_RUN_DIR/rrv/status"
 } > out.txt 2>&1
 cat out.txt

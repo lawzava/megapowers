@@ -39,6 +39,21 @@ if [ -r "$ALLOWLIST_FILE" ]; then
   done < "$ALLOWLIST_FILE"
 fi
 
+# A shipped, agent-facing skill (plugins/*/skills/*/SKILL.md) may NEVER be
+# allowlisted: silencing the lint on an installed skill would let a malicious marker
+# ship in exactly the surface this lint exists to protect. Fix the skill, not the
+# allowlist. Refuse such an entry outright (exit nonzero, naming it); legitimate
+# entries (test fixtures, the opt-in notifier template) are unaffected.
+if [ "${#ALLOW[@]}" -gt 0 ]; then
+  for entry in "${!ALLOW[@]}"; do
+    case "$entry" in
+      plugins/*/skills/*/SKILL.md)
+        printf 'security-lint: disallowed allowlist entry: %s (a shipped skill may never be allowlisted; fix the skill, not the allowlist).\n' "$entry" >&2
+        exit 1 ;;
+    esac
+  done
+fi
+
 # --- file discovery --------------------------------------------------------
 list_default_scope() {
   find "$ROOT/plugins" -name 'SKILL.md' -type f 2>/dev/null

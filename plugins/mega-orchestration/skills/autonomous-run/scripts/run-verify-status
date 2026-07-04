@@ -87,6 +87,14 @@ case "$state" in
         if (!(t in seen)) { order[++n] = t; seen[t] = 1 }
         if ($2 == "result") state[t] = "done"
         else if ($2 == "blocked") state[t] = "blocked"
+        else if ($2 == "action" || $2 == "decision") {
+          # mirror run-derive-status: a later action/decision REOPENS an already-done
+          # milestone (done -> in-progress); otherwise only claim it if nothing has
+          # spoken for it yet (blocked stays sticky). Keep the two derivations in
+          # lockstep so verify never certifies a done that derive would reopen.
+          if ((t in state) && state[t] == "done") state[t] = "in-progress"
+          else if (!(t in state)) state[t] = "in-progress"
+        }
         else if (!(t in state)) state[t] = "in-progress"
       }
       END {

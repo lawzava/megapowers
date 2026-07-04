@@ -10,8 +10,10 @@ Nothing in this repository is a security boundary.
   sandbox and OS permissions.
 - The `effect-broker` skill gates irreversible actions by declared action
   class; a model that misdeclares is not stopped by it.
-- Hooks are Claude Code only. On other harnesses they do not exist, so
-  nothing blocks or gates there.
+- Hook scripts ship for Claude Code today. A manual Codex pilot of the
+  destructive-command guard exists (see the Codex hooks section of
+  `docs/setup.md`), but a default install wires no port, so out of the box
+  nothing blocks or gates on Codex, OpenCode, or Antigravity.
 
 If your threat model includes a malicious or compromised model, none of these
 help; use OS-level sandboxing.
@@ -77,7 +79,7 @@ network call. What each plugin runs:
 | Plugin | Hook (event) | Reads / writes | Skills | Network |
 | --- | --- | --- | --- | --- |
 | `megapowers` | `session-start` (SessionStart) | reads its own `using-megapowers` skill; writes a context string to stdout | process skills (planning, TDD, debugging, review, worktrees, memory) | none |
-| `mega-guardrails` | `deny-destructive` (PreToolUse: Bash); `auto-format` (PostToolUse: Write/Edit) | deny-destructive reads the proposed command on stdin and writes an allow/ask/deny decision; auto-format reads the just-written file path and reformats that one file (`gofmt`/`goimports`/`prettier`) | none (hooks and an optional statusline only) | none |
+| `mega-guardrails` | `deny-destructive` (PreToolUse: Bash); `auto-format` (PostToolUse: Write/Edit); `codex-deny-destructive` (Codex PreToolUse pilot, manual wiring only) | deny-destructive reads the proposed command on stdin and writes an allow/ask/deny decision; the Codex adapter maps that same decision onto Codex's hook contract; auto-format reads the just-written file path and reformats that one file (`gofmt`/`goimports`/`prettier`) | none (hooks and an optional statusline only) | none |
 | `mega-orchestration` | `run-loop`, `delegate-nudge` (both Stop) | both read stdin and the session transcript; run-loop also reads `.megapowers/run/<id>/status`; delegate-nudge also reads `git diff` and writes a one-line marker to `.git/megapowers-delegate-nudge-seen`; both write a stop decision to stdout | orchestration and delegation skills | none |
 | `mega-go` | none | reads and writes nothing (skills only) | `golang-patterns`, `greenfield-go-stack` | none |
 | `mega-python` | none | reads and writes nothing (skills only) | `python-patterns`, `greenfield-python-stack` | none |

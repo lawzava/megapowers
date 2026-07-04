@@ -110,7 +110,7 @@
       "strict": false,
       "skills": ["./skills/multi-agent-delegation"],
       "category": "orchestration",
-      "description": "Route work to the right model: Codex for plan/code review and small implementation, a vendor-neutral browser delegate (playwright-cli + a vision-capable model) for visual/browser. Provider-agnostic and config-driven. Also in the mega-orchestration bundle; install one, not both."
+      "description": "Route work to the right model: Codex for plan/code review, small implementation, and visual/browser work; a vendor-neutral browser delegate (playwright-cli + a vision-capable model) for the cross-vendor visual_verify pass and browser fallback. Provider-agnostic and config-driven. Also in the mega-orchestration bundle; install one, not both."
     }
   ]
 }

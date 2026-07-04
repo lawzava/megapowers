@@ -27,8 +27,9 @@ claim of effect needs a run behind it.
    suites), and keep it fail-open: any error or uncertainty must allow.
 
 5. Keep changes portable. Skills must work as plain `SKILL.md` on Claude Code,
-   Codex, OpenCode, and Antigravity; anything Claude-only (hooks) is labeled
-   Claude-only and fails open by absence elsewhere.
+   Codex, OpenCode, and Antigravity; harness-specific enforcement (hooks) is
+   labeled by harness and fails open by absence elsewhere. Hooks ship for Claude
+   Code by default; a manual Codex pilot of the destructive-command guard exists.
 
 ## Conventions
 
