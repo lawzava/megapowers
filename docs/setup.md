@@ -117,6 +117,40 @@ codex plugin add megapowers@megapowers
 
 Update it with `git pull` in the checkout.
 
+### Codex hooks (optional)
+
+Codex has its own lifecycle hooks with a Claude-compatible event schema:
+`PreToolUse` receives the command at `tool_input.command` and blocks it by
+returning `{"hookSpecificOutput":{"permissionDecision":"deny",...}}`, the same
+shape the Claude Code guard already emits. This repo ships a pilot port of the
+`deny-destructive` guard for Codex under `plugins/mega-guardrails/hooks/`:
+
+- `codex-deny-destructive.sh`, a thin adapter around the existing
+  `deny-destructive.sh`. Codex accepts `permissionDecision` `deny` and `allow`
+  but not `ask` (it is parsed but not yet supported, and returning it marks the
+  hook failed and runs the command anyway). The guard uses `ask` for its
+  reversible-but-risky tier (`git reset --hard`, `aws s3 rm --recursive`,
+  `terraform destroy -auto-approve`, `curl | bash`, and the like), so the
+  adapter passes the catastrophic `deny` tier through to Codex and drops the
+  `ask` tier to no output, letting Codex's own approval flow decide rather than
+  returning an unsupported value.
+- `codex-hooks.json`, a Codex hooks manifest that wires the adapter onto the
+  `PreToolUse` Bash matcher. Codex also reads a `hooks/hooks.json` inside an
+  installed plugin, or a `hooks.json` next to any config layer
+  (`~/.codex/hooks.json`, `<repo>/.codex/hooks.json`).
+
+`mega-guardrails` is not published as a Codex marketplace plugin, so wiring is
+manual today: point a Codex `hooks.json` at the adapter (it reads
+`CLAUDE_PLUGIN_ROOT`, which Codex sets as a compatibility alias alongside its
+native `PLUGIN_ROOT`).
+
+Trust prompt: before a non-managed command hook runs, Codex requires you to
+review and trust the exact hook definition. Trust is recorded against the hook's
+current hash, so a new or edited hook is flagged for review and skipped until you
+trust it. Review, trust, or disable hooks with the `/hooks` command inside Codex.
+Managed hooks (system, MDM, or `requirements.toml`) are trusted automatically;
+`--dangerously-bypass-hook-trust` skips the check for vetted automation only.
+
 ## Pinning to a release
 
 By default a marketplace `add` tracks the default branch, so you receive new
