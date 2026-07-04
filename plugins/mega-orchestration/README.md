@@ -1,6 +1,6 @@
 # mega-orchestration
 
-Config-driven multi-agent orchestration. Route each kind of work to the model
+Config-driven multi-model orchestration. Route each kind of work to the model
 that handles it best, without hard-coding a provider. The routing lives in one
 config file, so swapping a backend is an edit, not a rewrite.
 
@@ -11,9 +11,10 @@ config file, so swapping a backend is an edit, not a rewrite.
   best-of-n, council, autonomous run) with spend-by-stakes effort defaults,
   and maps subagent/team/workflow/effort primitives per harness in its
   `references/harness-primitives.md`.
-- `multi-agent-delegation`: when and how the lead hands work to a delegate,
-  plus `scripts/delegate-resolve` to resolve a role to its provider
-  executably.
+- `multi-agent-delegation`: when and how the lead (the agent session you are
+  talking to, which orchestrates and owns integration) hands work to a
+  delegate (a separately invoked model or CLI that returns results), plus
+  `scripts/delegate-resolve` to resolve a role to its provider executably.
 - `best-of-n`: generate N independent candidates, select by an executable
   oracle first and a blind judge second. Selection, never averaging.
 - `cross-model-verification`: verify risky work with a different-vendor model
@@ -21,10 +22,10 @@ config file, so swapping a backend is an edit, not a rewrite.
 - `council-adjudication`: for a decision with no oracle. Answer independently,
   rank the answers anonymized, synthesize from the best, not a compromise.
 - `autonomous-run`: run a long, largely-unattended task on a durable file
-  contract (frozen charter, plan with acceptance criteria, runbook,
-  append-only journal, machine-readable status) with an autonomy dial
-  (autonomous / on-the-loop / in-the-loop) that gates by reversibility and
-  blast radius, never gating reversible work, plus a legible,
+  contract: a frozen charter, a plan with acceptance criteria, a runbook, an
+  append-only journal, and a machine-readable status. An autonomy dial
+  (autonomous / on-the-loop / in-the-loop) gates by reversibility and blast
+  radius; reversible work always proceeds. Ends in a legible,
   confidence-ranked run report.
 - `effect-broker`: the portable trust layer for real-world side effects.
   Classify an action (reversible / staged / irreversible) and enforce
@@ -49,8 +50,8 @@ The skills and the delegate agents read `delegates.toml` (inside the
 The visual/browser route drives the UI with `playwright-cli` (a standalone
 CLI) and reasons over the screenshots with a vision-capable model: the lead
 itself when it is vision-capable (e.g. Claude), otherwise any vision-capable
-model. It replaces the retired Gemini-CLI route (the Gemini CLI was
-discontinued for consumer use in mid-2026).
+model. It replaced the retired Gemini-CLI route (see
+[`docs/harness-support.md`](../../docs/harness-support.md)).
 
 Antigravity is included as a documented alternative but is disabled until you
 verify a local `agy` automation path, approval behavior, and artifact
@@ -65,31 +66,39 @@ code changes needed.
 ## Prerequisites
 
 - Codex roles (plan/code review, small impl): Codex native subagents when
-  running in Codex, or the Codex CLI/SDK from another runtime.
+  running in Codex, or the Codex CLI/SDK from another harness.
 - Visual/browser role: `playwright-cli` plus a vision-capable model to read
-  the screenshots.
+  the screenshots. Install: `npm i -g @playwright/cli`, then
+  `playwright-cli install --skills` (Microsoft's own playwright-cli skill;
+  not vendored here because a shipped copy would register twice).
 
 Roles you don't use don't need their tools installed; the routing simply won't
 call them.
 
 ## Delegate agents
 
-Two agents wrap the routing so the lead can hand off cleanly:
+A delegate agent is a markdown agent definition the plugin registers with the
+harness; the lead invokes it like a subagent, and it routes the work out. Two
+ship here:
 
-- a Codex delegate for plan/code review and small, testable implementation
-- a browser delegate for visual and browser work (playwright-cli driven)
+- `agents/codex-delegate.md`: plan/code review and small, testable
+  implementation, via Codex
+- `agents/browser-delegate.md`: visual and browser work, driven by
+  playwright-cli
 
 Each reads `delegates.toml` from the `multi-agent-delegation` skill to decide
-which backend and model to invoke.
+which backend and model to invoke. Edit the agent files to change how the
+handoff works; edit `delegates.toml` to change where work goes.
 
 ## Stop hooks (Claude Code only)
 
 Stop hooks are a Claude Code feature. On Codex, OpenCode, and Antigravity
-these hooks do not run (they fail open by absence), and the disciplines ride
-on the skills' instructions instead. Treat them as backstops where they fire,
-not as the reason the discipline holds. Both are fail-open (any error or
-uncertainty allows the stop), self-suppressing (`stop_hook_active`), and
-depend only on `jq`, `git`, `grep`, and `sed`.
+these hooks do not run, and the disciplines ride on the skills' instructions
+instead. Treat them as backstops where they fire, not as the reason the
+discipline holds. Both are fail-open (any error or uncertainty allows the
+stop), self-suppressing (they honor the `stop_hook_active` flag Claude Code
+sets in the hook's stdin payload on re-entry, so a blocked stop cannot loop),
+and depend only on `jq`, `git`, `grep`, and `sed`.
 
 `hooks/run-loop.sh` keeps an active autonomous run's loop turning. When the
 session tries to stop while a run it touched still reads active
@@ -104,12 +113,36 @@ milestone checkpoints belong to the human there. The hook ignores runs the
 current session never touched (it requires the run's path in the transcript,
 not a bare name match).
 
+Watch it work from a checkout, no session required (the hook is a plain
+stdin-to-stdout script). Fake an active run and a Stop event; the output is
+one JSON line, wrapped here for readability:
+
+```console
+$ mkdir -p .megapowers/run/site-migration
+$ printf 'STATE=working\nCURSOR=M3: cut DNS over to the new host\nLEVEL=on-the-loop\n' \
+    > .megapowers/run/site-migration/status
+$ echo 'read .megapowers/run/site-migration/plan.md' > transcript.jsonl
+$ printf '{"transcript_path":"transcript.jsonl","stop_hook_active":false}' \
+    | plugins/mega-orchestration/hooks/run-loop.sh
+{"decision":"block","reason":"Autonomous run site-migration is active
+(STATE=working, CURSOR=M3: cut DNS over to the new host) and its done-when
+criteria are not recorded as met. Continue the loop per its runbook: do the
+next unmet milestone, run its declared acceptance check, journal the result
+(scripts/run-journal), and re-derive status (scripts/run-derive-status — it
+derives done when every milestone is done). If you are pausing deliberately,
+or you are blocked, or a charter cap is reached, journal a paused or blocked
+entry and re-derive status so STATE says so — then stopping is correct.
+Verify a finished run with scripts/run-verify-status."}
+```
+
 `hooks/delegate-nudge.sh` asks for an independent review of risky diffs. When
 the session's git diff touches risky logic (auth, OAuth, JWT, billing,
 payments, Stripe, webhooks, concurrency) and the transcript shows no
 independent review by a delegate (neither a Codex pass via `codex exec`, the
-`mcp__codex__codex` channel, or a configured bridge, nor an Antigravity pass),
-it blocks the stop and asks for an independent review before finishing.
+`mcp__codex__codex` channel, or a private bridge as defined in
+[`docs/harness-support.md`](../../docs/harness-support.md), nor an Antigravity
+pass), it blocks the stop and asks for an independent review before
+finishing.
 
 ## Install
 

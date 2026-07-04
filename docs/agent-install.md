@@ -24,9 +24,9 @@ and check for existing installs:
 
 - Claude Code: `claude plugin list 2>/dev/null | grep -i mega`
 - Codex: `codex plugin list 2>/dev/null | grep -i mega`
-- Skills-CLI installs: `ls ~/.agents/skills 2>/dev/null` and the project's
+- skills-CLI installs: `ls ~/.agents/skills 2>/dev/null` and the project's
   `skills-lock.json`
-- Superpowers: `claude plugin list 2>/dev/null | grep -i superpowers` — the
+- Superpowers: `claude plugin list 2>/dev/null | grep -i superpowers`. The
   megapowers `megapowers` plugin is a superset of its process core; if the
   user wants both removed/replaced, uninstall superpowers first (ask, don't
   assume).
@@ -45,7 +45,8 @@ claude plugin install mega-orchestration@megapowers
 claude plugin install mega-guardrails@megapowers
 ```
 
-Add `mega-go`, `mega-python`, `mega-ts` if the user works in those languages.
+Add `mega-go`, `mega-python`, `mega-ts` if the user works in those languages;
+omit `mega-guardrails` if the user does not want the safety hooks.
 Interactive sessions can use `/plugin` instead.
 
 **Codex** (skills + marketplace metadata; hooks do not run here):
@@ -70,7 +71,7 @@ npx skills add lawzava/megapowers -g -y -s '*' -a <your-agent-name>
 CAUTION first: the skills CLI installs several agents into the shared
 `~/.agents/skills/` directory, and Claude Code scans that directory too. If
 step 1 found the Claude Code plugins on this machine, do NOT install globally
-into the shared directory — every skill would register twice for Claude Code.
+into the shared directory: every skill would register twice for Claude Code.
 Use a tool-specific path instead (for OpenCode, symlink from a checkout into
 `~/.config/opencode/skills/`), or install per-project without `-g`.
 
@@ -78,8 +79,10 @@ Use a tool-specific path instead (for OpenCode, symlink from a checkout into
 
 Run the same probe the repo's install-smoke study uses: load the
 test-driven-development skill and quote its core principle sentence verbatim.
-The sentence exists nowhere but inside the skill body, so a correct quote
-proves discovery and loading end to end. Expected sentence:
+Outside this guide and the setup doc, the sentence exists only inside the
+skill body, so run the probe in a fresh session or a subagent that does not
+have this guide in context; a correct quote from there proves discovery and
+loading end to end. Expected sentence:
 
 > if you didn't watch the test fail, you don't know whether it tests the
 > right thing
@@ -92,9 +95,10 @@ skill folders.
 
 Present these to the user; apply only what they approve:
 
-- Statusline (Claude Code, Linux): point `statusLine.command` in
-  `~/.claude/settings.json` at
-  `~/.claude/plugins/marketplaces/megapowers/plugins/mega-guardrails/statusline.sh`.
+- Statusline (Claude Code, Linux): copy the plugin's `statusline.sh` to a
+  stable path the user chooses and point `statusLine.command` in
+  `~/.claude/settings.json` at it (installed-plugin paths are overwritten on
+  update; see the mega-guardrails README).
 - Settings baseline: merge wanted keys from
   [`templates/settings.example.json`](../templates/settings.example.json)
   (attribution off, secret-path denies, sandbox credential blocks). The

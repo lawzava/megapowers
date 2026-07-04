@@ -1,4 +1,4 @@
-<!-- Recommended baseline — adapt to your project; pairs with the megapowers marketplace. -->
+<!-- Recommended baseline; adapt to your project. Pairs with the megapowers marketplace. -->
 
 # Project instructions
 
@@ -26,23 +26,24 @@ just say when to reach for which.
 
 Route specialized work to the best model via the mega-orchestration plugin rather than
 doing everything inline. Routing and run presets live in
-`mega-orchestration/skills/multi-agent-delegation/delegates.toml` — which role (plan review, code review,
-small implementation, visual, browser test) goes to which backend, and how each
-delegate runs. Edit that file to change models or backends; the delegation skill and
-agents read it.
+`mega-orchestration/skills/multi-agent-delegation/delegates.toml`. That file maps each
+role (plan review, code review, small implementation, visual, browser test) to a
+backend and says how each delegate runs; edit it to change models or backends. The
+delegation skill and the delegate agents read it.
 
 Single-writer rule: delegates write only inside worktrees or return patches. The lead
-owns integration and commits. Always run the tests yourself and confirm the output —
+owns integration and commits. Always run the tests yourself and confirm the output;
 never trust a self-reported pass.
 
 For very large audits, migrations, or repeatable multi-agent research, prefer Claude
-Code dynamic workflows (`ultracode` or saved workflows) over hand-managed delegation.
-Use ordinary skills and direct subagents for small or medium tasks.
+Code dynamic workflows (its built-in multi-agent workflow runner, invoked with the
+`ultracode` keyword or a saved workflow) over hand-managed delegation. Use ordinary
+skills and direct subagents for small or medium tasks.
 
 ## Git
 
 - Branch per feature or fix. Never commit directly to `main`.
-- Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`), atomic —
+- Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`), atomic:
   one logical change each.
 - Commit at the human's direction, not as a side effect of a skill step.
 - No attribution, co-author, or session-link trailers in commit messages or PR bodies.
@@ -50,17 +51,17 @@ Use ordinary skills and direct subagents for small or medium tasks.
 
 ## Review & verification
 
-- Get an independent review for risky logic — auth, billing, concurrency, anything
-  with security or data-integrity stakes. This is what **requesting-code-review** and
-  **receiving-code-review** are for; take review feedback with technical rigor, not
+- Get an independent review for risky logic: auth, billing, concurrency, anything
+  with security or data-integrity stakes. This is what requesting-code-review and
+  receiving-code-review are for; take review feedback with technical rigor, not
   reflexive agreement.
-- Show evidence before claiming done. Run the command, read the output, then report —
-  the discipline **verification-before-completion** enforces. Assertions without
+- Show evidence before claiming done. Run the command, read the output, then report:
+  the discipline verification-before-completion enforces. Assertions without
   evidence don't count as complete.
 
 ## Safety
 
-The mega-guardrails deny-destructive hook is an accident backstop — it blocks a handful
+The mega-guardrails deny-destructive hook is an accident backstop: it blocks a handful
 of obviously destructive commands. It is not a sandbox and not a security boundary.
 Don't rely on it to contain untrusted input or risky operations; think before you run.
 

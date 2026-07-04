@@ -35,7 +35,7 @@ primitive the runtime does not expose.
 ## OpenCode
 
 - **Subagents**: available; skills load through Claude-compatible paths (see
-  docs/tool-support.md in this repo).
+  docs/harness-support.md in this repo).
 - **Teams / workflows / hooks**: not provided by this repo for OpenCode. The
   disciplines ride on skill text alone.
 - **Effort**: no documented dial this repo depends on; choose a stronger or

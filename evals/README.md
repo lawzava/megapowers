@@ -1,22 +1,26 @@
 # megapowers evals
 
-A small, portable harness that scores the suite, so a change to a skill is a
-measured effect rather than an opinion. No framework: pure bash plus a Go
-stdlib scorer.
+A small, portable eval harness that scores the skill suite, so a change to a
+skill has a measurable effect size. No framework: pure bash plus a Go stdlib
+scorer.
 
 Two layers, in order of value:
 
-1. Deterministic oracles (the spine). Each scenario ships a `check.sh` that
-   inspects the finished workdir (files, git state, script output) and returns a
-   hard verdict. No model, no API key, so the whole pipeline runs in CI and guards
-   against regressions. Many seed scenarios are artifact tests that exercise the
-   scripts and hooks a skill ships; they double as regression guards for real bugs
-   fixed during development.
-2. Behavior evals (optional, per-harness). A scenario can instead hand a task
-   prompt to a real coding agent (`claude -p`, `codex exec --json`, `opencode run`)
-   and check what it produced, with a paired `--control` run (skill withheld) so we
-   can compute the effect size of a skill, not just assert it fires. A shipped
-   `mock` agent proves this path end-to-end without burning tokens.
+1. Deterministic oracles (the eval spine). Each scenario ships a `check.sh`
+   that inspects the finished workdir (files, git state, script output) and
+   returns a hard verdict. No model, no API key, so the whole pipeline runs in
+   CI and guards against regressions. Many seed scenarios are artifact tests
+   that exercise the scripts and hooks a skill ships; they double as
+   regression guards for real bugs fixed during development.
+2. Behavior evals (optional, run against a real agent). A scenario can
+   instead hand a task prompt to a real coding agent (`claude -p`,
+   `codex exec --json`, `opencode run`) and check what it produced, with a
+   paired `--control` run so we can compute the effect size of a skill, not
+   just assert it fires. Your `agents.toml` command template expresses the
+   two arms, keyed on `{{MODE}}` (for example, a profile or `--add-dir` that
+   includes the skill only in skill mode); the shipped examples leave that
+   wiring to you. A built-in `mock` agent proves the path end-to-end without
+   burning tokens.
 
 ## Layout
 
@@ -25,10 +29,8 @@ evals/
 ├── run.sh                 # run ONE scenario, emit a JSON result row
 ├── run-all.sh             # run every scenario (mock/local), fail on any regression
 ├── score.go               # aggregate rows -> scorecard + skill-vs-control effect size
-├── agents.example.toml    # per-harness agent command templates (copy + edit)
-├── lib/
-│   └── mock-agent.sh       # deterministic stand-in agent for behavior scenarios
-├── studies/                # committed real-agent study protocols + harnesses
+├── agents.example.toml    # per-agent command templates (copy + edit)
+├── studies/                # committed real-agent study protocols + runners
 │   ├── skill-effect/       #   code-correctness effect size (RESULTS.md §2)
 │   ├── process-behavior/   #   process-discipline + pressure/honesty probes (§3, §5a-b)
 │   ├── install-smoke/      #   fresh-env install + first-task load (RESULTS.md §4)
@@ -44,6 +46,18 @@ evals/
     ├── mock/actions.sh     # behavior scenarios: what a compliant agent would do (for the mock)
     └── check.sh            # the oracle: exit 0 pass, 1 fail, 77 indeterminate
 ```
+
+## Scenarios vs studies
+
+The two directories answer different questions and run differently:
+
+- Scenarios (`scenarios/<id>/`) are cheap, oracle-checked units run by
+  `run.sh`/`run-all.sh`. They run in CI on every push, against the mock agent
+  where a scenario needs one.
+- Studies (`studies/<name>/`) are standalone protocols with their own runner
+  scripts. They run real agents, so they need a keyed run (real model
+  credentials and API spend, which CI does not have), and they are the source
+  of the numbers in [`RESULTS.md`](./RESULTS.md).
 
 ## Scenario kinds
 
@@ -75,16 +89,19 @@ evals/run.sh task-brief-boundary                          # artifact: no agent n
 evals/run.sh brainstorm-proportional-gate --agent claude  # behavior: real agent
 evals/run.sh brainstorm-proportional-gate --agent claude --control   # paired control
 
-# score the collected rows into a scorecard. Add --paired so behavior/trigger
-# scenarios also run in CONTROL mode (skill withheld); that paired data is what
-# score.go needs to compute a skill-vs-control effect size. With the mock agent the
-# control run is indeterminate (the mock does nothing without the skill), so a real
-# effect size needs a real --agent; the wiring is the same either way:
+# score the collected rows into a scorecard:
 evals/run-all.sh --paired --json results.jsonl && go run evals/score.go results.jsonl
 ```
 
-Agent command templates live in `agents.example.toml`; copy to `agents.toml` and edit.
-The harness is agent-agnostic: point it at any CLI that takes a prompt and works in a dir.
+`--paired` also runs each behavior/trigger scenario in control mode (skill
+withheld); `score.go` needs that paired data to compute a skill-vs-control
+effect size. With the mock agent the control run is indeterminate (the mock
+does nothing without the skill), so a real effect size needs a real
+`--agent`; the wiring is the same either way.
+
+Agent command templates live in `agents.example.toml`; copy to `agents.toml`
+and edit. The eval harness is agent-agnostic: point it at any CLI that takes
+a prompt and works in a dir.
 
 ## Adding a scenario
 

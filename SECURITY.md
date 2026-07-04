@@ -10,7 +10,8 @@ Nothing in this repository is a security boundary.
   sandbox and OS permissions.
 - The `effect-broker` skill gates irreversible actions by declared action
   class; a model that misdeclares is not stopped by it.
-- Hooks are Claude Code only and fail open by absence on other harnesses.
+- Hooks are Claude Code only. On other harnesses they do not exist, so
+  nothing blocks or gates there.
 
 If your threat model includes a malicious or compromised model, none of these
 help; use OS-level sandboxing.
@@ -25,4 +26,4 @@ normally unnecessary; if you believe your finding is sensitive anyway, say so
 in a minimal issue and a private channel can be arranged.
 
 Please include the exact command/input, the expected vs actual behavior, and
-your runtime (Claude Code / Codex / OpenCode / Antigravity + version).
+your harness (Claude Code / Codex / OpenCode / Antigravity + version).

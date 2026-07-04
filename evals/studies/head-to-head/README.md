@@ -1,17 +1,17 @@
 # Head-to-head: bare vs megapowers vs upstream Superpowers
 
-**Status: committed protocol, no published numbers yet — awaits a keyed run.**
-Nothing in `RESULTS.md` cites this study until real runs exist. It is committed
-now so the comparison the README's positioning implies ("best-in-class") is
-falsifiable by anyone with a key, including against the suite this repo forked
-from.
+**Status**: committed protocol, no published numbers yet; it awaits a keyed
+run. The protocol is committed before any run so that anyone with an API key
+can test the comparison the README's positioning implies, including against
+the upstream suite this repo forked from. `RESULTS.md` will not cite this
+study until real runs exist.
 
 ## Question
 
 The [gauntlet](../gauntlet/) measures a discipline's *wording*, prepended to
-the prompt. This study measures the *delivered product*: install the suite the
-way a user would, give the agent a task that never names a skill, and see what
-changes. Two sub-questions:
+the prompt. This study measures the *delivered product*: install megapowers
+the way a user would, give the agent a task that never names a skill, and see
+what changes. Two sub-questions:
 
 1. **Organic value:** does an installed suite improve discipline over a bare
    harness at all (install → trigger → follow, the full delivery chain)?
@@ -41,11 +41,11 @@ evals/studies/head-to-head/run-h2h.sh --out /tmp/h2h --n 8
 evals/studies/gauntlet/oracle.sh /tmp/h2h
 ```
 
-## Reading the result honestly
+## Interpreting the result
 
 - The gauntlet showed the *wording* moves TDD ordering to 100%. If an
-  installed arm scores below its wording ceiling, the gap is **delivery**
-  (description didn't trigger the skill), not discipline — read
+  installed arm scores below its wording ceiling, the gap is delivery
+  (the description didn't trigger the skill), not discipline; read
   `skills-invoked.txt` to split trigger-misses from follow-misses.
 - The two suites share process-core ancestry, so similar scores on shared
   disciplines are the *expected* outcome, not a failure of the study; report
@@ -61,8 +61,8 @@ evals/studies/gauntlet/oracle.sh /tmp/h2h
 - Same model, same prompt, same fixture, same turn caps in every arm.
 - No megapowers-favoring oracle: the sub-oracles predate this study and score
   behavior, not vocabulary.
-- Publish whatever comes out, including "no difference" and "upstream wins" —
-  the point of committing the protocol before running it.
+- Publish whatever comes out, including "no difference" and "upstream wins";
+  that is the point of committing the protocol before running it.
 
 Claude Code only for now: the arm *is* an installed plugin, and install
 surfaces differ per harness. A Codex variant would follow the same shape via

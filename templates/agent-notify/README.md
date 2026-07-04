@@ -4,14 +4,14 @@ Push a notification when an agent needs you or finishes, so supervision costs
 a glance at your phone instead of watching a terminal. Three small scripts,
 copied and adapted from a working setup:
 
-- `agent-notify` — the transport. Sends a Telegram message (and rings the
+- `agent-notify`: the transport. Sends a Telegram message (and rings the
   terminal bell through tmux when present). Best-effort by design: a network
   blip or missing config never breaks the agent run that called it.
-- `agent-notify-claude` — Claude Code hook wrapper. Filters noise: only
+- `agent-notify-claude`: Claude Code hook wrapper. Filters noise: only
   permission prompts notify from the Notification event, questions and
   plan approvals notify from PreToolUse, and Stop suppresses the false
   "done" while background tasks are still running.
-- `agent-notify-codex` — Codex `notify` program. Maps `agent-turn-complete`
+- `agent-notify-codex`: Codex `notify` program. Maps `agent-turn-complete`
   to "done".
 
 ## Install
