@@ -17,6 +17,11 @@ docs/specs/
 # brainstorm servers) — never part of the published repo.
 .megapowers/
 
+# Local agent state and per-machine MCP config — never part of the published repo.
+.claude/
+.codex/
+.mcp.json
+
 # Sandbox/agent workspace artifacts that materialize inside study dirs — never real content.
 evals/studies/**/.claude/
 evals/studies/**/.mcp.json
