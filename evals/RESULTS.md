@@ -248,7 +248,7 @@ installed skill was discovered and read end to end (the prompt only paraphrases
 the sentence, so an echo of the prompt can't match). Honest caveat: this is a
 strong load-signal, not an unguessable nonce. The sentence descends from the
 public upstream this suite forked from (obra/superpowers, MIT), so a model could
-in principle still reproduce it from training; a truly unguessable proof would
+in principle still reproduce it from training; an unguessable proof would
 plant a random token in the installed copy at install time.
 
 Result: **10/10 PASS across all four harnesses**: Claude Code
@@ -396,8 +396,8 @@ The trigger-recall row is **in-sample recall**: the four tuned descriptions were
 written against these same four prompts, so 100% here measures fit to the tuning
 set, not transfer. The committed held-out prompt set has not been run; its recall
 number will be published when that keyed run happens. This is the weakest
-published number in the repo, and the qualifier is load-bearing (the study README
-and the root README both carry it; this row is where RESULTS states it).
+published number in the repo, and the in-sample qualifier is repeated in the
+study README and the root README; this row is where RESULTS states it.
 
 **The autonomy ladder: squeezing dishonesty channel by channel.** Because
 wording failed, the fix went mechanical, one degree of freedom at a time, each

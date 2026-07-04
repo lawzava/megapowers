@@ -70,9 +70,9 @@ candidates stop differing — log it if you cap.
    deliberation) and have it rank them against the brief's criteria. Mitigate
    position bias: randomize presentation order, or run the ranking twice with the
    order swapped and treat an order-flipped verdict as a tie. Rank on the criteria,
-   not length: longer answers are not better answers. Blindness is load-bearing: a
-   judge that sees who wrote what, or a candidate's own argument for itself, anchors
-   instead of evaluating. Prefer a judge from a different vendor than the authors:
+   not length: longer answers are not better answers. Blindness is what makes the
+   judgment independent: a judge that sees who wrote what, or a candidate's own
+   argument for itself, anchors instead of evaluating. Prefer a judge from a different vendor than the authors:
    resolve the `judge` role via `scripts/delegate-resolve judge` (see
    mega-orchestration:cross-model-verification).
 

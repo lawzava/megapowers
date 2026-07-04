@@ -22,7 +22,7 @@ Store: `.megapowers/memory/`
 - `<slug>.md` — one fact per file, with frontmatter (`name`, `title`, `hook`,
   `type`) and the fact as the body. Link related memories with `[[slug]]`.
 
-## What earns a memory (the load-bearing discipline)
+## What earns a memory
 
 **Save** when it's durable and not otherwise recoverable:
 - a non-obvious decision and its rationale ("we chose X over Y because ...");
