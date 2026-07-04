@@ -312,6 +312,12 @@ fleet forward.
   transport swappable) when an agent needs input or finishes, with a
   noise-filtering wrapper for Claude Code hooks and a Codex notify program.
   See its [README](../templates/agent-notify/README.md).
+- `templates/codex-agents/` holds Codex native subagent role files
+  (`builder.toml`, `reviewer.toml`) mirroring the delegates.toml presets; copy
+  into `~/.codex/agents/` or `<repo>/.codex/agents/`, as their headers explain.
+- `templates/workflows/` holds Claude Code dynamic-workflow scripts
+  (`best-of-n.js`, `audit-fanout.js`); copy into `.claude/workflows/` or
+  `~/.claude/workflows/`. See its [README](../templates/workflows/README.md).
 
 ## Updating
 

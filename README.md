@@ -175,11 +175,9 @@ Prompts, fixtures, and oracles for the TDD result:
 
 ## What it does not do
 
-- Enforce anything outside Claude Code. The hook scripts ship for Claude Code
-  only today; other harnesses have hook surfaces, but a default install wires
-  no ports there (a manual Codex pilot of the destructive-command guard exists,
-  see docs/setup.md), so on Codex, OpenCode, and Antigravity a default install
-  blocks or gates nothing and the skills are advisory wording there.
+- Enforce anything outside Claude Code. On Codex, OpenCode, and Antigravity a
+  default install blocks or gates nothing; the skills are advisory wording
+  there (see the hooks note under "How it works").
 - Act as a security boundary. The destructive-command tripwire stops
   accidents, not anyone trying; see [SECURITY.md](./SECURITY.md).
 - Improve single-shot code correctness on current frontier models. That
@@ -194,9 +192,8 @@ Prompts, fixtures, and oracles for the TDD result:
 - Codex adds this repo as a remote marketplace
   (`codex plugin marketplace add lawzava/megapowers`), then
   `codex plugin add <plugin>@megapowers` per plugin. `mega-guardrails` is not
-  offered there; its hook scripts are Claude Code scripts. A manual Codex
-  pilot of the destructive-command guard exists (see the Codex hooks section of
-  docs/setup.md), but a default install wires nothing.
+  offered there; its hook scripts are Claude Code scripts (the manual Codex
+  pilot of the destructive-command guard is covered in docs/setup.md).
 - Every other harness (OpenCode, Antigravity, Cursor, Copilot, ...) installs
   the skills with the open [skills CLI](https://github.com/vercel-labs/skills):
   `npx skills add lawzava/megapowers`. Skills only; hooks and delegate agents
