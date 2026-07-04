@@ -15,4 +15,22 @@ c085=$(awk '/## Decisions/{d=1} d&&/conf=0.85/{print NR; exit}' "$o")
 grep -q "Blocked — needs attention" "$o" || { echo "blocked items not surfaced in report"; exit 1; }
 grep -q "rc_verify=0" "$o" || { echo "run-verify-status did not pass on a consistent run"; exit 1; }
 grep -qE "^LAST_VERIFY=[0-9]{4}-" "$o" || { echo "verify pass did not stamp LAST_VERIFY into status"; exit 1; }
-echo "ok: run contract holds (scaffold, freeze, append-only, provenance, verify-stamp, confidence-ranked report)"
+
+# run-init's "no --model" note must be informational only: exit 0 when --model IS given
+grep -q "rc_rc0=0" "$o" || { echo "run-init --model X must exit 0 (informational echo poisoned the exit code)"; exit 1; }
+
+# CURSOR must advance to the first undone plan-declared milestone (M1 done, M2 not)
+cursor_section="$(awk '/=== cursor-derive ===/{f=1;next} /=== reopen-init ===/{f=0} f' "$o")"
+printf '%s\n' "$cursor_section" | grep -q '^CURSOR=M2' || { echo "CURSOR did not derive to M2 after M1's result"; exit 1; }
+
+# Reopen: a later action entry for an already-done milestone must undo done-ness,
+# both for STATE (not done) and CURSOR (back to that milestone)
+reopen_section="$(awk '/=== reopen-derive ===/{f=1;next} /=== paused-init ===/{f=0} f' "$o")"
+printf '%s\n' "$reopen_section" | grep -q '^STATE=working' || { echo "a later action entry for M2 should reopen it, so STATE must not be done"; exit 1; }
+printf '%s\n' "$reopen_section" | grep -q '^CURSOR=M2' || { echo "CURSOR should return to M2 once its result is superseded by a later action"; exit 1; }
+
+# run-report's Activity section must count paused journal entries
+paused_section="$(awk '/=== paused-report ===/{f=1} f' "$o")"
+printf '%s\n' "$paused_section" | grep -qE '^- paused: 1$' || { echo "run-report Activity section does not count paused entries"; exit 1; }
+
+echo "ok: run contract holds (scaffold, freeze, append-only, provenance, verify-stamp, confidence-ranked report, init exit code, derived cursor, reopen-on-activity, paused activity count)"

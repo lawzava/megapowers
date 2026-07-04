@@ -2,14 +2,19 @@
 # run-derive-status <run-id> — regenerate the run's status from the journal.
 # The journal is the only hand-written record; status is DERIVED, so it cannot
 # disagree with the trail. For every milestone tag seen in journal messages
-# ("M2: ...", "step-3: ..."), the last result/blocked entry decides its state:
-#   result -> done, blocked -> blocked, only action/decision -> in-progress.
+# ("M2: ...", "step-3: ..."), the last entry decides its state, in append order
+# (the journal is append-only, so a later line is a later event):
+#   result -> done, blocked -> blocked, action/decision -> in-progress (this
+#   also REOPENS a milestone: an action/decision entry after its result flips
+#   it from done back to in-progress).
 # STATE is fully derived, in precedence order:
 #   blocked (any milestone blocked) > paused (last journal entry is kind
 #   paused) > done (>=1 milestone and all derive done) > working (any tagged
 #   activity) > previous value (empty journal, e.g. initialized).
 # A hand-edited STATE that the journal does not support is overwritten here.
-# CURSOR/LEVEL/LAST_VERIFY lines are preserved. Portable: bash + coreutils + awk.
+# CURSOR is DERIVED too: the first plan-declared milestone that is not done
+# (reopened counts as not done), or the last declared milestone once all are
+# done. LEVEL/LAST_VERIFY are preserved verbatim. Portable: bash + coreutils + awk.
 set -uo pipefail
 base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
 [ $# -ge 1 ] || { echo "usage: run-derive-status <run-id>" >&2; exit 2; }
@@ -25,6 +30,12 @@ summary="$(awk -F' \\| ' '
     if (!(t in seen)) { order[++n] = t; seen[t] = 1 }
     if ($2 == "result") state[t] = "done"
     else if ($2 == "blocked") state[t] = "blocked"
+    else if ($2 == "action" || $2 == "decision") {
+      # a later action/decision reopens an already-done milestone; otherwise
+      # only claim it if nothing has spoken for it yet (blocked stays sticky)
+      if ((t in state) && state[t] == "done") state[t] = "in-progress"
+      else if (!(t in state)) state[t] = "in-progress"
+    }
     else if (!(t in state)) state[t] = "in-progress"
   }
   END {
@@ -41,14 +52,27 @@ n_done="$(printf '%s\n' "$summary" | sed -n 's/^N_DONE=//p')"
 
 # "done" must cover the DECLARED plan, not just the tags that happen to appear
 # in the journal: a run that only ever journals M1 must not derive done while
-# plan.md declares M2. Declared tags are the "## <tag>: ..." headings.
+# plan.md declares M2. Declared tags are the "## <tag>: ..." headings, in plan
+# order, the same order CURSOR walks to find the first one not yet done.
 undeclared_undone=0
+cursor=""
+last_declared=""
 if [ -f "$dir/plan.md" ]; then
   while IFS= read -r dtag; do
     [ -n "$dtag" ] || continue
-    printf '%s\n' "$derived" | grep -qx "MILESTONE_${dtag}=done" || undeclared_undone=$((undeclared_undone + 1))
+    last_declared="$dtag"
+    if printf '%s\n' "$derived" | grep -qx "MILESTONE_${dtag}=done"; then
+      continue
+    fi
+    undeclared_undone=$((undeclared_undone + 1))
+    [ -z "$cursor" ] && cursor="$dtag"
   done < <(sed -n 's/^## \([A-Za-z][A-Za-z0-9_-]*\):.*$/\1/p' "$dir/plan.md")
 fi
+# all declared milestones done (or none declared): CURSOR sits on the last one,
+# falling back to whatever CURSOR already said if there is nothing declared at all
+[ -z "$cursor" ] && cursor="$last_declared"
+old_cursor="$(sed -n 's/^CURSOR=//p' "$dir/status" | head -1)"
+[ -z "$cursor" ] && cursor="$old_cursor"
 
 old_state="$(sed -n 's/^STATE=//p' "$dir/status" | head -1)"
 if printf '%s\n' "$derived" | grep -q '=blocked$'; then
@@ -66,7 +90,8 @@ fi
 tmp="$dir/status.derive.$$"
 {
   printf 'STATE=%s\n' "${new_state:-working}"
-  grep -E '^(CURSOR|LEVEL|LAST_VERIFY)=' "$dir/status" 2>/dev/null
+  [ -n "$cursor" ] && printf 'CURSOR=%s\n' "$cursor"
+  grep -E '^(LEVEL|LAST_VERIFY)=' "$dir/status" 2>/dev/null
   [ -n "$derived" ] && printf '%s\n' "$derived"
 } > "$tmp" && mv "$tmp" "$dir/status"
 echo "run-derive-status: status derived from journal ($(printf '%s\n' "$derived" | grep -c . ) milestone(s); STATE=${new_state:-working})"

@@ -23,5 +23,39 @@ export MEGAPOWERS_RUN_DIR="$PWD/.megapowers/run"
   # never certified — regression guard for the stamp added after the live probe)
   echo "=== verify-stamp ==="; "$S/run-verify-status" r1; echo "rc_verify=$?"
   grep '^LAST_VERIFY=' "$MEGAPOWERS_RUN_DIR/r1/status"
+
+  # run-init's informational "no --model" echo must never own the exit code
+  # (regression guard: previously the last command was the failed test itself)
+  echo "=== rc0 ==="; "$S/run-init" rc0 --model test-model >/dev/null 2>&1; echo "rc_rc0=$?"
+
+  # CURSOR derivation: first plan-declared milestone whose result is missing
+  echo "=== cursor-init ==="
+  "$S/run-init" r2 --model test-model >/dev/null
+  cat > "$MEGAPOWERS_RUN_DIR/r2/plan.md" <<'EOF'
+# Plan
+## M1: first
+- acceptance: x
+- status: pending
+
+## M2: second
+- acceptance: y
+- status: pending
+EOF
+  MEGAPOWERS_MODEL=claude "$S/run-journal" r2 result 0.9 "M1: shipped first"
+  "$S/run-derive-status" r2 >/dev/null
+  echo "=== cursor-derive ==="; cat "$MEGAPOWERS_RUN_DIR/r2/status"
+
+  # Reopen: an action entry AFTER a milestone's result must reopen it
+  echo "=== reopen-init ==="
+  MEGAPOWERS_MODEL=claude "$S/run-journal" r2 result 0.9 "M2: shipped second"
+  MEGAPOWERS_MODEL=claude "$S/run-journal" r2 action 0.9 "M2: found a regression, reopening"
+  "$S/run-derive-status" r2 >/dev/null
+  echo "=== reopen-derive ==="; cat "$MEGAPOWERS_RUN_DIR/r2/status"
+
+  # run-report must count paused entries in its Activity section
+  echo "=== paused-init ==="
+  "$S/run-init" r3 --model test-model >/dev/null
+  MEGAPOWERS_MODEL=claude "$S/run-journal" r3 paused 0.9 "M1: pausing for human input"
+  echo "=== paused-report ==="; "$S/run-report" r3
 } > out.txt 2>&1
 cat out.txt

@@ -78,4 +78,7 @@ EOF
 [ -n "$model" ] && [ ! -f "$dir/model" ] && printf '%s\n' "$model" > "$dir/model"
 
 echo "run-init: scaffolded $dir (level=$level${model:+, model=$model})"
-[ -z "$model" ] && echo "run-init: no --model given — pass --model <your model id> (or prefix journal calls with MEGAPOWERS_MODEL=<id>) so journal provenance is recorded"
+if [ -z "$model" ]; then
+  echo "run-init: no --model given — pass --model <your model id> (or prefix journal calls with MEGAPOWERS_MODEL=<id>) so journal provenance is recorded"
+fi
+exit 0
