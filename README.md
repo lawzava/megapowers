@@ -52,6 +52,44 @@ that exists only inside an installed skill, and report what it did.
 Anything that would widen permissions or edit your settings requires your
 explicit approval.
 
+## How to use it
+
+There is no command surface to learn. Describe the work in plain language; the
+session-start rule makes the agent check for a matching skill and follow it.
+Naming a skill explicitly also works ("use the brainstorming skill"), but the
+trigger tuning exists so you do not have to.
+
+The core loop, idea to merged code (all in the `megapowers` plugin):
+
+1. "I want to add <feature>": `brainstorming` pins down intent, requirements,
+   and approach before any code.
+2. "Write the plan": `writing-plans` turns the agreed design into steps.
+3. "Implement it": `test-driven-development` writes the failing test first,
+   watches it fail, then implements.
+4. "Is it done?": `verification-before-completion` runs the checks and shows
+   the output; no success claim without evidence.
+5. "Ship it": `requesting-code-review`, then `finishing-a-development-branch`
+   (merge, PR, keep, or discard).
+
+Each skill has its own entry conditions, so you can join the loop anywhere; a
+one-line fix does not have to start at step 1.
+
+The five most common uses:
+
+1. Build a feature end to end: the loop above, from one sentence of intent.
+2. Fix a bug: "this test is failing" triggers `systematic-debugging`, which
+   finds the root cause before any fix, then hands off to
+   `test-driven-development` for a regression test.
+3. Get risky code independently reviewed: for auth, billing, or concurrency
+   changes, `cross-model-verification` has a different vendor's model try to
+   refute the work (`mega-orchestration`).
+4. Run a long task unattended: `autonomous-run` keeps a charter, plan,
+   journal, and machine-readable status the run can resume from across
+   sessions (`mega-orchestration`).
+5. Start a new project: the greenfield stack pickers give an opinionated,
+   time-stamped stack for Go, Python, or TypeScript (`mega-go`,
+   `mega-python`, `mega-ts`).
+
 ## How it works
 
 No framework, no service, no API key of its own. The mechanism:
