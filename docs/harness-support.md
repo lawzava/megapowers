@@ -1,14 +1,17 @@
 # Harness support matrix
 
-Last reviewed: 2026-07-02.
+Last reviewed: 2026-07-04.
 
 This repo is cross-harness, but not every harness has the same extension
 surface. Two facts apply across the whole matrix:
 
-- `mega-guardrails` is Claude Code only. Its value is Claude Code hook
-  scripts (PreToolUse/PostToolUse) plus a Linux statusline, none of which run
-  on Codex, OpenCode, or Antigravity, so it ships no manifest for them.
-  Installing it elsewhere would advertise protection that does not exist.
+- `mega-guardrails` ships for Claude Code only today. Its value is a set of
+  Claude Code hook scripts (PreToolUse/PostToolUse) plus a Linux statusline.
+  Codex, OpenCode (through plugins), and Antigravity each have their own hook
+  surfaces, but these scripts are not yet ported to them, so out of the box
+  nothing blocks or gates there. It therefore ships no manifest for those
+  harnesses; installing it elsewhere would advertise enforcement that is not in
+  place.
 - The Gemini CLI was discontinued for consumer use in mid-2026 and is no
   longer a target. Visual/browser work routes through `playwright-cli` plus a
   vision-capable model (see `mega-orchestration`).
@@ -20,9 +23,23 @@ Status: supported.
 - Plugin marketplace: `.claude-plugin/marketplace.json`.
 - Plugin manifests: `plugins/*/.claude-plugin/plugin.json`.
 - Native components used here: `skills/`, `agents/`, `hooks/`.
+- Skill standard: skills follow the Agent Skills open standard (agentskills.io),
+  the same `skills/<name>/SKILL.md` layout the other harnesses read; Claude Code
+  layers its own frontmatter extensions on top.
+- Lightest install: a folder under `~/.claude/skills/` (or `.claude/skills/`)
+  that contains a `.claude-plugin/plugin.json` loads as `<name>@skills-dir` the
+  next session, with no marketplace or install step.
+- Manifest validation: `claude plugin validate <path> --strict` treats warnings
+  as errors, so it belongs in CI; `claude plugin eval` runs a plugin's eval
+  cases (with a no-plugin baseline arm).
 - Dynamic workflows: Claude Code's built-in multi-agent workflow runner is
   separate from these skills. Use it for very large audits, migrations, and
   repeated orchestrated jobs; use these skills for normal process guidance.
+  Repeatable multi-agent shapes can be saved to `.claude/workflows/` (shared
+  through the repo, invoked as `/<name>`), but plugins cannot ship workflows, so
+  the marketplace cannot distribute them; the templates carry examples instead.
+  Trust caveat: workflow subagents always run in acceptEdits, so their file
+  edits are auto-approved regardless of session mode.
 
 ## Codex
 
@@ -33,9 +50,11 @@ Status: supported for skills and marketplace metadata.
 - Plugin manifests: `plugins/*/.codex-plugin/plugin.json` for `megapowers`,
   `mega-go`, `mega-python`, `mega-ts`, and `mega-orchestration`.
 - Native multi-agent work: prefer Codex native subagents when running inside
-  Codex. From other harnesses, use `codex exec` or a private bridge (a
-  user-configured MCP server that exposes Codex to another harness; this repo
-  does not ship one).
+  Codex. From other harnesses, reach Codex through first-party channels:
+  `codex exec` (one-shot), the Codex SDK, or `codex mcp-server`, the first-party
+  MCP server that runs Codex over stdio and exposes the `codex` and
+  `codex-reply` tools. Use `codex mcp-server` as the persistent-thread channel
+  from a non-Codex lead.
 - `mega-guardrails` is not listed for Codex (see the note at the top).
 
 ## OpenCode
@@ -43,31 +62,59 @@ Status: supported for skills and marketplace metadata.
 Status: supported through shared instructions and portable skills.
 
 - Repo instructions: `AGENTS.md`.
-- Skill format: `skills/<name>/SKILL.md` with `name` and `description`.
+- Skill format: `skills/<name>/SKILL.md`. `name` must match the directory name
+  (regex `^[a-z0-9]+(-[a-z0-9]+)*$`), and `description` is capped at 1024
+  characters; every skill here validates.
 - Installation: `npx skills add lawzava/megapowers` (the skills CLI discovers
   this repo's skills through the marketplace manifest), or copy/symlink
-  selected canonical skill directories into `.opencode/skills/`,
-  `.agents/skills/`, or another OpenCode-supported skill path.
-- Plugins: OpenCode plugins are JavaScript or TypeScript modules. This repo does
-  not ship an OpenCode plugin module because the current shell hooks are
-  Claude-specific.
+  selected canonical skill directories into any discovery path below.
+- Discovery paths (project paths walk up to the git root):
+
+  | Scope   | Paths                                                                   |
+  |---------|-------------------------------------------------------------------------|
+  | Project | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/`               |
+  | Global  | `~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`  |
+
+  OpenCode invokes skills through a native `skill` tool, gated by a
+  `permission.skill` config (allow / ask / deny patterns, per agent). The
+  `~/.claude/skills/` and `~/.agents/skills/` fallbacks can be turned off with
+  `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS` when you want OpenCode to read only its
+  own paths.
+- Plugins: OpenCode plugins are JavaScript or TypeScript modules with
+  `tool.execute.before/after` hooks, so a guardrail port is feasible here. This
+  repo does not ship one yet; the current shell hooks are Claude Code scripts
+  and have not been ported.
 
 ## Google Antigravity
 
-Status: documented with minimal manifests.
+Status: supported as a skills target; CLI plugin manifests ship.
 
-- CLI plugin manifests: `plugins/*/plugin.json`.
-- Native skill shape: flat markdown files in `.agents/skills/` or plugin
-  `skills/`.
-- This repo keeps canonical skills in the open agent skill layout
-  `skills/<name>/SKILL.md`. Convert or symlink only the specific skills you need
-  if your Antigravity CLI does not import that nested layout directly.
-- CLI plugin manifests ship for `megapowers`, `mega-go`, `mega-python`,
-  `mega-ts`, and `mega-orchestration`; `mega-guardrails` is not offered (see
-  the note at the top).
-- Current Antigravity workflow concepts to mirror in docs: `/agents` for
-  subagent management, `/tasks` for background processes, and `/artifact` for
-  reviewable plans, diffs, screenshots, and approvals.
+- Terminal harness: the Antigravity CLI (`agy`) is the successor to the
+  discontinued Gemini CLI. Migrators can run `agy plugin import gemini` to
+  register existing Gemini CLI extensions.
+- Native skill shape: the nested `skills/<name>/SKILL.md` layout is
+  Antigravity's native format, so this repo's canonical skills import as-is with
+  no conversion. Project skills live in `<workspace>/.agents/skills/<name>/`;
+  the global path read by all Antigravity flavors (IDE, CLI, Agent Manager) is
+  `~/.gemini/config/skills/<name>/`. `description` is required; `name` defaults
+  to the directory name.
+- CLI plugin manifests: `plugins/*/plugin.json` ship for `megapowers`,
+  `mega-go`, `mega-python`, `mega-ts`, and `mega-orchestration`;
+  `mega-guardrails` is not offered (see the note at the top).
+- Verify a manual install with the same first-task probe used elsewhere:
+  install one plugin or skill, then in a fresh Antigravity session ask the agent
+  to load `test-driven-development` and quote its core-principle sentence (see
+  [`setup.md`](./setup.md)). A correct quote proves discovery and loading.
+- Command glossary: `/agents` (Agent Manager: subagent approvals and activity),
+  `/tasks` (Task Manager: shell execution logs), `/skills` (browse loaded local
+  and global skills), `/hooks` (browse active hooks), and `/artifact` (review
+  agent-produced files, plans, and diffs). Antigravity keeps its implementation
+  plans and walkthroughs in its own artifact/scratch area rather than
+  guaranteed repo-local files, so a file contract that expects repo-local files
+  (for example autonomous-run journals) should not assume the harness writes
+  them into the project tree.
+- Disambiguation: command names do not port across harnesses. Antigravity's
+  `/agents` opens the Agent Manager; Claude Code's `/agents` is unrelated.
 
 ## Operating systems
 
