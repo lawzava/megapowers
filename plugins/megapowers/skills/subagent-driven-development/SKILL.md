@@ -114,7 +114,7 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
 
-**NEEDS_CONTEXT:** The implementer needs information that wasn't provided. Provide the missing context and re-dispatch.
+**NEEDS_CONTEXT:** The implementer needs information that wasn't provided. Provide the missing context and re-dispatch. On a harness with resumable subagents (Claude Code's SendMessage), resume the same implementer with the missing context instead of re-dispatching a recap; it keeps its full history. A fix after review still uses a fresh subagent (never the spent implementer).
 
 **BLOCKED:** The implementer cannot complete the task. Assess the blocker:
 1. If it's a context problem, provide more context and re-dispatch with the same model

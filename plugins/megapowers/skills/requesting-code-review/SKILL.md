@@ -64,6 +64,13 @@ billing, auth, concurrency, or security, add an independent different-vendor
 pass via mega-orchestration:cross-model-verification (if installed) — a
 same-model review shares the author's blind spots.
 
+**Harness-native deep review.** On Claude Code, `/code-review ultra` (alias
+`/ultrareview`; `claude ultrareview --json` for CI) runs a cloud fleet of
+reviewer agents that independently reproduce their findings, a deeper
+same-vendor pass than the subagent above. Being same-vendor, it complements
+rather than replaces the cross-model verification, which is what catches a
+single vendor's blind spots.
+
 ## Example
 
 ```

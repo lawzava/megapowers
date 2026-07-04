@@ -71,6 +71,8 @@ Subagent (general-purpose): "Fix tool-approval-race-conditions.test.ts failures"
 
 Multiple dispatch calls in one response run in parallel. One per response runs sequentially.
 
+On a harness with resumable subagents (Claude Code's SendMessage), send follow-up work to the same agent instead of re-dispatching a fresh one with a recap; a resumed subagent keeps its full history. Agents that need identical starting context can be forks, which inherit the conversation and share the parent's prompt cache, so they are cheaper than fresh subagents.
+
 ### 4. Review and Integrate
 
 When agents return:

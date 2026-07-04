@@ -59,10 +59,19 @@ command, verify that still exists before acting on it.
 
 ## Scope
 
-This is **project** memory, portable across runtimes and separate from any host's
-global/personal memory feature. By default it lives under `.megapowers/memory/`,
-which the repo git-ignores (personal notes). To **share** memory with a team, don't
-just `git add -f` into an ignored path — instead either point `MEGAPOWERS_MEMORY_DIR`
-at a committed location (e.g. `docs/memory/`), or add a negation for the shared
-subpath to `.gitignore` (e.g. `!.megapowers/memory/`) so it's tracked normally. One
-choice, made per project.
+This is **project** memory: a plain-markdown store any runtime can read that
+travels in the repo. Two native stores now overlap it on Claude Code: auto
+memory (self-written under `~/.claude/projects/<project>/memory/`, machine-local
+and never in the repo) and subagent memory (the `memory: project` frontmatter
+field, committed to `.claude/agent-memory/<name>/`). The surviving differentiator
+is exactly this store's shape: repo-committed and readable by every harness, not
+Claude-only and not machine-local. Watch for double-bookkeeping: on Claude Code
+all three fill in parallel, so keep one home per fact and cross-reference rather
+than copy a fact into two stores that then drift.
+
+By default it lives under `.megapowers/memory/`, which the repo git-ignores
+(personal notes). To **share** memory with a team, don't just `git add -f` into an
+ignored path — instead either point `MEGAPOWERS_MEMORY_DIR` at a committed location
+(e.g. `docs/memory/`), or add a negation for the shared subpath to `.gitignore`
+(e.g. `!.megapowers/memory/`) so it's tracked normally. One choice, made per
+project.
