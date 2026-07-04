@@ -52,7 +52,99 @@ func (t tally) rate() (float64, int) {
 	return float64(t.pass) / float64(n), n
 }
 
+// logFactorial returns log(n!) via lgamma(n+1); it never overflows.
+func logFactorial(n int) float64 {
+	v, _ := math.Lgamma(float64(n + 1))
+	return v
+}
+
+// logChoose returns log(C(n, k)).
+func logChoose(n, k int) float64 {
+	return logFactorial(n) - logFactorial(k) - logFactorial(n-k)
+}
+
+// logHyper returns the log of the exact hypergeometric point probability of the
+// 2x2 table [[a, b], [c, d]] with all four margins held fixed.
+func logHyper(a, b, c, d int) float64 {
+	return logChoose(a+b, a) + logChoose(c+d, c) - logChoose(a+b+c+d, a+c)
+}
+
+// fisherTwoSided returns the two-sided Fisher exact p-value for the 2x2 table
+// [[a, b], [c, d]] (row 1 = skill pass/fail, row 2 = control pass/fail).
+//
+// Convention: hold all four margins fixed and sum the exact hypergeometric
+// point probability of every table whose point probability is <= the observed
+// table's (the standard "sum of tables at least as extreme" two-sided rule that
+// R's fisher.test uses). Log-factorials keep the factorials from overflowing;
+// at the n used here (<=36) the float64 accumulation is exact to far under the
+// 1e-9 the self-test asserts. Exact ties are counted via a small relative
+// tolerance (1e-7, matching R), so the two boundary tables of a 12/12-vs-0/12
+// split both contribute.
+func fisherTwoSided(a, b, c, d int) float64 {
+	n1 := a + b // skill row total
+	n2 := c + d // control row total
+	k := a + c  // total passes (column-1 total)
+	logP0 := logHyper(a, b, c, d)
+	lo := 0
+	if k-n2 > lo {
+		lo = k - n2
+	}
+	hi := n1
+	if k < hi {
+		hi = k
+	}
+	const tol = 1e-7 // relative tie tolerance in log space, per R's fisher.test
+	sum := 0.0
+	for aa := lo; aa <= hi; aa++ {
+		bb := n1 - aa
+		cc := k - aa
+		dd := n2 - cc
+		lp := logHyper(aa, bb, cc, dd)
+		if lp <= logP0+tol {
+			sum += math.Exp(lp)
+		}
+	}
+	if sum > 1 {
+		sum = 1
+	}
+	return sum
+}
+
+// selftest verifies the Fisher exact test against three known 2x2 tables and
+// returns the number of failed assertions (0 = pass). Wired into run-all.sh so
+// a statistics regression fails the suite.
+func selftest() int {
+	fails := 0
+	check := func(name string, got, want, tol float64) {
+		if math.Abs(got-want) > tol {
+			fmt.Printf("FAIL %s: got %.12g want %.12g (tol %g)\n", name, got, want, tol)
+			fails++
+		} else {
+			fmt.Printf("ok   %s: %.12g (want %.12g)\n", name, got, want)
+		}
+	}
+	// 12/12 vs 0/12: the two most extreme tables of a 24-run split.
+	// one-tail = 1/C(24,12) = 3.698e-07; two-sided = 2/C(24,12) = 7.396e-07.
+	check("12/12 vs 0/12 one-tail", math.Exp(logHyper(12, 0, 0, 12)), 3.698e-07, 1e-9)
+	check("12/12 vs 0/12 fisher_p", fisherTwoSided(12, 0, 0, 12), 7.396e-07, 1e-9)
+	// 3/10 vs 2/10: every table is at least as probable as the observed one,
+	// so the two-sided p-value is exactly 1.
+	check("3/10 vs 2/10 fisher_p", fisherTwoSided(3, 7, 2, 8), 1.0, 1e-9)
+	if fails == 0 {
+		fmt.Println("score.go selftest: PASS")
+	} else {
+		fmt.Printf("score.go selftest: FAIL (%d assertion(s))\n", fails)
+	}
+	return fails
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--selftest" {
+		if selftest() != 0 {
+			os.Exit(1)
+		}
+		return
+	}
 	var r *bufio.Scanner
 	if len(os.Args) > 1 {
 		f, err := os.Open(os.Args[1])
@@ -124,6 +216,7 @@ func main() {
 	type eff struct {
 		scenario         string
 		p1, p2, delta, z float64
+		fisher           float64
 		n1, n2           int
 	}
 	var effs []eff
@@ -143,22 +236,26 @@ func main() {
 		if se > 0 {
 			z = (p1 - p2) / se
 		}
-		effs = append(effs, eff{s, p1, p2, p1 - p2, z, n1, n2})
+		// Fisher exact is valid at these n (and 0%/100% cells) where the pooled
+		// z's normal approximation is not; both are reported so the reader can
+		// prefer the exact p-value.
+		fisher := fisherTwoSided(sk.pass, sk.fail, ct.pass, ct.fail)
+		effs = append(effs, eff{s, p1, p2, p1 - p2, z, fisher, n1, n2})
 	}
 	if len(effs) > 0 {
 		fmt.Println("## Skill effect size (skill vs control)")
 		fmt.Println()
-		fmt.Println("| scenario | skill pass% (n) | control pass% (n) | Δ | z |")
-		fmt.Println("|---|---|---|---|---|")
+		fmt.Println("| scenario | skill pass% (n) | control pass% (n) | Δ | z | fisher_p |")
+		fmt.Println("|---|---|---|---|---|---|")
 		for _, e := range effs {
 			zs := "n/a"
 			if !math.IsNaN(e.z) {
 				zs = fmt.Sprintf("%.2f", e.z)
 			}
-			fmt.Printf("| %s | %.0f%% (%d) | %.0f%% (%d) | %+.0f%% | %s |\n",
-				e.scenario, e.p1*100, e.n1, e.p2*100, e.n2, e.delta*100, zs)
+			fmt.Printf("| %s | %.0f%% (%d) | %.0f%% (%d) | %+.0f%% | %s | %.3g |\n",
+				e.scenario, e.p1*100, e.n1, e.p2*100, e.n2, e.delta*100, zs, e.fisher)
 		}
 		fmt.Println()
-		fmt.Println("_z is a two-proportion z-score; |z|>1.96 ≈ p<0.05. Small n → treat as directional, and grow the run count before claiming significance._")
+		fmt.Println("_z is a two-proportion z-score; |z|>1.96 ≈ p<0.05. fisher_p is the two-sided Fisher exact p-value, valid at small n and boundary (0%/100%) cells where z is not. Small n → treat as directional, and grow the run count before claiming significance._")
 	}
 }

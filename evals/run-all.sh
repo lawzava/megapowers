@@ -54,6 +54,18 @@ for sdir in "$EVALS"/scenarios/*/; do
   fi
 done
 
+# score.go statistics self-test (Fisher exact known values); a stats regression
+# fails the run. Guarded so environments without a Go toolchain still run evals.
+if command -v go >/dev/null 2>&1; then
+  if go run "$EVALS/score.go" --selftest >/dev/null 2>&1; then
+    pass=$((pass+1)); printf '  \033[32mPASS\033[0m score.go --selftest\n'
+  else
+    fail=$((fail+1)); failed_ids="$failed_ids score.go--selftest"; printf '  \033[31mFAIL\033[0m score.go --selftest\n'
+  fi
+else
+  indet=$((indet+1)); printf '  \033[33mINDET\033[0m score.go --selftest (go not installed)\n'
+fi
+
 [ -n "$jsonout" ] && cp "$rows" "$jsonout"
 echo
 echo "== evals: $pass passed, $fail failed, $indet indeterminate (agent: $agent) =="
