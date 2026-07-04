@@ -6,24 +6,43 @@
 #
 # Reads a restricted TOML subset matching delegates.toml: [section] and
 # [section.name] headers (internal whitespace tolerated), one `key = value` per
-# line, values either bare or single/double quoted, `#` comments outside quotes.
-# Multi-line strings, inline tables, and arrays are not parsed.
+# line, values either bare or single/double quoted, `#` comments outside quotes,
+# plus single-line arrays of quoted strings for the `[fallbacks]` keys. Multi-line
+# strings and inline tables are not parsed.
 #
-# Usage: delegate-resolve <role> [--config <delegates.toml>] [--list]
-# Exit:  0 resolved · 2 usage/config error · 3 unknown role · 4 provider disabled
+# Resolution walks the role's fallback chain (or its single [roles] provider when it
+# has none), skipping any candidate that is --excluded, disabled, or whose CLI is not
+# installed (checked with `command -v <binary>`: a route to an absent CLI is a
+# fabricated primitive). The first usable candidate wins.
+#
+# Usage:
+#   delegate-resolve <role> [--config <file>] [--exclude <vendor|provider>]... [--list]
+#   delegate-resolve --preset <name> [--config <file>]
+#   delegate-resolve --list-presets [--config <file>]
+# Exit:  0 resolved · 2 usage/config/parse error · 3 unknown role OR no available
+#        route (every candidate excluded/disabled/absent) · 4 provider disabled (a
+#        single-route role whose only provider is switched off in config)
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 toml="${DELEGATES_TOML:-$here/../delegates.toml}"   # scripts/../delegates.toml
 
-usage() { echo "usage: delegate-resolve <role> [--config <delegates.toml>] [--list]" >&2; }
+usage() {
+  echo "usage: delegate-resolve <role> [--config <file>] [--exclude <vendor|provider>]... [--list]" >&2
+  echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets" >&2
+}
 
-role=""; list=0
+role=""; list=0; preset=""; list_presets=0; excludes=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
               toml="$2"; shift 2 ;;
+    --exclude) [ $# -ge 2 ] || { echo "delegate-resolve: --exclude needs a vendor or provider name" >&2; usage; exit 2; }
+              excludes+=("$2"); shift 2 ;;
+    --preset) [ $# -ge 2 ] || { echo "delegate-resolve: --preset needs a name" >&2; usage; exit 2; }
+              preset="$2"; shift 2 ;;
     --list) list=1; shift ;;
+    --list-presets) list_presets=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) usage; exit 2 ;;
     *) role="$1"; shift ;;
@@ -31,13 +50,30 @@ while [ $# -gt 0 ]; do
 done
 [ -f "$toml" ] || { echo "delegate-resolve: no config at $toml" >&2; exit 2; }
 
+# --- restricted-TOML parse guard -------------------------------------------------
+# A syntactically broken config must fail loudly (exit 2, naming the line), not be
+# mistaken for an unknown role (exit 3). Every non-blank, non-comment line must be a
+# [section] header or a `key =` assignment.
+lint="$(awk '
+  { s=$0; sub(/^[[:space:]]+/,"",s); sub(/[[:space:]]+$/,"",s) }
+  s=="" || s ~ /^#/ { next }
+  s ~ /^\[[A-Za-z0-9_.-]+\][[:space:]]*(#.*)?$/ { next }
+  s ~ /^[A-Za-z0-9_.-]+[[:space:]]*=/ { next }
+  { printf "%d\t%s", NR, $0; exit }
+' "$toml")"
+if [ -n "$lint" ]; then
+  ln="${lint%%$'\t'*}"; txt="${lint#*$'\t'}"
+  echo "delegate-resolve: parse error in $toml at line $ln: $txt" >&2
+  exit 2
+fi
+
+# --- readers ---------------------------------------------------------------------
 # does a [section] (or [section.name]) header exist? (internal whitespace tolerated)
 section_exists() { awk -v sec="[$1]" '{h=$0; gsub(/[[:space:]]/,"",h)} h==sec {found=1; exit} END{exit !found}' "$toml"; }
 
 list_roles() { awk '{h=$0; gsub(/[[:space:]]/,"",h)} h=="[roles]"{r=1;next} /^[[:space:]]*\[/{r=0} r && /=/{l=$0;sub(/=.*/,"",l);gsub(/[[:space:]]/,"",l);if(l!="")print l}' "$toml"; }
 
-if [ "$list" -eq 1 ]; then list_roles; exit 0; fi
-[ -n "$role" ] || { usage; exit 2; }
+list_preset_names() { awk '{h=$0; gsub(/[[:space:]]/,"",h)} h ~ /^\[presets\./{n=h; sub(/^\[presets\./,"",n); sub(/\].*/,"",n); if(n!="")print n}' "$toml"; }
 
 # read a scalar key from a named [section] (handles [roles] and [providers.name];
 # tolerates internal header whitespace; unquotes single- or double-quoted values).
@@ -55,33 +91,118 @@ section_val() {  # $1=section header (e.g. "roles" | "providers.codex") $2=key
   ' "$toml"
 }
 
-provider="$(section_val roles "$role")"
-if [ -z "$provider" ]; then
+# read the ordered fallback chain for a role from [fallbacks] (single-line array of
+# quoted strings), one provider per line.
+fallbacks_of() {  # $1=role
+  awk -v key="$1" '
+    { hn=$0; gsub(/[[:space:]]/,"",hn) }
+    hn=="[fallbacks]" {inx=1; next}
+    /^[[:space:]]*\[/ {inx=0}
+    inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
+      rest=$0; sub(/^[^=]*=/,"",rest)
+      while (match(rest, /"[^"]*"/)) {
+        print substr(rest, RSTART+1, RLENGTH-2)
+        rest=substr(rest, RSTART+RLENGTH)
+      }
+      exit
+    }
+  ' "$toml"
+}
+
+# --- list / preset modes ---------------------------------------------------------
+if [ "$list" -eq 1 ]; then list_roles; exit 0; fi
+if [ "$list_presets" -eq 1 ]; then list_preset_names; exit 0; fi
+
+if [ -n "$preset" ]; then
+  if ! section_exists "presets.$preset"; then
+    echo "delegate-resolve: no preset '$preset' in $toml" >&2
+    echo "presets available:" >&2; list_preset_names | sed 's/^/  /' >&2
+    exit 3
+  fi
+  echo "PRESET=$preset"
+  for k in sandbox approval worktree cap use; do
+    v="$(section_val "presets.$preset" "$k")"
+    [ -n "$v" ] && echo "$(printf '%s' "$k" | tr '[:lower:]' '[:upper:]')=$v"
+  done
+  exit 0
+fi
+
+[ -n "$role" ] || { usage; exit 2; }
+
+# --- role resolution -------------------------------------------------------------
+primary="$(section_val roles "$role")"
+if [ -z "$primary" ]; then
   echo "delegate-resolve: no route for role '$role' in $toml" >&2
   echo "roles available:" >&2
   list_roles | sed 's/^/  /' >&2
   exit 3
 fi
 
-# the routed provider must actually have a [providers.<name>] section
-if ! section_exists "providers.$provider"; then
-  echo "delegate-resolve: role '$role' routes to provider '$provider', but no [providers.$provider] section exists in $toml" >&2
-  exit 2
+# candidate chain: the role's [fallbacks] (in order) or just its single provider.
+candidates="$(fallbacks_of "$role")"
+[ -n "$candidates" ] || candidates="$primary"
+
+# a candidate is excluded when its provider name OR its vendor is in --exclude.
+excluded() {  # $1=provider
+  local p="$1" v x; v="$(section_val "providers.$p" vendor)"
+  [ "${#excludes[@]}" -gt 0 ] || return 1
+  for x in "${excludes[@]}"; do
+    [ "$x" = "$p" ] && return 0
+    [ -n "$v" ] && [ "$x" = "$v" ] && return 0
+  done
+  return 1
+}
+
+selected=""; only_disabled=1
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  section_exists "providers.$p" || {
+    echo "delegate-resolve: role '$role' routes to provider '$p', but no [providers.$p] section exists in $toml" >&2
+    exit 2
+  }
+  if excluded "$p"; then only_disabled=0; continue; fi
+  en="$(section_val "providers.$p" enabled)"; en="${en:-true}"
+  [ "$en" = "false" ] && continue                    # disabled -> try the next candidate
+  only_disabled=0
+  bin="$(section_val "providers.$p" binary)"
+  if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi   # absent -> next
+  selected="$p"; break
+done <<< "$candidates"
+
+floor="$(section_val defaults floor)"
+
+if [ -z "$selected" ]; then
+  # nothing usable: distinguish "the one provider is switched off" (exit 4) from
+  # "everything was excluded or its CLI is absent" (exit 3).
+  if [ "$only_disabled" -eq 1 ]; then
+    echo "ROLE=$role"
+    echo "PROVIDER=$primary"
+    echo "MODEL=$(section_val "providers.$primary" model)"
+    echo "CHANNEL=$(section_val "providers.$primary" channel)"
+    echo "ENABLED=false"
+    [ -n "$floor" ] && echo "FLOOR=$floor"
+    echo "delegate-resolve: provider '$primary' for role '$role' is DISABLED in config: enable it or re-route the role before dispatching." >&2
+    exit 4
+  fi
+  echo "delegate-resolve: no available route for role '$role': every candidate is excluded, disabled, or its CLI is not installed." >&2
+  echo "candidates tried: $(printf '%s' "$candidates" | tr '\n' ' ')" >&2
+  exit 3
 fi
 
-model="$(section_val "providers.$provider" model)"
-channel="$(section_val "providers.$provider" channel)"
-enabled="$(section_val "providers.$provider" enabled)"
-notes="$(section_val "providers.$provider" notes)"
+# --- emit the resolved route -----------------------------------------------------
+model="$(section_val "providers.$selected" model)"
+channel="$(section_val "providers.$selected" channel)"
+vendor="$(section_val "providers.$selected" vendor)"
+binv="$(section_val "providers.$selected" binary)"
+notes="$(section_val "providers.$selected" notes)"
 
 echo "ROLE=$role"
-echo "PROVIDER=$provider"
+echo "PROVIDER=$selected"
 echo "MODEL=${model:-}"
 echo "CHANNEL=${channel:-}"
-echo "ENABLED=${enabled:-true}"
+echo "ENABLED=true"
+[ -n "$vendor" ] && echo "VENDOR=$vendor"
+[ -n "$binv" ] && echo "BINARY=$binv"
+[ -n "$floor" ] && echo "FLOOR=$floor"
 [ -n "$notes" ] && echo "NOTES=$notes"
-
-if [ "${enabled:-true}" = "false" ]; then
-  echo "delegate-resolve: provider '$provider' for role '$role' is DISABLED in config — enable it or re-route the role before dispatching." >&2
-  exit 4
-fi
+exit 0   # explicit: the last `[ -n ... ] && echo` returns 1 when a field is empty

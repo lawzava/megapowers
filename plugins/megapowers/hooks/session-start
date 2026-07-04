@@ -7,8 +7,32 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Read using-megapowers content
-using_megapowers_content=$(cat "${PLUGIN_ROOT}/skills/using-megapowers/SKILL.md" 2>&1 || echo "Error reading using-megapowers skill")
+# Read using-megapowers and inject a trimmed, Claude-Code-only variant of it. This hook
+# runs on every startup, /clear, and compaction, so the payload is always-in-context;
+# keep it a lean nudge, not the whole skill. Strip, via awk range filters:
+#   - the YAML frontmatter (its name + description already appear in the skills listing);
+#   - the "## Platform Adaptation" section (points OTHER harnesses at their reference
+#     files; inert on Claude Code, the only harness that runs this hook);
+#   - the trailing "Origin:" license footer (an attribution notice that must live in the
+#     file so it travels the bare-SKILL.md skills CLI channel, but does not belong in the
+#     always-in-context nudge).
+# "## Communication" carries the required communication-register rules and stays in the
+# payload; SKILL.md keeps that section condensed so the nudge stays lean without dropping
+# a rule. The file on disk stays complete and portable for full reads / other harnesses.
+skill_file="${PLUGIN_ROOT}/skills/using-megapowers/SKILL.md"
+if [ -r "${skill_file}" ]; then
+  using_megapowers_content=$(awk '
+    NR==1 && /^---/ { fm=1; next }
+    fm && /^---/    { fm=0; next }
+    fm              { next }
+    /^## /          { drop = ($0 ~ /^## (Platform Adaptation)$/) }
+    drop            { next }
+    /^Origin: Derived from Superpowers / { next }
+                    { print }
+  ' "${skill_file}")
+else
+  using_megapowers_content="Error reading using-megapowers skill"
+fi
 
 # Escape string for JSON embedding using bash parameter substitution.
 # Each ${s//old/new} is a single C-level pass - orders of magnitude
@@ -23,7 +47,7 @@ escape_for_json() {
     printf '%s' "$s"
 }
 
-preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request -- including clarifying questions or exploring code -- check whether a skill applies and, if so, follow it."
+preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request (including clarifying questions or exploring code), check whether a skill applies and, if so, follow it."
 
 using_megapowers_escaped=$(escape_for_json "$using_megapowers_content")
 preface_escaped=$(escape_for_json "$preface")

@@ -1,6 +1,7 @@
 ---
 name: writing-skills
 description: Use when creating new skills, editing existing skills, or verifying skills work before deployment
+license: MIT
 ---
 
 # Writing Skills
@@ -479,3 +480,5 @@ Deployment:
 An agent finds your skill by matching a problem against descriptions, scans
 the overview for relevance, then reads patterns and loads examples only when
 implementing. Optimize for that flow: searchable terms early and often.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

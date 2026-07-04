@@ -1,0 +1,20 @@
+# security-lint allowlist — files that legitimately contain a pattern the lint
+# flags, each reviewed and justified below. Paths are repo-relative, one per
+# line; blank lines and #-comments are ignored. Deleting an entry re-arms the
+# lint for that file, so keep this list short and specific.
+#
+# A shipped, agent-facing skill (plugins/*/skills/*/SKILL.md) may NEVER be listed
+# here: security-lint refuses to run if it finds one, because silencing the lint on
+# an installed skill would let a malicious marker ship. Fix the skill, not this file.
+
+# Opt-in agent notifier template. Posts to api.telegram.org with a bot token the
+# operator supplies from their own environment; it is a documented, user-wired
+# notification channel, not exfiltration. The fetch is real, so it is named here
+# rather than hidden.
+templates/agent-notify/agent-notify
+
+# deny-destructive test fixtures. These carry attack-shaped command strings
+# (curl ... | bash to example hosts, eval "rm -rf /") on purpose: they are the
+# inputs that prove the guardrail hook blocks them.
+plugins/mega-guardrails/hooks/tests/deny-destructive.test.sh
+plugins/mega-guardrails/hooks/tests/prefilter-grep-failure.test.sh

@@ -1,13 +1,14 @@
 ---
 name: orchestrating
 description: >-
-  Use at task arrival, before starting non-trivial work, to decide how to
-  structure it: do it inline, fan out subagents, delegate to another model,
-  generate competing candidates, convene a council, or start an autonomous run,
-  and how much compute the task deserves. Triggers on "how should we approach
-  this", "split this up", "what's the best way to tackle this", a multi-part or
-  high-stakes task landing, or uncertainty about which orchestration skill
-  applies. This is the decision root; the skills it routes to do the work.
+  Use at task arrival, before non-trivial work, to decide how to structure it:
+  inline, fan out subagents, delegate to another model, generate competing
+  candidates, convene a council, or start an autonomous run, and how much
+  compute it deserves. Triggers on "how should we approach this", "split this
+  up", "what's the best way to tackle this", a multi-part or high-stakes task,
+  or uncertainty about which orchestration skill applies. This is the decision
+  root; the skills it routes to do the work.
+license: MIT
 ---
 
 # Orchestrating
@@ -53,6 +54,11 @@ outer shape first, then the inner steps as they arrive.
 
 ## How much compute: spend by stakes times uncertainty
 
+Anchor the spend: a multi-agent structure runs roughly 15x the token cost of a
+single chat (Anthropic's multi-agent research system), so the pay-for-itself bar
+is high. Size the fan-out to the question: 1 agent for a simple fact-find, 2-4
+for direct comparisons, 10+ only for wide research.
+
 - Routine and certain: inline, verified by tests. Nothing more.
 - Uncertain approach, moderate stakes: one independent review (the `code_review`
   or `plan_review` role), or best-of-n with N=2.
@@ -64,6 +70,17 @@ outer shape first, then the inner steps as they arrive.
 Every escalation needs a stopping rule before it starts: an oracle that ends
 the search, a candidate cap, or a fix/re-verify attempt cap. Unbounded
 structure is how compute disappears without a decision getting better.
+
+Two rules cut across the ladder:
+
+- Output back from a delegate or subagent that misses the bar: redo it on a
+  stronger model or higher effort on your own authority; do not ship it, and
+  do not park the task waiting for a human to approve the extra spend. Judge
+  the output, not the price tag. Scoped, named defects earn a bounded fix pass
+  first; structural misses earn the redo. One automatic stronger redo per
+  artifact; going past it needs a declared cap or a human.
+- Nothing that ships routes below the floor declared in delegates.toml
+  (`[defaults] floor` in mega-orchestration:multi-agent-delegation).
 
 ## Harness primitives
 
@@ -80,6 +97,9 @@ fabricate a call to a primitive the runtime does not have.
   journal or chat note ("structure: SDD, 6 tasks, Codex review per task") makes
   the choice reviewable.
 - Single-writer always: whatever the structure, one integrator owns the tree
-  and the commits (see mega-orchestration:multi-agent-delegation).
+  and the commits (see mega-orchestration:multi-agent-delegation). On Claude
+  Code the harness enforces this from v2.1.198 (no agent message counts as a
+  human approval or can change permissions, CLAUDE.md, or config); on Codex,
+  OpenCode, and Antigravity that guarantee is skill wording only.
 - Re-route when the shape changes. A task that stops decomposing cleanly drops
   back to inline; a task that grows milestones graduates to autonomous-run.

@@ -7,6 +7,7 @@ description: >-
   then simulate-then-commit the risky ones with approval scaled to the autonomy
   level. Triggers on "deploy", "send", "charge", "run this migration", "delete the
   production ...", "make this change live", or any irreversible external action.
+license: MIT
 ---
 
 # Effect Broker
@@ -71,3 +72,10 @@ The `deny-destructive` PreToolUse hook (Claude Code only) is a thin, last-ditch
 tripwire for a few unambiguous local catastrophes — not the irreversibility layer.
 This skill is that layer, and it is portable: it works by declaration on every
 runtime, with no dependency on a hook firing.
+
+On Claude Code (v2.1.198+) the harness also enforces that no agent message counts
+as a human approval or can change permissions or config; on Codex, OpenCode, and
+Antigravity that guarantee is this skill's wording only. A scheduled or cloud
+runner skips permission prompts entirely, so an irreversible action's approval
+gate must live in the run prompt itself; mega-orchestration:autonomous-run
+carries the full caveat.

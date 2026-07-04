@@ -67,9 +67,16 @@ run_one() { # arm|idx|out|model|template|run_timeout
     echo pass > "$rundir/suite-status.txt"; else echo fail > "$rundir/suite-status.txt"; fi
   local task=FAIL
   ( cd "$repo" && timeout 60 python3 -c 'from wordbench import word_freq; assert word_freq("a B a") == {"a": 2, "b": 1}' >/dev/null 2>&1 ) && task=PASS
+  # efficiency fields: wall-clock (seconds) + token spend, read from the
+  # stream-json result event. Missing fields degrade to null/0, never error.
+  local cost tin tout
+  cost=$(jq -r 'select(.type=="result") | .total_cost_usd // empty' "$rundir/transcript.jsonl" 2>/dev/null | head -1)
+  tin=$(jq -r 'select(.type=="result") | .usage.input_tokens // empty' "$rundir/transcript.jsonl" 2>/dev/null | head -1)
+  tout=$(jq -r 'select(.type=="result") | .usage.output_tokens // empty' "$rundir/transcript.jsonl" 2>/dev/null | head -1)
   jq -n --arg model "$model" --arg agent claude --arg mode "$arm" --arg task "$task" \
         --argjson idx "$idx" --argjson rc "$rc" --argjson secs "$((SECONDS - t0))" \
-        '{model:$model, agent:$agent, mode:$mode, idx:$idx, rc:$rc, seconds:$secs, task:$task}' \
+        --argjson cost "${cost:-null}" --argjson tin "${tin:-0}" --argjson tout "${tout:-0}" \
+        '{model:$model, agent:$agent, mode:$mode, idx:$idx, rc:$rc, seconds:$secs, task:$task, cost_usd:$cost, tokens_in:$tin, tokens_out:$tout}' \
         > "$rundir/meta.json"
   rm -rf "$work"
   echo "done: $malias/$arm/run-$idx rc=$rc task=$task invoked=[$(paste -sd, "$rundir/skills-invoked.txt" 2>/dev/null)]"

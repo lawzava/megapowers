@@ -1,6 +1,7 @@
 ---
 name: test-driven-development
 description: Use when implementing a feature or bugfix, before writing implementation code — write the failing test first. This includes ANY task that asks for new code plus its tests, in any order ("add a function with unit tests", "implement X and test it", "make sure the tests pass"). For diagnosing an existing failure, use systematic-debugging first, then return here to write the fix. Triggers on "TDD", "test-first", "write the test first", "red-green-refactor".
+license: MIT
 ---
 
 # Test-Driven Development (TDD)
@@ -276,3 +277,5 @@ When adding mocks or test utilities, read [testing-anti-patterns.md](testing-ant
 ## Summary
 
 Production code has a test that existed and failed first. Anything else isn't TDD. Beyond the observable exceptions above, skip the process only with your human partner's agreement.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

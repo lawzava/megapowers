@@ -1,6 +1,7 @@
 ---
 name: receiving-code-review
 description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+license: MIT
 ---
 
 # Code Review Reception
@@ -178,3 +179,5 @@ When replying to inline review comments on GitHub, reply in the comment thread (
 **External feedback is a set of suggestions to evaluate, not orders to follow.**
 
 Verify. Question. Then implement. No performative agreement, technical rigor always.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

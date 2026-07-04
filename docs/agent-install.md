@@ -24,8 +24,10 @@ and check for existing installs:
 
 - Claude Code: `claude plugin list 2>/dev/null | grep -i mega`
 - Codex: `codex plugin list 2>/dev/null | grep -i mega`
-- skills-CLI installs: `ls ~/.agents/skills 2>/dev/null` and the project's
-  `skills-lock.json`
+- skills-CLI installs: `ls ~/.agents/skills ~/.claude/skills ~/.gemini/config/skills 2>/dev/null`
+  and the project's `skills-lock.json`. These are shared directories that
+  multiple harnesses read (see the matrix in step 2), so a hit can mean skills
+  are already registered for more than one harness.
 - Superpowers: `claude plugin list 2>/dev/null | grep -i superpowers`. The
   megapowers `megapowers` plugin is a superset of its process core; if the
   user wants both removed/replaced, uninstall superpowers first (ask, don't
@@ -49,31 +51,48 @@ Add `mega-go`, `mega-python`, `mega-ts` if the user works in those languages;
 omit `mega-guardrails` if the user does not want the safety hooks.
 Interactive sessions can use `/plugin` instead.
 
-**Codex** (skills + marketplace metadata; hooks do not run here):
+**Codex** (skills + marketplace metadata; the guardrail hooks are not ported
+here yet):
 
 ```
-git clone https://github.com/lawzava/megapowers "$HOME/.local/share/megapowers"
-cd "$HOME/.local/share/megapowers"
-codex plugin marketplace add ./
+codex plugin marketplace add lawzava/megapowers
 codex plugin add megapowers@megapowers
 codex plugin add mega-orchestration@megapowers
 ```
 
-The verb is `add`, not `install`. Updates: `git pull` in that clone, then
-re-run `codex plugin add` for each installed plugin.
+The verb is `add`, not `install`. `codex plugin marketplace add` accepts
+`owner/repo[@ref]` (codex-cli 0.142.5+); unpinned tracks the default branch.
+Updates: `codex plugin marketplace upgrade megapowers`, then re-run
+`codex plugin add` for each plugin. Change-controlled installs pin with
+`@v0.1.2` instead and update by re-adding at the new tag. To track a fork,
+clone it and run `codex plugin marketplace add ./` from the checkout.
 
 **OpenCode, Antigravity, or any other Agent Skills harness** (skills only):
+
+CAUTION first: the skills CLI installs skills for many agents into SHARED skill
+directories that several harnesses read, so one global install can register the
+same skills in more than one harness at once:
+
+| Shared global directory | Also read by                 |
+|-------------------------|------------------------------|
+| `~/.agents/skills/`     | Claude Code, OpenCode, Codex |
+| `~/.claude/skills/`     | Claude Code, OpenCode        |
+
+If step 1 found Claude Code plugins (or a prior `~/.claude/skills` install), do
+NOT install globally into a shared directory: skills would register (and fire)
+twice. Use a tool-specific path instead (for OpenCode, symlink from a checkout
+into `~/.config/opencode/skills/`, or set `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`
+so OpenCode ignores the Claude paths), or install per-project without `-g`.
+
+If step 1 found no conflicting channel, install globally:
 
 ```
 npx skills add lawzava/megapowers -g -y -s '*' -a <your-agent-name>
 ```
 
-CAUTION first: the skills CLI installs several agents into the shared
-`~/.agents/skills/` directory, and Claude Code scans that directory too. If
-step 1 found the Claude Code plugins on this machine, do NOT install globally
-into the shared directory: every skill would register twice for Claude Code.
-Use a tool-specific path instead (for OpenCode, symlink from a checkout into
-`~/.config/opencode/skills/`), or install per-project without `-g`.
+Set `-a` to your harness, e.g. `-a opencode` or `-a antigravity`; `-a '*'`
+targets every agent the skills CLI supports (see skills.sh for the accepted
+names). Drop `-g` to install into the current project only.
 
 ## 3. Verify the install
 

@@ -1,7 +1,7 @@
 {
   "name": "mega-orchestration",
   "version": "0.1.2",
-  "description": "Config-driven multi-agent delegation guidance for Codex, a vendor-neutral browser delegate, and Antigravity-aware workflows.",
+  "description": "Decide the structure (inline, fan-out, delegate, best-of-N, council, autonomous run), route each role to the best model, verify across vendors, and gate irreversible actions.",
   "author": {
     "name": "lawzava"
   },

@@ -15,6 +15,25 @@
 # fails. Portable: bash + coreutils + awk.
 set -uo pipefail
 base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+
+# plan_digest <plan.md> — "<tag> <sha256>" per milestone (heading + acceptance
+# line(s), whitespace-normalized). Identical to run-init/run-derive-status so the
+# hashes match; compared against the frozen plan-digest to catch plan tampering.
+plan_digest() {
+  awk '
+    function norm(s) { gsub(/[ \t]+/, " ", s); sub(/^ +/, "", s); sub(/ +$/, "", s); return s }
+    /^## [A-Za-z][A-Za-z0-9_-]*:/ {
+      if (tag != "") print tag "\t" buf
+      tag = substr($0, 4, index($0, ":") - 4); buf = norm($0); next
+    }
+    /^## / { if (tag != "") print tag "\t" buf; tag = ""; buf = ""; next }
+    tag != "" && $0 ~ /^[ \t]*-?[ \t]*acceptance:/ { buf = buf " ][ " norm($0) }
+    END { if (tag != "") print tag "\t" buf }
+  ' "$1" | while IFS="$(printf '\t')" read -r t c; do
+    printf '%s %s\n' "$t" "$(printf '%s' "$c" | sha256sum | cut -d' ' -f1)"
+  done
+}
+
 [ $# -ge 1 ] || { echo "usage: run-verify-status <run-id>" >&2; exit 2; }
 dir="$base/$1"
 [ -f "$dir/status" ]     || { echo "run-verify-status: FAIL — no status file at $dir" >&2; exit 1; }
@@ -54,6 +73,10 @@ fi
 # A done-claim needs a supporting trail: at least one result entry and no
 # milestone whose last entry left it short of done. A hand-edited STATE=done
 # fails here (and the next run-derive-status would overwrite it anyway).
+# verified_done gates the LAST_VERIFY stamp below: only a passing done-claim
+# certifies. A non-done run that merely passes the consistency check (and a
+# needs-attention run) is honestly not done, so it must not be stamped.
+verified_done=0
 case "$state" in
   done|complete|completed|success)
     unsupported="$(awk -F' \\| ' '
@@ -64,6 +87,14 @@ case "$state" in
         if (!(t in seen)) { order[++n] = t; seen[t] = 1 }
         if ($2 == "result") state[t] = "done"
         else if ($2 == "blocked") state[t] = "blocked"
+        else if ($2 == "action" || $2 == "decision") {
+          # mirror run-derive-status: a later action/decision REOPENS an already-done
+          # milestone (done -> in-progress); otherwise only claim it if nothing has
+          # spoken for it yet (blocked stays sticky). Keep the two derivations in
+          # lockstep so verify never certifies a done that derive would reopen.
+          if ((t in state) && state[t] == "done") state[t] = "in-progress"
+          else if (!(t in state)) state[t] = "in-progress"
+        }
         else if (!(t in state)) state[t] = "in-progress"
       }
       END {
@@ -87,12 +118,50 @@ case "$state" in
       echo "run-verify-status: FAIL — STATE=$state but the journal does not support it (no tagged results, a milestone not derived done, or a declared plan milestone never completed). Journal the results and re-run run-derive-status." >&2
       exit 1
     fi
-    echo "run-verify-status: OK — the done-claim is supported by the journal trail." ;;
+    # An unparseable "## " heading silently drops out of the coverage check above,
+    # so a done-claim over a plan with one is not trustworthy — fail it.
+    if [ -f "$dir/plan.md" ]; then
+      warns="$(awk '/^## /{t++} /^## [A-Za-z][A-Za-z0-9_-]*:/{g++} END{print (t-g)+0}' "$dir/plan.md")"
+      if [ "${warns:-0}" -gt 0 ]; then
+        echo "run-verify-status: FAIL — STATE=$state but plan.md has $warns \"## \" heading(s) that are not milestone tags (\"## Tag: ...\"); they drop out of the coverage check. Fix the heading(s), then re-derive." >&2
+        exit 1
+      fi
+    fi
+    # A done-claim must certify against a FROZEN plan. No plan-digest means the plan
+    # was never frozen — the DEFAULT flow (init scaffolds a placeholder, you author
+    # plan.md in place, never --replan) takes no digest, so a later gut-the-plan edit
+    # would certify done silently with nothing to compare against. Refuse it.
+    if [ ! -f "$dir/plan-digest" ]; then
+      echo "run-verify-status: FAIL — STATE=$state but plan.md was never frozen (no plan-digest), so a done-claim cannot be certified against an untampered plan. Author plan.md, then run run-init $1 --replan to freeze the milestone digest before claiming done." >&2
+      exit 1
+    fi
+    # Tamper check: recompute the digest of the current plan and fail on any declared
+    # milestone that vanished or whose acceptance line changed since plan-digest was
+    # frozen — the gut-the-plan / weaken-acceptance certify-done attack.
+    if [ -f "$dir/plan-digest" ] && [ -f "$dir/plan.md" ]; then
+      current_digest="$(plan_digest "$dir/plan.md")"
+      problems=""
+      while read -r stag shash; do
+        [ -n "$stag" ] || continue
+        chash="$(printf '%s\n' "$current_digest" | awk -v t="$stag" '$1==t{print $2; exit}')"
+        if [ -z "$chash" ]; then problems="$problems $stag(missing)"
+        elif [ "$chash" != "$shash" ]; then problems="$problems $stag(acceptance-changed)"; fi
+      done < "$dir/plan-digest"
+      if [ -n "$problems" ]; then
+        echo "run-verify-status: FAIL — plan.md diverged from the frozen milestone digest:$problems. A declared milestone was deleted or its acceptance line weakened after declaration. Restore it, or re-plan deliberately with run-init <id> --replan." >&2
+        exit 1
+      fi
+    fi
+    echo "run-verify-status: OK — the done-claim is supported by the journal trail."
+    verified_done=1 ;;
 esac
 
-# Every code path above either passed or exited 1, so stamp the certification:
-# LAST_VERIFY records when this invariant last held. A run whose status says
-# done but LAST_VERIFY=none was never certified.
-now="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
-tmp="$dir/status.verify.$$"
-{ grep -vE '^LAST_VERIFY=' "$dir/status"; printf 'LAST_VERIFY=%s\n' "$now"; } > "$tmp" && mv "$tmp" "$dir/status"
+# Stamp the certification only for a PASSING done-claim: LAST_VERIFY records when a
+# done-claim last held. A non-done run (or a needs-attention run) that passes the
+# consistency check is honestly not done, so stamping it would misstate what was
+# certified. A run whose status says done but LAST_VERIFY=none was never certified.
+if [ "$verified_done" -eq 1 ]; then
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
+  tmp="$dir/status.verify.$$"
+  { grep -vE '^LAST_VERIFY=' "$dir/status"; printf 'LAST_VERIFY=%s\n' "$now"; } > "$tmp" && mv "$tmp" "$dir/status"
+fi

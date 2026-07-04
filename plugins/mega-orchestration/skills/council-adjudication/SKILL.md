@@ -7,6 +7,7 @@ description: >-
   ANONYMIZED, and synthesize from the best. Triggers on "get a panel", "have the
   models debate this", "council", "which approach should we take". NOT opinion-
   averaging: you synthesize from the strongest answer, you don't blend all views.
+license: MIT
 ---
 
 # Council Adjudication
@@ -39,13 +40,21 @@ members. So the council here works like the effective core of an LLM council:
    shared thread, no "improve on the last answer". Independence is what gives the
    panel its range.
 
-3. **Anonymize the answers.** Strip author labels and any "I'm the best" self-
-   advocacy. Give each reviewer the same de-identified set.
+3. **Anonymize the answers.** Blind the set with mega-orchestration:best-of-n's
+   `scripts/anonymize-candidates`: it strips the authorship markers you name,
+   refuses if any survives, and emits the answers in randomized order; keep the
+   label→author manifest it prints private. Strip any "I'm the best" self-advocacy
+   too. Give each reviewer the same de-identified set.
 
 4. **Rank blind.** Have each member (or one independent judge) rank the anonymized
    answers against the stated criteria — not seeing who wrote what, not seeing the
-   others' rankings. Blindness stops anchoring and self-preference. This ranking
-   follows the same independence-and-blinding discipline as
+   others' rankings. Blindness stops anchoring, but it does not remove
+   self-preference: models still favor their own generations without author labels
+   (arXiv 2410.21819). So prefer a non-author independent judge; when members rank a
+   set that contains their own answer, exclude each member's score of its own answer
+   from the aggregate. Mitigate position bias too: randomize answer order, or rank
+   twice with the order swapped and treat an order-flipped verdict as a tie. This
+   ranking follows the same independence-and-blinding discipline as
    mega-orchestration:cross-model-verification — but it is a distinct step: here
    reviewers weigh full answers *including* their reasoning and tradeoffs, whereas
    cross-model-verification checks a specific claim with the author's advocacy

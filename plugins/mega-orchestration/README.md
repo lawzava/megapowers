@@ -44,14 +44,19 @@ The skills and the delegate agents read `delegates.toml` (inside the
 | --- | --- | --- |
 | Plan / code review | Codex (`gpt-5.5`) | Reviewing plans and diffs, adversarial "find the bug" passes |
 | Small implementation | Codex (`gpt-5.5`) | Well-specified, testable, single-file or isolated changes |
-| Visual / browser | `playwright-cli` + a vision-capable model | Screenshots, visual diffs, browser-driven checks |
+| Visual / browser | Codex (`gpt-5.5`, native computer use) | UI work, browser-driven checks, end-to-end testing |
+| Visual verification | `playwright-cli` + a vision-capable model | Independent cross-vendor pass on rendered UI/UX work |
 | Visual / browser (alt) | Antigravity CLI | Disabled by default, see note below |
 
-The visual/browser route drives the UI with `playwright-cli` (a standalone
-CLI) and reasons over the screenshots with a vision-capable model: the lead
-itself when it is vision-capable (e.g. Claude), otherwise any vision-capable
-model. It replaced the retired Gemini-CLI route (see
-[`docs/harness-support.md`](../../docs/harness-support.md)).
+Codex leads visual/browser work as a cost-adjusted call (dated in
+`delegates.toml`: Claude ahead on computer-use benchmarks by a modest margin,
+Codex several times cheaper in tokens). The verification route drives the UI
+with `playwright-cli` (a standalone CLI) and reasons over the screenshots with
+a vision-capable model: the lead itself when it is vision-capable (e.g.
+Claude), otherwise any vision-capable model from a different vendor than the
+author. It replaced the retired Gemini-CLI route (see
+[`docs/harness-support.md`](../../docs/harness-support.md)) and doubles as the
+fallback driver when the Codex route is unavailable or below the bar.
 
 Antigravity is included as a documented alternative but is disabled until you
 verify a local `agy` automation path, approval behavior, and artifact
@@ -65,9 +70,9 @@ code changes needed.
 
 ## Prerequisites
 
-- Codex roles (plan/code review, small impl): Codex native subagents when
-  running in Codex, or the Codex CLI/SDK from another harness.
-- Visual/browser role: `playwright-cli` plus a vision-capable model to read
+- Codex roles (plan/code review, small impl, visual/browser): Codex native
+  subagents when running in Codex, or the Codex CLI/SDK from another harness.
+- Visual verification role: `playwright-cli` plus a vision-capable model to read
   the screenshots. Install: `npm i -g @playwright/cli`, then
   `playwright-cli install --skills` (Microsoft's own playwright-cli skill;
   not vendored here because a shipped copy would register twice).
@@ -81,10 +86,10 @@ A delegate agent is a markdown agent definition the plugin registers with the
 harness; the lead invokes it like a subagent, and it routes the work out. Two
 ship here:
 
-- `agents/codex-delegate.md`: plan/code review and small, testable
-  implementation, via Codex
-- `agents/browser-delegate.md`: visual and browser work, driven by
-  playwright-cli
+- `agents/codex-delegate.md`: plan/code review, small testable
+  implementation, and visual/browser work, via Codex
+- `agents/browser-delegate.md`: independent verification of rendered UI/UX
+  work (and visual/browser fallback), driven by playwright-cli
 
 Each reads `delegates.toml` from the `multi-agent-delegation` skill to decide
 which backend and model to invoke. Edit the agent files to change how the

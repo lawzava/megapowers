@@ -6,6 +6,7 @@ description: >
   shaping, functional options, or package layout. Triggers on "idiomatic Go", "how
   should I structure this", "functional options", "dependency injection",
   "goroutine/channel pattern". Skip for trivial or mechanical edits.
+license: MIT
 ---
 
 # Go Patterns

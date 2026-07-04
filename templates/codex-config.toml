@@ -1,5 +1,7 @@
 # Minimal ~/.codex/config.toml baseline for using Codex with megapowers.
 # Copy only the keys you want into ~/.codex/config.toml.
+# Last reviewed: 2026-07-04 (Codex ships roughly weekly; scripts/check-freshness.sh
+# flags this file once the date is older than its review window).
 
 # Let Codex choose the current best model by default. Pin only when a workflow
 # needs reproducibility.
@@ -17,5 +19,7 @@ approval_policy = "on-request"
 # Empty string disables Codex commit co-author/attribution trailers.
 commit_attribution = ""
 
-# No Codex MCP server is required for native Codex subagents or `codex exec`.
-# Configure a private bridge separately if another runtime needs to drive Codex.
+# `codex mcp-server` is the first-party MCP channel: it runs Codex as a stdio MCP
+# server exposing the codex/codex-reply tools, so another harness can drive Codex
+# (or hold a persistent thread) without a hand-rolled bridge. Not required for native
+# Codex subagents or one-shot `codex exec`.

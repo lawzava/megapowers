@@ -5,6 +5,7 @@ description: >-
   handling, and promise/async code that is correct and readable. Triggers on
   "idiomatic TypeScript", "review this TS", "fix this async code", "type this
   properly". For choosing a new project's stack, use mega-ts:greenfield-ts-stack.
+license: MIT
 ---
 
 # TypeScript Patterns

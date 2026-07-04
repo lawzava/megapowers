@@ -1,6 +1,7 @@
 ---
 name: executing-plans
 description: Use when executing a written implementation plan yourself, inline, in a dedicated execution session — running tasks top to bottom and stopping only on blockers (distinct from subagent-driven-development, which dispatches each task to a fresh subagent with per-task review).
+license: MIT
 ---
 
 # Executing Plans
@@ -103,3 +104,5 @@ Required workflow skills:
 - **megapowers:writing-plans** - Creates the plan this skill executes.
 - **megapowers:requesting-code-review** - Whole-branch review before finishing.
 - **megapowers:finishing-a-development-branch** - Completes development after all tasks.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

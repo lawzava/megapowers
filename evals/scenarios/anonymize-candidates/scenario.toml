@@ -1,0 +1,8 @@
+id    = "anonymize-candidates"
+title = "anonymize-candidates blinds a candidate set: strips markers, refuses survivors, shuffles deterministically only under --seed"
+skill = "best-of-n"
+kind  = "artifact"
+# Guards the blind-judge helper: anonymization must be EXECUTED, not eyeballed. A
+# surviving authorship marker must abort (no half-blinded set ships), the label
+# shuffle must be repeatable under --seed and non-repeatable (never time-seeded)
+# without it.

@@ -40,7 +40,6 @@ set -u
 command -v jq >/dev/null 2>&1 || exit 0
 input="$(cat 2>/dev/null || true)"
 cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
-if ((${#cmd} > 20000)); then exit 0; fi
 [ -n "$cmd" ] || exit 0
 
 DECISION=""   # "deny" or "ask"
@@ -52,6 +51,43 @@ emit() {
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r}}'
   exit 0
 }
+
+# --- cheap prefilter: bound the O(n^2) parser cost --------------------------------
+# split_segments/shell_words/strip_quoted scan the command with per-character bash
+# loops; ${cmd:i:1} is O(offset) under a UTF-8 locale, so the parser is quadratic in
+# command length. On a benign multi-KB heredoc that is over a second of dead wait added
+# to EVERY Bash tool call. This grep is O(n) and runs once. PREFILTER_TOKENS is the
+# union of every command word the deny/ask checks anchor on (the scan_level case labels:
+# rm/find/chmod/dd/mkfs/wipefs/blkdiscard/shred/git/aws/docker/terraform/tofu/kubectl/
+# the shell wrappers/eval) plus the raw-string anchors (curl/wget/fetch for
+# remote_pipe_to_shell, /dev/ for the block-device redirect in raw_catastrophic, and the
+# :() fork bomb). curl/wget/fetch are OUTSIDE the \b(...)\b group and unanchored on
+# purpose: remote_pipe_to_shell() matches them as plain substrings too (so `prefetch ... |
+# python3` or `xcurl ... | node` still ASK), and the prefilter must hit everything the
+# parser would, so it stays unanchored here in lockstep. Keep it in lockstep with those
+# tables; prefilter-coverage.test.sh replays every DENY/ASK fixture through it and fails
+# if any stops hitting. Correctness rule: the prefilter may only fast-ALLOW on a no-hit.
+# It never denies, and an oversized hit degrades to ASK, never a plain allow.
+PREFILTER_TOKENS='\b(rm|find|chmod|dd|mkfs|wipefs|blkdiscard|shred|git|aws|docker|terraform|tofu|kubectl|bash|sh|zsh|dash|ash|ksh|eval)\b|curl|wget|fetch|/dev/|:\(\)'
+rc=0
+printf '%s' "$cmd" | grep -Eq "$PREFILTER_TOKENS" || rc=$?
+if [ "$rc" -eq 1 ]; then
+  exit 0                                     # (a) no trigger token: allow, at any size
+elif [ "$rc" -ge 2 ]; then
+  # grep itself errored on this host/pattern (rc>=2, e.g. a non-GNU grep rejecting \b).
+  # A no-hit must mean "confirmed no token", never "grep failed to check": an error
+  # here is NOT a no-hit, so fall through to the full parser instead of fast-allowing.
+  :
+fi
+# (c) trigger token present but the command is too long to parse cheaply. The parser is
+# quadratic, so past ~4000 chars it becomes seconds of latency (the old 20000-char cap
+# sat exactly where latency peaked at ~11s AND fail-OPEN-allowed a 20k command that could
+# be deniable). A token means it COULD be destructive, so we must not fast-allow: degrade
+# conservatively to ASK.
+if ((${#cmd} > 4000)); then
+  emit ask "command exceeds the safe parse length and contains a potentially destructive token. Review it before running (shorten it for a precise check)."
+fi
+# (b) trigger token present and short enough: fall through to the exact existing parser.
 
 # --- quote-aware segment splitter (reads global $cmd) ------------------------------
 # Splits on ; & | and newlines at the top level; content inside '...', "...", `...`

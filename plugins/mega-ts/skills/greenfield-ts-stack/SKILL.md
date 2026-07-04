@@ -6,6 +6,7 @@ description: >-
   validation. Triggers on "new TypeScript project", "scaffold a Node service", "set
   up a Hono/Fastify app", "which TS stack". For idioms within existing code, use
   mega-ts:typescript-patterns.
+license: MIT
 ---
 
 # Greenfield TypeScript Stack

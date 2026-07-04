@@ -6,6 +6,7 @@ description: >-
   framework, and the async/DB/middleware baseline. Triggers on "new Python
   project", "scaffold a Python service", "set up a FastAPI app", "which Python
   stack". For idioms within existing code, use mega-python:python-patterns.
+license: MIT
 ---
 
 # Greenfield Python Stack

@@ -27,9 +27,10 @@ just say when to reach for which.
 Route specialized work to the best model via the mega-orchestration plugin rather than
 doing everything inline. Routing and run presets live in
 `mega-orchestration/skills/multi-agent-delegation/delegates.toml`. That file maps each
-role (plan review, code review, small implementation, visual, browser test) to a
-backend and says how each delegate runs; edit it to change models or backends. The
-delegation skill and the delegate agents read it.
+role (plan review, code review, small implementation, visual, browser test, visual
+verify) to a backend, declares the model floor for anything that ships, and says how
+each delegate runs; edit it to change models or backends. The delegation skill and
+the delegate agents read it.
 
 Single-writer rule: delegates write only inside worktrees or return patches. The lead
 owns integration and commits. Always run the tests yourself and confirm the output;

@@ -2,16 +2,44 @@
 # run-derive-status <run-id> — regenerate the run's status from the journal.
 # The journal is the only hand-written record; status is DERIVED, so it cannot
 # disagree with the trail. For every milestone tag seen in journal messages
-# ("M2: ...", "step-3: ..."), the last result/blocked entry decides its state:
-#   result -> done, blocked -> blocked, only action/decision -> in-progress.
+# ("M2: ...", "step-3: ..."), the last entry decides its state, in append order
+# (the journal is append-only, so a later line is a later event):
+#   result -> done, blocked -> blocked, action/decision -> in-progress (this
+#   also REOPENS a milestone: an action/decision entry after its result flips
+#   it from done back to in-progress).
 # STATE is fully derived, in precedence order:
 #   blocked (any milestone blocked) > paused (last journal entry is kind
-#   paused) > done (>=1 milestone and all derive done) > working (any tagged
-#   activity) > previous value (empty journal, e.g. initialized).
+#   paused) > done (>=1 milestone and all derive done, on a trusted+frozen plan) >
+#   needs-attention (would be done but the plan is untrustworthy: a plan warning,
+#   a digest mismatch, or no plan-digest at all) > working (any tagged activity) >
+#   previous value (empty journal, e.g. initialized).
 # A hand-edited STATE that the journal does not support is overwritten here.
-# CURSOR/LEVEL/LAST_VERIFY lines are preserved. Portable: bash + coreutils + awk.
+# CURSOR is DERIVED too: the first plan-declared milestone that is not done
+# (reopened counts as not done), or the last declared milestone once all are
+# done. LEVEL is preserved verbatim; LAST_VERIFY is preserved while STATE stays
+# done and reset to none on any non-done derive (a reopened/working/needs-attention
+# run is no longer certified). Portable: bash + coreutils + awk.
 set -uo pipefail
 base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+
+# plan_digest <plan.md> — "<tag> <sha256>" per milestone (heading + acceptance
+# line(s), whitespace-normalized). Identical to run-init/run-verify-status so the
+# hashes match; compared against the frozen plan-digest to catch plan tampering.
+plan_digest() {
+  awk '
+    function norm(s) { gsub(/[ \t]+/, " ", s); sub(/^ +/, "", s); sub(/ +$/, "", s); return s }
+    /^## [A-Za-z][A-Za-z0-9_-]*:/ {
+      if (tag != "") print tag "\t" buf
+      tag = substr($0, 4, index($0, ":") - 4); buf = norm($0); next
+    }
+    /^## / { if (tag != "") print tag "\t" buf; tag = ""; buf = ""; next }
+    tag != "" && $0 ~ /^[ \t]*-?[ \t]*acceptance:/ { buf = buf " ][ " norm($0) }
+    END { if (tag != "") print tag "\t" buf }
+  ' "$1" | while IFS="$(printf '\t')" read -r t c; do
+    printf '%s %s\n' "$t" "$(printf '%s' "$c" | sha256sum | cut -d' ' -f1)"
+  done
+}
+
 [ $# -ge 1 ] || { echo "usage: run-derive-status <run-id>" >&2; exit 2; }
 dir="$base/$1"
 [ -f "$dir/journal.md" ] || { echo "run-derive-status: no journal at $dir (run run-init first)" >&2; exit 2; }
@@ -25,6 +53,12 @@ summary="$(awk -F' \\| ' '
     if (!(t in seen)) { order[++n] = t; seen[t] = 1 }
     if ($2 == "result") state[t] = "done"
     else if ($2 == "blocked") state[t] = "blocked"
+    else if ($2 == "action" || $2 == "decision") {
+      # a later action/decision reopens an already-done milestone; otherwise
+      # only claim it if nothing has spoken for it yet (blocked stays sticky)
+      if ((t in state) && state[t] == "done") state[t] = "in-progress"
+      else if (!(t in state)) state[t] = "in-progress"
+    }
     else if (!(t in state)) state[t] = "in-progress"
   }
   END {
@@ -41,22 +75,76 @@ n_done="$(printf '%s\n' "$summary" | sed -n 's/^N_DONE=//p')"
 
 # "done" must cover the DECLARED plan, not just the tags that happen to appear
 # in the journal: a run that only ever journals M1 must not derive done while
-# plan.md declares M2. Declared tags are the "## <tag>: ..." headings.
+# plan.md declares M2. Declared tags are the "## <tag>: ..." headings, in plan
+# order, the same order CURSOR walks to find the first one not yet done.
 undeclared_undone=0
+cursor=""
+last_declared=""
 if [ -f "$dir/plan.md" ]; then
   while IFS= read -r dtag; do
     [ -n "$dtag" ] || continue
-    printf '%s\n' "$derived" | grep -qx "MILESTONE_${dtag}=done" || undeclared_undone=$((undeclared_undone + 1))
+    last_declared="$dtag"
+    if printf '%s\n' "$derived" | grep -qx "MILESTONE_${dtag}=done"; then
+      continue
+    fi
+    undeclared_undone=$((undeclared_undone + 1))
+    [ -z "$cursor" ] && cursor="$dtag"
   done < <(sed -n 's/^## \([A-Za-z][A-Za-z0-9_-]*\):.*$/\1/p' "$dir/plan.md")
+fi
+# all declared milestones done (or none declared): CURSOR sits on the last one,
+# falling back to whatever CURSOR already said if there is nothing declared at all
+[ -z "$cursor" ] && cursor="$last_declared"
+old_cursor="$(sed -n 's/^CURSOR=//p' "$dir/status" | head -1)"
+[ -z "$cursor" ] && cursor="$old_cursor"
+
+# Lint plan.md headings: a "## " heading that is not a milestone tag ("## Tag: ...")
+# silently drops out of done-derivation (it looks like a milestone but is invisible
+# to the coverage check). Count them; a nonzero count blocks a done-derivation, so
+# gutting the plan into unparseable headings cannot certify done.
+plan_warnings=0
+if [ -f "$dir/plan.md" ]; then
+  total_headings="$(awk '/^## /{c++} END{print c+0}' "$dir/plan.md")"
+  milestone_headings="$(awk '/^## [A-Za-z][A-Za-z0-9_-]*:/{c++} END{print c+0}' "$dir/plan.md")"
+  plan_warnings=$((total_headings - milestone_headings))
+  [ "$plan_warnings" -lt 0 ] && plan_warnings=0
+fi
+
+# A done-claim can only be certified against a FROZEN plan. No plan-digest means the
+# plan was never frozen, so there is nothing to certify against: the gut-the-plan
+# attack would derive done silently. run-verify-status already refuses a no-digest
+# done-claim, but run-loop.sh reads only STATE from derive and never calls verify, so
+# hold STATE honest here too: a no-digest would-be-done run stays needs-attention.
+no_digest=0
+[ -f "$dir/plan-digest" ] || no_digest=1
+
+# Tamper check: a declared milestone whose heading/acceptance changed or vanished
+# since plan-digest was snapshotted (run-init, or run-init <id> --replan) must not
+# derive done. run-verify-status recomputes this independently and names the drift.
+digest_mismatch=0
+if [ -f "$dir/plan-digest" ] && [ -f "$dir/plan.md" ]; then
+  current_digest="$(plan_digest "$dir/plan.md")"
+  while read -r stag shash; do
+    [ -n "$stag" ] || continue
+    chash="$(printf '%s\n' "$current_digest" | awk -v t="$stag" '$1==t{print $2; exit}')"
+    if [ -z "$chash" ] || [ "$chash" != "$shash" ]; then digest_mismatch=1; break; fi
+  done < "$dir/plan-digest"
 fi
 
 old_state="$(sed -n 's/^STATE=//p' "$dir/status" | head -1)"
+old_lastverify="$(sed -n 's/^LAST_VERIFY=//p' "$dir/status" | head -1)"
 if printf '%s\n' "$derived" | grep -q '=blocked$'; then
   new_state=blocked
 elif [ "$last_kind" = paused ]; then
   new_state=paused
 elif [ "${n_ms:-0}" -gt 0 ] && [ "$n_ms" = "$n_done" ] && [ "$undeclared_undone" -eq 0 ]; then
-  new_state='done'
+  # every milestone derives done, but a plan warning, a digest mismatch, or an
+  # unfrozen plan (no plan-digest) means the plan itself cannot be trusted or
+  # certified, so hold at needs-attention rather than certify.
+  if [ "$plan_warnings" -ne 0 ] || [ "$digest_mismatch" -ne 0 ] || [ "$no_digest" -ne 0 ]; then
+    new_state='needs-attention'
+  else
+    new_state='done'
+  fi
 elif [ -n "$last_kind" ]; then
   new_state=working   # activity in the trail, not all milestones done
 else
@@ -66,9 +154,20 @@ fi
 tmp="$dir/status.derive.$$"
 {
   printf 'STATE=%s\n' "${new_state:-working}"
-  grep -E '^(CURSOR|LEVEL|LAST_VERIFY)=' "$dir/status" 2>/dev/null
+  [ -n "$cursor" ] && printf 'CURSOR=%s\n' "$cursor"
+  grep -E '^LEVEL=' "$dir/status" 2>/dev/null
+  # LAST_VERIFY is a certification stamp for a done-claim. A run that no longer
+  # derives done (reopened, working, needs-attention) is no longer certified, so a
+  # stale non-none stamp must be cleared; a done run keeps its stamp verbatim.
+  if [ "${new_state:-working}" != 'done' ] && [ -n "$old_lastverify" ] && [ "$old_lastverify" != none ]; then
+    printf 'LAST_VERIFY=%s\n' none
+  else
+    grep -E '^LAST_VERIFY=' "$dir/status" 2>/dev/null
+  fi
+  printf 'PLAN_WARNINGS=%s\n' "$plan_warnings"
   [ -n "$derived" ] && printf '%s\n' "$derived"
 } > "$tmp" && mv "$tmp" "$dir/status"
 echo "run-derive-status: status derived from journal ($(printf '%s\n' "$derived" | grep -c . ) milestone(s); STATE=${new_state:-working})"
 [ "$new_state" = 'done' ] && echo "run-derive-status: STATE=done derived — certify it: run-verify-status stamps LAST_VERIFY; done with LAST_VERIFY=none was never verified."
+[ "$new_state" = 'needs-attention' ] && echo "run-derive-status: all milestones derive done but the plan is untrustworthy or unfrozen (PLAN_WARNINGS=$plan_warnings, digest_mismatch=$digest_mismatch, no_digest=$no_digest); fix the "'##'" heading(s) in plan.md, or freeze/re-plan with run-init <id> --replan, then re-derive." >&2
 exit 0

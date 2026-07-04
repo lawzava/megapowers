@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# MOCK-ONLY SCENARIO. This oracle pins the shipped mock's phrasing to prove the
+# pipeline end to end in CI; it is a phrase-signature check and does NOT measure
+# real-agent gating behavior (a compliant agent that gates per-section in other
+# words, or that says "proceeding" then stops, is not distinguished). Excluded
+# from any real-agent claim. See README.md in this directory.
+#
 # Oracle for a behavior eval. Reads the captured agent transcript ($TRACE).
 # In control mode (skill withheld) the mock does nothing -> indeterminate.
 set -u

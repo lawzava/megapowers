@@ -1,6 +1,7 @@
 ---
 name: dispatching-parallel-agents
 description: Use when you have 2+ independent tasks with no shared state or ordering and want them done in parallel by separate agents — "do these at the same time", "parallelize", "fan out", "spin up an agent for each", bulk independent edits across files or modules. Not for sequential or dependent steps.
+license: MIT
 ---
 
 # Dispatching Parallel Agents
@@ -70,6 +71,8 @@ Subagent (general-purpose): "Fix tool-approval-race-conditions.test.ts failures"
 ```
 
 Multiple dispatch calls in one response run in parallel. One per response runs sequentially.
+
+On a harness with resumable subagents (Claude Code's SendMessage), send follow-up work to the same agent instead of re-dispatching a fresh one with a recap; a resumed subagent keeps its full history. Agents that need identical starting context can be forks, which inherit the conversation and share the parent's prompt cache, so they are cheaper than fresh subagents.
 
 ### 4. Review and Integrate
 
@@ -166,3 +169,5 @@ After agents return:
 2. **Check for conflicts** — did agents edit the same code?
 3. **Run full verification** — confirm all results hold together
 4. **Spot check** — agents can make systematic errors
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

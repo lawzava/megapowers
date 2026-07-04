@@ -5,13 +5,35 @@
 # --force — to genuinely start over, use a new run-id). Portable: bash + coreutils.
 set -uo pipefail
 
-id=""; base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"; level="on-the-loop"; model="${MEGAPOWERS_MODEL:-}"
-usage() { echo "usage: run-init <run-id> [--base DIR] [--level autonomous|on-the-loop|in-the-loop] [--model MODEL-ID]" >&2; }
+id=""; base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"; level="on-the-loop"; model="${MEGAPOWERS_MODEL:-}"; replan=0
+usage() { echo "usage: run-init <run-id> [--base DIR] [--level autonomous|on-the-loop|in-the-loop] [--model MODEL-ID] [--replan]" >&2; }
+scriptdir="$(cd "$(dirname "$0")" && pwd)"
+
+# plan_digest <plan.md> — emit "<tag> <sha256>" per milestone: the hash covers the
+# milestone heading plus its acceptance line(s), whitespace-normalized. This is the
+# frozen fingerprint --replan re-snapshots and run-derive/run-verify compare against.
+plan_digest() {
+  awk '
+    function norm(s) { gsub(/[ \t]+/, " ", s); sub(/^ +/, "", s); sub(/ +$/, "", s); return s }
+    /^## [A-Za-z][A-Za-z0-9_-]*:/ {
+      if (tag != "") print tag "\t" buf
+      tag = substr($0, 4, index($0, ":") - 4); buf = norm($0); next
+    }
+    /^## / { if (tag != "") print tag "\t" buf; tag = ""; buf = ""; next }
+    tag != "" && $0 ~ /^[ \t]*-?[ \t]*acceptance:/ { buf = buf " ][ " norm($0) }
+    END { if (tag != "") print tag "\t" buf }
+  ' "$1" | while IFS="$(printf '\t')" read -r t c; do
+    printf '%s %s\n' "$t" "$(printf '%s' "$c" | sha256sum | cut -d' ' -f1)"
+  done
+}
+write_plan_digest() { [ -f "$1/plan.md" ] || return 0; plan_digest "$1/plan.md" > "$1/plan-digest"; }
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --base) [ $# -ge 2 ] || { usage; exit 2; }; base="$2"; shift 2 ;;
     --level) [ $# -ge 2 ] || { usage; exit 2; }; level="$2"; shift 2 ;;
     --model) [ $# -ge 2 ] || { usage; exit 2; }; model="$2"; shift 2 ;;
+    --replan) replan=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) usage; exit 2 ;;
     *) id="$1"; shift ;;
@@ -21,6 +43,25 @@ done
 case "$level" in autonomous|on-the-loop|in-the-loop) ;; *) echo "run-init: unknown level '$level'" >&2; exit 2 ;; esac
 
 dir="$base/$id"
+
+# --replan inverts the freeze guard: it re-snapshots plan-digest for an EXISTING run
+# (so a deliberate plan change is auditable) and fails when the run is absent. It
+# never rewrites the frozen charter — only plan-digest, plus one decision entry.
+if [ "$replan" -eq 1 ]; then
+  if [ ! -f "$dir/charter.md" ]; then
+    echo "run-init: --replan needs an existing run at $dir (no charter.md found). Init it first, or drop --replan." >&2
+    exit 3
+  fi
+  if [ -n "$model" ]; then
+    MEGAPOWERS_RUN_DIR="$base" MEGAPOWERS_MODEL="$model" "$scriptdir/run-journal" "$id" decision 1.0 "re-plan applied: plan.md milestones re-snapshotted into plan-digest; charter unchanged"
+  else
+    MEGAPOWERS_RUN_DIR="$base" "$scriptdir/run-journal" "$id" decision 1.0 "re-plan applied: plan.md milestones re-snapshotted into plan-digest; charter unchanged"
+  fi
+  write_plan_digest "$dir"
+  echo "run-init: re-planned $dir (plan-digest re-snapshotted from plan.md; charter stays frozen)"
+  exit 0
+fi
+
 if [ -f "$dir/charter.md" ]; then
   echo "run-init: $dir/charter.md exists — the charter is frozen. Use a new run-id to start over." >&2
   exit 3
@@ -50,7 +91,11 @@ $level
 - blast radius: <what this run may NOT touch — e.g. no prod, no external sends>
 EOF
 
-[ -f "$dir/plan.md" ] || cat > "$dir/plan.md" <<'EOF'
+if [ -f "$dir/plan.md" ]; then
+  plan_authored=1   # the caller supplied a real plan; freeze it below
+else
+  plan_authored=0   # we are about to scaffold a placeholder template
+  cat > "$dir/plan.md" <<'EOF'
 # Plan
 Milestones (each with its own acceptance check; prefer an executable oracle):
 
@@ -58,6 +103,15 @@ Milestones (each with its own acceptance check; prefer an executable oracle):
 - acceptance: <test/compile/eval that decides done>
 - status: pending
 EOF
+fi
+
+# Fingerprint the plan into plan-digest so a later gut-the-plan or weaken-acceptance
+# edit is detectable (run-derive-status/run-verify-status compare against it). Only a
+# plan the caller authored (present at init) is frozen — a freshly scaffolded
+# placeholder is a template, not a declaration, so freezing it would flag the normal
+# fill-in-the-plan edit as tampering. Freeze a scaffolded plan after editing it with
+# run-init <id> --replan. run-journal never updates the digest.
+if [ "$plan_authored" -eq 1 ] && [ ! -f "$dir/plan-digest" ]; then write_plan_digest "$dir"; fi
 
 [ -f "$dir/runbook.md" ] || cat > "$dir/runbook.md" <<'EOF'
 # Runbook
@@ -78,4 +132,7 @@ EOF
 [ -n "$model" ] && [ ! -f "$dir/model" ] && printf '%s\n' "$model" > "$dir/model"
 
 echo "run-init: scaffolded $dir (level=$level${model:+, model=$model})"
-[ -z "$model" ] && echo "run-init: no --model given — pass --model <your model id> (or prefix journal calls with MEGAPOWERS_MODEL=<id>) so journal provenance is recorded"
+if [ -z "$model" ]; then
+  echo "run-init: no --model given — pass --model <your model id> (or prefix journal calls with MEGAPOWERS_MODEL=<id>) so journal provenance is recorded"
+fi
+exit 0

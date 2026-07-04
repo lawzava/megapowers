@@ -14,6 +14,30 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_DEFAULT="$(cd "$HERE/../../.." && pwd)"
 
+# The load probe: the agent must reproduce the test-driven-development skill's
+# core-principle sentence VERBATIM (exact, case-sensitive, whole clause). This
+# is the sentence committed at
+# plugins/megapowers/skills/test-driven-development/SKILL.md ("Core principle:").
+# A case-insensitive 5-word substring ("watch the test fail") a model can emit
+# from generic TDD lore does NOT satisfy it, so a pass is evidence the installed
+# skill text was actually loaded, not recited from prior knowledge.
+QUOTE_SENTENCE="if you didn't watch the test fail, you don't know whether it tests the right thing."
+quote_ok() { grep -qF "$QUOTE_SENTENCE" "$1" 2>/dev/null; }  # fixed-string, case-sensitive
+
+# Oracle self-test (mutation suite): the verbatim sentence passes; generic TDD
+# phrasing that satisfied the old loose grep must now FAIL. Needs no credentials.
+if [ "${1:-}" = "--selftest" ]; then
+  st="$(mktemp -d)"; trap 'rm -rf "$st"' EXIT; sf=0
+  printf '%s\n' "$QUOTE_SENTENCE" > "$st/verbatim.out"
+  # phrasing a model reconstructs from prior knowledge; contains the old 5-word
+  # substring "watch the test fail" (which the previous grep -qi accepted).
+  printf 'The core TDD principle: always watch the test fail first so you know it works.\n' > "$st/generic.out"
+  if quote_ok "$st/verbatim.out"; then echo "ok   verbatim sentence matches"; else echo "FAIL verbatim sentence not matched"; sf=1; fi
+  if quote_ok "$st/generic.out"; then echo "FAIL generic phrasing matched (nonce not enforced)"; sf=1; else echo "ok   generic phrasing rejected"; fi
+  if [ "$sf" -eq 0 ]; then echo "install-smoke selftest: PASS"; else echo "install-smoke selftest: FAIL"; fi
+  exit "$sf"
+fi
+
 OUT="" REPO="$REPO_DEFAULT" HARNESSES="claude,codex,opencode,agy"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -32,7 +56,6 @@ note() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" | tee -a "$OUT/results.tsv"; }
 # The first task: only answerable by loading the installed skill (fresh homes
 # contain no other copy of this text).
 QUOTE_PROMPT='A plugin named "megapowers" that provides a skill called test-driven-development is installed in this environment. Load that skill and quote verbatim its one-sentence core principle (the sentence about watching a test fail). Output only that sentence.'
-QUOTE_RE='watch the test fail'
 
 smoke_claude() {
   local h=claude cfg proj
@@ -52,7 +75,7 @@ smoke_claude() {
   ( cd "$proj" && CLAUDE_CONFIG_DIR="$cfg" timeout 300 claude -p "$QUOTE_PROMPT" \
       --max-turns 8 --dangerously-skip-permissions --no-session-persistence \
       > "$OUT/claude-task.out" 2> "$OUT/claude-task.err" )
-  if grep -qi "$QUOTE_RE" "$OUT/claude-task.out"; then
+  if quote_ok "$OUT/claude-task.out"; then
     note $h PASS "first task loaded the installed skill"
   else note $h FAIL "first task did not surface the skill — see claude-task.out"; fi
 }
@@ -75,7 +98,7 @@ smoke_codex() {
   ( cd "$proj" && CODEX_HOME="$ch" timeout 300 codex exec --ephemeral --skip-git-repo-check \
       -C "$proj" -s read-only "$QUOTE_PROMPT" \
       -o "$OUT/codex-task.out" > "$OUT/codex-task.log" 2> "$OUT/codex-task.err" </dev/null )
-  if grep -qi "$QUOTE_RE" "$OUT/codex-task.out" 2>/dev/null; then
+  if quote_ok "$OUT/codex-task.out"; then
     note $h PASS "first task loaded the installed skill"
   else note $h FAIL "first task did not surface the skill — see codex-task.out"; fi
 }
@@ -94,7 +117,7 @@ smoke_opencode() {
   ln -s "$REPO/plugins/megapowers/skills/test-driven-development" "$proj/.claude/skills/test-driven-development"
   ( cd "$proj" && timeout 300 opencode run "$QUOTE_PROMPT" \
       > "$OUT/opencode-task.out" 2> "$OUT/opencode-task.err" )
-  if grep -qi "$QUOTE_RE" "$OUT/opencode-task.out"; then
+  if quote_ok "$OUT/opencode-task.out"; then
     note $h PASS "first task loaded the symlinked skill"
   else note $h FAIL "first task did not surface the skill — see opencode-task.out"; fi
 }
@@ -113,7 +136,7 @@ smoke_agy() {
   ln -s "$REPO/plugins/megapowers/skills/test-driven-development" "$proj/.agents/skills/test-driven-development"
   ( cd "$proj" && timeout 300 agy -p "$QUOTE_PROMPT" --dangerously-skip-permissions \
       > "$OUT/agy-task.out" 2> "$OUT/agy-task.err" )
-  if grep -qi "$QUOTE_RE" "$OUT/agy-task.out"; then
+  if quote_ok "$OUT/agy-task.out"; then
     note $h PASS "first task loaded the skill from .agents/skills"
   else note $h FAIL "first task did not surface the skill — see agy-task.out"; fi
 }

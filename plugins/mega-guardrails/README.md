@@ -42,6 +42,37 @@ and it does not try to catch secret exfiltration. Real containment comes from
 the sandbox and permission system (see the repository `SECURITY.md`). Fails
 open on any internal error.
 
+### Relationship to native protections
+
+Claude Code gained its own destructive-command blocking in v2.1.183: in auto
+mode it blocks destructive git operations (`git reset --hard`, `git checkout
+-- .`, `git clean -fd`, `git stash drop`, and `git commit --amend` on commits
+it did not create) and infrastructure teardown (`terraform`/`pulumi`/`cdk
+destroy`) unless you asked for them. `deny-destructive` does not replace or
+duplicate that. It adds two things on top:
+
+- **Non-git, non-infrastructure destructive families** the native checks do not
+  cover: recursive `rm` of `/`, `~`, `$HOME`, or a top-level system dir; `mkfs`;
+  `dd` to a block device; `chmod 777 /`; a redirect to a raw disk; a fork bomb.
+- **A portable, mode-independent pattern.** It fires on every Bash call, not
+  only in auto mode, and it is a plain stdin-to-stdout script, so the same
+  classification can run wherever a harness lets a hook see the command.
+
+Real containment is still the runtime sandbox, not this hook. Claude Code's
+`/sandbox` filters network egress through a local proxy and confines Bash child
+processes; its own documentation is explicit that this reduces risk rather than
+delivering complete isolation (a broad domain allowlist can become an
+exfiltration path, and `Read`/`Edit`/`Write` are governed by the permission
+system, not the sandbox). Treat `/sandbox` plus OS permissions as the boundary
+and `deny-destructive` as an accident tripwire in front of it.
+
+These are Claude Code hook scripts. Codex, OpenCode, and Antigravity have their
+own hook surfaces. A manual Codex pilot port of the `deny-destructive` guard
+ships in this plugin (`hooks/codex-deny-destructive.sh`, see the Codex hooks
+section of `docs/setup.md`), but a default install wires no port, so on those
+harnesses nothing here blocks or gates out of the box (see
+`docs/harness-support.md`).
+
 ## auto-format (PostToolUse, Write/Edit)
 
 Formats the file that was just touched: `gofmt`/`goimports` for Go, and a

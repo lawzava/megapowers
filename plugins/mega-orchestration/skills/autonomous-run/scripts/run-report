@@ -19,7 +19,7 @@ if [ -f "$jr" ]; then
   # Parse by field position (fields split on " | "): $2=kind, $3="conf=X". This is
   # robust to a stray "|" or "conf=" inside a message — the kind is always field 2.
   echo "## Activity"
-  for k in action decision result blocked; do
+  for k in action decision result blocked paused; do
     n="$(awk -F' \\| ' -v k="$k" '$2==k{c++} END{print c+0}' "$jr")"
     echo "- $k: $n"
   done

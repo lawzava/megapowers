@@ -1,7 +1,10 @@
 id    = "delegate-nudge-suppression"
-title = "delegate-nudge suppresses on real delegation, nags on a prose-only mention"
+title = "delegate-nudge suppresses on real delegation, nags on a prose-only mention, and re-nags only when the risky diff changes"
 skill = "multi-agent-delegation"
 kind  = "artifact"
 # Guards the S1 fix: the suppression must match mcp__codex__codex-reply and any
 # codex/delegate subagent_type (JSON tool-call structure), but a prose mention of
 # 'codex exec' must still trigger the nudge.
+# Also guards the once-per-diff-state fix: the hook nags on the first Stop with a
+# risky diff, allows a following Stop while that diff-state is unchanged, and
+# nags again once the risky diff actually changes.
