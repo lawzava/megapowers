@@ -30,6 +30,15 @@ call to a primitive the runtime does not expose.
 - **Effort**: `/effort` low..max session dial, a per-subagent `effort` override
   on dispatch, and `/fast` on Opus-class models. Spend high effort on
   verify/judge/decide steps, low on mechanical ones.
+- **Non-Claude models in workflows and subagents**: the Agent and Workflow
+  `model` parameters accept Claude models only. To use another vendor as a
+  pipeline stage (finder, verifier, judge), spawn a thin wrapper agent with
+  `model: 'sonnet', effort: 'medium'` whose prompt has it write a
+  self-contained prompt for the external CLI, run it via Bash (for Codex:
+  `codex exec -s read-only` for reads, a worktree for writes), and return the
+  raw output. The wrapper composes and relays; it does not redo, filter, or
+  embellish the delegate's work. Medium effort, not low: a faithful
+  self-contained prompt is the whole job.
 - **Scheduling and unattended**: cloud routines (`/schedule`: cron, HTTP
   endpoint, and GitHub triggers) run fully autonomously with no permission
   prompts, so effect-broker gating must live in the routine prompt. `/loop`

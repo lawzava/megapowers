@@ -73,12 +73,14 @@ model="$(section_val "providers.$provider" model)"
 channel="$(section_val "providers.$provider" channel)"
 enabled="$(section_val "providers.$provider" enabled)"
 notes="$(section_val "providers.$provider" notes)"
+floor="$(section_val defaults floor)"
 
 echo "ROLE=$role"
 echo "PROVIDER=$provider"
 echo "MODEL=${model:-}"
 echo "CHANNEL=${channel:-}"
 echo "ENABLED=${enabled:-true}"
+[ -n "$floor" ] && echo "FLOOR=$floor"
 [ -n "$notes" ] && echo "NOTES=$notes"
 
 if [ "${enabled:-true}" = "false" ]; then

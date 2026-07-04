@@ -1,5 +1,5 @@
 # megapowers delegate routing.
-# Last reviewed: 2026-07-03 (model IDs and routes age; scripts/check-freshness.sh
+# Last reviewed: 2026-07-04 (model IDs and routes age; scripts/check-freshness.sh
 # fails a scheduled CI run when this date is older than 90 days).
 # Edit this file to change which model handles which role. Nothing auto-executes
 # it: the multi-agent-delegation skill and the delegate agents READ it to decide
@@ -8,37 +8,56 @@
 # self-contained when installed on its own (Agent Skills standard).
 
 # --- Providers: how to reach each backend ---
+# Inside Claude Code workflows/subagents the model parameter is Claude-only; reach
+# this provider through a thin wrapper agent (sonnet, effort medium) that shells
+# `codex exec` — see orchestrating references/harness-primitives.md.
 [providers.codex]
 model   = "gpt-5.5"
 channel = "native-or-cli"
 notes   = "Use native Codex subagents inside Codex. From another tool, use codex exec or an explicitly configured private bridge."
 
-# Browser / visual work: drive the UI with playwright-cli and reason over the
-# screenshots with a vision-capable model (the lead itself when it is vision-capable,
-# e.g. Claude; otherwise route the screenshot to one). Depends only on a standalone
-# CLI, not on any single vendor's browser agent.
+# Browser / visual verification and fallback: drive the UI with playwright-cli and
+# reason over the screenshots with a vision-capable model (the lead itself when it
+# is vision-capable, e.g. Claude; otherwise route the screenshot to one). Depends
+# only on a standalone CLI, not on any single vendor's browser agent.
 [providers.browser]
 channel = "playwright-cli"
 notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .megapowers/evidence/. See agents/browser-delegate.md."
 
 # Alternative browser/visual backend, disabled by default. Use only after verifying
-# your local `agy` automation path and approval behavior.
+# your local `agy` automation path and approval behavior. Bench check 2026-07-04:
+# Gemini 3.1 Pro trails on computer-use benchmarks (OSWorld-class aggregates), so
+# there is no performance case for enabling it either; re-check before flipping.
 [providers.antigravity]
 model   = "configured-in-agy"
 channel = "agy-cli"
 enabled = false
 
 # NOTE: the Gemini CLI route was removed — the Gemini CLI was discontinued for
-# consumer use in mid-2026. Visual/browser roles now go through the vendor-neutral
-# `browser` provider above (or Antigravity once verified).
+# consumer use in mid-2026. The vendor-neutral `browser` provider above now serves
+# visual verification and fallback; Codex leads visual/browser work (see [roles]).
+
+# --- Defaults: cross-cutting routing rules ---
+[defaults]
+# Minimum model:effort for anything that ships; outside Claude, map to the nearest
+# equivalent tier. Exception: wrapper agents relaying to codex run sonnet:medium,
+# a faithful self-contained prompt is worth the extra effort.
+floor = "sonnet:low"
 
 # --- Roles: which provider handles what ---
+# Visual/browser routing is a cost-adjusted call (bench check 2026-07-04):
+# OSWorld-Verified has Claude ahead (Fable 5 ~85 / Opus 4.8 83.4 vs GPT-5.5 78.7,
+# Gemini 3.1 Pro well behind), but Codex runs 3-4x cheaper in tokens, so it leads
+# computer-use work and the browser provider referees (visual_verify) and serves
+# as the redo path when Codex output misses the bar (escalation rule in
+# mega-orchestration:orchestrating).
 [roles]
 plan_review    = "codex"     # review a plan before implementing
 code_review    = "codex"     # review a diff
 small_impl     = "codex"     # well-scoped, small-sized implementation
-visual         = "browser"   # UI / visual work
-browser_test   = "browser"   # browser / end-to-end testing
+visual         = "codex"     # UI / visual work (native Codex computer use)
+browser_test   = "codex"     # browser / end-to-end testing
+visual_verify  = "browser"   # independent cross-vendor pass on rendered UI/UX work
 verify         = "codex"     # cross-model-verification: adversarial refute pass (must differ from the author's vendor)
 judge          = "codex"     # best-of-n: blind judge when no oracle decides (prefer a vendor none of the authors used)
 council_member = "codex"     # council-adjudication: independent answer + blind ranking member

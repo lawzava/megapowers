@@ -1,6 +1,6 @@
 ---
 name: codex-delegate
-description: Delegate to Codex (GPT-5.5) through native Codex subagents, codex exec, or a configured private bridge. Use proactively for plan review, code review, and small well-scoped implementation tasks, and for an independent second opinion on risky logic (billing/auth/concurrency). Returns a tight summary plus diff and test status; the lead reviews and integrates.
+description: Delegate to Codex (GPT-5.5) through native Codex subagents, codex exec, or a configured private bridge. Use proactively for plan review, code review, small well-scoped implementation tasks, visual/browser work via native computer use, and for an independent second opinion on risky logic (billing/auth/concurrency). Returns a tight summary plus diff, evidence, and test status; the lead reviews and integrates.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -24,6 +24,14 @@ REVIEW / second opinion (read-only). Use for plan review and code review. Call
 `codex exec --sandbox read-only` or the native subagent equivalent. Pass the
 plan, spec, or diff to critique. Return Codex's verdict verbatim-but-condensed:
 correctness issues, risks, and concrete suggestions.
+
+BROWSER / visual (computer use). Use for the `visual` and `browser_test` roles:
+drive the page or app through Codex's native computer use (goal mode via
+`codex exec` or the native subagent equivalent), with the acceptance criteria in
+the prompt. Save screenshots to `.megapowers/evidence/` and return their paths;
+the lead re-reads the pixels rather than trusting the text summary. Independent
+verification of this work (`visual_verify`) routes to the browser provider, not
+back through Codex.
 
 IMPLEMENT (writes). Use for small, well-scoped changes with a clear acceptance test. Work in
 an isolated worktree. Call `codex exec --sandbox workspace-write` or the native

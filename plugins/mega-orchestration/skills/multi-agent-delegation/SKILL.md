@@ -58,14 +58,26 @@ Read the `[roles]` and `[providers.*]` tables in `delegates.toml`. The defaults:
   single-file logic and for an independent adversarial pass on risky code
   (billing, auth, concurrency) — "find the bug in this diff." (If the lead is
   itself Codex, route the independent pass to a different model.)
-- **Visual / UI work and browser / end-to-end testing -> the browser provider.**
-  Drive the UI with `playwright-cli` and reason over the screenshots with a
+- **Visual / UI work and browser / end-to-end testing -> Codex (native computer
+  use).** A cost-adjusted call, dated in the note above `[roles]` in
+  delegates.toml: Claude leads the computer-use benchmarks by a modest margin,
+  but Codex runs several times cheaper in tokens, and below-bar output has the
+  escalation redo path. Whoever drives, evidence discipline holds: screenshots
+  land in `.megapowers/evidence/` and the lead re-reads them rather than
+  trusting the text summary.
+- **Independent verification of rendered UI/UX work (`visual_verify`) -> the
+  browser provider**, so the verifying vendor differs from the authoring one:
+  drive the UI with `playwright-cli` and reason over the screenshots with a
   vision-capable model (the lead itself when it is vision-capable, e.g. Claude;
-  otherwise route the screenshot to one). Screenshots land in
-  `.megapowers/evidence/`; the lead re-reads them rather than trusting the text
-  summary, so two passes verify the same pixels — the visual analog of the Codex
-  adversarial pass on code. This route depends only on a standalone CLI, not on
-  any one vendor's browser agent. See [browser-delegate](../../agents/browser-delegate.md).
+  otherwise route the screenshot to one). Two passes verify the same pixels —
+  the visual analog of the Codex adversarial pass on code. The vendor split is
+  the point: the vision model reading the screenshots must not be from the
+  vendor that authored the work, so when the lead is itself Codex, route the
+  read to a non-Codex vision model. This route depends only on a standalone
+  CLI, not on any one vendor's browser agent, and doubles as the redo path when
+  Codex-led visual work misses the bar — and a browser-provider redo then gets
+  its verification pass from Codex, keeping author and verifier distinct. See
+  [browser-delegate](../../agents/browser-delegate.md).
 - **Antigravity CLI** is a disabled alternative in the config. Leave it off
   unless you have verified `agy` automation, approvals, and artifact review in
   your local environment.
@@ -102,8 +114,9 @@ They are named in the config and referenced when you dispatch work:
 Prefer the native orchestration surface of the tool you are already in:
 Codex subagents in Codex, Claude subagents or workflows in Claude Code, and
 OpenCode subagents in OpenCode. When crossing runtimes, use the public CLI or
-SDK path first (`codex exec`, `playwright-cli` for browser/visual work, `agy`
-once verified). Private MCP or bridge tools are acceptable only when they are
+SDK path first (`codex exec` for Codex roles including visual/browser,
+`playwright-cli` for visual verification and browser fallback, `agy` once
+verified). Private MCP or bridge tools are acceptable only when they are
 explicitly configured in the local environment; do not assume they exist.
 
 ## How to Adjust Routing

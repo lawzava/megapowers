@@ -4,6 +4,8 @@ cfg="$ROOT/plugins/mega-orchestration/skills/multi-agent-delegation/delegates.to
 {
   echo "=== code_review ==="; "$R" code_review --config "$cfg"; echo "rc=$?"
   echo "=== visual ==="; "$R" visual --config "$cfg"; echo "rc=$?"
+  echo "=== browser_test ==="; "$R" browser_test --config "$cfg"; echo "rc=$?"
+  echo "=== visual_verify ==="; "$R" visual_verify --config "$cfg"; echo "rc=$?"
   echo "=== unknown ==="; "$R" bogus --config "$cfg" 2>&1; echo "rc=$?"
   echo "=== disabled ==="
   dt="$PWD/dt.toml"; sed 's/plan_review[[:space:]]*= "codex"/plan_review = "antigravity"/' "$cfg" > "$dt"

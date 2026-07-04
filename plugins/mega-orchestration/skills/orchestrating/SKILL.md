@@ -65,6 +65,17 @@ Every escalation needs a stopping rule before it starts: an oracle that ends
 the search, a candidate cap, or a fix/re-verify attempt cap. Unbounded
 structure is how compute disappears without a decision getting better.
 
+Two rules cut across the ladder:
+
+- Output back from a delegate or subagent that misses the bar: redo it on a
+  stronger model or higher effort on your own authority; do not ship it, and
+  do not park the task waiting for a human to approve the extra spend. Judge
+  the output, not the price tag. Scoped, named defects earn a bounded fix pass
+  first; structural misses earn the redo. One automatic stronger redo per
+  artifact; going past it needs a declared cap or a human.
+- Nothing that ships routes below the floor declared in delegates.toml
+  (`[defaults] floor` in mega-orchestration:multi-agent-delegation).
+
 ## Harness primitives
 
 Subagents, agent teams, background tasks, workflow engines, and effort dials go
