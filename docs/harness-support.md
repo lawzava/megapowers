@@ -8,10 +8,11 @@ surface. Two facts apply across the whole matrix:
 - `mega-guardrails` ships for Claude Code only today. Its value is a set of
   Claude Code hook scripts (PreToolUse/PostToolUse) plus a Linux statusline.
   Codex, OpenCode (through plugins), and Antigravity each have their own hook
-  surfaces, but these scripts are not yet ported to them, so out of the box
-  nothing blocks or gates there. It therefore ships no manifest for those
-  harnesses; installing it elsewhere would advertise enforcement that is not in
-  place.
+  surfaces. A manual Codex pilot of the destructive-command guard ships under
+  the plugin (see docs/setup.md, Codex hooks), but a default install wires no
+  port, so out of the box nothing blocks or gates there. It therefore ships no
+  manifest for those harnesses; installing it elsewhere would advertise
+  enforcement that is not in place.
 - The Gemini CLI was discontinued for consumer use in mid-2026 and is no
   longer a target. Visual/browser work routes through `playwright-cli` plus a
   vision-capable model (see `mega-orchestration`).
