@@ -7,13 +7,13 @@ If dispatched as a subagent for a specific task, ignore this skill and proceed.
 
 ## The Core Rule
 
-Invoke any relevant or requested skill *before* your first response or action —
+Invoke any relevant or requested skill *before* your first response or action,
 including clarifying questions, exploring code, or reading files. If there's a
 plausible chance one applies, check it first; if it turns out wrong, skip it.
 Before entering plan mode, brainstorm first.
 
-Announce "Using [skill] to [purpose]", follow it exactly, and make a todo per
-checklist item — for every skill you invoke.
+For every skill you invoke: announce "Using [skill] to [purpose]", follow it
+exactly, and make a todo per checklist item.
 
 ## Skill Priority
 
@@ -26,24 +26,20 @@ when that plugin is installed.
 ## Don't Skip on a Hunch
 
 Simple-looking tasks are where skills get skipped. "Just a quick question", "let
-me look first", "overkill here" — each means check for a skill first. Memory
+me look first", "overkill here": each means check for a skill first. Memory
 drifts: open the skill, don't recall it.
 
 ## Communication
 
-In everything you write for a human or another agent (chat, specs, plans,
-briefs, journals, reports), use a senior engineer's register:
+Senior engineer's register for anything a human or agent reads:
 
-- Lead with the conclusion or decision. Supporting detail follows, ordered by
-  importance.
+- Lead with the conclusion; detail follows, by importance.
 - Short declarative sentences. No filler, no hedging, no drama.
-- Do not punctuate with dashes (no em dashes, no double hyphens). Use commas,
-  colons, parentheses, or a new sentence.
-- Prefer structure when items are enumerable: a short list or table gets read;
-  a long paragraph gets skimmed.
-- Write for takeover: a fresh agent reading the artifact alone must find the
-  goal, the current state, and the next step, with no reference to
-  conversation it cannot see.
+- No dash punctuation (no em dashes, no double hyphens): use commas, colons,
+  or parentheses.
+- Enumerables: a short list or table, not a paragraph.
+- Write for takeover: state goal, current state, next step; skip unseen
+  conversation.
 
 ## Platform Adaptation
 
