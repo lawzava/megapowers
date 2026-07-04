@@ -4,10 +4,12 @@
 [![Latest tag](https://img.shields.io/github/v/tag/lawzava/megapowers?label=release)](https://github.com/lawzava/megapowers/tags)
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
-Skills, plugins, and hooks that give a coding agent engineering discipline:
-design before code, test first, verify before claiming done, delegate to the
-best model per role, run long tasks unattended. Works on Claude Code, Codex,
-OpenCode, and Google Antigravity; install only the parts you want.
+megapowers is a plugin marketplace for coding agents: six installable plugins
+of skills, hooks, and delegate agents. Together they give the agent
+engineering discipline: design before code, test first, verify before
+claiming done, delegate to the best model per role, run long tasks
+unattended. Works on Claude Code, Codex, OpenCode, and Google Antigravity;
+install only the parts you want.
 
 Every claim of effect has a committed, re-runnable protocol behind it, including
 the null results (runs where a skill measurably bought nothing):
