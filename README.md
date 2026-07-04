@@ -9,7 +9,7 @@ design before code, test first, verify before claiming done, delegate to the
 best model per role, run long tasks unattended. Works on Claude Code, Codex,
 OpenCode, and Google Antigravity; install only the parts you want.
 
-Every claim of effect has a published, reproducible run behind it, including
+Every claim of effect has a committed, re-runnable protocol behind it, including
 the null results (runs where a skill measurably bought nothing):
 [`evals/RESULTS.md`](./evals/RESULTS.md).
 
@@ -37,8 +37,9 @@ Install, update, uninstall, verification, and details for each harness (the
 program the agent runs in: Claude Code, Codex, an IDE agent):
 [`docs/setup.md`](./docs/setup.md).
 
-Or hand the install to the agent itself. Paste this into any coding agent, on
-any harness:
+Or hand the install to the agent itself. Read
+[`docs/agent-install.md`](./docs/agent-install.md) yourself first, it is short,
+then paste this into any coding agent, on any harness:
 
 > Install megapowers on this machine by fetching and following
 > https://raw.githubusercontent.com/lawzava/megapowers/main/docs/agent-install.md
@@ -60,12 +61,13 @@ No framework, no service, no API key of its own. The mechanism:
   `using-megapowers` skill), so the agent looks for a matching skill on its
   own instead of waiting for you to name one.
 - Hooks are deterministic backstops for what wording alone cannot guarantee.
-  A Stop hook blocks the session from quietly stopping while an autonomous run
-  is mid-flight. Another blocks finishing a risky diff (auth, billing,
-  concurrency) without an independent review. A PreToolUse hook denies a short
-  list of catastrophic shell commands. Hooks run on Claude Code only; on other
-  harnesses they simply do not exist, so none of these backstops apply there
-  and the discipline rides on the skill wording alone.
+  A Stop hook interrupts a quiet stop once while an autonomous run is mid-flight.
+  Another interrupts finishing a risky diff (auth, billing, concurrency) once,
+  asking for an independent review. A PreToolUse hook denies a short list of
+  catastrophic shell commands. These hook scripts ship for Claude Code only
+  today; other harnesses have hook surfaces, but megapowers has no ports yet, so
+  none of these backstops apply there and the discipline rides on the skill
+  wording alone.
 - Everything executable is plain bash reading stdin and writing stdout. You
   can run any hook by hand from a checkout.
 
@@ -110,14 +112,17 @@ These docs use a few terms consistently, defined here once.
 
 ## What's inside
 
+Before you install, skim the trust boundaries and what the hooks can and cannot
+do: [SECURITY.md](./SECURITY.md).
+
 | Plugin | What it gives you |
 |---|---|
-| `megapowers` | The workflow core: brainstorming, planning, TDD, systematic debugging, code review, worktrees, subagent orchestration, project memory. |
-| `mega-orchestration` | Multi-model orchestration: route each task to the right structure and each role to the best model, generate several candidates and select the best (best-of-N), have a different vendor's model try to refute risky work (cross-model verification), put hard decisions to a multi-model panel (council adjudication), run long tasks unattended with an autonomy dial, and gate irreversible actions behind an approval step (the effect broker). |
-| `mega-go` | Greenfield Go: an opinionated stack picker plus idiomatic Go patterns. |
-| `mega-python` | Greenfield Python: stack picker plus idiomatic patterns (typing, async, errors). |
-| `mega-ts` | Greenfield TypeScript: stack picker plus idiomatic patterns (types, async, errors). |
-| `mega-guardrails` | Claude Code safety hooks and dev tooling: block destructive commands, format-on-save, an optional Linux statusline. |
+| [`megapowers`](./plugins/megapowers/README.md) | The workflow core: brainstorming, planning, TDD, systematic debugging, code review, worktrees, subagent orchestration, project memory. |
+| [`mega-orchestration`](./plugins/mega-orchestration/README.md) | Multi-model orchestration: route each task to the right structure, delegate each role to the best model, best-of-N candidate selection, cross-model verification, council adjudication, autonomous runs, and the effect broker (gate irreversible actions). |
+| [`mega-go`](./plugins/mega-go/README.md) | Greenfield Go: an opinionated stack picker plus idiomatic Go patterns. |
+| [`mega-python`](./plugins/mega-python/README.md) | Greenfield Python: stack picker plus idiomatic patterns (typing, async, errors). |
+| [`mega-ts`](./plugins/mega-ts/README.md) | Greenfield TypeScript: stack picker plus idiomatic patterns (types, async, errors). |
+| [`mega-guardrails`](./plugins/mega-guardrails/README.md) | Claude Code safety hooks and dev tooling: block destructive commands, format-on-save, an optional Linux statusline. |
 
 Which do I want?
 
@@ -126,10 +131,11 @@ Which do I want?
 - Safety hooks and statusline (Claude Code only): `mega-guardrails`
 - Starting a new Go / Python / TypeScript project: `mega-go` / `mega-python` / `mega-ts`
 
-Context cost: a full six-plugin install adds roughly 2,000 words (~2,600
-tokens) of always-on context, the skill descriptions plus the session-start
-note. The `megapowers` bundle alone is about half that. Skill bodies load only
-when invoked.
+Context cost: a full six-plugin install adds about 1,800 words of always-on
+context (the 28 skill descriptions summed with `wc -w`, 1,514 words, plus the
+injected session-start note, 291 words); at ~1.3 tokens per word, about 2,350
+tokens. The `megapowers` bundle alone is ~980 words (692 in its descriptions
+plus the same note), ~1,280 tokens. Skill bodies load only when invoked.
 
 Plugins are independent; the pairing that adds the most is `megapowers` plus
 `mega-orchestration`. Nine skills are also published as standalone entries
@@ -152,7 +158,9 @@ these skills buy:
 - Where frontier models have already internalized the pattern, a skill
   measures at zero. In the code-correctness study, all 184 generated programs
   passed with and without the skill in context. The null is published, not
-  hidden.
+  hidden. An independent benchmark, SkillsBench (arXiv 2602.12670), reports the
+  same shape: software-engineering shows the smallest skill gain of any domain
+  (+4.5pp), because frontier models already cover this ground from pretraining.
 
 Those runs measure a skill's wording placed in context. Whether an installed
 agent reaches for the right skill on its own is measured separately by the
@@ -166,9 +174,10 @@ Prompts, fixtures, and oracles for the TDD result:
 
 ## What it does not do
 
-- Enforce anything outside Claude Code. Hooks are Claude Code scripts. On
-  Codex, OpenCode, and Antigravity nothing blocks or gates; the skills are
-  advisory wording there.
+- Enforce anything outside Claude Code. The hook scripts ship for Claude Code
+  only today; other harnesses have hook surfaces but no ports yet, so on Codex,
+  OpenCode, and Antigravity nothing blocks or gates and the skills are advisory
+  wording there.
 - Act as a security boundary. The destructive-command tripwire stops
   accidents, not anyone trying; see [SECURITY.md](./SECURITY.md).
 - Improve single-shot code correctness on current frontier models. That
@@ -180,9 +189,10 @@ Prompts, fixtures, and oracles for the TDD result:
 
 ## Install on Codex and other harnesses
 
-- Codex installs the plugins from a local checkout
-  (`codex plugin marketplace add ./`). `mega-guardrails` is not offered there;
-  its hooks are Claude Code scripts.
+- Codex adds this repo as a remote marketplace
+  (`codex plugin marketplace add lawzava/megapowers`), then
+  `codex plugin add <plugin>@megapowers` per plugin. `mega-guardrails` is not
+  offered there; its hook scripts are Claude Code only and not yet ported.
 - Every other harness (OpenCode, Antigravity, Cursor, Copilot, ...) installs
   the skills with the open [skills CLI](https://github.com/vercel-labs/skills):
   `npx skills add lawzava/megapowers`. Skills only; hooks and delegate agents
@@ -191,18 +201,38 @@ Prompts, fixtures, and oracles for the TDD result:
 Exact steps, fleet sync across machines, and updating:
 [`docs/setup.md`](./docs/setup.md).
 
+## Where it fits
+
+Zero-infrastructure by design: markdown and bash, no runtime, service, or vendor
+SDK of its own, so it is auditable in an afternoon with nothing to lock into (the
+opposite pole from meta-harness runtimes that ship a heavy agent framework). The
+distinctive pieces: an effect broker that gates irreversible actions behind
+approval, best-of-N candidates judged blind by an executable oracle before any
+model opinion, one auditable file
+([`delegates.toml`](./plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml))
+routing each role to a model, and executable certification of a done-claim over
+the agent's self-report.
+
 ## Relationship to Superpowers
 
 megapowers began as a restyled fork of
 [Superpowers](https://github.com/obra/superpowers) (MIT, © 2025 Jesse Vincent)
-and keeps its process core. It adds the orchestration layer, portability to
-Codex, OpenCode, and Antigravity, and the eval harness with published effect
-sizes. If you want single-agent process discipline on Claude Code only,
-upstream Superpowers serves that well. A head-to-head protocol (bare harness
-vs megapowers vs upstream Superpowers, organic triggering, shared oracles) is
-committed at [`evals/studies/head-to-head/`](./evals/studies/head-to-head/).
-It has no published numbers yet; whatever a keyed run produces will be
-published, including "upstream wins".
+and keeps its process core. Upstream has moved on: it now installs on roughly ten
+harnesses (Claude Code, Codex, Cursor, OpenCode, Antigravity, and more), carries
+a large following, and runs its own eval lab (Quorum) that drives real agent
+CLIs. So portability and "has an eval harness" no longer separate the two. What
+still does: megapowers publishes effect sizes including the nulls, each with a
+committed, re-runnable protocol (the 36/36 test-first flip, the 184/184 null;
+Quorum publishes no numbers), and it adds the cross-vendor orchestration and
+deterministic hook backstops named above on top of the shared single-agent core.
+
+If you want single-agent process discipline, upstream Superpowers serves that
+well, across more harnesses than megapowers targets. A head-to-head protocol
+(bare harness vs megapowers vs upstream Superpowers, organic triggering, shared
+oracles) is committed at
+[`evals/studies/head-to-head/`](./evals/studies/head-to-head/). It has no
+published numbers yet; whatever a keyed run produces will be published, including
+"upstream wins".
 
 ## Scope
 
