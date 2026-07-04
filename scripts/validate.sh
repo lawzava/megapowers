@@ -11,6 +11,33 @@ fail=0
 ok()  { printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass + 1)); }
 bad() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 
+# Render a SKILL.md frontmatter description to a single line, resolving both
+# single-line values and folded/literal YAML block scalars (>, >-, |, |-, >+,
+# |+). Used by the context-budget checks; the plain skills check only needs to
+# know the field is present, so it keeps its cheaper first-line sed extraction.
+skill_desc() {
+  awk '
+    BEGIN { st=0; done=0 }                       # st: 0=pre-fm 1=in-fm 2=in-block
+    st==0 && /^---/ { st=1; next }
+    st==1 && /^---/ { exit }
+    st==1 && /^description:/ {
+      val=$0; sub(/^description:[[:space:]]*/,"",val)
+      if (val ~ /^[|>][+-]?$/) { st=2; next }    # block-scalar opener
+      print val; done=1; exit
+    }
+    st==2 && /^---/          { print out; done=1; exit }
+    st==2 && /^[^[:space:]]/ { print out; done=1; exit }   # dedent = next key
+    st==2 { line=$0; sub(/^[[:space:]]+/,"",line); out=(out==""?line:out" "line); next }
+    END   { if (!done && st==2) print out }
+  ' "$1"
+}
+
+# Byte length of a string, locale-independent. The budgets below are stated in
+# characters; bytes >= chars, so a byte budget is a conservative superset that
+# never under-counts (descriptions are near-ASCII, so the two coincide at the
+# peak anyway).
+byte_len() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d '[:space:]'; }
+
 claude_mp=".claude-plugin/marketplace.json"
 codex_mp=".agents/plugins/marketplace.json"
 
@@ -112,6 +139,83 @@ while IFS= read -r sk; do
   if [[ -z $unknown ]]; then ok "skill $sk frontmatter portable"; else bad "skill $sk: unsupported frontmatter keys: $(printf '%s' "$unknown" | tr '\n' ' ')"; fi
 done < <(find plugins skills -name SKILL.md 2>/dev/null)
 
+echo "== context budgets =="
+# Skill descriptions are always in context (Claude's skills listing, Codex's
+# initial skills-list). writing-skills states token-efficiency limits for them;
+# these checks make that budget visible to CI so drift stops passing silently.
+# All measured in bytes (LC_ALL=C) for determinism across CI locales.
+
+# 1. Per-skill description budget: writing-skills keeps each under ~500 chars
+#    (Task 12 trimmed the one offender, orchestrating, to 494 — this pins it).
+DESC_MAX=500
+desc_over=0; desc_peak=0; desc_peak_name=""; desc_sum=0
+while IFS= read -r sk; do
+  [[ -z $sk ]] && continue
+  n="$(byte_len "$(skill_desc "$sk")")"
+  desc_sum=$((desc_sum + n))
+  if (( n > desc_peak )); then desc_peak=$n; desc_peak_name="$(basename "$(dirname "$sk")")"; fi
+  if (( n > DESC_MAX )); then bad "skill description over ${DESC_MAX}B: $(basename "$(dirname "$sk")") (${n}B)"; desc_over=1; fi
+done < <(find plugins skills -name SKILL.md 2>/dev/null | sort)
+(( desc_over == 0 )) && ok "every skill description within ${DESC_MAX}B (peak: ${desc_peak_name} ${desc_peak}B)"
+
+# 2. Always-loaded budget: the 28 descriptions plus the SessionStart hook's
+#    injected payload sit in context on every turn. Payload = preface + trimmed
+#    using-megapowers (frontmatter and Platform Adaptation stripped, mirroring
+#    the hook). Measured 2026-07: 10045B descriptions + 1935B payload = 11980B.
+#    Ceiling 13200B is ~10% above measured — catches real growth without
+#    churning on small wording edits.
+ALWAYS_MAX=13200
+skfile="plugins/megapowers/skills/using-megapowers/SKILL.md"
+if [[ -f $skfile ]]; then
+  trimmed="$(awk '
+    NR==1 && /^---/ { fm=1; next }
+    fm && /^---/    { fm=0; next }
+    fm              { next }
+    /^## /          { drop = ($0 ~ /^## (Platform Adaptation)$/) }
+    drop            { next }
+                    { print }
+  ' "$skfile")"
+  preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request (including clarifying questions or exploring code), check whether a skill applies and, if so, follow it."
+  payload_bytes="$(byte_len "${preface}"$'\n\n'"${trimmed}")"
+  always_total=$((desc_sum + payload_bytes))
+  if (( always_total <= ALWAYS_MAX )); then
+    ok "always-loaded context within ${ALWAYS_MAX}B (${always_total}B = ${desc_sum}B descriptions + ${payload_bytes}B session-start payload)"
+  else
+    bad "always-loaded context over ${ALWAYS_MAX}B (${always_total}B = ${desc_sum}B descriptions + ${payload_bytes}B session-start payload)"
+  fi
+else
+  bad "using-megapowers SKILL.md missing (cannot measure always-loaded budget)"
+fi
+
+# 3. Codex initial skills-list budget: Codex caps the initial list at
+#    min(2% of context, 8000 chars) and loads full SKILL.md only on selection,
+#    so descriptions compete for 8000 chars. Codex plugins install individually,
+#    so the actionable guard is per-plugin: no single Codex-shipped plugin may
+#    overflow the list on its own. The all-five aggregate (~10KB) is over cap and
+#    surfaced as a note below (a Codex user installing every plugin loses some
+#    initial-list discoverability until a skill is explicitly invoked).
+CODEX_MAX=8000
+codex_over=0; codex_peak=0; codex_peak_name=""; codex_agg=0; codex_found=0
+for cx in plugins/*/.codex-plugin/plugin.json; do
+  [[ -f $cx ]] || continue
+  codex_found=1
+  pdir="$(dirname "$(dirname "$cx")")"
+  psum=0
+  while IFS= read -r sk; do
+    [[ -z $sk ]] && continue
+    psum=$((psum + $(byte_len "$(skill_desc "$sk")")))
+  done < <(find "$pdir/skills" -name SKILL.md 2>/dev/null)
+  codex_agg=$((codex_agg + psum))
+  if (( psum > codex_peak )); then codex_peak=$psum; codex_peak_name="$(basename "$pdir")"; fi
+  if (( psum > CODEX_MAX )); then bad "Codex plugin skills-list over ${CODEX_MAX}B: $(basename "$pdir") (${psum}B)"; codex_over=1; fi
+done
+if (( codex_found == 1 )); then
+  (( codex_over == 0 )) && ok "every Codex plugin skills-list within ${CODEX_MAX}B (peak: ${codex_peak_name} ${codex_peak}B)"
+  if (( codex_agg > CODEX_MAX )); then
+    echo "  (note: all Codex-shipped plugins total ${codex_agg}B of skill descriptions, above Codex's ${CODEX_MAX}-char initial-list cap; installing every plugin on Codex drops some skills from the initial list until explicitly invoked)"
+  fi
+fi
+
 echo "== Antigravity manifests =="
 while IFS= read -r pj; do
   [[ -z $pj ]] && continue
@@ -143,6 +247,23 @@ if command -v shellcheck >/dev/null 2>&1; then
   )
 else
   echo "  (shellcheck not installed — skipped)"
+fi
+
+echo "== security lint =="
+# Deterministic malicious-skill-marker scan over skill bodies, hooks, and
+# templates (fetch-in-exec to a non-doc host, base64|sh, eval of fetched
+# content, bidi/Trojan-Source chars, safety-off instructions). No external
+# deps, so it always runs; SECURITY.md advertises it as a CI gate and this
+# wires it in. Exit 0 clean, nonzero on any hit (file:line: reason on stdout).
+if [[ -x scripts/security-lint.sh ]]; then
+  if sl_out="$(scripts/security-lint.sh 2>/dev/null)"; then
+    ok "security-lint clean"
+  else
+    bad "security-lint found markers (see below)"
+    printf '%s\n' "$sl_out" | sed 's/^/    /'
+  fi
+else
+  echo "  (scripts/security-lint.sh not present — skipped)"
 fi
 
 echo "== skill cross-references =="

@@ -48,8 +48,8 @@ What this repo does about it:
   hooks, and templates for the documented injection markers (a fetch of remote
   content in an executable step, a base64 blob piped into a shell, `eval` of
   fetched content, unicode direction-override characters, and disable-safety
-  instructions), failing on a hit. Wiring it into CI as an enforced gate is the
-  intent; run it locally with `scripts/security-lint.sh` until that lands.
+  instructions), failing on a hit. It runs in CI as part of `scripts/validate.sh`
+  and can be run locally the same way, or directly with `scripts/security-lint.sh`.
 
 What it cannot do: the harness executes what you trust it with. This repo
 cannot stop a model you have told to follow a malicious instruction, and it

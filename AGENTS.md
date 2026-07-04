@@ -40,5 +40,13 @@ Run after meaningful changes:
 scripts/validate.sh
 ```
 
+If you have the Claude Code CLI installed, run its native manifest validator
+(unrecognized-field warnings become errors under `--strict`):
+
+```bash
+claude plugin validate --strict .claude-plugin/marketplace.json
+for d in plugins/*/; do claude plugin validate --strict "$d"; done
+```
+
 If you have the Codex `plugin-creator` validator installed locally, run it
 against each plugin with a `.codex-plugin/plugin.json`.
