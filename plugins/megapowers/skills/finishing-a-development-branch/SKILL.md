@@ -1,6 +1,7 @@
 ---
 name: finishing-a-development-branch
 description: Use when implementation is complete and tests pass, and you need to decide how to integrate the work — merge, open a PR, keep, or discard. Triggers on "how do I ship this", "merge or PR?", "wrap up the branch", "the work is done". Code review (requesting-code-review) typically comes first.
+license: MIT
 ---
 
 # Finishing a Development Branch
@@ -271,3 +272,5 @@ Always do these:
 - Clean up the worktree for Options 1 and 4 only
 - `cd` to the main repo root before worktree removal
 - Run `git worktree prune` after removal
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

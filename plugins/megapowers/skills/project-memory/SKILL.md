@@ -7,6 +7,7 @@ description: >-
   runtime can read. Triggers on "remember this for the project", "note this
   decision", "recall what we decided about ...", "why did we ...". Distinct from a
   single run's resumability (that's mega-orchestration:autonomous-run's journal).
+license: MIT
 ---
 
 # Project Memory
@@ -75,3 +76,5 @@ ignored path — instead either point `MEGAPOWERS_MEMORY_DIR` at a committed loc
 (e.g. `docs/memory/`), or add a negation for the shared subpath to `.gitignore`
 (e.g. `!.megapowers/memory/`) so it's tracked normally. One choice, made per
 project.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

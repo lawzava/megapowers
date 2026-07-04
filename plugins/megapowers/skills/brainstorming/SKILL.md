@@ -1,6 +1,7 @@
 ---
 name: brainstorming
 description: Use before starting new or non-trivial design work — a new feature, component, or capability, or a behavior change whose approach is unclear — to explore intent, requirements, and design before implementing. Triggers on "I want to add <feature>", "work out the design", "figure out the approach", "let's build". Skip for mechanical edits, well-specified one-liners, and straightforward bug fixes.
+license: MIT
 ---
 
 # Brainstorming Ideas Into Designs
@@ -119,3 +120,5 @@ If they accept, read `visual-companion.md` (in this skill's directory) before
 proceeding — it carries the per-question browser-vs-terminal test and the
 server workflow. If they decline, continue text-only and don't offer again
 unless they raise it.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

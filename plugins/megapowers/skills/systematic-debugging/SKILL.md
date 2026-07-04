@@ -1,6 +1,7 @@
 ---
 name: systematic-debugging
 description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes — including when asked to fix something ("the test suite is failing", "find the cause", "fix this bug", "why is this failing"), and for flaky or intermittent tests. After finding the root cause, hand off to test-driven-development to write the fix.
+license: MIT
 ---
 
 # Systematic Debugging
@@ -262,3 +263,5 @@ These techniques are part of systematic debugging and available in this director
 Related skills:
 - **megapowers:test-driven-development** — for creating the failing test case (Phase 4, step 1)
 - **megapowers:verification-before-completion** — verify the fix worked before claiming success
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

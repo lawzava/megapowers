@@ -173,6 +173,7 @@ if [[ -f $skfile ]]; then
     fm              { next }
     /^## /          { drop = ($0 ~ /^## (Platform Adaptation)$/) }
     drop            { next }
+    /^Origin: Derived from Superpowers / { next }
                     { print }
   ' "$skfile")"
   preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request (including clarifying questions or exploring code), check whether a skill applies and, if so, follow it."

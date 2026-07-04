@@ -7,6 +7,7 @@ description: >-
   then simulate-then-commit the risky ones with approval scaled to the autonomy
   level. Triggers on "deploy", "send", "charge", "run this migration", "delete the
   production ...", "make this change live", or any irreversible external action.
+license: MIT
 ---
 
 # Effect Broker

@@ -8,6 +8,7 @@ description: >
   "Go scaffold", "bootstrap a Go service", "start a Go app from scratch",
   "what Go stack should I use". Skip if a non-Go language or runtime is named
   or implied.
+license: MIT
 ---
 
 # Greenfield Go Stack

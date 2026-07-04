@@ -1,6 +1,7 @@
 ---
 name: using-git-worktrees
 description: Use when starting feature work that needs isolation from current workspace or before executing implementation plans - ensures an isolated workspace exists via native tools or git worktree fallback
+license: MIT
 ---
 
 # Using Git Worktrees
@@ -189,3 +190,5 @@ The single most common mistake is reaching for `git worktree add` when a native 
 - Verify the directory is ignored before creating a project-local worktree.
 - Auto-detect and run project setup.
 - Verify a clean test baseline before proceeding.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

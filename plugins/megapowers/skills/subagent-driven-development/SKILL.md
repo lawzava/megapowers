@@ -1,6 +1,7 @@
 ---
 name: subagent-driven-development
 description: Use when executing a written plan of independent tasks in the current session by dispatching each task to a fresh subagent, with per-task review — same session, per-task subagent + review, no per-phase human checkpoint (distinct from executing-plans, which you run inline yourself without per-task subagents). Triggers on "dispatch a subagent per task", "subagent-driven", "fan out the plan tasks".
+license: MIT
 ---
 
 # Subagent-Driven Development
@@ -313,3 +314,5 @@ Regenerate the review package and re-review; repeat until approved.
 
 **Alternative workflow:**
 - **megapowers:executing-plans** - Inline single-writer execution when subagents are unavailable or per-task commits don't fit
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

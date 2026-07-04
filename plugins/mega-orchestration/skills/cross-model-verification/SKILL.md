@@ -7,6 +7,7 @@ description: >-
   Triggers on "get an independent review", "find the bug in this", "verify this
   before I trust it", "adversarial pass". Prefer an executable oracle over model
   opinion wherever one exists.
+license: MIT
 ---
 
 # Cross-Model Verification

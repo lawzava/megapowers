@@ -6,6 +6,7 @@ description: >-
   "idiomatic Python", "review this Python", "fix this async code", "type this
   properly". For choosing a new project's stack, use
   mega-python:greenfield-python-stack.
+license: MIT
 ---
 
 # Python Patterns

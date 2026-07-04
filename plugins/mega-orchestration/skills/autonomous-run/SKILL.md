@@ -7,6 +7,7 @@ description: >-
   machine-readable status) plus an autonomy level that decides what proceeds vs
   what waits for a human. Triggers on "work on this autonomously", "long-running
   task", "keep going until it's done", "run this unattended", "resume the run".
+license: MIT
 ---
 
 # Autonomous Run

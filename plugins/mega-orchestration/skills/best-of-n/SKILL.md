@@ -7,6 +7,7 @@ description: >-
   Triggers on "try a few approaches and pick the best", "best-of-n", "generate
   several solutions and choose", high-uncertainty implementation or design.
   Distinct from consensus/averaging: you pick ONE winner, you do not blend views.
+license: MIT
 ---
 
 # Best-of-N

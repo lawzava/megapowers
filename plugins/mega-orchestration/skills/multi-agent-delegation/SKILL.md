@@ -8,6 +8,7 @@ description: >-
   fan work out to same-model agents. Triggers on "delegate to Codex", "delegate
   the visual/browser work", "hand this off to another model", "get an independent
   model's review".
+license: MIT
 ---
 
 # Multi-Agent Delegation

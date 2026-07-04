@@ -1,6 +1,7 @@
 ---
 name: dispatching-parallel-agents
 description: Use when you have 2+ independent tasks with no shared state or ordering and want them done in parallel by separate agents — "do these at the same time", "parallelize", "fan out", "spin up an agent for each", bulk independent edits across files or modules. Not for sequential or dependent steps.
+license: MIT
 ---
 
 # Dispatching Parallel Agents
@@ -168,3 +169,5 @@ After agents return:
 2. **Check for conflicts** — did agents edit the same code?
 3. **Run full verification** — confirm all results hold together
 4. **Spot check** — agents can make systematic errors
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

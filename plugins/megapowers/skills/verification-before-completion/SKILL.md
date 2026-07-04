@@ -1,6 +1,7 @@
 ---
 name: verification-before-completion
 description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+license: MIT
 ---
 
 # Verification Before Completion
@@ -127,3 +128,5 @@ The rule covers exact phrases, paraphrases and synonyms, implications of success
 ## The Bottom Line
 
 Run the command. Read the output. Then claim the result.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

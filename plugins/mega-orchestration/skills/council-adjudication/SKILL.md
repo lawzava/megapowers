@@ -7,6 +7,7 @@ description: >-
   ANONYMIZED, and synthesize from the best. Triggers on "get a panel", "have the
   models debate this", "council", "which approach should we take". NOT opinion-
   averaging: you synthesize from the strongest answer, you don't blend all views.
+license: MIT
 ---
 
 # Council Adjudication

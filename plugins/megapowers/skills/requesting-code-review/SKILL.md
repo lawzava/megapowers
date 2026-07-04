@@ -1,6 +1,7 @@
 ---
 name: requesting-code-review
 description: Use when you have finished a task or feature and want the changes reviewed before merging. Triggers on "review this", "is this ready to merge", "check my work". Distinct from verification-before-completion (which runs the code to prove it works) and finishing-a-development-branch (which chooses how to integrate).
+license: MIT
 ---
 
 # Requesting Code Review
@@ -120,3 +121,5 @@ You: [Fix progress indicators]
 Review is still worth it when the change looks simple — that's often where a quiet bug hides. Address Critical issues before you continue, and resolve Important issues before proceeding rather than deferring them.
 
 Do not argue with valid feedback. Push back only when the reviewer is factually wrong, and back it with technical reasoning: show the code or tests that prove the behavior, and ask for clarification where the feedback is ambiguous.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

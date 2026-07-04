@@ -38,6 +38,23 @@ worktrees, subagent orchestration) originates with Superpowers. megapowers
 rewrites the prose style and renames the skills; the underlying process is
 Jesse Vincent's.
 
+Every Superpowers-derived skill also carries a one-line origin footer in its
+`SKILL.md` body, so the notice travels with copies installed through the
+bare-`SKILL.md` skills CLI channel (`npx skills add ...`), not only with the
+plugin bundle that ships this file.
+
+### Fork point and maintenance
+
+megapowers vendored the Superpowers process core as a snapshot. That snapshot
+has no git parent in this repo, and the pre-publication history is squashed (see
+the initial public release commit). The fork tracked upstream as of the initial
+vendoring in early July 2026; the exact upstream commit is not recorded. The
+contemporaneous upstream release line was Superpowers v6.1.0 (dated 2026-06-30),
+which is the baseline a future backport review should diff against.
+
+Maintenance rule: upstream Superpowers releases are reviewed for backports on
+each megapowers release.
+
 ## golang-patterns (in the `mega-go` plugin)
 
 The `golang-patterns` skill is vendored from **Everything Claude Code** by

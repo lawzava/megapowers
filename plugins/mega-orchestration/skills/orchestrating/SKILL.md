@@ -8,6 +8,7 @@ description: >-
   up", "what's the best way to tackle this", a multi-part or high-stakes task,
   or uncertainty about which orchestration skill applies. This is the decision
   root; the skills it routes to do the work.
+license: MIT
 ---
 
 # Orchestrating

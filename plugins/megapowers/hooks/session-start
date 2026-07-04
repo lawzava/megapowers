@@ -12,7 +12,10 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # keep it a lean nudge, not the whole skill. Strip, via awk range filters:
 #   - the YAML frontmatter (its name + description already appear in the skills listing);
 #   - the "## Platform Adaptation" section (points OTHER harnesses at their reference
-#     files; inert on Claude Code, the only harness that runs this hook).
+#     files; inert on Claude Code, the only harness that runs this hook);
+#   - the trailing "Origin:" license footer (an attribution notice that must live in the
+#     file so it travels the bare-SKILL.md skills CLI channel, but does not belong in the
+#     always-in-context nudge).
 # "## Communication" carries the required communication-register rules and stays in the
 # payload; SKILL.md keeps that section condensed so the nudge stays lean without dropping
 # a rule. The file on disk stays complete and portable for full reads / other harnesses.
@@ -24,6 +27,7 @@ if [ -r "${skill_file}" ]; then
     fm              { next }
     /^## /          { drop = ($0 ~ /^## (Platform Adaptation)$/) }
     drop            { next }
+    /^Origin: Derived from Superpowers / { next }
                     { print }
   ' "${skill_file}")
 else

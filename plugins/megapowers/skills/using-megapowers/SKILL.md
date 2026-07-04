@@ -1,6 +1,7 @@
 ---
 name: using-megapowers
 description: Use when starting any conversation - establishes how to find and use skills, requiring skill invocation before any response including clarifying questions
+license: MIT
 ---
 
 If dispatched as a subagent for a specific task, ignore this skill and proceed.
@@ -52,3 +53,5 @@ If your harness appears here, read its reference for tool specifics: Codex
 User instructions (CLAUDE.md, AGENTS.md, direct requests) take precedence over
 skills, which override default behavior. Skip a skill only when explicitly told
 to.
+
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
