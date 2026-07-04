@@ -34,9 +34,11 @@ output many times with the skill's guidance (**skill** mode) and without it
    that make those mistakes.
 
 2. **Two prompt modes per task.** skill mode = the skill's actual guidance +
-   the task; control = the task only. (The published prompts + inlined skill
-   guidance are in the workflow that generated them; the essential control
-   task is: "write a complete, self-contained program defining
+   the task; control = the task only. (The exact published prompts + inlined
+   skill guidance were not preserved: they lived in the uncommitted workflow
+   that generated them, so a re-run regenerates from the task definitions rather
+   than replaying the originals. The essential control task is: "write a
+   complete, self-contained program defining
    `workerPool`/`worker_pool`, feeding it 1..5, and printing `SUM=<sum of
    doubled values>`; it must terminate.")
 

@@ -59,6 +59,26 @@ The two directories answer different questions and run differently:
   credentials and API spend, which CI does not have), and they are the source
   of the numbers in [`RESULTS.md`](./RESULTS.md).
 
+## Published artifacts
+
+Re-running a study draws a fresh stochastic sample; it does not reproduce the
+exact published counts. To let a reader *audit* a published number rather than
+only re-sample it, keyed waves from 2026-07 onward follow one convention:
+
+- Each wave writes its run directories to `evals/results-<date>/` (for example
+  `evals/results-2026-08-01/`): the sanitized agent transcripts, the per-run
+  JSONL rows, and the oracle's own output for that wave.
+- `RESULTS.md` references each such directory by content hash next to the
+  section it backs, so a reader can fetch the archived runs and re-run the
+  committed `oracle.sh` over them offline, with no credentials and no sampling
+  variation.
+
+Plainly: the pre-2026-07 study waves predate this convention and have **no**
+committed run artifacts. Their numbers are auditable only by a fresh keyed
+re-run of the committed protocol, which is a new sample, not a replay of the
+published one. Sanitize before committing any wave: transcripts must carry no
+credentials, tokens, or private paths.
+
 ## Scenario kinds
 
 - `artifact`: deterministic. `solve.sh` runs a shipped script or hook against a

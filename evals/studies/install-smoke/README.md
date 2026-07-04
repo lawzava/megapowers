@@ -23,8 +23,13 @@ config, no other plugins, no CLAUDE.md/AGENTS.md):
 3. **First task**: in an empty project, ask the agent to load the
    test-driven-development skill and quote its core-principle sentence
    verbatim. The fresh home contains no other copy of that text, so a correct
-   quote proves the installed skill was discovered and read. Oracle:
-   case-insensitive match on "watch the test fail".
+   quote is strong evidence the installed skill was discovered and read. Oracle:
+   a fixed-string, case-sensitive match on the skill's whole core-principle
+   clause, not a five-word substring, so generic TDD phrasing does not pass.
+   Caveat: this is a strong load-signal, not an unguessable nonce. The sentence
+   descends from the public upstream this suite forked from (obra/superpowers,
+   MIT), so a model could in principle reproduce it from training; an
+   install-time random token would be needed for an unguessable proof.
 
 Verdicts are `PASS` / `FAIL` / `SKIP(reason)` per assertion; a harness with no
 CLI or no working auth is SKIPPED, not silently passed. Exit code 1 on any FAIL.

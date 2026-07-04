@@ -18,6 +18,25 @@ field by design (their schema allows only name and description). Format:
   rewrite without a changelog note) now live in the plugin READMEs:
   deny-destructive in mega-guardrails, run-loop in mega-orchestration, both
   re-captured from the current hooks.
+- Eval oracles hardened against the audit's demonstrated blind spots, each with
+  a runnable `--selftest` mutation suite: install-smoke now requires the skill's
+  core-principle sentence verbatim (fixed-string, case-sensitive), the
+  process-behavior flaky branch rejects deleted/skipped/gutted tests, the
+  gauntlet verify sub-oracle requires a real import rather than a mention, and
+  the impossible-dep disclosure regex requires an explicit unavailability
+  statement. `score.go` gains a two-sided Fisher exact `fisher_p` column for the
+  small-n and boundary (0%/100%) cells where the pooled z is invalid, with its
+  self-test wired into `run-all.sh`.
+- Evidence-doc truth pass over `evals/RESULTS.md`, `evals/README.md`, and the
+  study READMEs: the drifting `validate.sh` count is now stated as the count at
+  the time of the run rather than a pinned target; re-running a protocol is
+  distinguished from auditing a published number (pre-2026-07 study waves have
+  no committed run artifacts, and the convention for future waves is documented);
+  the trigger-recall 100% is labelled in-sample; the impossible-dep disclosure
+  rates are marked ceilings under the pre-tightening oracle; the install-smoke
+  claim matches the verbatim-sentence probe with an honest upstream caveat; and a
+  small-n statistics preamble scopes the z / `fisher_p` contrasts. No published
+  effect size or result-table number changed.
 
 ### Added
 
@@ -40,6 +59,10 @@ field by design (their schema allows only name and description). Format:
   trap, the install-smoke verification probe, and an explicit-approval rule
   for anything that widens permissions. Linked from the README quickstart;
   guarded as a required file by validate.sh.
+- `scripts/check-freshness.sh` now supports per-entry review windows: the
+  Codex-facing config surface is tracked on a tighter 30-day window (Codex ships
+  weekly), while the other dated opinions keep the 90-day default. The
+  validate.sh format guard (huge `--max-age-days`) is unchanged.
 
 ### Fixed
 
@@ -115,7 +138,8 @@ field by design (their schema allows only name and description). Format:
 ## 0.1.0 - 2026-07-03
 
 First versioned release. Everything before this shipped as 0.0.1 without a
-changelog.
+changelog. Released untagged; the first git tag is `v0.1.1`, so this entry has
+no matching tag to check out.
 
 ### Added
 
@@ -125,7 +149,7 @@ changelog.
   a per-harness primitives reference (subagents / teams / workflows / effort).
 - `run-loop.sh` Stop hook (Claude Code only): keeps an active autonomous run's
   loop turning instead of letting the session stop mid-run; exits only through
-  honest journal state. 11-case test suite.
+  honest journal state. 20-case test suite.
 - `delegates.toml` roles `verify`, `judge`, `council_member`: the routes the
   swarm skills instruct through now resolve instead of exiting unknown-role.
 - Senior-engineer communication register in `using-megapowers`, referenced by

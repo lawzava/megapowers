@@ -41,6 +41,26 @@ evals/studies/head-to-head/run-h2h.sh --out /tmp/h2h --n 8
 evals/studies/gauntlet/oracle.sh /tmp/h2h
 ```
 
+## Recorded fields (per run)
+
+Each run writes a `meta.json` plus the raw artifacts. The efficiency columns
+(**wall-clock** and **token spend**) are recorded so the first keyed run yields
+cost and latency numbers per arm, not only compliance verdicts; the repo
+publishes no efficiency numbers today, and this is where they will come from.
+
+| field | `meta.json` key | what it captures |
+|---|---|---|
+| arm | `mode` | which config home ran: `bare` / `megapowers` / `superpowers` |
+| **wall-clock** | `seconds` | end-to-end run duration, for the per-arm latency comparison |
+| **token spend** | `cost_usd`, `tokens_in`, `tokens_out` | reported cost and token counts from the stream-json result event (`null`/`0` if the harness omits them) |
+| task pass | `task` | `PASS`/`FAIL` from the compile-and-run check |
+| return code | `rc` | agent process exit code |
+| skills invoked | `skills-invoked.txt` (file) | every Skill-tool invocation, for the organic-trigger rate |
+
+Report the efficiency columns as a range across arms (median and spread over the
+n runs), not a single number, and never compare token counts across harnesses
+whose result events count tokens differently.
+
 ## Interpreting the result
 
 - The gauntlet showed the *wording* moves TDD ordering to 100%. If an
