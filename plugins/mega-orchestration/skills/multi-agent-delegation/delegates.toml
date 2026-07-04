@@ -3,24 +3,44 @@
 # fails a scheduled CI run when this date is older than 90 days).
 # Edit this file to change which model handles which role. Nothing auto-executes
 # it: the multi-agent-delegation skill and the delegate agents READ it to decide
-# where to send work. Keep it in sync with the runtimes you actually have.
+# where to send work. scripts/delegate-resolve <role> resolves a route the same way,
+# so a harness can execute the table instead of eyeballing it. Keep it in sync with
+# the runtimes you actually have.
 # It ships inside the multi-agent-delegation skill directory so the skill stays
 # self-contained when installed on its own (Agent Skills standard).
 
 # --- Providers: how to reach each backend ---
+# `binary` is the CLI delegate-resolve probes with `command -v`; a role whose
+# provider binary is not installed is skipped in favour of the next fallback, so a
+# route never resolves to a runtime you do not have.
+#
 # Inside Claude Code workflows/subagents the model parameter is Claude-only; reach
 # this provider through a thin wrapper agent (sonnet, effort medium) that shells
 # `codex exec` — see orchestrating references/harness-primitives.md.
 [providers.codex]
 model   = "gpt-5.5"
+vendor  = "openai"
+binary  = "codex"
 channel = "native-or-cli"
-notes   = "Use native Codex subagents inside Codex. From another tool, use codex exec or an explicitly configured private bridge."
+notes   = "Native Codex subagents inside Codex. From another tool: `codex exec` (one-shot, --output-schema for machine-checkable verdicts, resume --last to continue a thread), the Codex SDK (@openai/codex-sdk on npm, openai-codex on PyPI), or `codex mcp-server` (the first-party MCP channel exposing codex/codex-reply)."
+
+# Second model vendor, so the cross-vendor roles (verify/judge/council_member) have a
+# real different-vendor route to fall back to when the lead (or an --exclude) rules
+# out the primary. Headless Claude CLI: `claude -p`.
+[providers.claude]
+model   = "claude-fable-5"
+vendor  = "anthropic"
+binary  = "claude"
+channel = "claude-cli"
+notes   = "Headless `claude -p <prompt>`; the different-vendor route for a Codex-led run (resolve with --exclude openai)."
 
 # Browser / visual verification and fallback: drive the UI with playwright-cli and
 # reason over the screenshots with a vision-capable model (the lead itself when it
 # is vision-capable, e.g. Claude; otherwise route the screenshot to one). Depends
 # only on a standalone CLI, not on any single vendor's browser agent.
 [providers.browser]
+vendor  = "none"
+binary  = "playwright-cli"
 channel = "playwright-cli"
 notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .megapowers/evidence/. See agents/browser-delegate.md."
 
@@ -30,6 +50,8 @@ notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .
 # there is no performance case for enabling it either; re-check before flipping.
 [providers.antigravity]
 model   = "configured-in-agy"
+vendor  = "google"
+binary  = "agy"
 channel = "agy-cli"
 enabled = false
 
@@ -62,8 +84,38 @@ verify         = "codex"     # cross-model-verification: adversarial refute pass
 judge          = "codex"     # best-of-n: blind judge when no oracle decides (prefer a vendor none of the authors used)
 council_member = "codex"     # council-adjudication: independent answer + blind ranking member
 
-# --- Presets: how a delegate runs (referenced by the skill/agents) ---
-# read_only    : sandbox read-only, approval never   -> reviews & verification
-# build        : workspace-write in a worktree, approval never -> small impl; the lead runs tests and integrates
-# parallel     : one worktree-isolated delegate per task (cap 3-5); collect patches, integrate serially
-# single_writer: delegates write only in worktrees or return patches; the lead owns integration and commits
+# --- Fallbacks: ordered cross-vendor chains for the different-vendor roles ---
+# The [roles] value is the first choice; delegate-resolve walks this chain and skips
+# any provider that is --excluded (e.g. `--exclude openai` when Codex is the lead),
+# disabled, or whose binary is not installed. Each chain crosses vendors so the
+# constraint the role carries (verify differs from the author, judge/council prefer
+# an unused vendor) stays satisfiable no matter which vendor authored the work.
+[fallbacks]
+verify         = ["codex", "claude"]
+judge          = ["codex", "claude"]
+council_member = ["codex", "claude"]
+
+# --- Presets: how a delegate runs (resolve with `delegate-resolve --preset <name>`) ---
+[presets.read_only]
+sandbox  = "read-only"
+approval = "never"
+use      = "reviews & verification: the delegate looks and reports, it changes nothing"
+
+[presets.build]
+sandbox  = "workspace-write"
+approval = "never"
+worktree = "true"
+use      = "small scoped impl; the lead runs the tests and integrates"
+
+[presets.parallel]
+sandbox  = "workspace-write"
+approval = "never"
+worktree = "true"
+cap      = "3-5"
+use      = "one worktree-isolated delegate per task; collect patches, integrate serially"
+
+[presets.single_writer]
+sandbox  = "workspace-write"
+approval = "never"
+worktree = "true"
+use      = "delegates write only in worktrees or return patches; the lead owns integration and commits"

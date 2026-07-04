@@ -21,5 +21,13 @@ present() { if grep -qiE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "B
   present 'answer independently|blind to each other' "$cnc" "council: independent answers"
   present 'anonymiz'                 "$cnc" "council: anonymized ranking"
   present 'never averages|not average|synthesize from the best' "$cnc" "council: synthesize-from-best not average"
+
+  # the cross-vendor discipline must be EXECUTABLE, not just prose: the shipped
+  # routing config has to express a real second-vendor route the different-vendor
+  # roles can fall back to (the audit's unsatisfiable-constraint gap).
+  dt="$S/multi-agent-delegation/delegates.toml"
+  present 'vendor[[:space:]]*=[[:space:]]*"anthropic"' "$dt" "delegation: a second model vendor route is shipped (anthropic)"
+  present '\[fallbacks\]'            "$dt" "delegation: per-role fallback chains exist in config"
+  present 'verify[[:space:]]*=[[:space:]]*\[[^]]*claude' "$dt" "delegation: verify carries a cross-vendor fallback (codex -> claude)"
 } > inv.out
 cat inv.out
