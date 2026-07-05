@@ -5,6 +5,18 @@
 #   Stop                                    -> agent-notify-claude done   (work finished)
 # Claude passes hook JSON on stdin; we read it once and inspect it.
 set -uo pipefail
+
+# Only interactive sessions notify. Headless children (claude -p / SDK runs
+# spawned by delegates, workflows, cron) end turns constantly and report to
+# whatever spawned them, not the human. AGENT_NOTIFY_FORCE=1 overrides for a
+# deliberate unattended run that should ping on completion.
+if [ -z "${AGENT_NOTIFY_FORCE:-}" ]; then
+  case "${CLAUDE_CODE_ENTRYPOINT:-cli}" in
+    cli) ;;
+    *) exit 0 ;;
+  esac
+fi
+
 event="${1:-attention}"
 detail=""
 ntype=""
@@ -20,6 +32,13 @@ fi
 # waits, so always notify; pull a short detail from the tool input.
 if [ "$event" = "ask" ]; then
   tool="$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null || true)"
+  # Inside a subagent (payload carries agent_id) ExitPlanMode returns the plan
+  # to the dispatching agent, not the human — no one is blocked on you. A
+  # subagent's AskUserQuestion does surface to the user, so that still pings.
+  agent_id="$(printf '%s' "$payload" | jq -r '.agent_id // empty' 2>/dev/null || true)"
+  if [ "$tool" = "ExitPlanMode" ] && [ -n "$agent_id" ]; then
+    exit 0
+  fi
   case "$tool" in
     ExitPlanMode)    detail="plan ready for approval" ;;
     AskUserQuestion) detail="$(printf '%s' "$payload" | jq -r '.tool_input.questions[0].question // "has a question"' 2>/dev/null | cut -c1-160)" ;;
@@ -42,6 +61,24 @@ fi
 if [ "$event" = "done" ] && [ -n "$payload" ] \
    && printf '%s' "$payload" | jq -e 'any((.background_tasks // [])[]; .status == "running")' >/dev/null 2>&1; then
   exit 0
+fi
+
+# Stop also fires after every conversational turn — a ten-second reply while
+# you're at the keyboard is not "genuinely finished". Look up when this turn's
+# prompt was submitted (its promptId entry in the transcript) and skip the ping
+# for turns shorter than AGENT_NOTIFY_MIN_TURN_SECS. Missing data fails open.
+if [ "$event" = "done" ] && [ -n "$payload" ]; then
+  min="${AGENT_NOTIFY_MIN_TURN_SECS:-120}"
+  pid="$(printf '%s' "$payload" | jq -r '.prompt_id // empty' 2>/dev/null || true)"
+  tpath="$(printf '%s' "$payload" | jq -r '.transcript_path // empty' 2>/dev/null || true)"
+  if [ -n "$pid" ] && [ -r "$tpath" ]; then
+    ts="$(grep -m1 "\"promptId\": *\"$pid\"" "$tpath" 2>/dev/null | jq -r '.timestamp // empty' 2>/dev/null || true)"
+    start="$(date -d "${ts:-invalid}" +%s 2>/dev/null || echo 0)"
+    if [ "$start" -gt 0 ] && [ $(( $(date +%s) - start )) -lt "$min" ]; then
+      exit 0
+    fi
+  fi
+  [ -z "$detail" ] && detail="$(printf '%s' "$payload" | jq -r '.last_assistant_message // empty' 2>/dev/null | head -c 200 || true)"
 fi
 
 exec "$(dirname "$0")/agent-notify" "$event" "$detail"

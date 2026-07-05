@@ -6,6 +6,15 @@
 # Codex does not emit a notify event for approval prompts, so "needs input"
 # is best-effort (only if a matching type ever appears).
 set -uo pipefail
+
+# Codex here runs as a delegate: spawned under a Claude lead (codex mcp-server,
+# codex exec from a session) it inherits CLAUDECODE=1, and its turn-complete is
+# consumed by the lead, not the human. Only standalone Codex notifies.
+# AGENT_NOTIFY_FORCE=1 overrides.
+if [ -n "${CLAUDECODE:-}" ] && [ -z "${AGENT_NOTIFY_FORCE:-}" ]; then
+  exit 0
+fi
+
 payload="${1:-}"
 type="$(printf '%s' "$payload" | jq -r '.type // "event"' 2>/dev/null || echo event)"
 case "$type" in

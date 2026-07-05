@@ -7,12 +7,18 @@ copied and adapted from a working setup:
 - `agent-notify`: the transport. Sends a Telegram message (and rings the
   terminal bell through tmux when present). Best-effort by design: a network
   blip or missing config never breaks the agent run that called it.
-- `agent-notify-claude`: Claude Code hook wrapper. Filters noise: only
-  permission prompts notify from the Notification event, questions and
-  plan approvals notify from PreToolUse, and Stop suppresses the false
-  "done" while background tasks are still running.
+- `agent-notify-claude`: Claude Code hook wrapper. Filters noise so a ping
+  means "genuinely finished or blocked": only permission prompts notify from
+  the Notification event, questions and plan approvals notify from PreToolUse
+  (a subagent's plan approval returns to its lead, so it stays silent),
+  and "done" only fires from interactive sessions (headless `claude -p` / SDK
+  children spawned by delegates, workflows, or cron are silent), only when no
+  background task is still running, and only for turns that ran at least
+  `AGENT_NOTIFY_MIN_TURN_SECS` (default 120), so quick chat replies don't ping.
+  `AGENT_NOTIFY_FORCE=1` bypasses the filters for a deliberate unattended run.
 - `agent-notify-codex`: Codex `notify` program. Maps `agent-turn-complete`
-  to "done".
+  to "done". Silent when Codex runs as a delegate under a Claude lead
+  (`CLAUDECODE` is set): the lead consumes the result, not the human.
 
 ## Install
 
