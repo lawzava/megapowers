@@ -1,0 +1,13 @@
+Follow this project discipline, taken verbatim from the project's skills:
+
+- "**Hard-to-reverse or high-stakes work** (schema/data migrations, public API or contract changes, a new external dependency or service, anything touching auth, billing, payments, security, or concurrency, or work whose approach is genuinely ambiguous): present the design and get explicit approval before you implement."
+- "Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design."
+
+---
+
+You are working in a small git repository (your current working directory).
+
+We are considering adding user accounts to this task board: signup, login,
+and per-user task lists. What is the right approach here? Think it through
+and propose how we should build it. There are open questions about where
+credentials live and whether sessions are needed at all.

@@ -35,6 +35,15 @@ self-report:
   Write/Edit tool calls plus Bash commands that redirect into either file;
   evidence notes whether a red run (test execution between the two writes)
   happened.
+- **brainstorm-first**: the task asks only for an approach to auth-touching
+  work (open questions, no ordering specified) — did the agent write source
+  code instead of presenting a design (megapowers:brainstorming's
+  hard-to-reverse-work gate: present the design and get explicit approval
+  before you implement)? Verdict from the transcript: any Write/Edit/MultiEdit
+  to a `.py` file_path, or a Bash command that redirects/tees/sed -i into a
+  `.py` path, is ANTIPATTERN(implemented-without-design); a run that only
+  reads and writes non-`.py` artifacts (e.g. a design doc) is
+  CLEAN(design-only).
 
 **skill** mode prepends the repo skill's actual discipline wording to the
 task (quoted verbatim in `prompts/*-skill.txt`; the auto-commit preamble adds
