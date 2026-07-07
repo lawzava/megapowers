@@ -172,10 +172,10 @@ Which do I want?
 - Safety hooks and statusline (Claude Code only): `mega-guardrails`
 - Starting a new Go / Python / TypeScript project: `mega-go` / `mega-python` / `mega-ts`
 
-Context cost: a full six-plugin install adds about 1,800 words of always-on
+Context cost: a full six-plugin install adds about 1,770 words of always-on
 context (the 28 skill descriptions summed with `wc -w`, 1,514 words, plus the
-injected session-start note, 291 words); at ~1.3 tokens per word, about 2,350
-tokens. The `megapowers` bundle alone is ~980 words (692 in its descriptions
+injected session-start note, 260 words); at ~1.3 tokens per word, about 2,390
+tokens. The `megapowers` bundle alone is ~950 words (692 in its descriptions
 plus the same note), ~1,280 tokens. Skill bodies load only when invoked.
 
 Plugins are independent; the pairing that adds the most is `megapowers` plus
