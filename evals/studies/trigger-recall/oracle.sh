@@ -17,8 +17,21 @@ for meta in "$DIR"/*/run-*/meta.json; do
   rc="$(jq -r .rc "$meta")"
   inv="$rundir/skills-invoked.txt"
   # triggering happens early in a run, so a turn-capped/nonzero-exit run still
-  # carries valid trigger evidence — indeterminate only when nothing ran at all
+  # carries valid trigger evidence — but only if the agent actually worked.
+  # A run that errored out (rate limit, session cap) before its first tool use
+  # never had the chance to trigger; scoring it MISS/QUIET fabricates recall
+  # drops (the 2026-07-07 wave 1 gate scored 100 such runs as misses).
+  # (The refusal itself emits one assistant text event, so text presence
+  # cannot separate a dead run from a working one; tool use can, and did,
+  # exactly, across all 200 wave 1 runs.)
+  tool_uses="$(jq -r 'select(.type=="assistant") | .message.content[]?
+                      | select(.type=="tool_use") | .name' \
+               "$rundir/transcript.jsonl" 2>/dev/null | wc -l)"
   if [ ! -s "$rundir/transcript.jsonl" ]; then verdict=INDETERMINATE; detail="no-transcript(rc=$rc)"
+  elif ! jq empty "$rundir/transcript.jsonl" >/dev/null 2>&1; then
+    verdict=INDETERMINATE; detail="bad-transcript(rc=$rc)"
+  elif [ "$rc" != "0" ] && [ "$tool_uses" -eq 0 ]; then
+    verdict=INDETERMINATE; detail="no-agent-activity(rc=$rc)"
   elif [ "$expected" != "-" ]; then
     if grep -q "$expected" "$inv" 2>/dev/null; then verdict=HIT; detail="$expected"
     else
