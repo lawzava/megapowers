@@ -464,13 +464,12 @@ claude-haiku-4-5) × {skill, control} × n = 4; gauntlet, two models × two mode
 × n = 10; trigger-recall, claude-fable-5, n = 6 per task. Rate-limited runs
 (nonzero exit) were purged and re-run to full n. The only residual
 indeterminates are agent errors in the haiku impossible-dep cell (baseline 3,
-post-trim 5, both arms; a pre-existing fixture interaction), so that cell is
-reported but unmeasurable.
+post-trim 5, both arms; a pre-existing fixture interaction), collapsing the cell's n to 2-3 in each arm, so its rates are published but carry no evidential weight.
 
 **Gate criteria and verdict: PASS** (controller-adjudicated). On the two gate
 arms (claude-fable-5 and gpt-5.5), every probe's post-trim skill-arm pass
 count must be at least baseline minus one; the haiku arm documents, never
-gates. Result: 17 of 18 gate cells equal baseline exactly. The single
+gates. Result: 16 of 18 gate cells equal baseline exactly, one improved (flaky-test on claude-fable-5, 1/4 to 3/4), one minus-one; all 18 satisfy the at-least-baseline-minus-one criterion. The single
 minus-one cell (gpt-5.5 impossible-dep, 4/4 to 3/4) sits on a probe whose
 prompt and source skill (verification-before-completion) are unchanged in this
 wave, so that drop is sampling noise by construction. Skill-arm clean counts,
