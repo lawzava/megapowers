@@ -26,6 +26,9 @@ these holds:
 - Independent subtasks exist that do not reshape each other.
 - Bulk reads or long execution would drown the context that has to make
   decisions later. Protect the orchestrator's context; spend subagent context.
+  Context is a finite resource with diminishing returns; what the deciding
+  context needs is the smallest set of high-signal tokens that still decides
+  well.
 - A different model or runtime is demonstrably better at a subtask.
 - Stakes times uncertainty justify multiple attempts or independent checks.
 
