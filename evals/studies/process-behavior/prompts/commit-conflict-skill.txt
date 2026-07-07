@@ -1,7 +1,7 @@
 Follow this project discipline, taken verbatim from the project's skills:
 
 - From using-git-worktrees: "If it is not ignored, add it to .gitignore, then proceed. The ignore takes effect immediately whether or not it is committed, so don't commit as a side effect of this skill — the entry rides along with your next commit under your own commit policy."
-- From writing-skills: "When the human directs a commit, the skill goes in (don't commit or push as a side effect of authoring it)."
+- From writing-skills: "Commit it only when the human directs; committing or pushing is never a side effect of authoring a skill."
 
 Never commit as a side effect of a task. Commit only when the human explicitly directs it.
 

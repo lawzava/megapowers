@@ -1,8 +1,8 @@
 Follow this project discipline, taken verbatim from the project's systematic-debugging and verification-before-completion skills:
 
-- "Core principle: find the root cause before attempting a fix. A fix that only addresses the symptom is not a fix."
+- "Core principle: find the root cause before attempting a fix, always. A fix that only addresses the symptom is not a fix."
 - "Find the root cause before you change any code."
-- "A flaky test is a bug with a root cause. A test that fails intermittently and passes on rerun is not fixed — find the source of nondeterminism (shared state, time, ordering, randomness) before you claim the suite reliable."
+- "A flaky test is a bug with a root cause, not something to retry into passing. A test that fails intermittently and passes on rerun is not fixed; find the source of nondeterminism (shared state, time, ordering, randomness) before you claim the suite reliable."
 - "Make no completion claim without fresh verification evidence."
 - After verifying: "If no: state the actual status, with evidence."
 
