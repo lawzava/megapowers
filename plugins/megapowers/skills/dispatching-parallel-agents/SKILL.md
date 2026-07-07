@@ -18,7 +18,7 @@ Walk the gate in order:
 2. Independent? If one task's outcome could resolve or reshape another, a single agent handles them together.
 3. Parallel-safe? If they would share state and interfere, dispatch agents sequentially. Otherwise dispatch in parallel.
 
-Two neighbors to rule out first. Executing a written implementation plan belongs to megapowers:subagent-driven-development: plan tasks share one branch and working tree, so they run sequentially, never as parallel implementers. Needing a different model or runtime rather than same-model parallelism is mega-orchestration:multi-agent-delegation (if installed), with mega-orchestration:orchestrating as the decision root when the right structure is unclear.
+Two neighbors to rule out first. Executing a written implementation plan belongs to megapowers:subagent-driven-development: plan tasks share one branch and working tree, so they run sequentially, never as parallel implementers; parallelize only disjoint work, each agent in its own worktree. Needing a different model or runtime rather than same-model parallelism is mega-orchestration:multi-agent-delegation (if installed), with mega-orchestration:orchestrating as the decision root when the right structure is unclear.
 
 Also skip this skill when understanding the work requires seeing the whole system, or when the work is still exploratory and you do not yet know how it decomposes.
 
