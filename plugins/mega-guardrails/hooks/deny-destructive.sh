@@ -323,7 +323,7 @@ format_is_catastrophic() {
 _is_whole_tree_pathspec() {
   local w="$1" p
   case "$w" in
-    :/) return 0 ;;
+    :/|':/.'|':/*'|':/**') return 0 ;;   # quoted patterns: literal :/* etc., not a glob
     ':('*')'*)
       p="${w#*)}"
       case "$p" in ''|.|'*'|'**') return 0 ;; esac
