@@ -90,7 +90,7 @@ When agents return:
 Good agent prompts are:
 
 1. **Focused** — one clear task
-2. **Self-contained** — all context needed to understand the problem
+2. **Self-contained** — everything needed to locate the problem: paths, identifiers, error messages. A document the agent needs goes in as its path plus an instruction to read it; the prompt quotes only what the agent must match verbatim
 3. **Specific about output** — what should the agent return?
 
 ```markdown
