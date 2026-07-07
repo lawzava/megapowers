@@ -14,8 +14,9 @@ field by design (their schema allows only name and description). Format:
 
 - `designing-frontends`: the description's unquoted inner colon failed strict
   YAML parsing, so the skill loaded with empty metadata (no trigger); the
-  description is now a block scalar. v0.1.6 ships the broken frontmatter and
-  its CI run is red; use v0.1.7 for `mega-frontend`.
+  description is now a block scalar. v0.1.6 ships the broken frontmatter (its
+  plugin-validate CI job is red, though the run reads green because that job
+  is advisory); use v0.1.7 for `mega-frontend`.
 
 ## 0.1.6 - 2026-07-07
 
