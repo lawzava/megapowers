@@ -133,6 +133,13 @@ https://github.com/blader/humanizer.
   against a measured baseline rather than copied; both sources are credited,
   and the skill carries a one-line origin footer.
 
+## caveman (eval methodology note in `evals/`)
+
+The "Control arms" section of `evals/README.md` adapts the three-arm
+(baseline / terse control / skill) measurement design from **caveman** by
+Julius Brussee: https://github.com/JuliusBrussee/caveman (MIT, Copyright (c)
+2026 Julius Brussee). Methodology credit; no text or code is copied.
+
 ## Other sources
 
 Additional upstream credits are added as further modules land, once their
