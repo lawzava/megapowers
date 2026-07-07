@@ -99,6 +99,16 @@ https://github.com/openai/codex-plugin-cc.
   condensed, with the schema's field names preserved. This entry records the
   provenance and the changes.
 
+## skill-creator (description-optimization guidance in `megapowers`)
+
+The "Optimizing the Description" section of
+`plugins/megapowers/skills/writing-skills/testing-skills-with-subagents.md`
+adapts the description eval loop from **skill-creator** in Anthropic's skills
+repo: https://github.com/anthropics/skills.
+
+- Upstream license: Apache-2.0.
+- Rewritten, not copied; this entry records the provenance.
+
 ## Other sources
 
 Additional upstream credits are added as further modules land, once their

@@ -16,6 +16,7 @@ The description decides whether the skill loads at all. Write it so an agent fac
 - Describe the problem (race conditions, flaky tests), not just the technique.
 - Third person, since it's injected into the system prompt.
 - Don't summarize the workflow — that tempts agents to follow the summary instead of reading the skill.
+- Skills undertrigger more than they overtrigger, so lean the description toward firing and validate it with substantive queries (see testing-skills-with-subagents.md, Optimizing the Description).
 
 ```markdown
 Prefer: Use when tests have race conditions, timing dependencies, or pass/fail inconsistently.
