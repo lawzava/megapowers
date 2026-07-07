@@ -44,7 +44,7 @@ Or hand the install to the agent itself. Read
 then paste this into any coding agent, on any harness:
 
 > Install megapowers on this machine by fetching and following
-> https://raw.githubusercontent.com/lawzava/megapowers/v0.1.5/docs/agent-install.md
+> https://raw.githubusercontent.com/lawzava/megapowers/v0.1.6/docs/agent-install.md
 
 The guide has the agent detect its harness, install through the right
 channel, avoid registering any skill twice, verify by asking for a sentence
