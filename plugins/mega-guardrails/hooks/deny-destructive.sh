@@ -6,7 +6,8 @@
 #     dirs, format a disk, overwrite a block device, fork bomb, chmod 777 /). These are
 #     never a legitimate agent action, so denying them costs no real capability.
 #   - ASK (surface a confirmation instead of a flat refusal) for reversible-but-risky
-#     ops: destructive git (reset --hard, clean -f, branch -D, push --force), bulk cloud
+#     ops: destructive git (reset --hard, clean -f, branch -D, push --force, and a
+#     whole-tree checkout/restore of '.', which discards uncommitted work), bulk cloud
 #     deletes (aws s3 rm --recursive / rb --force), prune/destroy/delete-all
 #     (docker prune -f, terraform destroy -auto-approve, kubectl delete --all), and a
 #     remote download piped into a shell (curl … | bash). These are recoverable (reflog,
@@ -317,6 +318,7 @@ format_is_catastrophic() {
 git_is_risky() {
   shell_words "$1" || return 1
   local w sub="" reset_hard=0 clean_force=0 clean_dry=0 branch_force=0 branch_del=0 pushforce=0 skip=0
+  local co_dot=0 rst_dot=0 rst_staged=0 rst_worktree=0
   for w in "${WORDS[@]}"; do
     if [ -z "$sub" ]; then
       if [ "$skip" -eq 1 ]; then skip=0; continue; fi
@@ -324,7 +326,7 @@ git_is_risky() {
         -C|-c|--git-dir|--work-tree|--namespace) skip=1; continue ;;
         --*=*|--no-pager|--paginate|--bare) continue ;;
         -*) continue ;;
-        reset|clean|branch|push) sub="$w"; continue ;;
+        reset|clean|branch|push|checkout|restore) sub="$w"; continue ;;
         *) return 1 ;;
       esac
     fi
@@ -343,12 +345,29 @@ git_is_risky() {
           -[A-Za-z]*) [[ "$w" = *D* ]] && { branch_del=1; branch_force=1; }; [[ "$w" = *d* ]] && branch_del=1; [[ "$w" = *f* ]] && branch_force=1 ;;
         esac ;;
       push) case "$w" in --force-with-lease*|--force-if-includes) : ;; --force|-f) pushforce=1 ;; +[!-]*) pushforce=1 ;; esac ;;   # bare --force is risky even if a lease flag is also present (last one wins); lease-only is safe
+      # whole-tree discard: a bare-dot pathspec ('.', './', or the ':/' repo-root
+      # magic) after checkout/restore discards every uncommitted change with no
+      # reflog. A branch name or a specific path stays allowed.
+      checkout) case "$w" in .|./|:/) co_dot=1 ;; esac ;;
+      restore) case "$w" in
+          .|./|:/) rst_dot=1 ;;
+          --staged) rst_staged=1 ;;
+          --worktree) rst_worktree=1 ;;
+          --*) : ;;
+          -[A-Za-z]*) [[ "$w" = *S* ]] && rst_staged=1; [[ "$w" = *W* ]] && rst_worktree=1 ;;
+        esac ;;
     esac
   done
   [ "$reset_hard" -eq 1 ] && return 0
   [ "$clean_force" -eq 1 ] && [ "$clean_dry" -eq 0 ] && return 0
   { [ "$branch_del" -eq 1 ] && [ "$branch_force" -eq 1 ]; } && return 0
   [ "$pushforce" -eq 1 ] && return 0            # bare --force/-f present (a lease flag doesn't neutralize it)
+  [ "$co_dot" -eq 1 ] && return 0               # git checkout . / checkout -- . (whole-tree discard)
+  # restore of the worktree at '.': plain `git restore .` (worktree by default) or any
+  # form with --worktree/-W; `git restore --staged .` alone only unstages and is safe.
+  if [ "$rst_dot" -eq 1 ]; then
+    { [ "$rst_worktree" -eq 1 ] || [ "$rst_staged" -eq 0 ]; } && return 0
+  fi
   return 1
 }
 
@@ -465,7 +484,7 @@ scan_level() {
         # device-gated: shred/wipefs/mkfs of a block DEVICE wipes a disk; against a
         # plain file (shred secret.txt, mkfs.ext4 disk.img) it is a normal operation.
         format_is_catastrophic "$tail" && { REASON="$name targeting a block device (would wipe a disk). Against a plain file this is allowed."; DECISION="deny"; return 0; } ;;
-      git)      git_is_risky "$tail"     && ask_reason="destructive git (reset --hard / clean -f / branch -D / push --force). Recoverable via reflog/remote, but confirm it's intended." ;;
+      git)      git_is_risky "$tail"     && ask_reason="destructive git (reset --hard / clean -f / branch -D / push --force / whole-tree checkout or restore). Uncommitted changes have no reflog; confirm it's intended, or target specific paths." ;;
       aws)      aws_is_risky "$tail"     && ask_reason="aws s3 rm --recursive / rb --force deletes bucket data. Confirm it's intended." ;;
       docker)   docker_is_risky "$tail"  && ask_reason="docker prune --force removes containers/images/volumes. Confirm it's intended." ;;
       terraform|tofu) tf_is_risky "$tail" && ask_reason="terraform/tofu destroy -auto-approve tears down infrastructure with no prompt. Confirm it's intended." ;;
