@@ -69,6 +69,11 @@ Don't rely on it to contain untrusted input or risky operations; think before yo
 ## Style
 
 - Terse. No filler, no preamble, no hedging. Status updates in one line.
+- No em or en dashes. Scan final text for `—` and `–` and rewrite each hit
+  with a period, comma, colon, or parentheses.
+- User-facing text states what changed and the measured number. No sales
+  punchlines ("this release is for you"), no sizzle adjectives; the facts do
+  the selling.
 - Write the minimum code that solves the problem. No speculative features, single-use
   abstractions, or premature configurability.
 - Surgical changes: touch only what the request requires. No drive-by refactors or

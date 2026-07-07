@@ -109,6 +109,18 @@ repo: https://github.com/anthropics/skills.
 - Upstream license: Apache-2.0.
 - Rewritten, not copied; this entry records the provenance.
 
+## humanizer (the `humanizing-prose` skill)
+
+`plugins/megapowers/skills/humanizing-prose/SKILL.md` adapts the AI-tell
+taxonomy from **humanizer** by Siqi Chen (blader):
+https://github.com/blader/humanizer.
+
+- Upstream license: MIT, Copyright (c) 2025 Siqi Chen.
+- humanizer itself derives from Wikipedia's "Signs of AI writing"
+  (WikiProject AI Cleanup, CC BY-SA). The skill's wording here is re-derived
+  against a measured baseline rather than copied; both sources are credited,
+  and the skill carries a one-line origin footer.
+
 ## Other sources
 
 Additional upstream credits are added as further modules land, once their
