@@ -51,6 +51,9 @@ Create a task for each of these items and complete them in order:
 - Propose 2-3 different approaches with trade-offs
 - Present options conversationally with your recommendation and reasoning
 - Lead with your recommended option and explain why
+- When an option carries an effort estimate, give it on both scales, the
+  human-team time and the agent time ("human: ~2 days / agent: ~20 min plus
+  review"), so the compression is visible at decision time
 
 **Presenting the design:**
 
