@@ -8,6 +8,8 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.1.6 - 2026-07-07
+
 ### Added
 
 - `mega-frontend` plugin (seventh): one skill, `designing-frontends`,
