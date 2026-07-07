@@ -8,6 +8,29 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Added
+
+- `humanizing-prose` skill (megapowers plugin): strip AI tells from
+  user-facing prose, scoped to a measured frontier baseline (em/en dashes,
+  sales punchlines, default rule-of-three); adapted from blader/humanizer
+  (MIT), provenance in ATTRIBUTION.md. Two matching style bullets in
+  `templates/CLAUDE.md`, both arms micro-tested (control 4/5 dashed, with
+  bullets 0/5).
+- `references/prompting-codex.md` in multi-agent-delegation: contract-block
+  prompting for Codex delegates, an adversarial review template, and a JSON
+  review-output schema for `codex exec --output-schema`; adapted from
+  OpenAI's codex-plugin-cc (Apache-2.0).
+- Description-optimization loop documented in writing-skills
+  (testing-skills-with-subagents.md): near-miss negatives, 3 reps per query,
+  held-out selection; adapted from Anthropic's skill-creator (Apache-2.0).
+
+### Changed
+
+- Context-economy rationale stated where it binds: orchestrating (finite
+  attention budget), writing-skills (smallest set of high-signal tokens),
+  and dispatching-parallel-agents (documents travel as paths plus an
+  instruction to read them, micro-tested 5/5 vs a 0/5 control).
+
 ## 0.1.5 - 2026-07-07
 
 ### Changed
