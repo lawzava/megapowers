@@ -133,6 +133,19 @@ https://github.com/blader/humanizer.
   against a measured baseline rather than copied; both sources are credited,
   and the skill carries a one-line origin footer.
 
+## gstack (decision-brief and review-checklist artifacts)
+
+Two adaptations from **gstack** by Garry Tan:
+https://github.com/garrytan/gstack (MIT, Copyright (c) 2026 Garry Tan).
+
+- The dual-scale effort bullet in
+  `plugins/megapowers/skills/brainstorming/SKILL.md` (human-team time and
+  agent time side by side) adapts gstack's decision-brief format.
+- The "Agent-era failure modes" checks and the "Don't flag" list in
+  `plugins/megapowers/skills/requesting-code-review/code-reviewer.md` adapt
+  categories from gstack's review checklist.
+- Rewritten, not copied; this entry records the provenance.
+
 ## caveman (eval methodology note in `evals/`)
 
 The "Control arms" section of `evals/README.md` adapts the three-arm
