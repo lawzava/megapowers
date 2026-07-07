@@ -10,6 +10,18 @@ field by design (their schema allows only name and description). Format:
 
 ### Added
 
+- `mega-frontend` plugin (seventh): one skill, `designing-frontends`,
+  adapted from Anthropic's frontend-design (Apache-2.0), rewritten and
+  renamed; its calibration of current AI-default looks carries a
+  `Calibration reviewed:` date checked by `scripts/check-freshness.sh`.
+- `mega-guardrails`: whole-tree `git checkout`/`git restore` discards join
+  the ASK tier (`.`, `./.`, `:/`, bare-glob and `:(top)`-magic pathspecs);
+  branch switches, `--staged`-only restores, and scoped paths stay allowed.
+  Hardened through a three-round adversarial review loop; 31 new fixtures.
+- Reviewer template (`requesting-code-review`): agent-era failure checks
+  (LLM output trust boundary, enum completeness traced through consumers,
+  1-indexed model answers) and a do-not-flag noise list, from gstack (MIT).
+
 - `humanizing-prose` skill (megapowers plugin): strip AI tells from
   user-facing prose, scoped to a measured frontier baseline (em/en dashes,
   sales punchlines, default rule-of-three); adapted from blader/humanizer
@@ -30,6 +42,12 @@ field by design (their schema allows only name and description). Format:
   attention budget), writing-skills (smallest set of high-signal tokens),
   and dispatching-parallel-agents (documents travel as paths plus an
   instruction to read them, micro-tested 5/5 vs a 0/5 control).
+- `brainstorming`: option effort is presented on both scales (human-team
+  time and agent time), micro-tested 5/5 vs a 0/5 control; adapted from
+  gstack's decision-brief format.
+- `evals/README.md`: control-arm methodology (skill vs terse control, not
+  vs bare baseline), adapted from caveman (MIT); `writing-skills` notes
+  that invented abbreviations save no tokens.
 
 ## 0.1.5 - 2026-07-07
 
