@@ -8,6 +8,20 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Changed
+
+- Wave 1 de-prescription: six skills rewritten for frontier models per the
+  de-prescription rubric (writing-skills, subagent-driven-development,
+  systematic-debugging, test-driven-development, autonomous-run, and the
+  always-injected using-megapowers payload), cutting prescriptive scaffolding
+  while keeping the rationale; skill descriptions are byte-identical to v0.1.4
+  (guarded by `scripts/check-description-freeze.sh`). Keyed gate re-measure
+  (2026-07-07) PASSED: every discipline effect held on both gate arms
+  (claude-fable-5, gpt-5.5), the pre-trim systematic-debugging wording's
+  flaky-test regression on claude-fable-5 improved from 25% to 75% clean, and
+  a documented claude-haiku-4-5 cost is recorded; full tables and protocol in
+  `evals/RESULTS.md` §6.
+
 ## 0.1.4 - 2026-07-07
 
 ### Fixed
