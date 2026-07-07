@@ -49,8 +49,8 @@ BRANCH=$(git branch --show-current)
 - `GIT_DIR != GIT_COMMON`: already in a linked worktree; skip creation
 - empty `BRANCH`: detached HEAD; cannot branch, push, or PR from sandbox
 
-See `using-git-worktrees` Step 0 and `finishing-a-development-branch` Step 1 for
-how each skill uses these signals.
+See `using-git-worktrees` Step 0 and the test-verification requirement before
+`finishing-a-development-branch`'s option menu for how each skill uses these signals.
 
 ## Record & Replay
 

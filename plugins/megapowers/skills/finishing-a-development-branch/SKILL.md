@@ -49,7 +49,7 @@ Implementation complete. You're on a detached HEAD (externally managed workspace
 Which option?
 ```
 
-Options 2 and 3 preserve the worktree. Options 1 and 4 are the only ones that clean up.
+Cleanup follows the option's meaning, not its number: merge and discard clean up the worktree this process owns; push/PR and keep always leave it in place. Detached HEAD workspaces are externally managed and are never cleaned up, whichever option is chosen.
 
 ## Executing the choice
 
