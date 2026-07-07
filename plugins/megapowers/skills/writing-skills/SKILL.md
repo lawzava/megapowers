@@ -18,7 +18,7 @@ You write test cases (pressure scenarios with subagents), watch them fail (basel
 
 Required background: understand megapowers:test-driven-development before using this skill. That skill defines the RED-GREEN-REFACTOR cycle. This skill adapts TDD to documentation.
 
-Official guidance: for Anthropic's skill authoring best practices, see anthropic-best-practices.md. It provides additional patterns that complement the TDD-focused approach here.
+Official guidance: for Anthropic's skill authoring best practices, see anthropic-best-practices.md. It provides additional patterns that complement the TDD-focused approach here. For guidance on trimming skills for frontier models, see de-prescription-rubric.md.
 
 ## What Is a Skill?
 
