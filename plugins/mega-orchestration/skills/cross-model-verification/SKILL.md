@@ -45,7 +45,10 @@ security reasoning, "does this actually do what it claims".
 
 3. **Prompt it to REFUTE, with the burden of proof on "verified".** Ask it to find
    the bug, the counterexample, the missed case — and to default to *not verified*
-   under any real doubt. "Prove this wrong" surfaces more than "check this".
+   under any real doubt. "Prove this wrong" surfaces more than "check this". For a
+   Codex verifier, the adversarial template and output schema in
+   multi-agent-delegation's references/prompting-codex.md make the verdict
+   machine-checkable.
 
 4. **Escalate to a perspective-diverse panel for high stakes.** When a defect could
    fail in more than one way, run several independent verifiers, each with a
