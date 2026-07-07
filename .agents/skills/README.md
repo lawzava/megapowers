@@ -14,6 +14,7 @@ skill registers twice.
 
 The flat leaf names here share the `.agents/skills` namespace with any other
 skill vendor installed the same way (for example the official `google/skills`
-repo). As of 2026-07-04 none of the 28 names here collide with Google's set
-(theirs are domain-specific: `gke-*`, `bigquery-*`, `gemini-api`, `gcloud`, and
-similar).
+repo). As of 2026-07-04 none of the 28 names then present collide with
+Google's set (theirs are domain-specific: `gke-*`, `bigquery-*`, `gemini-api`,
+`gcloud`, and similar); `humanizing-prose`, added 2026-07-07, is outside that
+naming space too.
