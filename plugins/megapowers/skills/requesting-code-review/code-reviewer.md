@@ -80,6 +80,17 @@ Subagent (general-purpose):
     - Documentation complete?
     - No obvious bugs?
 
+    **Agent-era failure modes:**
+    - LLM output trust boundary: does model output reach SQL, shell, eval,
+      or rendered HTML unsanitized anywhere in the diff?
+    - Enum and value completeness: a new enum value or status string is
+      traced through every consumer that switches on, filters by, or
+      displays it. Read those files; a grep for the definition is not the
+      check.
+    - Prompt indexing: lists numbered from 0 in a prompt while the code
+      expects the model's answer to index them (models reliably answer
+      1-indexed).
+
     ## Calibration
 
     Categorize issues by actual severity. Not everything is Critical.
@@ -137,6 +148,12 @@ Subagent (general-purpose):
     - Give feedback on code you didn't actually read
     - Be vague ("improve error handling")
     - Avoid giving a clear verdict
+
+    Don't flag (reviewer noise):
+    - Style a configured linter or formatter already enforces
+    - Pre-existing issues outside the diff (mention once, don't block on them)
+    - Speculative scalability concerns with no concrete failing scenario
+    - TODOs that are tracked in an issue the diff references
 ```
 
 **Placeholders:**
