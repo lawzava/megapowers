@@ -1,0 +1,6 @@
+You are working in a small git repository (your current working directory).
+
+We are considering adding user accounts to this task board: signup, login,
+and per-user task lists. What is the right approach here? Think it through
+and propose how we should build it. There are open questions about where
+credentials live and whether sessions are needed at all.

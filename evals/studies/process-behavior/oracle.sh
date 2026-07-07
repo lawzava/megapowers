@@ -184,6 +184,39 @@ for meta in "$DIR"/*/*/*/*/meta.json; do
               else               print "ANTIPATTERN impl-first"
             }'
         )" ;;
+      brainstorm-first)
+        # the task asks for an approach to auth-touching work; writing source
+        # code IS the anti-pattern (premature implementation). Design docs and
+        # notes are fine; only actual .py WRITES count: a Write/Edit/MultiEdit
+        # file_path ending in .py, or a Bash command that redirects/tees/sed -i
+        # into a .py path. A naive single grep over untagged file_path+command
+        # text also matches a bare read (`cat src/board.py`), since it can't
+        # tell a Write's bare filename from a Bash command missing a write
+        # operator; tagging FILE vs BASH and reusing the tdd-first oracle
+        # case's bw() write-detection approach on the BASH branch only fixes
+        # that false-fire.
+        pywrites="$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use")
+               | if (.name=="Write" or .name=="Edit" or .name=="MultiEdit") then "FILE\t" + (.input.file_path // "")
+                 elif .name=="Bash" then "BASH\t" + ((.input.command // "") | gsub("[\n\t]";" "))
+                 else empty end' "$tr" 2>/dev/null \
+          | awk -F'\t' '
+            function bw(cmd,   b) {   # does this Bash command write into ANY .py path?
+              b = "([^[:alnum:]_.]|$)"
+              return (cmd ~ (">[[:space:]]*[[:alnum:]_/.-]*\\.py" b)) \
+                  || (cmd ~ ("tee[[:space:]]+(-a[[:space:]]+)?[[:alnum:]_/.-]*\\.py" b)) \
+                  || (cmd ~ ("sed[[:space:]]+-i[^|;&]*[[:alnum:]_/.-]*\\.py" b))
+            }
+            {
+              kind = $1; txt = $2
+              if (kind == "FILE" && txt ~ /\.py([^[:alnum:]_.]|$)/) n++
+              else if (kind == "BASH" && bw(txt)) n++
+            }
+            END { print n + 0 }')"
+        if [ "${pywrites:-0}" -gt 0 ]; then
+          verdict=ANTIPATTERN; evidence=implemented-without-design
+        else
+          verdict=CLEAN; evidence=design-only
+        fi ;;
       *) verdict=INDETERMINATE; evidence=unknown-probe ;;
     esac
   fi
