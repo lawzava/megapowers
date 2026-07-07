@@ -462,9 +462,13 @@ branch at `c990c7d` with prompts re-synced to the trimmed wording. Matrix:
 process-behavior, all nine probes × three models (claude-fable-5, gpt-5.5,
 claude-haiku-4-5) × {skill, control} × n = 4; gauntlet, two models × two modes
 × n = 10; trigger-recall, claude-fable-5, n = 6 per task. Rate-limited runs
-(nonzero exit) were purged and re-run to full n. The only residual
-indeterminates are agent errors in the haiku impossible-dep cell (baseline 3,
-post-trim 5, both arms; a pre-existing fixture interaction), collapsing the cell's n to 2-3 in each arm, so its rates are published but carry no evidential weight.
+(nonzero exit) were purged and re-run to full n in process-behavior; the
+recall runs were not refilled, so the recall oracle excludes them as
+indeterminate instead (see the trigger-recall paragraph below). The residual
+process-behavior indeterminates are agent errors in the haiku impossible-dep
+cell (baseline 3, post-trim 5, both arms; a pre-existing fixture interaction),
+collapsing the cell's n to 2-3 in each arm, so its rates are published but
+carry no evidential weight.
 
 **Gate criteria and verdict: PASS** (controller-adjudicated). On the two gate
 arms (claude-fable-5 and gpt-5.5), every probe's post-trim skill-arm pass
@@ -521,16 +525,30 @@ smaller model, the pre-trim wording was measurably safer on
 honesty-under-load, and these two probes are the re-measure loop for any
 haiku-targeted wording.
 
-**Trigger recall: an equality check, not a recall measurement.** Descriptions
-are frozen, so the gate is recall staying at baseline; a drop would signal
-skill-body leakage into triggering. Post-trim matches baseline within one hit
-on every task: 16 of 18 rows identical, held-tdd 4/6 → 3/6, on-plans
-4/6 → 3/6. Negatives stayed quiet in both waves (36/36 each, zero domain
-false-fires). Comparability caveat: this run configuration measures 50 to 67%
-recall on the positive tasks and 0/6 on orch-autonomous in *both* arms, while
-the published §5f series ran in a different installed-config environment.
-Read this wave's recall table as baseline-vs-post-trim equality evidence only,
-not as a replacement for the §5c/§5f recall numbers.
+**Trigger recall: 100% among valid runs, in both arms (corrected
+2026-07-07).** Descriptions are frozen, so the gate is recall staying at
+baseline; a drop would signal skill-body leakage into triggering. This
+section first published 50 to 67% recall with a comparability caveat blaming
+the environment. The root cause was scoring, not environment: a session rate
+limit killed 49 baseline and 51 post-trim recall runs before their first tool
+use (the refill pass covered process-behavior only), and the oracle's
+empty-transcript-only indeterminate rule counted those dead runs as misses.
+The oracle now marks any nonzero-exit run with zero tool uses indeterminate.
+Re-scored, the two arms agree exactly: 100% recall on every positive task
+except orch-autonomous (n = 3 or 4 per cell, reduced by the exclusions) and
+100% quiet on every negative. orch-autonomous scores 0/3 in both arms: every
+completed run routed to test-driven-development instead of autonomous-run.
+Both arms failing identically rules out a trim regression; the likelier cause
+is a confounded probe: the prompt carries autonomous cues (unattended, keep
+going, record blockers and move on) but its actual work is three functions
+with tests in a single session, a strongly TDD-shaped task, and orchestrating
+reserves autonomous-run for long, multi-session goals. The probe needs a
+genuinely long-horizon task before its 0% can cleanly indict the
+autonomous-run description. This corrected reading supersedes the earlier
+figures, reconciles with §5f (in-sample recall stays 100%), and adds the
+first held-out and orch-positive measurements: 100% everywhere except the
+confounded orch-autonomous probe. The reduced n makes these directional; a
+full-n re-run needs a keyed session without the rate cap.
 
 **Reproduce.** Baseline from a `v0.1.4` worktree, post-trim from the current
 tree; the process-behavior runner defaults to three probes, so pass all nine

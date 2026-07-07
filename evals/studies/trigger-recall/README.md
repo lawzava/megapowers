@@ -36,7 +36,10 @@ it doesn't (precision)?
    Dispatcher invocations (the `using-megapowers` meta-skill, which fires by
    design on every task) are excluded from false-fire and reported
    separately. Triggering happens early in a run, so turn-capped runs still
-   count; only an empty transcript is indeterminate.
+   count. Indeterminate = an empty transcript, or a nonzero-exit run with
+   zero tool uses (the agent errored out, e.g. on a rate limit, before it
+   could work; scoring those as MISS fabricates recall drops, which is
+   exactly what happened in the 2026-07-07 wave 1 gate before this rule).
 
 ```bash
 evals/studies/trigger-recall/run-recall.sh --out /tmp/recall --n 6
@@ -58,7 +61,12 @@ everything taxes every task. Published numbers in `../../RESULTS.md`.
   the transcript) and is future work.
 - Recall here is single-turn `-p` recall on short tasks; interactive sessions
   with a human nudging ("use your skills") will sit higher.
-- The published numbers in `../../RESULTS.md` predate the `held-*`, `orch-*`,
+- The §5c/§5f numbers in `../../RESULTS.md` predate the `held-*`, `orch-*`,
   and `neg-mention-*` extensions and were measured with only `megapowers`
-  installed. The extended protocol has no published numbers yet; it needs a
-  keyed run first.
+  installed. The extended protocol's first numbers are in the wave 1 section
+  (§6, corrected 2026-07-07): 100% recall and 100% quiet everywhere at
+  reduced n (3-4 per cell after rate-limit exclusions), except
+  orch-autonomous at 0% in both arms, read as a confounded probe (its prompt
+  mixes autonomous cues with a single-session TDD-shaped task, and every
+  completed run routed to test-driven-development). A full-n run and an
+  orch-autonomous probe redesign are future work.
