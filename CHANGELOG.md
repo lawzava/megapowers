@@ -8,6 +8,8 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.1.5 - 2026-07-07
+
 ### Changed
 
 - Wave 1 de-prescription: six skills rewritten for frontier models per the
