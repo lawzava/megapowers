@@ -8,11 +8,22 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.1.4 - 2026-07-07
+
 ### Fixed
 
 - `templates/agent-notify`: notifications gate on interactive sessions and real
   completions (entrypoint/CLAUDECODE checks, a minimum-turn threshold, and no
   "done" ping while background tasks are still running).
+- Weekly accuracy sweep: harness-primitives agent-teams entry (GA and
+  resumable, was described as experimental and non-resumable) and workflows
+  entry (saved workflows, script API, per-agent overrides); megapowers README
+  SessionStart injection size (291 words, was claimed 390); setup.md tag
+  signing claim (v0.1.3+ tags are GPG-signed) and pin list; stripe-go module
+  path gains its `/v86` suffix; `/ultrareview` marked as deprecated alias;
+  writing-skills per-field frontmatter limits; delegate-nudge retired
+  `gemini -p` example; mega-guardrails auto-format file-type list; mega-go
+  root manifest description.
 
 ## 0.1.3 - 2026-07-04
 
