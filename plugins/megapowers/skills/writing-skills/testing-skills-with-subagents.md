@@ -363,6 +363,24 @@ Fix: continue the REFACTOR cycle until no new rationalizations appear.
 | REFACTOR | Close loopholes | Add counters for new rationalizations |
 | Stay GREEN | Re-verify | Agent still complies after refactoring |
 
+## Optimizing the Description
+
+The description is measurable the same way the body is. Generate about 20
+trigger queries, split should-trigger and should-not-trigger. The valuable
+negatives are near misses: queries that share keywords or concepts with the
+skill but need something different; an obviously irrelevant negative tests
+nothing. Keep queries substantive: a task the model completes in one step
+never consults a skill, so a trivial query measures nothing either way. Run
+each query 3 times for a stable trigger rate, hold out roughly 40% of the
+queries, and pick the winning description by held-out score, not training
+score. Skills undertrigger more than they overtrigger, so when in doubt make
+the description a little pushy. This repo freezes shipped descriptions between
+releases (scripts/check-description-freeze.sh); run this loop to justify a
+change, not as a side effect of editing a body.
+
+Adapted from Anthropic's skill-creator (anthropics/skills, Apache-2.0); see
+ATTRIBUTION.md.
+
 ## The Bottom Line
 
 Skill creation is TDD. Same principles, same cycle, same benefits.
