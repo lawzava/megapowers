@@ -59,6 +59,18 @@ The two directories answer different questions and run differently:
   credentials and API spend, which CI does not have), and they are the source
   of the numbers in [`RESULTS.md`](./RESULTS.md).
 
+## Control arms: measure the skill, not the ask
+
+A skill's honest delta is skill versus a terse control arm that already asks
+for the generic behavior in one line, not skill versus bare baseline.
+Comparing against the bare baseline conflates the skill with the generic
+instruction and inflates the number. Where an output-shape study needs it,
+add the control arm alongside baseline and skill. Two design rules ride
+along, and this harness already follows both: commit the scored snapshot so
+any change to published numbers is reviewable as a diff, and keep generation
+(keyed) separate from scoring (deterministic, CI-safe). Methodology adapted
+from caveman (https://github.com/JuliusBrussee/caveman, MIT).
+
 ## Published artifacts
 
 Re-running a study draws a fresh stochastic sample; it does not reproduce the
