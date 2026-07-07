@@ -118,3 +118,5 @@ When designing a skill, ask:
 3. Have I stated the reason, not just the rule?
 4. Is my emphasis reserved for what actually matters?
 5. Would this framing hold up if the reader saw exactly why I wrote it?
+
+When trimming an existing skill for current frontier models, apply de-prescription-rubric.md.
