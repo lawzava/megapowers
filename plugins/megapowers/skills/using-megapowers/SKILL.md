@@ -8,27 +8,22 @@ If dispatched as a subagent for a specific task, ignore this skill and proceed.
 
 ## The Core Rule
 
-Invoke any relevant or requested skill *before* your first response or action,
+Invoke any relevant or requested skill before your first response or action,
 including clarifying questions, exploring code, or reading files. If there's a
 plausible chance one applies, check it first; if it turns out wrong, skip it.
-Before entering plan mode, brainstorm first.
+Simple-looking tasks are where skills get skipped, and memory drifts: open the
+skill, don't recall it. Before entering plan mode, brainstorm first.
 
 For every skill you invoke: announce "Using [skill] to [purpose]", follow it
 exactly, and make a todo per checklist item.
 
 ## Skill Priority
 
-When several apply, process skills set the approach, then implementation skills
-carry it out. "Let's build X" → brainstorming first; "fix this bug" →
-systematic-debugging first. For structuring non-trivial work (split, delegate,
-parallelize, run long), mega-orchestration:orchestrating is the decision root
-when that plugin is installed.
-
-## Don't Skip on a Hunch
-
-Simple-looking tasks are where skills get skipped. "Just a quick question", "let
-me look first", "overkill here": each means check for a skill first. Memory
-drifts: open the skill, don't recall it.
+Process skills set the approach, then implementation skills carry it out:
+"let's build X" starts with brainstorming, "fix this bug" with
+systematic-debugging. For structuring non-trivial work,
+mega-orchestration:orchestrating is the decision root when that plugin is
+installed.
 
 ## Communication
 
