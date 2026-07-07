@@ -1,6 +1,6 @@
 # megapowers (plugin)
 
-The workflow core: fifteen process skills that take an idea to reviewed,
+The workflow core: sixteen process skills that take an idea to reviewed,
 tested, merged code. Each phase of the work has its own skill with clear entry
 conditions, so the right practice is applied at the right moment.
 
@@ -18,6 +18,7 @@ conditions, so the right practice is applied at the right moment.
 - Integrate: `using-git-worktrees` (isolated feature work),
   `finishing-a-development-branch` (merge, PR, keep, or discard)
 - Memory: `project-memory` (durable project knowledge across sessions)
+- Communicate: `humanizing-prose` (strip AI tells from user-facing prose)
 - Meta: `using-megapowers` (the session-start check-for-a-skill rule),
   `writing-skills` (create and test new skills)
 
@@ -26,8 +27,8 @@ conditions, so the right practice is applied at the right moment.
 A SessionStart hook (Claude Code) injects the `using-megapowers` skill plus a
 one-sentence preface at session start, so the agent checks for a matching
 skill before acting instead of waiting for you to name one. The injection is
-about 260 words (~350 tokens); the fifteen skill descriptions add about 690
-words (~920 tokens) of always-on metadata. Skill bodies load only when a skill
+about 260 words (~350 tokens); the sixteen skill descriptions add about 730
+words (~950 tokens) of always-on metadata. Skill bodies load only when a skill
 is invoked. Verify yourself: `bash hooks/tests/session-start.test.sh` prints
 the exact payload word count (and gates it at 300).
 
