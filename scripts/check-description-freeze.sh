@@ -3,7 +3,7 @@
 # The de-prescription pass trims bodies only; descriptions are the tuned trigger
 # surface and stay frozen (docs/megapowers/specs/2026-07-07-fable5-de-prescription-design.md).
 set -u
-BASE_REF="${1:-v0.1.4}"
+BASE_REF="${1:-v0.1.5}"
 fail=0
 frontmatter() { awk '/^---$/{n++; next} n==1{print} n>=2{exit}'; }
 for f in plugins/*/skills/*/SKILL.md; do
