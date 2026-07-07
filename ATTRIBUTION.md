@@ -99,6 +99,18 @@ https://github.com/openai/codex-plugin-cc.
   condensed, with the schema's field names preserved. This entry records the
   provenance and the changes.
 
+## frontend-design (the `mega-frontend` plugin)
+
+`plugins/mega-frontend/skills/designing-frontends/SKILL.md` adapts
+**frontend-design** from Anthropic's skills repo:
+https://github.com/anthropics/skills.
+
+- Upstream license: Apache-2.0.
+- Rewritten to this repo's register and renamed to avoid colliding with the
+  upstream skill in shared `.agents/skills` namespaces; the calibration
+  section carries a review date. This entry records the provenance and the
+  changes.
+
 ## skill-creator (description-optimization guidance in `megapowers`)
 
 The "Optimizing the Description" section of

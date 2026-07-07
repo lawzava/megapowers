@@ -4,7 +4,7 @@
 [![Latest tag](https://img.shields.io/github/v/tag/lawzava/megapowers?label=release)](https://github.com/lawzava/megapowers/tags)
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
-megapowers is a plugin marketplace for coding agents: six installable plugins
+megapowers is a plugin marketplace for coding agents: seven installable plugins
 of skills, hooks, and delegate agents. Together they give the agent
 engineering discipline: design before code, test first, verify before
 claiming done, delegate to the best model per role, run long tasks
@@ -164,6 +164,7 @@ do: [SECURITY.md](./SECURITY.md).
 | [`mega-python`](./plugins/mega-python/README.md) | Greenfield Python: stack picker plus idiomatic patterns (typing, async, errors). |
 | [`mega-ts`](./plugins/mega-ts/README.md) | Greenfield TypeScript: stack picker plus idiomatic patterns (types, async, errors). |
 | [`mega-guardrails`](./plugins/mega-guardrails/README.md) | Claude Code safety hooks and dev tooling: block destructive commands, format-on-save, an optional Linux statusline. |
+| [`mega-frontend`](./plugins/mega-frontend/README.md) | Frontend design guidance: distinctive visual direction, typography, layout, and UX copy that don't read as templated defaults. |
 
 Which do I want?
 
@@ -171,10 +172,11 @@ Which do I want?
 - Multi-model delegation, verification, autonomous runs: `mega-orchestration`
 - Safety hooks and statusline (Claude Code only): `mega-guardrails`
 - Starting a new Go / Python / TypeScript project: `mega-go` / `mega-python` / `mega-ts`
+- Building or reshaping UI with a design bar: `mega-frontend`
 
-Context cost: a full six-plugin install adds about 1,800 words of always-on
-context (the 29 skill descriptions summed with `wc -w`, 1,546 words, plus the
-injected session-start note, 260 words); at ~1.3 tokens per word, about 2,350
+Context cost: a full seven-plugin install adds about 1,850 words of always-on
+context (the 30 skill descriptions summed with `wc -w`, 1,590 words, plus the
+injected session-start note, 260 words); at ~1.3 tokens per word, about 2,400
 tokens. The `megapowers` bundle alone is ~990 words (729 in its descriptions
 plus the same note), ~1,290 tokens. Skill bodies load only when invoked.
 
