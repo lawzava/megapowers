@@ -81,7 +81,9 @@ Read the `[roles]` and `[providers.*]` tables in `delegates.toml`. The defaults:
   acceptance test and a bounded module. Also use it for hard self-contained
   single-file logic and for an independent adversarial pass on risky code
   (billing, auth, concurrency) — "find the bug in this diff." (If the lead is
-  itself Codex, route the independent pass to a different model.)
+  itself Codex, route the independent pass to a different model.) Word the
+  dispatch per [references/prompting-codex.md](references/prompting-codex.md):
+  a contract-shaped prompt with an output schema beats added reasoning.
 - **Visual / UI work and browser / end-to-end testing -> Codex (native computer
   use).** A cost-adjusted call, dated in the note above `[roles]` in
   delegates.toml: Claude leads the computer-use benchmarks by a modest margin,

@@ -86,6 +86,19 @@ Affaan Mustafa: https://github.com/affaan-m/everything-claude-code
   > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   > SOFTWARE.
 
+## codex-plugin-cc (prompting reference in `mega-orchestration`)
+
+`plugins/mega-orchestration/skills/multi-agent-delegation/references/prompting-codex.md`
+adapts prompting guidance, the adversarial-review framing, and the review
+output schema from **codex-plugin-cc** by OpenAI:
+https://github.com/openai/codex-plugin-cc.
+
+- Upstream license: Apache-2.0. Upstream NOTICE: "Copyright 2026 OpenAI"
+  (retained here per that license).
+- The material is rewritten, not copied: restyled to this repo's register and
+  condensed, with the schema's field names preserved. This entry records the
+  provenance and the changes.
+
 ## Other sources
 
 Additional upstream credits are added as further modules land, once their
