@@ -315,21 +315,22 @@ format_is_catastrophic() {
 }
 
 # --- ASK-tier tails (reversible / routine but worth a confirm) ---------------------
-# A checkout/restore pathspec that resolves to the whole repo root. Catches the
-# plain forms (., ./, ./.) by stripping leading ./ repeats, the ':/'
-# root magic, and ':(top...)' magic whose path part is empty or a bare glob.
-# A scoped spec (./src, :(top)src, :/sub) is not whole-tree and stays allowed.
+# A checkout/restore pathspec that resolves to the whole repo root or the whole
+# cwd. Catches the plain forms (., ./, ./., bare * or **) by stripping leading
+# ./ repeats, the ':/' root magic, and any ':(...)' long-form magic (top, glob,
+# icase, in any order) whose path part is empty, '.', '*', or '**'. A scoped
+# spec (./src, :(top)src, :/sub, *.md) is not whole-tree and stays allowed.
 _is_whole_tree_pathspec() {
   local w="$1" p
   case "$w" in
     :/) return 0 ;;
-    ':(top'*)
+    ':('*')'*)
       p="${w#*)}"
       case "$p" in ''|.|'*'|'**') return 0 ;; esac
       return 1 ;;
   esac
   while [ "${w#./}" != "$w" ]; do w="${w#./}"; done
-  if [ -z "$w" ] || [ "$w" = "." ]; then return 0; fi
+  case "$w" in ''|.|'*'|'**') return 0 ;; esac
   return 1
 }
 git_is_risky() {
