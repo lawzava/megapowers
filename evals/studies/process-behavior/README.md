@@ -36,7 +36,7 @@ self-report:
   evidence notes whether a red run (test execution between the two writes)
   happened.
 - **brainstorm-first**: the task asks only for an approach to auth-touching
-  work (open questions, no ordering specified) — did the agent write source
+  work (open questions, no ordering specified): did the agent write source
   code instead of presenting a design (megapowers:brainstorming's
   hard-to-reverse-work gate: present the design and get explicit approval
   before you implement)? Verdict from the transcript: any Write/Edit/MultiEdit

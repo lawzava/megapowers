@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup-brainstorm-first.sh <dir> — build the throwaway repo for the
+# setup-brainstorm-first.sh <dir>: build the throwaway repo for the
 # brainstorm-first probe: a tiny existing project, so the agent has real
 # context to explore before proposing an approach for auth-touching work.
 set -euo pipefail
