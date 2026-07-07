@@ -68,5 +68,4 @@ everything taxes every task. Published numbers in `../../RESULTS.md`.
   reduced n (3-4 per cell after rate-limit exclusions), except
   orch-autonomous at 0% in both arms, read as a confounded probe (its prompt
   mixes autonomous cues with a single-session TDD-shaped task, and every
-  completed run routed to test-driven-development). A full-n run and an
-  orch-autonomous probe redesign are future work.
+  completed run routed to test-driven-development). The orch-autonomous prompt was redesigned 2026-07-07 to a multi-session, multi-milestone task after the wave 1 finding; its first numbers come with the wave 2 gate. A full-n run of the whole extended set is still future work.
