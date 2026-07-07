@@ -1,0 +1,15 @@
+{
+  "name": "mega-frontend",
+  "description": "Frontend design guidance: distinctive visual direction, typography, layout, and UX copy that don't read as templated defaults.",
+  "version": "0.1.5",
+  "author": {
+    "name": "lawzava"
+  },
+  "license": "MIT",
+  "keywords": [
+    "frontend",
+    "design",
+    "ui",
+    "typography"
+  ]
+}

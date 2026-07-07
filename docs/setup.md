@@ -19,6 +19,7 @@ Then install what you want:
 /plugin install mega-go@megapowers            # greenfield Go
 /plugin install mega-python@megapowers        # greenfield Python
 /plugin install mega-ts@megapowers            # greenfield TypeScript
+/plugin install mega-frontend@megapowers      # frontend design guidance
 ```
 
 Or run `/plugin` and browse Discover.
@@ -99,7 +100,7 @@ Verify: `codex plugin marketplace list` shows `megapowers`. After installing a
 plugin, the same first-task probe applies (ask the agent to quote the
 test-driven-development core principle in a fresh session).
 
-Install `megapowers`, `mega-go`, `mega-python`, `mega-ts`, or
+Install `megapowers`, `mega-go`, `mega-python`, `mega-ts`, `mega-frontend`, or
 `mega-orchestration` from the `megapowers` marketplace. `mega-guardrails` is
 not listed for Codex: its hook scripts are Claude Code scripts and are not yet
 ported, so nothing would run there.
@@ -374,7 +375,7 @@ Requires `jq`; `shellcheck` is optional (hook checks are skipped without it).
 ## Manual marketplace smoke test
 
 From a checkout, point Claude Code at the local dir and confirm the marketplace
-lists every entry in `.claude-plugin/marketplace.json` (currently 15: 6 plugin
+lists every entry in `.claude-plugin/marketplace.json` (currently 16: 7 plugin
 bundles plus 9 standalone skills):
 
 ```
@@ -383,7 +384,7 @@ bundles plus 9 standalone skills):
 ```
 
 For Codex, confirm the repo marketplace lists every entry in
-`.agents/plugins/marketplace.json` (currently 5):
+`.agents/plugins/marketplace.json` (currently 6):
 
 ```
 codex plugin marketplace add ./

@@ -1,0 +1,33 @@
+{
+  "name": "mega-frontend",
+  "version": "0.1.5",
+  "description": "Distinctive frontend design direction, typography, layout, and UX copy.",
+  "author": {
+    "name": "lawzava"
+  },
+  "repository": "https://github.com/lawzava/megapowers",
+  "license": "MIT",
+  "keywords": [
+    "frontend",
+    "design",
+    "ui",
+    "typography"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "mega-frontend",
+    "shortDescription": "Frontend design guidance that avoids templated defaults.",
+    "longDescription": "A skill for deliberate visual design when building or reshaping UI: grounding direction in the subject, a token-system planning pass, typography and structure principles, a dated calibration of current AI-default looks, and UX copy guidance.",
+    "developerName": "lawzava",
+    "category": "Design",
+    "capabilities": [
+      "Skills",
+      "Frontend design guidance"
+    ],
+    "defaultPrompt": [
+      "Use mega-frontend to set the design direction for this page.",
+      "Use mega-frontend to make this UI stop looking templated."
+    ],
+    "brandColor": "#7C3AED"
+  }
+}
