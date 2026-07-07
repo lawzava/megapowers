@@ -170,9 +170,10 @@ does:
   that leave it unchanged do not reach existing installs. When the maintainer
   bumps it, background auto-update applies the new version.
 
-Neither is an integrity pin (no sha, and the tags are unsigned), so a pin
-controls when you move, not cryptographic provenance. Tags `v0.1.1` and
-`v0.1.2` exist to pin against.
+Neither is an integrity pin (no sha in the ref), so a pin controls when you
+move, not cryptographic provenance — though release tags from `v0.1.3` on are
+GPG-signed and can be verified out of band (see SECURITY.md, Release
+integrity). Tags `v0.1.1`, `v0.1.2`, and `v0.1.3` exist to pin against.
 
 ## Every other harness: the skills CLI
 

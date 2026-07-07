@@ -8,6 +8,12 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Fixed
+
+- `templates/agent-notify`: notifications gate on interactive sessions and real
+  completions (entrypoint/CLAUDECODE checks, a minimum-turn threshold, and no
+  "done" ping while background tasks are still running).
+
 ## 0.1.3 - 2026-07-04
 
 ### Security

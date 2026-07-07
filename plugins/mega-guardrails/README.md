@@ -76,7 +76,8 @@ harnesses nothing here blocks or gates out of the box (see
 ## auto-format (PostToolUse, Write/Edit)
 
 Formats the file that was just touched: `gofmt`/`goimports` for Go, and a
-project-local `prettier` for JS, TS, CSS, Markdown, and YAML. Runs
+project-local `prettier` for JS/JSX, TS/TSX, JSON, CSS/SCSS, Markdown, and
+YAML. Runs
 synchronously (so it can't race a follow-up edit) and only rewrites the single
 file just written.
 
@@ -84,7 +85,8 @@ file just written.
 
 - `jq` is required by both hooks.
 - `goimports` and `gofmt` are used for Go formatting.
-- A project-local `prettier` is used for JS and TS (and CSS, Markdown, YAML).
+- A project-local `prettier` is used for JS/JSX and TS/TSX (and JSON, CSS/SCSS,
+  Markdown, YAML).
 
 Missing formatters are skipped quietly rather than treated as errors.
 

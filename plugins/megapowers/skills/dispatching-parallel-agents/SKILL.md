@@ -74,6 +74,8 @@ Multiple dispatch calls in one response run in parallel. One per response runs s
 
 On a harness with resumable subagents (Claude Code's SendMessage), send follow-up work to the same agent instead of re-dispatching a fresh one with a recap; a resumed subagent keeps its full history. Agents that need identical starting context can be forks, which inherit the conversation and share the parent's prompt cache, so they are cheaper than fresh subagents.
 
+For very large or repeatable fan-outs (audits, migrations, many dozens of items), prefer the harness's native workflow runner where one exists (Claude Code's dynamic workflows, opted in via `ultracode` or a saved workflow); the hand-managed pattern here stays the portable default.
+
 ### 4. Review and Integrate
 
 When agents return:

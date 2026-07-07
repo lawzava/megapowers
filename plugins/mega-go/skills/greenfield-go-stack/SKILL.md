@@ -48,7 +48,7 @@ come from the baseline middleware and minimal images, not bolted on later.
 | DB | SQLite, `modernc.org/sqlite` | **pure Go, no CGO** |
 | ORM | Bun (`github.com/uptrace/bun`) | SQL-first; `sqlitedialect` |
 | Auth | Clerk (`github.com/clerk/clerk-sdk-go/v2`) | |
-| Payments | Stripe (`github.com/stripe/stripe-go`) | Checkout/Elements + webhooks |
+| Payments | Stripe (`github.com/stripe/stripe-go/v86`) | Checkout/Elements + webhooks |
 | Email | Cloudflare | see Email section (send + receive) |
 | Hosting | Docker + docker compose | Wolfi base images |
 | Lint | golangci-lint | Uber Go Style Guide config |

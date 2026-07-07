@@ -81,7 +81,7 @@ Keep inline:
 
 Frontmatter (YAML):
 - Two required fields: `name` and `description` (see [agentskills.io/specification](https://agentskills.io/specification) for all supported fields)
-- Max 1024 characters total
+- Limits are per field: `name` max 64 characters, `description` max 1024
 - `name`: letters, numbers, and hyphens only (no parentheses, special chars)
 - `description`: third-person, describes only when to use (not what it does)
   - Start with "Use when..." to focus on triggering conditions
@@ -444,7 +444,7 @@ RED phase — write failing test:
 
 GREEN phase — write minimal skill:
 - [ ] Name uses only letters, numbers, hyphens (no parentheses/special chars)
-- [ ] YAML frontmatter with required `name` and `description` fields (max 1024 chars; see [spec](https://agentskills.io/specification))
+- [ ] YAML frontmatter with required `name` and `description` fields (`name` ≤ 64 chars, `description` ≤ 1024; see [spec](https://agentskills.io/specification))
 - [ ] Description starts with "Use when..." and includes specific triggers/symptoms
 - [ ] Description written in third person
 - [ ] Keywords throughout for search (errors, symptoms, tools)

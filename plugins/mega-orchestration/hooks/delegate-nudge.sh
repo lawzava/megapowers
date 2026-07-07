@@ -16,7 +16,7 @@ command -v jq >/dev/null 2>&1 || exit 0
 
 # If an independent delegate was actually INVOKED this session, allow. Match the JSON
 # structure of a tool call, not a mere mention — otherwise merely reading this repo's
-# own docs (which name `codex exec`, `gemini -p`, `codex-delegate`, etc.) would silence
+# own docs (which name `codex exec`, `agy exec`, `codex-delegate`, etc.) would silence
 # the nudge for the rest of the session, exactly when delegation was considered and
 # skipped. Real invocations show up as: an mcp__codex__codex* tool_use name (the default
 # channel — including the codex-reply continuation), a delegate subagent dispatch

@@ -1,6 +1,6 @@
 # Harness primitives
 
-Last reviewed: 2026-07-04.
+Last reviewed: 2026-07-07.
 
 What each orchestration concept maps to per runtime, as of that date. Names
 and availability drift with releases; when a primitive is absent or you cannot
@@ -17,18 +17,21 @@ call to a primitive the runtime does not expose.
   SendMessage and keeps its full history, so re-dispatch-with-recap is obsolete.
   This is the surface dispatching-parallel-agents and subagent-driven-development
   use.
-- **Agent teams**: experimental and disabled by default, gated behind
-  `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`. Without it no team is set up and no
-  teammates spawn, so do not route to teams in a default session. Limits: one
-  team per session, no nested teams, in-process teammates cannot be resumed. For
-  a role that persists across many exchanges, use a resumable background subagent
-  instead.
-- **Workflows**: the trigger keyword is `ultracode` (also `/effort ultracode`).
-  Use for large audits, migrations, and repeated many-agent jobs; use skills for
-  normal process guidance. Caveat: workflow subagents always run in acceptEdits,
-  so file edits are auto-approved regardless of session mode; single-writer and
-  review disciplines must account for that. Caps: 16 concurrent agents, 1000
-  agents per run; resume works only within the same session.
+- **Agent teams**: generally available; named teammates message each other and
+  the lead via SendMessage, and an idle teammate resumes with full history when
+  messaged (the same resume as background subagents above). Since v2.1.198 the
+  harness enforces that no teammate message counts as user approval or can
+  change permissions or config. Limits: one team per session, no nested teams.
+- **Workflows**: the trigger keyword is `ultracode` (also `/effort ultracode`);
+  repeatable jobs can be saved as named workflows in `.claude/workflows/`. A
+  deterministic script orchestrates via `agent()` / `parallel()` / `pipeline()`,
+  with per-agent `model`, `effort`, and `isolation` (worktree or remote)
+  overrides on each call. Use for large audits, migrations, and repeated
+  many-agent jobs; use skills for normal process guidance. Caveat: workflow
+  subagents always run in acceptEdits, so file edits are auto-approved
+  regardless of session mode; single-writer and review disciplines must account
+  for that. Caps: 16 concurrent agents, 1000 agents per run; resume works only
+  within the same session.
 - **Effort**: `/effort` low..max session dial, a per-subagent `effort` override
   on dispatch, and `/fast` on Opus-class models. Spend high effort on
   verify/judge/decide steps, low on mechanical ones.
@@ -47,7 +50,8 @@ call to a primitive the runtime does not expose.
   covers in-session recurrence. Maps to mega-orchestration:autonomous-run, with
   that trust caveat.
 - **Isolation**: git worktrees (megapowers:using-git-worktrees), or the Agent
-  tool's `isolation: worktree` option on dispatch.
+  tool's `isolation` option on dispatch: `worktree` for a local throwaway
+  worktree, `remote` for a remote cloud environment (availability-gated).
 
 ## Codex
 
@@ -94,7 +98,7 @@ call to a primitive the runtime does not expose.
   quick tasks). Antigravity also ships native hooks and skills, but its command
   vocabulary differs from Claude Code.
 - **Models**: a multi-vendor roster (Gemini 3.5 Flash default, Gemini 3.1 Pro,
-  Claude Sonnet/Opus 4.6, gpt-oss-120b) chosen per agent. Subagents inherit the
+  the current Claude Sonnet/Opus tiers, gpt-oss-120b) chosen per agent. Subagents inherit the
   parent's model, so scale by choosing the lead model rather than assigning
   vendors per subagent within one job.
 - **Disambiguation**: command names do not port across harnesses. Antigravity

@@ -63,7 +63,7 @@ reset_sentinel
 check BLOCK "$(j false "$TR")" "prose mention of delegate names/CLIs does NOT suppress"
 
 # A read code block whose content contains "codex exec" (as file text, not a command field).
-printf '{"type":"tool_result","content":"...run `codex exec` and `gemini -p` per the SKILL..."}\n' > "$TR"
+printf '{"type":"tool_result","content":"...run `codex exec` and `agy exec` per the SKILL..."}\n' > "$TR"
 reset_sentinel
 check BLOCK "$(j false "$TR")" "delegate CLI inside read file content does NOT suppress"
 
