@@ -47,7 +47,8 @@ with an independently testable deliverable.
 Within a task, each step states an outcome the executor can verify: the
 failing test exists, its failure is confirmed for the right reason, minimal
 code makes it pass, the pass is confirmed, a checkpoint marks the task
-boundary.
+boundary. Each step covers one action; a step bundling several actions
+obscures which one failed.
 
 **Commit cadence is the executor's policy, not a plan mandate.** Never bake
 an unconditional `git commit` into every task. Some workflows commit per
