@@ -29,6 +29,9 @@ routing (role values in `[roles]`, a provider's `model`, an `enabled` flag);
 the skill and the delegate agents read the config at dispatch time, so no code
 changes are needed.
 
+Antigravity is disabled in the config; leave it disabled until you verify its
+approvals, artifact review, and artifact edit behavior on this machine.
+
 The nine roles: plan_review, code_review, small_impl, visual, browser_test,
 visual_verify, verify, judge, council_member.
 
