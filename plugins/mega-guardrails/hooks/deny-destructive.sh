@@ -315,6 +315,23 @@ format_is_catastrophic() {
 }
 
 # --- ASK-tier tails (reversible / routine but worth a confirm) ---------------------
+# A checkout/restore pathspec that resolves to the whole repo root. Catches the
+# plain forms (., ./, ./.) by stripping leading ./ repeats, the ':/'
+# root magic, and ':(top...)' magic whose path part is empty or a bare glob.
+# A scoped spec (./src, :(top)src, :/sub) is not whole-tree and stays allowed.
+_is_whole_tree_pathspec() {
+  local w="$1" p
+  case "$w" in
+    :/) return 0 ;;
+    ':(top'*)
+      p="${w#*)}"
+      case "$p" in ''|.|'*'|'**') return 0 ;; esac
+      return 1 ;;
+  esac
+  while [ "${w#./}" != "$w" ]; do w="${w#./}"; done
+  if [ -z "$w" ] || [ "$w" = "." ]; then return 0; fi
+  return 1
+}
 git_is_risky() {
   shell_words "$1" || return 1
   local w sub="" reset_hard=0 clean_force=0 clean_dry=0 branch_force=0 branch_del=0 pushforce=0 skip=0
@@ -345,16 +362,17 @@ git_is_risky() {
           -[A-Za-z]*) [[ "$w" = *D* ]] && { branch_del=1; branch_force=1; }; [[ "$w" = *d* ]] && branch_del=1; [[ "$w" = *f* ]] && branch_force=1 ;;
         esac ;;
       push) case "$w" in --force-with-lease*|--force-if-includes) : ;; --force|-f) pushforce=1 ;; +[!-]*) pushforce=1 ;; esac ;;   # bare --force is risky even if a lease flag is also present (last one wins); lease-only is safe
-      # whole-tree discard: a bare-dot pathspec ('.', './', or the ':/' repo-root
-      # magic) after checkout/restore discards every uncommitted change with no
-      # reflog. A branch name or a specific path stays allowed.
-      checkout) case "$w" in .|./|:/) co_dot=1 ;; esac ;;
+      # whole-tree discard: a pathspec that resolves to the repo root ('.', './',
+      # './.', ':/', or ':(top)' magic with no scoping path) after checkout/restore
+      # discards every uncommitted change with no reflog. A branch name or a
+      # specific path stays allowed.
+      checkout) case "$w" in -*) : ;; *) _is_whole_tree_pathspec "$w" && co_dot=1 ;; esac ;;
       restore) case "$w" in
-          .|./|:/) rst_dot=1 ;;
           --staged) rst_staged=1 ;;
           --worktree) rst_worktree=1 ;;
           --*) : ;;
           -[A-Za-z]*) [[ "$w" = *S* ]] && rst_staged=1; [[ "$w" = *W* ]] && rst_worktree=1 ;;
+          *) _is_whole_tree_pathspec "$w" && rst_dot=1 ;;
         esac ;;
     esac
   done
