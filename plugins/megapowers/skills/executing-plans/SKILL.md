@@ -15,9 +15,10 @@ without explicit user consent.
 
 **When this skill vs subagent-driven-development:** one criterion, stated the
 same way in writing-plans and SDD. Prefer megapowers:subagent-driven-development
-when subagents are available and per-task commits are acceptable; review
-quality is significantly higher with fresh per-task subagents. Use this skill
-when subagents are unavailable, or when you or your human partner want inline
+when subagents are available, the plan's tasks are mostly independent, and
+per-task commits are acceptable; review quality is significantly higher with
+fresh per-task subagents. Use this skill when subagents are unavailable, when
+tasks are tightly coupled, or when you or your human partner want inline
 single-writer execution with your own commit cadence.
 
 ## The Process
