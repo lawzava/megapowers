@@ -25,7 +25,7 @@ one fact per file at `<slug>.md` with frontmatter fields `name`, `title`,
 
 Save what is durable and not otherwise recoverable: a non-obvious decision and
 its rationale, a constraint invisible in the code, a stated user preference, a
-hard-won gotcha, a pointer to an external resource. Do not save what code, git
+hard-won gotcha, a pointer to an external resource. Don't save what code, git
 history, or the README already records, or anything true only for the current
 task; if asked to remember something derivable, save the non-obvious part
 instead.
@@ -49,7 +49,7 @@ scripts/mem-recall <query> # print memories matching the query
 Read `INDEX.md` at the start of a session and pull a memory's full file only
 when its hook matches the work at hand; `mem-recall <query>` does this
 executably. A recalled memory was true when written: if it names a file, flag,
-or command, verify it still exists before acting on it.
+or command, verify that still exists before acting on it.
 
 ## Scope
 
