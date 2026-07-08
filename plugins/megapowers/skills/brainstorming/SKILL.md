@@ -25,7 +25,7 @@ When unsure which bucket you're in, treat it as the second. The goal is legibili
 - If the request spans multiple independent subsystems, flag that before refining details. Help the user decompose into sub-projects, then brainstorm the first one; each sub-project gets its own spec, plan, and implementation cycle.
 - One question per message. Focus on purpose, constraints, and success criteria. YAGNI ruthlessly.
 - Propose 2-3 approaches with trade-offs, leading with your recommendation and reasoning. Give effort estimates on both scales, human-team time and agent time, so the compression is visible at decision time.
-- Present the design in sections scaled to their complexity, covering architecture, components, data flow, error handling, and testing. For hard-to-reverse or high-stakes work, confirm each section before moving on; for reversible work, present the whole design and proceed (see The Gate).
+- Present the design in sections scaled to their complexity, covering architecture, components, data flow, error handling, and testing.
 - Confirm sections proportionally (see The Gate): for hard-to-reverse or high-stakes work, confirm each section before moving on; for reversible work, present the whole design so your intent is legible and proceed.
 - Design for isolation: break the system into units with one clear purpose and well-defined interfaces, each understandable and testable without reading its internals and changeable without breaking consumers.
 

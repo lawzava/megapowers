@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fails when any skill's YAML frontmatter differs from BASE_REF (default v0.1.4).
+# Fails when any skill's YAML frontmatter differs from BASE_REF (default v0.1.7).
 # The de-prescription pass trims bodies only; descriptions are the tuned trigger
 # surface and stay frozen (docs/megapowers/specs/2026-07-07-fable5-de-prescription-design.md).
 set -u
