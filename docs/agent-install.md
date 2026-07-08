@@ -64,7 +64,7 @@ The verb is `add`, not `install`. `codex plugin marketplace add` accepts
 `owner/repo[@ref]` (codex-cli 0.142.5+); unpinned tracks the default branch.
 Updates: `codex plugin marketplace upgrade megapowers`, then re-run
 `codex plugin add` for each plugin. Change-controlled installs pin with
-`@v0.1.7` instead and update by re-adding at the new tag. To track a fork,
+`@v0.1.8` instead and update by re-adding at the new tag. To track a fork,
 clone it and run `codex plugin marketplace add ./` from the checkout.
 
 **OpenCode, Antigravity, or any other Agent Skills harness** (skills only):

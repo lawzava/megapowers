@@ -8,6 +8,8 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.1.8 - 2026-07-08
+
 ### Changed
 
 - Fable 5 de-prescription wave 2: sixteen process and orchestration skills
