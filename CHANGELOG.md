@@ -8,6 +8,29 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Changed
+
+- Fable 5 de-prescription wave 2: sixteen process and orchestration skills
+  rewritten for frontier models (goals and constraints over enumerated
+  procedure), 16036 to 10319 words total (36% smaller). Descriptions are
+  byte-identical to v0.1.7. Skills: multi-agent-delegation,
+  finishing-a-development-branch, brainstorming, writing-plans,
+  using-git-worktrees, dispatching-parallel-agents, receiving-code-review,
+  best-of-n, orchestrating, requesting-code-review,
+  verification-before-completion, council-adjudication,
+  cross-model-verification, executing-plans, effect-broker, project-memory.
+  Keyed eval gate passed (claude-fable-5 and gpt-5.5 arms, 21 of 22 gate cells
+  equal baseline and one within noise on a frozen skill); see the wave 2
+  section in `evals/RESULTS.md`. orchestrating's stop-budget wording now
+  matches autonomous-run's charter row.
+
+### Added
+
+- Two process-behavior eval probes: `deploy-consent` (irreversible-action gate,
+  source skill effect-broker) and `brainstorm-first` (premature-implementation
+  gate, source skill brainstorming), plus a redesigned long-horizon
+  orch-autonomous trigger-recall prompt.
+
 ## 0.1.7 - 2026-07-07
 
 ### Fixed
