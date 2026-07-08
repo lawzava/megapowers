@@ -12,69 +12,56 @@ license: MIT
 
 # Project Memory
 
-Cross-session memory is durable project knowledge that outlives any one run. It
-lives in the repo as plain markdown, so it travels with the project and works on
-every runtime — no host memory API required.
+Project memory is durable knowledge that outlives any single run. It lives in
+the repo as plain markdown, so it travels with the project and any runtime can
+read it.
 
-Store: `.megapowers/memory/`
-- `INDEX.md` — one line per memory (title + a one-line hook); read it at the start
-  of a session to know what's remembered.
-- `<slug>.md` — one fact per file, with frontmatter (`name`, `title`, `hook`,
-  `type`) and the fact as the body. Link related memories with `[[slug]]`.
+Store layout: `.megapowers/memory/` holds `INDEX.md`, one line per memory, plus
+one fact per file at `<slug>.md` with frontmatter fields `name`, `title`,
+`hook`, and `type` (one of `decision`, `constraint`, `preference`, `gotcha`,
+`reference`) and the fact as the body. Link related memories with `[[slug]]`.
 
 ## What earns a memory
 
-**Save** when it's durable and not otherwise recoverable:
-- a non-obvious decision and its rationale ("we chose X over Y because ...");
-- a project constraint not derivable from the code (an external contract, a quota,
-  a "never touch prod on Fridays");
-- a durable preference the user stated;
-- a hard-won gotcha (a bug that cost hours and how to avoid it);
-- a pointer to an external resource (a dashboard, a ticket, a doc).
+Save what is durable and not otherwise recoverable: a non-obvious decision and
+its rationale, a constraint invisible in the code, a stated user preference, a
+hard-won gotcha, a pointer to an external resource. Do not save what code, git
+history, or the README already records, or anything true only for the current
+task; if asked to remember something derivable, save the non-obvious part
+instead.
 
-**Don't save** what's already recorded elsewhere — code structure, git history,
-what the README says, or anything true only for the current task. If asked to
-remember something derivable, save what was *non-obvious* about it instead.
-
-Rules: one fact per file; update the existing file rather than duplicating; delete a
-memory that turns out to be wrong; convert relative dates to absolute.
+Hygiene: one fact per file; update the existing file rather than duplicate;
+delete a memory that turns out to be wrong; convert relative dates to absolute.
 
 ## Helpers
 
 ```bash
 scripts/mem-add <slug> --title T --hook H [--type decision|constraint|preference|gotcha|reference] [--update]
-    # body read from stdin; writes .megapowers/memory/<slug>.md and regenerates the index.
-    # refuses to overwrite an existing slug unless --update.
-scripts/mem-index          # rebuild INDEX.md from the valid memory files (a file
-                           # missing its closing '---' is skipped with a warning)
-scripts/mem-recall <query> # print memories whose title/hook/slug match the query
+    # body read from stdin; writes .megapowers/memory/<slug>.md and regenerates
+    # the index. refuses to overwrite an existing slug unless --update.
+scripts/mem-index          # rebuild INDEX.md (a file missing its closing '---'
+                           # is skipped with a warning)
+scripts/mem-recall <query> # print memories matching the query
 ```
 
 ## Recall
 
-At the start of a session (or when a task touches remembered ground), read
-`INDEX.md`, then pull a memory's full file only when its hook matches what you're
-doing — `mem-recall <query>` does this executably. Treat a recalled memory as
-background context that was true *when written*: if it names a file, flag, or
-command, verify that still exists before acting on it.
+Read `INDEX.md` at the start of a session and pull a memory's full file only
+when its hook matches the work at hand; `mem-recall <query>` does this
+executably. A recalled memory was true when written: if it names a file, flag,
+or command, verify it still exists before acting on it.
 
 ## Scope
 
-This is **project** memory: a plain-markdown store any runtime can read that
-travels in the repo. Two native stores now overlap it on Claude Code: auto
-memory (self-written under `~/.claude/projects/<project>/memory/`, machine-local
-and never in the repo) and subagent memory (the `memory: project` frontmatter
-field, committed to `.claude/agent-memory/<name>/`). The surviving differentiator
-is exactly this store's shape: repo-committed and readable by every harness, not
-Claude-only and not machine-local. Watch for double-bookkeeping: on Claude Code
-all three fill in parallel, so keep one home per fact and cross-reference rather
-than copy a fact into two stores that then drift.
+This is project memory, not a Claude-native store. Claude Code's auto memory
+and subagent memory overlap it, but this store's differentiator is its shape:
+repo-committed markdown every harness can read, not Claude-only and not
+machine-local. Keep one home per fact and cross-reference rather than copy a
+fact into stores that then drift.
 
-By default it lives under `.megapowers/memory/`, which the repo git-ignores
-(personal notes). To **share** memory with a team, don't just `git add -f` into an
-ignored path — instead either point `MEGAPOWERS_MEMORY_DIR` at a committed location
-(e.g. `docs/memory/`), or add a negation for the shared subpath to `.gitignore`
-(e.g. `!.megapowers/memory/`) so it's tracked normally. One choice, made per
-project.
+The default location `.megapowers/memory/` is gitignored (personal notes). To
+share memory with a team, point `MEGAPOWERS_MEMORY_DIR` at a committed location
+(e.g. `docs/memory/`) or add a gitignore negation for the shared subpath; never
+`git add -f` into an ignored path.
 
 Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
