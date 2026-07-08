@@ -150,7 +150,7 @@ After saving the plan, offer the execution choice:
 
 **"Plan complete and saved to `docs/megapowers/plans/<filename>.md`. Execution options:**
 
-**1. Subagent-Driven (recommended):** fresh subagent per task with review
+**1. Subagent-Driven (recommended):** when the plan's tasks are mostly independent, use fresh subagents per task with review
 between tasks, via megapowers:subagent-driven-development. It commits each
 task after it passes review, so choosing it opts into per-task commits.
 
