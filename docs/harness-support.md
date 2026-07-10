@@ -55,7 +55,12 @@ Status: supported for skills and marketplace metadata.
   `codex exec` (one-shot), the Codex SDK, or `codex mcp-server`, the first-party
   MCP server that runs Codex over stdio and exposes the `codex` and
   `codex-reply` tools. Use `codex mcp-server` as the persistent-thread channel
-  from a non-Codex lead.
+  from a non-Codex lead, and as the working channel when the lead's command
+  sandbox denies `~/.codex/auth.json` (there `codex exec` and the SDK are
+  auth-broken, while the harness spawns the MCP server outside that per-command
+  sandbox; a process- or container-level sandbox around the whole harness still
+  applies to the server). A starter registration ships as
+  `templates/codex-mcp-settings.json`.
 - `mega-guardrails` is not listed for Codex (see the note at the top).
 
 ## OpenCode
