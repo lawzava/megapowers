@@ -114,7 +114,7 @@ No framework, no service, no API key of its own. The mechanism:
 
 The multi-model features drive agent CLIs you already have installed and
 authenticated; for example, the Codex CLI serves the roles (kinds of
-delegated work, like code review) routed to GPT-5.5. megapowers adds no key
+delegated work, like code review) routed to GPT-5.6 Sol. megapowers adds no key
 or service; roles whose tools you lack simply sit unused.
 
 ## Vocabulary

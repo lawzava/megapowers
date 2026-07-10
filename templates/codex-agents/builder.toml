@@ -14,8 +14,8 @@ description = "Implements one small, well-scoped task in an isolated worktree; r
 # the lead owns integration (single-writer).
 sandbox_mode = "workspace-write"
 
-# Mechanical, well-specified implementation runs at medium effort (minimal|low|medium|high|xhigh).
-model_reasoning_effort = "medium"
+# Matches the codex provider's dispatch effort in delegates.toml (minimal|low|medium|high|xhigh).
+model_reasoning_effort = "high"
 
 developer_instructions = """
 You are an implementation delegate. Implement exactly the scoped task in the brief and

@@ -5,7 +5,7 @@
 
 # Let Codex choose the current best model by default. Pin only when a workflow
 # needs reproducibility.
-# model = "gpt-5.5"
+# model = "gpt-5.6-sol"
 
 # Reasoning depth. "high" balances quality and latency for development work.
 model_reasoning_effort = "high"
