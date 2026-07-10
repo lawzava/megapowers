@@ -161,8 +161,8 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.1.8`, or, for Claude Code,
-  add `"ref": "v0.1.8"` to the `extraKnownMarketplaces` source (see
+  `codex plugin marketplace add lawzava/megapowers@v0.1.9`, or, for Claude Code,
+  add `"ref": "v0.1.9"` to the `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
   pin, remove the marketplace and re-add it at the new tag.
@@ -174,7 +174,7 @@ does:
 Neither is an integrity pin (no sha in the ref), so a pin controls when you
 move, not cryptographic provenance — though release tags from `v0.1.3` on are
 GPG-signed and can be verified out of band (see SECURITY.md, Release
-integrity). Tags `v0.1.1` through `v0.1.8` exist to pin against.
+integrity). Tags `v0.1.1` through `v0.1.9` exist to pin against.
 
 ## Every other harness: the skills CLI
 
