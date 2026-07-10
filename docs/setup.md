@@ -296,6 +296,13 @@ fleet forward.
 - `templates/playwright-mcp-settings.json` is a starter MCP registration for the
   Playwright browser server, for harnesses that drive the browser through an MCP
   rather than `playwright-cli` directly.
+- `templates/codex-mcp-settings.json` is a starter MCP registration for
+  `codex mcp-server`, the Codex channel a sandboxed lead needs: `codex exec` and
+  the SDK read `~/.codex/auth.json`, which command sandboxes typically deny,
+  while the harness spawns the MCP server outside that sandbox. Register the
+  server as `codex`
+  so its tools resolve as `mcp__codex__codex` / `mcp__codex__codex-reply`, the
+  names the codex-delegate agent lists.
 - `templates/settings.example.json` holds conservative, generic Claude Code
   defaults (no attribution trailers, secret-path denies, sandbox credential
   blocks). It does not set a `defaultMode`, so it never loosens your permission

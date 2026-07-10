@@ -65,7 +65,10 @@ call to a primitive the runtime does not expose.
   subagents.
 - **Channel from another runtime**: reach Codex via `codex exec`, the Codex SDK,
   or `codex mcp-server` (the first-party MCP channel exposing the codex /
-  codex-reply tools). See multi-agent-delegation channel notes.
+  codex-reply tools). From a sandboxed lead, exec and the SDK are auth-broken
+  (the command sandbox denies `~/.codex/auth.json`); use the MCP channel, whose
+  server the harness spawns outside that sandbox. See multi-agent-delegation
+  channel notes.
 - **Teams / workflows**: no distinct primitive this repo relies on; native
   subagent fan-out covers it.
 - **Effort**: `model_reasoning_effort` is set per dispatch or per role (config

@@ -116,10 +116,12 @@ lead re-runs the tests before believing a task is done.
 ## Channels
 
 Prefer the native orchestration surface of the tool you are already in; when
-crossing runtimes, use the public CLI or SDK path first. For a persistent
-Codex thread from another harness, `codex mcp-server` is the first-party MCP
-channel; a hand-rolled bridge is a fallback only when explicitly configured,
-so do not assume one exists.
+crossing runtimes, use the public CLI or SDK path first, unless the lead's
+command sandbox blocks Codex auth (`~/.codex/auth.json`): then use the MCP
+channel, whose server the harness spawns outside that sandbox. For a
+persistent Codex thread from another harness, `codex mcp-server` is the
+first-party MCP channel; a hand-rolled bridge is a fallback only when
+explicitly configured, so do not assume one exists.
 
 For a delegate call that runs long, the sanctioned async channel is MCP Tasks,
 the durable call-now/fetch-later extension; it is still finalizing, so reach
