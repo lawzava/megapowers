@@ -1,5 +1,5 @@
 # megapowers delegate routing.
-# Last reviewed: 2026-07-04 (model IDs and routes age; scripts/check-freshness.sh
+# Last reviewed: 2026-07-10 (model IDs and routes age; scripts/check-freshness.sh
 # fails a scheduled CI run when this date is older than 90 days).
 # Edit this file to change which model handles which role. Nothing auto-executes
 # it: the multi-agent-delegation skill and the delegate agents READ it to decide
@@ -18,11 +18,12 @@
 # this provider through a thin wrapper agent (sonnet, effort medium) that shells
 # `codex exec` — see orchestrating references/harness-primitives.md.
 [providers.codex]
-model   = "gpt-5.5"
+model   = "gpt-5.6-sol"
+effort  = "high"   # default model_reasoning_effort on dispatch; verify/judge roles may spend higher (see templates/codex-agents/)
 vendor  = "openai"
 binary  = "codex"
-channel = "native-or-cli"
-notes   = "Native Codex subagents inside Codex. From another tool: `codex exec` (one-shot, --output-schema for machine-checkable verdicts, resume --last to continue a thread), the Codex SDK (@openai/codex-sdk on npm, openai-codex on PyPI), or `codex mcp-server` (the first-party MCP channel exposing codex/codex-reply)."
+channel = "native-or-mcp-or-cli"
+notes   = "Native Codex subagents inside Codex. From another tool: `codex exec` (one-shot, --output-schema for machine-checkable verdicts, resume --last to continue a thread), the Codex SDK (@openai/codex-sdk on npm, openai-codex on PyPI), or `codex mcp-server` (the first-party MCP channel exposing codex/codex-reply). Sandbox caveat: exec and the SDK need ~/.codex/auth.json, which command sandboxes typically deny, so from a sandboxed lead use the MCP channel (the harness spawns the server outside its command sandbox; a container around the whole harness still applies); no profile param over MCP, pin model and model_reasoning_effort per call."
 
 # Second model vendor, so the cross-vendor roles (verify/judge/council_member) have a
 # real different-vendor route to fall back to when the lead (or an --exclude) rules
@@ -67,9 +68,11 @@ enabled = false
 floor = "sonnet:low"
 
 # --- Roles: which provider handles what ---
-# Visual/browser routing is a cost-adjusted call (bench check 2026-07-04):
-# OSWorld-Verified has Claude ahead (Fable 5 ~85 / Opus 4.8 83.4 vs GPT-5.5 78.7,
-# Gemini 3.1 Pro well behind), but Codex runs 3-4x cheaper in tokens, so it leads
+# Visual/browser routing is a cost-adjusted call (bench check 2026-07-04, run
+# against the then-current GPT-5.5; the route moved to gpt-5.6-sol on 2026-07-10
+# without a re-bench): OSWorld-Verified had Claude ahead (Fable 5 ~85 / Opus 4.8
+# 83.4 vs GPT-5.5 78.7, Gemini 3.1 Pro well behind), but Codex runs 3-4x cheaper
+# in tokens, so it leads
 # computer-use work and the browser provider referees (visual_verify) and serves
 # as the redo path when Codex output misses the bar (escalation rule in
 # mega-orchestration:orchestrating).

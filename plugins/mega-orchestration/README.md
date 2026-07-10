@@ -42,9 +42,9 @@ The skills and the delegate agents read `delegates.toml` (inside the
 
 | Role | Default delegate | Used for |
 | --- | --- | --- |
-| Plan / code review | Codex (`gpt-5.5`) | Reviewing plans and diffs, adversarial "find the bug" passes |
-| Small implementation | Codex (`gpt-5.5`) | Well-specified, testable, single-file or isolated changes |
-| Visual / browser | Codex (`gpt-5.5`, native computer use) | UI work, browser-driven checks, end-to-end testing |
+| Plan / code review | Codex (`gpt-5.6-sol`) | Reviewing plans and diffs, adversarial "find the bug" passes |
+| Small implementation | Codex (`gpt-5.6-sol`) | Well-specified, testable, single-file or isolated changes |
+| Visual / browser | Codex (`gpt-5.6-sol`, native computer use) | UI work, browser-driven checks, end-to-end testing |
 | Visual verification | `playwright-cli` + a vision-capable model | Independent cross-vendor pass on rendered UI/UX work |
 | Visual / browser (alt) | Antigravity CLI | Disabled by default, see note below |
 
