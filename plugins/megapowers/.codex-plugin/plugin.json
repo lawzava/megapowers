@@ -1,6 +1,6 @@
 {
   "name": "megapowers",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Workflow methodology: brainstorming, planning, TDD, debugging, review, worktrees, and subagent orchestration.",
   "author": {
     "name": "lawzava"

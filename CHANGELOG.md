@@ -8,6 +8,30 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.1.9 - 2026-07-10
+
+### Changed
+
+- Codex delegate route: gpt-5.5 to gpt-5.6-sol, with a new per-provider
+  `effort` key ("high") in delegates.toml that `delegate-resolve` emits as
+  `EFFORT=`. The builder subagent template moves from medium to high effort to
+  match; the reviewer template stays at xhigh. The visual-routing bench
+  numbers in delegates.toml are marked as measured against gpt-5.5 (no
+  re-bench).
+- The codex-delegate agent covers the MCP channel natively: it lists the
+  `mcp__codex__codex` / `mcp__codex__codex-reply` tools and prefers them when
+  present, because a sandboxed lead cannot auth `codex exec` or the SDK (the
+  command sandbox denies `~/.codex/auth.json`) while the harness spawns the
+  MCP server outside that sandbox. The caveat is documented in the delegation
+  skill, delegates.toml channel notes, harness-primitives, and
+  harness-support.
+
+### Added
+
+- `templates/codex-mcp-settings.json`, a starter MCP registration for
+  `codex mcp-server` (register as `codex` so the tool names match the agent's
+  tool list).
+
 ## 0.1.8 - 2026-07-08
 
 ### Changed
