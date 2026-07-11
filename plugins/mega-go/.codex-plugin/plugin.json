@@ -1,6 +1,6 @@
 {
   "name": "mega-go",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Greenfield Go stack selection and idiomatic Go patterns.",
   "author": {
     "name": "lawzava"

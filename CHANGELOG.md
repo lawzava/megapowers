@@ -8,6 +8,16 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.1.10 - 2026-07-11
+
+### Changed
+
+- `scripts/validate.sh` mirrors CI's native plugin-validate job: it runs
+  `claude plugin validate --strict` on the marketplace manifest and every
+  plugin when the claude CLI is installed (skipped with a pointer to the CI
+  job otherwise). Closes the local-pass/CI-fail gap that forced the v0.1.7
+  re-tag.
+
 ## 0.1.9 - 2026-07-10
 
 ### Changed
