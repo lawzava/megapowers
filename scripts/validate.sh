@@ -421,6 +421,28 @@ if jq -e . templates/settings.example.json >/dev/null 2>&1; then ok "settings.ex
 # parseable review date. AGE is enforced by the scheduled freshness workflow.
 if scripts/check-freshness.sh --max-age-days 36500 >/dev/null 2>&1; then ok "dated-opinion files carry parseable review dates"; else bad "dated-opinion date lines broken (run scripts/check-freshness.sh)"; fi
 
+echo "== native plugin validate (claude CLI) =="
+# CI's plugin-validate job runs the native Claude Code manifest validator with
+# --strict; v0.1.6 passed this script locally and then failed that job, forcing
+# a second tag. Mirror it here when the CLI is installed so local green predicts
+# CI green.
+if command -v claude >/dev/null 2>&1; then
+  if claude plugin validate --strict "$claude_mp" >/dev/null 2>&1; then
+    ok "claude plugin validate marketplace"
+  else
+    bad "claude plugin validate marketplace (run: claude plugin validate --strict $claude_mp)"
+  fi
+  for pdir in plugins/*/; do
+    if claude plugin validate --strict "$pdir" >/dev/null 2>&1; then
+      ok "claude plugin validate $(basename "$pdir")"
+    else
+      bad "claude plugin validate $(basename "$pdir") (run: claude plugin validate --strict $pdir)"
+    fi
+  done
+else
+  echo "  (claude CLI not installed — skipped; CI runs this as the plugin-validate job)"
+fi
+
 echo
 echo "== summary: $pass passed, $fail failed =="
 [[ $fail -eq 0 ]]
