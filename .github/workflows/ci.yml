@@ -29,6 +29,9 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: 'stable'
+          # no go.mod: the eval harness is Go stdlib run via `go run`, so the
+          # v6 default dependency cache has nothing to key on and only warns
+          cache: false
 
       # scripts/validate.sh runs scripts/security-lint.sh itself, so the secret
       # marker scan is covered here with no separate step (no double run).
