@@ -18,6 +18,6 @@ jobs:
   freshness:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Dated opinions reviewed within 90 days
         run: scripts/check-freshness.sh
