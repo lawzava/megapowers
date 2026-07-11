@@ -1,7 +1,7 @@
 {
   "name": "mega-python",
   "description": "Greenfield Python stack selection and idiomatic Python patterns.",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "author": {
     "name": "lawzava"
   },
