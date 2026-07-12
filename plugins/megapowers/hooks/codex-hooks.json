@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/codex-session-catalog.sh",
+            "timeout": 10,
+            "statusMessage": "Injecting the megapowers model catalog"
+          }
+        ]
+      }
+    ]
+  }
+}

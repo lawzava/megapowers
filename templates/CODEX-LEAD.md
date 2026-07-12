@@ -26,15 +26,19 @@ Pin the matching model in `~/.codex/config.toml` (see
 
 ## Session catalog
 
-Codex loads no SessionStart hooks, so render the catalog yourself when a
-session starts:
+No megapowers hooks are wired into Codex by default, so render the catalog
+yourself when a session starts:
 
 ```bash
 <megapowers plugin dir>/hooks/render-model-catalog
 ```
 
 It prints who leads, the tier and effort scales, the delegate providers, and
-the ship floor from the layered models.toml.
+the ship floor from the layered models.toml. To automate it, wire the pilot
+SessionStart port instead: point a Codex `hooks.json` at the megapowers
+plugin's `hooks/codex-session-catalog.sh` and trust it via `/hooks` (see
+docs/setup.md, Codex hooks). A Stop-hook port of the delegate-review nudge
+wires the same way from the mega-orchestration plugin.
 
 ## Role: you are the lead
 
@@ -62,11 +66,16 @@ There is exactly one writer to shared branches: you.
 - Re-run the tests yourself before believing a task is done. Never trust a
   self-reported pass.
 
-## No hook backstops
+## Hook backstops are opt-in
 
-Claude Code hooks do not run under Codex: no delegation nudge, no
-destructive-command guard. There is no accident backstop; think before you
-run, especially deletes, resets, and force pushes.
+No megapowers hooks are active under Codex by default: no delegation nudge,
+no destructive-command guard, no catalog injection (Codex may discover an
+installed plugin's Claude-facing hooks.json, but nothing runs untrusted, and
+those payloads are for Claude Code; leave them untrusted). Pilot ports of all
+three exist (docs/setup.md, Codex hooks) but each needs manual `hooks.json`
+wiring and a `/hooks` trust decision. Until you wire them there is no
+accident backstop; think before you run, especially deletes, resets, and
+force pushes.
 
 ## Git and style
 

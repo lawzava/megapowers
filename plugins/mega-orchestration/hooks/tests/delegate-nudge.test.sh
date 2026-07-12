@@ -56,6 +56,33 @@ printf '{"type":"tool_use","name":"Task","input":{"subagent_type":"model-delegat
 reset_sentinel
 check ALLOW "$(j false "$TR")" "model-delegate subagent dispatch suppresses nudge"
 
+# Codex rollout transcripts record shell calls as exec_command({cmd:\"...\"})
+# inside a custom_tool_call input string (observed shape, codex-cli 0.144), so a
+# delegate CLI invoked from a Codex lead must suppress through that shape too.
+printf '{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const r = await tools.exec_command({cmd:\\"claude -p --model claude-fable-5 (refute this diff)\\",\\"workdir\\":\\"/x\\"}); text(r.output);"}}\n' > "$TR"
+reset_sentinel
+check ALLOW "$(j false "$TR")" "codex rollout exec_command cmd shape suppresses nudge"
+
+# Rollouts also carry the JSON-serialized key form ("cmd" escaped): both occur
+# in real codex-cli 0.144 session files, so both must suppress.
+printf '{"type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\\"cmd\\":\\"claude -p --model claude-fable-5 (verify the diff)\\",\\"workdir\\":\\"/x\\"}"}}\n' > "$TR"
+reset_sentinel
+check ALLOW "$(j false "$TR")" "codex rollout escaped-json cmd shape suppresses nudge"
+
+# But a mere prose mention of the same CLI (no cmd: anchor) must NOT suppress.
+printf 'the docs say you can run claude -p to get a review\n' > "$TR"
+reset_sentinel
+check BLOCK "$(j false "$TR")" "prose claude -p mention does NOT suppress"
+
+# The static fallback (no detect entries parse) must still recognize a
+# rollout-shaped claude -p review rather than nudging over a done review.
+NODETECT="$TMP/nodetect.toml"
+printf '[providers.alpha]\nbinary = "sh"\n' > "$NODETECT"
+printf '{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const r = await tools.exec_command({cmd:\\"claude -p --model claude-fable-5 (refute)\\"}); text(r.output);"}}\n' > "$TR"
+reset_sentinel
+out="$(printf '%s' "$(j false "$TR")" | MODELS_TOML="$NODETECT" DELEGATES_TOML="$NODETECT" bash "$HOOK" 2>/dev/null)"
+if printf '%s' "$out" | grep -q '"decision":"block"'; then fail=$((fail + 1)); printf '  FAIL static fallback misses rollout claude -p review\n'; else pass=$((pass + 1)); fi
+
 # REGRESSION (C8/C25): merely MENTIONING delegate names/CLIs in prose or a read
 # doc must NOT suppress — this is the whole point of the fix.
 printf 'assistant discussed mcp__codex__codex, codex exec, and model-delegate from the docs\n' > "$TR"
