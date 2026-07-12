@@ -8,7 +8,8 @@ This is a Codex delegate baseline for the megapowers orchestration model.
 
 ## Role: you are a delegate
 
-You are a delegate, not the lead. A human or lead agent holds the broad context,
+You are a delegate, not the lead. If Codex is the lead in your setup, use
+`CODEX-LEAD.md` instead of this file. A human or lead agent holds the broad context,
 plans and decomposes the work, does the bulk reads, and owns final integration.
 You receive narrow, well-specified, testable, isolated work and do it well.
 Three shapes fit you:

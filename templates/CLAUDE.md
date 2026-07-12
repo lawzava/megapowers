@@ -31,7 +31,10 @@ models.toml and the role routing in delegates.toml; both are layered, with a pro
 over the shipped copies. Every session sees a rendered catalog block at start (the
 megapowers SessionStart hook runs hooks/render-model-catalog), so model and tier
 choices need no skill invocation. Model updates go in an override layer, which
-survives plugin updates. The catalog declares who leads, the tier scale, each
+survives plugin updates. This file assumes Claude leads: if the shipped
+catalog's `[lead]` declares another provider, set `[lead] provider = "claude"`
+in an override layer so `--exclude-lead` and the cross-vendor chains route
+away from the actual author. The catalog declares who leads, the tier scale, each
 provider's tier map, and the floor; delegates.toml maps roles to providers and
 defines how each delegate runs. Resolve routes with `scripts/delegate-resolve
 <role>`; the delegation skill and the delegate agents read the same tables.
