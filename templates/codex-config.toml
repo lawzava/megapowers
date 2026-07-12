@@ -29,9 +29,6 @@ approval_policy = "on-request"
 # max_threads = 4
 # max_depth = 1
 
-# Empty string disables Codex commit co-author/attribution trailers.
-commit_attribution = ""
-
 # `codex mcp-server` is the first-party MCP channel for a non-Codex lead: it runs
 # Codex as a stdio MCP
 # server exposing the codex/codex-reply tools, so another harness can drive Codex

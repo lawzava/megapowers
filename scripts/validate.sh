@@ -405,6 +405,11 @@ if grep -q '^model = "gpt-5.6-sol"$' templates/codex-complex.config.toml 2>/dev/
 else
   bad "templates/codex-complex.config.toml must ship the separate Sol ultra profile"
 fi
+if rg -q '^commit_attribution[[:space:]]*=' templates/codex-config.toml; then
+  bad "Codex config template must not ship the removed commit_attribution key"
+else
+  ok "Codex config template omits removed commit_attribution key"
+fi
 
 echo "== hook tests =="
 ht_found=0
