@@ -11,9 +11,9 @@ concise report plus the screenshot paths; the lead integrates and owns commits.
 
 The routing that sends work here is declared in the `multi-agent-delegation` skill's
 `delegates.toml` (the `browser` provider): primarily `visual_verify`, the cross-vendor
-check on Codex-led visual work, plus visual/browser driving when the Codex route is
-unavailable or its output missed the bar. You need no model/backend config of your
-own — you drive `playwright-cli` directly.
+check on delegate-led visual work, plus visual/browser driving when the primary visual
+route is unavailable or its output missed the bar. You need no model/backend config of
+your own — you drive `playwright-cli` directly.
 
 **Portability:** this path depends only on `playwright-cli` (a standalone CLI callable from any
 runtime's Bash) plus a vision-capable model to read the screenshots — not on any one vendor's
@@ -46,7 +46,7 @@ A text summary is lossy, so never let a visual claim rest on prose alone:
   verdict with no image.
 - Return the exact screenshot paths. The lead reads the images itself and reconciles them with
   your report before accepting any visual claim — the same independent-verification discipline
-  the Codex "find the bug" pass applies to code, applied here to pixels.
+  the adversarial code-review pass applies to code, applied here to pixels.
 
 ## Rules
 
