@@ -256,6 +256,8 @@ check "env catalog MODEL" "MODEL=beta-max-9" "$out"
 rm -f "$XDG_CONFIG_HOME/megapowers/delegates.toml"
 mkdir -p "$XDG_CONFIG_HOME/megapowers"
 cat > "$XDG_CONFIG_HOME/megapowers/models.toml" <<'EOF'
+[providers.codex]
+binary = "sh"
 [providers.codex.tiers]
 frontier = "user-catalog-model"
 EOF

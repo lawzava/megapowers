@@ -91,9 +91,17 @@ done <<< "$(providers)"
 
 floor="$(val defaults floor)" || floor=""
 
-printf 'Model catalog (models.toml; override layers project>user>shipped):\n'
-printf 'lead: %s%s%s\n' "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
-printf 'tiers: %s\n' "$tier_lines"
-[ -n "$del_lines" ] && printf 'delegates: %s\n' "$del_lines"
-printf '%sRoutes: delegate-resolve <role> (mega-orchestration:multi-agent-delegation).\n' "${floor:+floor $floor. }"
+render() {
+  printf 'Model catalog (models.toml; override layers project>user>shipped):\n'
+  printf 'lead: %s%s%s\n' "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
+  printf 'tiers: %s\n' "$tier_lines"
+  [ -n "$del_lines" ] && printf 'delegates: %s\n' "$del_lines"
+  printf '%sRoutes: delegate-resolve <role> (mega-orchestration:multi-agent-delegation).\n' "${floor:+floor $floor. }"
+  return 0
+}
+# Sanitize and clamp: catalog values are user-owned input headed for every
+# session's context. Strip control bytes escape_for_json cannot represent
+# (keep tab, LF, CR) and bound the block so an override layer cannot bloat
+# the always-loaded payload.
+render | tr -d '\000-\010\013\014\016-\037' | head -c 1024
 exit 0

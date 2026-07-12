@@ -77,7 +77,7 @@ Two rules cut across the ladder:
   the price tag. Scoped, named defects get a bounded fix pass first;
   structural misses get the redo. One automatic stronger redo per artifact;
   beyond that, a declared cap or a human.
-- Nothing that ships routes below the floor declared in delegates.toml
+- Nothing that ships routes below the floor declared in models.toml
   (`[defaults] floor` in mega-orchestration:multi-agent-delegation).
 
 ## Harness primitives

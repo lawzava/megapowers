@@ -65,6 +65,17 @@ EOF
 cat_out="$(MODELS_TOML="$CAT_TMP/cat.toml" bash "$HOOK" 2>/dev/null < /dev/null)"
 if printf '%s' "$cat_out" | grep -q 'Model catalog'; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL catalog block missing from payload\n'; fi
 
+# Hostile fixture: a catalog value with a raw control byte (0x0B) must still
+# produce valid JSON. escape_for_json does not handle bytes outside \, ", \n,
+# \r, \t; render-model-catalog must strip them before session-start embeds them.
+if command -v jq >/dev/null 2>&1; then
+  HOSTILE_TMP="$(mktemp -d)"
+  printf '[lead]\nprovider = "alpha"\ntier = "frontier"\n[tiers]\nscale = ["fast"]\n[tiers.use]\nfast = "ok"\n[providers.alpha]\nvendor = "acme"\ndefault_tier = "fast"\nuse = "leads"\n[providers.alpha.tiers]\nfast = "alpha-mini"\n[providers.beta]\nvendor = "bmax"\ndefault_tier = "fast"\nuse = "delegate\x0Bwith control byte"\n[providers.beta.tiers]\nfast = "beta-mini"\n[defaults]\nfloor = "fast:low"\n' > "$HOSTILE_TMP/hostile.toml"
+  hostile_out="$(MODELS_TOML="$HOSTILE_TMP/hostile.toml" bash "$HOOK" 2>/dev/null < /dev/null)"
+  if printf '%s' "$hostile_out" | jq -e . >/dev/null 2>&1; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL hostile control-byte catalog corrupted the JSON payload\n'; fi
+  rm -rf "$HOSTILE_TMP"
+fi
+
 # Payload unchanged and hook still exits 0 when no catalog exists.
 none_out="$(MODELS_TOML="/nonexistent/models.toml" bash "$HOOK" < /dev/null)"; none_rc=$?
 if [ "$none_rc" -eq 0 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL hook must stay exit 0 without a catalog\n'; fi
