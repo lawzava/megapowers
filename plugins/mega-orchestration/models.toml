@@ -74,7 +74,7 @@ fast     = "gpt-5.6-luna"
 # when the lead (or an --exclude) rules out the primary.
 [providers.claude]
 vendor  = "anthropic"
-effort  = "high"   # ceiling by policy: xhigh/max are never dispatched to claude
+effort  = "high"   # intended ceiling for Claude verify/judge; lead-vendor xhigh does not pass through
 efforts = ["low", "medium", "high"]
 binary  = "claude"
 channel = "claude-cli"
@@ -82,8 +82,8 @@ default_tier = "frontier"
 capabilities = ["code", "vision", "computer_use"]
 detect  = ["claude -p"]
 reference = "references/providers/claude.md"
-use     = "planning buddy: plan review, decision double-checks on demand"
-notes   = "Headless `claude -p <prompt>`; the different-vendor route when a non-Anthropic model leads (resolve with --exclude-lead)."
+use     = "planning buddy plus independent plan review, verification, and judging"
+notes   = "Isolated headless `claude -p --safe-mode --no-session-persistence`; resolve cross-vendor work with --exclude-lead."
 
 # Frontier only by policy: sonnet and haiku are never routed; anything claude
 # does runs fable.

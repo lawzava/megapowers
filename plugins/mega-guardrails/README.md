@@ -1,9 +1,9 @@
 # mega-guardrails
 
-A small safety and convenience plugin for Claude Code. It wires two hooks that
-run automatically: a tripwire for a short list of destructive shell commands,
-and a formatter that runs right after a file is written. A Linux statusline
-script is also included; it is optional and must be enabled by hand.
+A small cross-harness safety and convenience plugin. Codex and Claude Code get
+a tripwire for a short list of destructive shell commands. Claude Code also
+gets a formatter after file writes. A Linux statusline script is included for
+Claude Code and must be enabled by hand.
 
 ## deny-destructive (PreToolUse, Bash)
 
@@ -66,12 +66,11 @@ exfiltration path, and `Read`/`Edit`/`Write` are governed by the permission
 system, not the sandbox). Treat `/sandbox` plus OS permissions as the boundary
 and `deny-destructive` as an accident tripwire in front of it.
 
-These are Claude Code hook scripts. Codex, OpenCode, and Antigravity have their
-own hook surfaces. A manual Codex pilot port of the `deny-destructive` guard
-ships in this plugin (`hooks/codex-deny-destructive.sh`, see the Codex hooks
-section of `docs/setup.md`), but a default install wires no port, so on those
-harnesses nothing here blocks or gates out of the box (see
-`docs/harness-support.md`).
+The default hook manifest dispatches to `codex-deny-destructive.sh` when Codex
+loads the plugin and to the full guard under Claude Code. Codex cannot surface
+the guard's `ask` result, so its adapter preserves catastrophic denies and lets
+Codex's normal approval flow handle the reversible-risk tier. OpenCode and
+Antigravity still receive no hook behavior from this plugin.
 
 ## auto-format (PostToolUse, Write/Edit)
 
@@ -112,9 +111,9 @@ usage.
 
 ## Install
 
-```
-/plugin install mega-guardrails@megapowers
-```
+Claude Code: `/plugin install mega-guardrails@megapowers`.
+
+Codex: `codex plugin add mega-guardrails@megapowers`.
 
 mega-guardrails ships only hooks and the statusline, so there are no
 standalone skills to install separately.

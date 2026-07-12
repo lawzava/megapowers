@@ -75,6 +75,18 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Design"
+    },
+    {
+      "name": "mega-guardrails",
+      "source": {
+        "source": "local",
+        "path": "./plugins/mega-guardrails"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Security"
     }
   ]
 }

@@ -1,18 +1,14 @@
 # Harness support matrix
 
-Last reviewed: 2026-07-04.
+Last reviewed: 2026-07-13.
 
 This repo is cross-harness, but not every harness has the same extension
 surface. Two facts apply across the whole matrix:
 
-- `mega-guardrails` ships for Claude Code only today. Its value is a set of
-  Claude Code hook scripts (PreToolUse/PostToolUse) plus a Linux statusline.
-  Codex, OpenCode (through plugins), and Antigravity each have their own hook
-  surfaces. A manual Codex pilot of the destructive-command guard ships under
-  the plugin (see docs/setup.md, Codex hooks), but a default install wires no
-  port, so out of the box nothing blocks or gates there. It therefore ships no
-  manifest for those harnesses; installing it elsewhere would advertise
-  enforcement that is not in place.
+- `mega-guardrails` ships hook manifests for Claude Code and Codex. Claude gets
+  the destructive guard and formatter; Codex's cross-harness dispatcher runs
+  the destructive adapter and makes the formatter a no-op. OpenCode and
+  Antigravity remain skills-only and receive no enforcement.
 - The Gemini CLI was discontinued for consumer use in mid-2026 and is no
   longer a target. Visual/browser work routes through `playwright-cli` plus a
   vision-capable model (see `mega-orchestration`).
@@ -44,12 +40,17 @@ Status: supported.
 
 ## Codex
 
-Status: supported for skills and marketplace metadata.
+Status: supported for skills, marketplace metadata, lifecycle hooks, and native
+agent role templates.
 
 - Repo instructions: `AGENTS.md`.
 - Repo marketplace: `.agents/plugins/marketplace.json`.
 - Plugin manifests: `plugins/*/.codex-plugin/plugin.json` for `megapowers`,
-  `mega-go`, `mega-python`, `mega-ts`, and `mega-orchestration`.
+  `mega-go`, `mega-python`, `mega-ts`, `mega-orchestration`, and
+  `mega-guardrails`.
+- Native role templates: `mega-orchestration/assets/codex-agents/` packages
+  Terra-pinned `builder` and `reviewer` profiles to copy into
+  `~/.codex/agents/` or a project's `.codex/agents/`.
 - Native multi-agent work: prefer Codex native subagents when running inside
   Codex. From other harnesses, reach Codex through first-party channels:
   `codex exec` (one-shot), the Codex SDK, or `codex mcp-server`, the first-party
@@ -61,7 +62,8 @@ Status: supported for skills and marketplace metadata.
   sandbox; a process- or container-level sandbox around the whole harness still
   applies to the server). A starter registration ships as
   `templates/codex-mcp-settings.json`.
-- `mega-guardrails` is not listed for Codex (see the note at the top).
+- `mega-guardrails` supplies the Codex destructive-command hook. Its formatter
+  and statusline remain Claude Code-only.
 
 ## OpenCode
 

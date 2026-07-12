@@ -44,7 +44,7 @@ Or hand the install to the agent itself. Read
 then paste this into any coding agent, on any harness:
 
 > Install megapowers on this machine by fetching and following
-> https://raw.githubusercontent.com/lawzava/megapowers/v0.3.1/docs/agent-install.md
+> https://raw.githubusercontent.com/lawzava/megapowers/v0.3.2/docs/agent-install.md
 
 The guide has the agent detect its harness, install through the right
 channel, avoid registering any skill twice, verify by asking for a sentence
@@ -104,18 +104,18 @@ No framework, no service, no API key of its own. The mechanism:
   A Stop hook interrupts a quiet stop once while an autonomous run is mid-flight.
   Another interrupts finishing a risky diff (auth, billing, concurrency) once,
   asking for an independent review. A PreToolUse hook denies a short list of
-  catastrophic shell commands. These hook scripts ship for Claude Code only
-  today; other harnesses have hook surfaces, but a default install wires no
-  ports there (a manual Codex pilot of the destructive-command guard exists, see
-  docs/setup.md), so out of the box none of these backstops apply there and the
-  discipline rides on the skill wording alone.
+  catastrophic shell commands. Claude Code receives the full hook set; Codex
+  plugin installs dispatch the session catalog, review nudge, and destructive
+  guard through its compatible lifecycle surface. OpenCode and Antigravity
+  remain skills-only.
 - Everything executable is plain bash reading stdin and writing stdout. You
   can run any hook by hand from a checkout.
 
 The multi-model features drive agent CLIs you already have installed and
-authenticated; for example, the Codex CLI serves the roles (kinds of
-delegated work, like code review) routed to GPT-5.6 Sol. megapowers adds no key
-or service; roles whose tools you lack simply sit unused.
+authenticated. A Codex lead runs GPT-5.6 Sol, native builder/reviewer fan-out
+is pinned to GPT-5.6 Terra, and complex plan review or independent verification
+can route to Claude Fable 5. megapowers adds no key or service; roles whose
+tools you lack simply sit unused.
 
 ## Vocabulary
 
@@ -136,7 +136,7 @@ These docs use a few terms consistently, defined here once.
   described above.
 - **Hook**: a script the harness itself runs at a fixed event (session start,
   before a tool call, on stop). Deterministic: it fires whether or not the
-  model remembers. Claude Code only.
+  model remembers. Shipped for Claude Code and, where noted, Codex.
 - **Delegate agent**: an agent definition (a markdown file under a plugin's
   `agents/`) that hands one role (a kind of delegated work, such as code
   review or browser testing) to another model or CLI. The lead (the session
@@ -163,14 +163,14 @@ do: [SECURITY.md](./SECURITY.md).
 | [`mega-go`](./plugins/mega-go/README.md) | Greenfield Go: an opinionated stack picker plus idiomatic Go patterns. |
 | [`mega-python`](./plugins/mega-python/README.md) | Greenfield Python: stack picker plus idiomatic patterns (typing, async, errors). |
 | [`mega-ts`](./plugins/mega-ts/README.md) | Greenfield TypeScript: stack picker plus idiomatic patterns (types, async, errors). |
-| [`mega-guardrails`](./plugins/mega-guardrails/README.md) | Claude Code safety hooks and dev tooling: block destructive commands, format-on-save, an optional Linux statusline. |
+| [`mega-guardrails`](./plugins/mega-guardrails/README.md) | Cross-harness destructive-command backstop for Codex and Claude Code, plus Claude Code format-on-save and an optional Linux statusline. |
 | [`mega-frontend`](./plugins/mega-frontend/README.md) | Frontend design guidance: distinctive visual direction, typography, layout, and UX copy that don't read as templated defaults. |
 
 Which do I want?
 
 - Daily engineering workflow (brainstorm, plan, TDD, review, merge): `megapowers`
 - Multi-model delegation, verification, autonomous runs: `mega-orchestration`
-- Safety hooks and statusline (Claude Code only): `mega-guardrails`
+- Destructive-command backstop on Codex or Claude Code, plus Claude-only formatting and statusline: `mega-guardrails`
 - Starting a new Go / Python / TypeScript project: `mega-go` / `mega-python` / `mega-ts`
 - Building or reshaping UI with a design bar: `mega-frontend`
 
@@ -217,9 +217,8 @@ Prompts, fixtures, and oracles for the TDD result:
 
 ## What it does not do
 
-- Enforce anything outside Claude Code. On Codex, OpenCode, and Antigravity a
-  default install blocks or gates nothing; the skills are advisory wording
-  there (see the hooks note under "How it works").
+- Enforce anything on OpenCode or Antigravity. Their installs are skills-only;
+  Codex and Claude Code receive the hook backstops described above.
 - Act as a security boundary. The destructive-command tripwire stops
   accidents, not anyone trying; see [SECURITY.md](./SECURITY.md).
 - Improve single-shot code correctness on current frontier models. That
@@ -233,9 +232,9 @@ Prompts, fixtures, and oracles for the TDD result:
 
 - Codex adds this repo as a remote marketplace
   (`codex plugin marketplace add lawzava/megapowers`), then
-  `codex plugin add <plugin>@megapowers` per plugin. `mega-guardrails` is not
-  offered there; its hook scripts are Claude Code scripts (the manual Codex
-  pilot of the destructive-command guard is covered in docs/setup.md).
+  `codex plugin add <plugin>@megapowers` per plugin. `mega-guardrails` installs
+  the Codex destructive-command adapter; its formatter and statusline remain
+  Claude Code only.
 - Every other harness (OpenCode, Antigravity, Cursor, Copilot, ...) installs
   the skills with the open [skills CLI](https://github.com/vercel-labs/skills):
   `npx skills add lawzava/megapowers`. Skills only; hooks and delegate agents

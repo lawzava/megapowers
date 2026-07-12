@@ -94,6 +94,31 @@ if [[ -f $claude_mp ]]; then
 fi
 
 echo "== Codex plugins =="
+if [[ -f plugins/mega-guardrails/.codex-plugin/plugin.json ]]; then
+  ok "mega-guardrails has Codex plugin metadata"
+else
+  bad "mega-guardrails missing Codex plugin metadata"
+fi
+
+for role in builder reviewer; do
+  root_role="templates/codex-agents/$role.toml"
+  plugin_role="plugins/mega-orchestration/assets/codex-agents/$role.toml"
+  if grep -q '^model = "gpt-5.6-terra"$' "$root_role" 2>/dev/null; then
+    ok "Codex $role role pins gpt-5.6-terra"
+  else
+    bad "Codex $role role must pin gpt-5.6-terra instead of inheriting the lead model"
+  fi
+  if [[ -f $plugin_role ]] && cmp -s "$root_role" "$plugin_role"; then
+    ok "Codex $role role ships with mega-orchestration"
+  else
+    bad "Codex $role role missing from mega-orchestration assets or differs from root template"
+  fi
+done
+if grep -qF 'git rev-parse --git-common-dir' templates/codex-agents/builder.toml; then
+  ok "Codex builder refuses edits outside a dedicated linked worktree"
+else
+  bad "Codex builder must verify it was dispatched into a dedicated linked worktree before editing"
+fi
 if [[ -f $codex_mp ]]; then
   while IFS=$'\t' read -r name source path install auth category; do
     [[ -z $name ]] && continue
@@ -304,6 +329,20 @@ done < <(find plugins -type f -path '*/skills/*' ! -name 'SKILL.md' 2>/dev/null)
 [[ $orphan_bad -eq 0 ]] && ok "no orphaned skill support files"
 
 echo "== hooks.json =="
+legacy_codex_hooks="$(find plugins -type f -path '*/hooks/codex-hooks.json' -print 2>/dev/null)"
+if [[ -z $legacy_codex_hooks ]]; then
+  ok "no legacy manual Codex hook manifests remain"
+else
+  bad "legacy manual Codex hook manifests would duplicate plugin hooks: ${legacy_codex_hooks//$'\n'/, }"
+fi
+mp_hook_count="$(jq '[.hooks[][]?.hooks[]?] | length' plugins/megapowers/hooks/hooks.json 2>/dev/null)"
+mo_hook_count="$(jq '[.hooks[][]?.hooks[]?] | length' plugins/mega-orchestration/hooks/hooks.json 2>/dev/null)"
+mg_hook_count="$(jq '[.hooks[][]?.hooks[]?] | length' plugins/mega-guardrails/hooks/hooks.json 2>/dev/null)"
+if [[ $mp_hook_count == 1 && $mo_hook_count == 2 && $mg_hook_count == 2 ]]; then
+  ok "Codex/Claude plugin manifests expose five intentional hook handlers"
+else
+  bad "expected hook handler shape megapowers=1 orchestration=2 guardrails=2; got $mp_hook_count/$mo_hook_count/$mg_hook_count"
+fi
 while IFS= read -r hj; do
   [ -n "$hj" ] || continue
   if ! jq -e . "$hj" >/dev/null 2>&1; then bad "$hj invalid JSON"; continue; fi
@@ -345,6 +384,18 @@ for cx in plugins/*/.codex-plugin/plugin.json; do
   if jq -e --arg n "$n" '.plugins[]|select(.name==$n)' "$codex_mp" >/dev/null 2>&1; then ok "Codex plugin $n registered in marketplace"; else bad "Codex plugin $n has a manifest but is absent from $codex_mp"; fi
 done
 
+echo "== repository hygiene =="
+if grep -qxF '.firecrawl/' .gitignore; then
+  ok ".firecrawl is ignored as local research state"
+else
+  bad ".gitignore must exclude .firecrawl/"
+fi
+if jq -e '.permissions.deny | all(test("\\*"; "") | not)' templates/settings.example.json >/dev/null 2>&1; then
+  ok "secret-path permission denies use exact paths"
+else
+  bad "templates/settings.example.json permission denies must not use ineffective wildcard paths"
+fi
+
 echo "== hook tests =="
 ht_found=0
 while IFS= read -r t; do
@@ -385,8 +436,14 @@ fi
 echo "== delegates.toml =="
 dr="plugins/mega-orchestration/skills/multi-agent-delegation/scripts/delegate-resolve"
 dt="plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml"
+claude_ref="plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/claude.md"
 mc_core="plugins/megapowers/models.toml"
 mc_orch="plugins/mega-orchestration/models.toml"
+if grep -qF 'claude -p "<prompt>" --safe-mode --no-session-persistence' "$claude_ref"; then
+  ok "Claude delegate channel isolates ambient configuration and puts prompt before variadic flags"
+else
+  bad "Claude delegate command must put the prompt directly after -p, before --safe-mode and --no-session-persistence"
+fi
 if [[ -f $mc_core && -f $mc_orch ]]; then
   # Twin shipped catalogs: plugins cannot locate each other at runtime, so the
   # same file ships in both plugin roots; any drift is a release bug.
@@ -413,6 +470,7 @@ if [[ -f $claude_mp && -f $codex_mp ]] && command -v jq >/dev/null 2>&1; then
   cl_bundles="$(jq '[.plugins[]|select(has("skills")|not)]|length' "$claude_mp")"
   cl_standalone="$(jq '[.plugins[]|select(has("skills"))]|length' "$claude_mp")"
   cx_total="$(jq '.plugins|length' "$codex_mp")"
+  if [[ $cx_total -eq 7 ]]; then ok "Codex marketplace publishes all seven plugin bundles"; else bad "Codex marketplace expected 7 plugin bundles, found $cx_total"; fi
   # fold line wraps before matching: the doc sentence may wrap mid-pattern
   setup_flat="$(tr '\n' ' ' < docs/setup.md 2>/dev/null)"
   if printf '%s' "$setup_flat" | grep -q "currently ${cl_total}: ${cl_bundles} plugin bundles plus ${cl_standalone} standalone"; then
@@ -425,6 +483,11 @@ if [[ -f $claude_mp && -f $codex_mp ]] && command -v jq >/dev/null 2>&1; then
     ok "setup.md Codex marketplace count matches manifest (${cx_total})"
   else
     bad "setup.md Codex marketplace count drifted (manifest: ${cx_total})"
+  fi
+  if printf '%s' "$setup_flat" | grep -q "five hook handlers across three plugins"; then
+    ok "setup.md states the exact Codex hook handler count"
+  else
+    bad "setup.md must state that Codex exposes five hook handlers across three plugins"
   fi
   # every plugin bundle must be mentioned in both user-facing docs (word-bounded:
   # "mega-go" must not be satisfied by a hypothetical "mega-golang" token)

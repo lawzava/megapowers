@@ -92,6 +92,7 @@ Or install non-interactively (the verb is `add`, not `install`):
 ```
 codex plugin add megapowers@megapowers
 codex plugin add mega-orchestration@megapowers
+codex plugin add mega-guardrails@megapowers
 ```
 
 Update later with `codex plugin marketplace upgrade megapowers` (refreshes the
@@ -101,10 +102,10 @@ Verify: `codex plugin marketplace list` shows `megapowers`. After installing a
 plugin, the same first-task probe applies (ask the agent to quote the
 test-driven-development core principle in a fresh session).
 
-Install `megapowers`, `mega-go`, `mega-python`, `mega-ts`, `mega-frontend`, or
-`mega-orchestration` from the `megapowers` marketplace. `mega-guardrails` is
-not listed for Codex: its hook scripts are Claude Code scripts and are not yet
-ported, so nothing would run there.
+Install `megapowers`, `mega-go`, `mega-python`, `mega-ts`, `mega-frontend`,
+`mega-orchestration`, or `mega-guardrails` from the `megapowers` marketplace.
+Under Codex, mega-guardrails supplies the destructive-command adapter only;
+its formatter and statusline remain Claude Code features.
 
 ### Contributor or fork variant
 
@@ -119,67 +120,78 @@ codex plugin add megapowers@megapowers
 
 Update it with `git pull` in the checkout.
 
-### Codex hooks (optional)
+### Codex native agent roles
 
-Codex has its own lifecycle hooks with a Claude-compatible event schema:
-`PreToolUse` receives the command at `tool_input.command` and blocks it by
-returning `{"hookSpecificOutput":{"permissionDecision":"deny",...}}`, the same
-shape the Claude Code guard already emits. This repo ships a pilot port of the
-`deny-destructive` guard for Codex under `plugins/mega-guardrails/hooks/`:
+Codex native multi-agent support is stable and enabled by default; no
+`features.multi_agent` flag is required. `mega-orchestration` packages two
+profiles under `assets/codex-agents/`: `builder.toml` and `reviewer.toml` both
+pin `gpt-5.6-terra`, so fan-out does not inherit the Sol lead model. Find the
+installed plugin directory with `codex plugin list`, review the files, then
+copy the profiles you want into `~/.codex/agents/` (global) or
+`<repo>/.codex/agents/` (project). Codex loads them on the next session.
+Before dispatching `builder`, the lead must create a dedicated linked worktree
+and include its path in the brief. The profile checks `git rev-parse --git-dir`
+against `--git-common-dir` and refuses to edit the primary checkout.
 
-- `codex-deny-destructive.sh`, a thin adapter around the existing
-  `deny-destructive.sh`. Codex accepts `permissionDecision` `deny` and `allow`
-  but not `ask` (it is parsed but not yet supported, and returning it marks the
-  hook failed and runs the command anyway). The guard uses `ask` for its
-  reversible-but-risky tier (`git reset --hard`, `aws s3 rm --recursive`,
-  `terraform destroy -auto-approve`, `curl | bash`, and the like), so the
-  adapter passes the catastrophic `deny` tier through to Codex and drops the
-  `ask` tier to no output, letting Codex's own approval flow decide rather than
-  returning an unsupported value.
-- `codex-hooks.json`, a Codex hooks manifest that wires the adapter onto the
-  `PreToolUse` Bash matcher. Codex also reads a `hooks/hooks.json` inside an
-  installed plugin, or a `hooks.json` next to any config layer
-  (`~/.codex/hooks.json`, `<repo>/.codex/hooks.json`).
+A conservative global baseline is:
 
-Two more pilot ports ship for a Codex lead, each with its own
-`hooks/codex-hooks.json` next to it:
+```toml
+[agents]
+max_threads = 4
+max_depth = 1
+```
 
-- `plugins/megapowers/hooks/codex-session-catalog.sh` (SessionStart): injects
-  the rendered model catalog as `additionalContext`, replacing the manual
-  `render-model-catalog` step the Codex-lead charter otherwise requires.
-  Payload is the catalog only; the using-megapowers nudge stays Claude Code
-  specific.
-- `plugins/mega-orchestration/hooks/delegate-nudge.sh` (Stop): the manifest
-  points at the existing script unmodified, since Codex's Stop input carries
-  the same `stop_hook_active` and `transcript_path` fields. Its delegate
-  detection also matches Codex rollout transcripts (`exec_command({cmd:...})`
-  shapes), so a `claude -p` review dispatched from a Codex lead suppresses the
-  nudge.
+Keep the lead on `gpt-5.6-sol` at `xhigh`; the optional `complex` profile in
+`templates/codex-config.toml` raises deliberate, unusually difficult lead work
+to `ultra`. A Codex lead should not register `codex mcp-server` under
+`[mcp_servers.codex]`: that channel is for another harness delegating into
+Codex, while native subagents are the direct path inside Codex.
 
-Pilot status: the PreToolUse contract is verified; the SessionStart and Stop
-ports match the schema the Codex binary declares (event names, input fields,
-`additionalContext`, block decisions) but have not been exercised end to end,
-and both fail open, so the worst case is a silent no-op, never a broken
-session.
+### Codex hooks
 
-The `codex-hooks.json` files are not auto-discovered, so wiring is manual
-today: point a Codex `hooks.json` (`~/.codex/hooks.json` or
-`<repo>/.codex/hooks.json`) at the script (it reads `CLAUDE_PLUGIN_ROOT`,
-which Codex sets as a compatibility alias alongside its native
-`PLUGIN_ROOT`). One interaction to know: when megapowers or
-mega-orchestration is installed as a Codex plugin, Codex may also discover
-the plugin's Claude-facing `hooks/hooks.json`. Nothing runs until you trust
-it, and you should not: those payloads are Claude Code specific
-(`run-hook.cmd session-start`, `run-loop.sh`), and trusting them alongside a
-manual wiring would run SessionStart and Stop twice. Trust only the
-`codex-*.sh` entries you wired.
+Installed Codex plugins now expose their hooks directly. Cross-harness
+dispatchers use Codex's `PLUGIN_ROOT` environment variable to select the Codex
+payload while retaining the Claude Code behavior from the same manifest:
 
-Trust prompt: before a non-managed command hook runs, Codex requires you to
-review and trust the exact hook definition. Trust is recorded against the hook's
-current hash, so a new or edited hook is flagged for review and skipped until you
-trust it. Review, trust, or disable hooks with the `/hooks` command inside Codex.
-Managed hooks (system, MDM, or `requirements.toml`) are trusted automatically;
-`--dangerously-bypass-hook-trust` skips the check for vetted automation only.
+- `megapowers` SessionStart injects the rendered model catalog.
+- `mega-orchestration` Stop runs the independent-review nudge; the autonomous
+  Claude run-loop becomes a no-op under Codex.
+- `mega-guardrails` PreToolUse runs the destructive-command adapter; its
+  PostToolUse formatter becomes a no-op under Codex. Codex does not support the
+  guard's `ask` decision, so the adapter passes catastrophic `deny` decisions
+  through and leaves reversible-risk approval to Codex.
+
+No manual `~/.codex/hooks.json` wiring is needed. Before a non-managed command
+hook runs, Codex asks you to trust its exact definition; trust is hash-bound, so
+an upgraded hook is skipped until reviewed again. Use `/hooks` in Codex to
+review and trust the installed definitions. Do not use
+`--dangerously-bypass-hook-trust` for an interactive installation.
+
+Migrating from the v0.3.1 manual pilot: remove only the three megapowers pilot
+entries you previously added to `~/.codex/hooks.json` or a project's
+`.codex/hooks.json`, preserving unrelated hooks. Install/upgrade the three
+plugins above, start Codex, and trust their plugin-provided hooks in `/hooks`.
+Leaving the manual entries in place runs SessionStart, Stop, or PreToolUse
+twice.
+
+After an upgrade, restart the app server so the live process and CLI load the
+same plugin snapshot:
+
+```bash
+codex app-server daemon restart
+codex app-server daemon version
+codex --version
+```
+
+The app-server and CLI versions should match. In a fresh session, confirm the
+rendered model-catalog block appears and `/hooks` lists five hook handlers across three plugins:
+one SessionStart, two Stop, one PreToolUse, and one PostToolUse. The run-loop
+Stop handler and formatter PostToolUse handler intentionally no-op under Codex;
+the other three are active. Confirm `codex plugin list` reports one source for
+each megapowers plugin. If a skill appears twice, remove the older shared-directory or
+standalone install rather than keeping both registrations. Install language
+plugins only where needed; loading every language bundle globally can exceed
+the initial skill-description budget even though each plugin is valid alone.
 
 ## Pinning to a release
 
@@ -190,8 +202,8 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.3.1`, or, for Claude Code,
-  add `"ref": "v0.3.1"` to the `extraKnownMarketplaces` source (see
+  `codex plugin marketplace add lawzava/megapowers@v0.3.2`, or, for Claude Code,
+  add `"ref": "v0.3.2"` to the `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
   pin, remove the marketplace and re-add it at the new tag.
@@ -203,7 +215,8 @@ does:
 Neither is an integrity pin (no sha in the ref), so a pin controls when you
 move, not cryptographic provenance — though release tags from `v0.1.3` on are
 GPG-signed and can be verified out of band (see SECURITY.md, Release
-integrity). Tags `v0.1.1` through `v0.3.1` exist to pin against.
+integrity). Tags `v0.1.1` through `v0.3.2` are the release pin range once this
+version is published.
 
 ## Every other harness: the skills CLI
 
@@ -327,7 +340,8 @@ fleet forward.
   Playwright browser server, for harnesses that drive the browser through an MCP
   rather than `playwright-cli` directly.
 - `templates/codex-mcp-settings.json` is a starter MCP registration for
-  `codex mcp-server`, the Codex channel a sandboxed lead needs: `codex exec` and
+  `codex mcp-server`, the channel a sandboxed non-Codex lead needs to delegate
+  into Codex: `codex exec` and
   the SDK read `~/.codex/auth.json`, which command sandboxes typically deny,
   while the harness spawns the MCP server outside that sandbox. Register the
   server as `codex`
@@ -351,9 +365,10 @@ fleet forward.
   transport swappable) when an agent needs input or finishes, with a
   noise-filtering wrapper for Claude Code hooks and a Codex notify program.
   See its [README](../templates/agent-notify/README.md).
-- `templates/codex-agents/` holds Codex native subagent role files
-  (`builder.toml`, `reviewer.toml`) mirroring the delegates.toml presets; copy
-  into `~/.codex/agents/` or `<repo>/.codex/agents/`, as their headers explain.
+- `templates/codex-agents/` holds the source copies of the Terra-pinned Codex
+  native subagent roles. The same files ship inside mega-orchestration under
+  `assets/codex-agents/`, so upstream plugin users can copy them into
+  `~/.codex/agents/` or `<repo>/.codex/agents/` without cloning this repo.
 - `templates/workflows/` holds Claude Code dynamic-workflow scripts
   (`best-of-n.js`, `audit-fanout.js`); copy into `.claude/workflows/` or
   `~/.claude/workflows/`. See its [README](../templates/workflows/README.md).
@@ -421,7 +436,7 @@ bundles plus 9 standalone skills):
 ```
 
 For Codex, confirm the repo marketplace lists every entry in
-`.agents/plugins/marketplace.json` (currently 6):
+`.agents/plugins/marketplace.json` (currently 7):
 
 ```
 codex plugin marketplace add ./

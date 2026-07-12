@@ -12,16 +12,30 @@ model = "gpt-5.6-sol"
 # drop to "high" for latency-sensitive delegate use. Never "max" by policy.
 model_reasoning_effort = "xhigh"
 
+# Optional deliberate profile for unusually complex lead work. Ultra is not the
+# everyday default and does not flow through to the Terra or Claude delegates.
+# [profiles.complex]
+# model = "gpt-5.6-sol"
+# model_reasoning_effort = "ultra"
+
 # Sandbox: allow writes within the workspace (needed for build/apply roles).
 sandbox_mode = "workspace-write"
 
 # Ask before actions that fall outside the sandbox policy.
 approval_policy = "on-request"
 
+# Native multi-agent support is stable and enabled by default. These limits keep
+# fan-out useful without turning every task into a swarm; no features.multi_agent
+# flag is required.
+# [agents]
+# max_threads = 4
+# max_depth = 1
+
 # Empty string disables Codex commit co-author/attribution trailers.
 commit_attribution = ""
 
-# `codex mcp-server` is the first-party MCP channel: it runs Codex as a stdio MCP
+# `codex mcp-server` is the first-party MCP channel for a non-Codex lead: it runs
+# Codex as a stdio MCP
 # server exposing the codex/codex-reply tools, so another harness can drive Codex
-# (or hold a persistent thread) without a hand-rolled bridge. Not required for native
-# Codex subagents or one-shot `codex exec`.
+# (or hold a persistent thread) without a hand-rolled bridge. A Codex lead should
+# not register itself under [mcp_servers.codex]; native subagents are the direct path.

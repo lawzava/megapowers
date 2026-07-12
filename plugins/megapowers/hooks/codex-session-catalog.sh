@@ -7,11 +7,10 @@
 # platform guidance is Claude Code specific; Codex loads its charter from
 # AGENTS.md instead).
 #
-# Wiring is manual today (mirror of the mega-guardrails deny-destructive pilot):
-# reference this script from a Codex hooks manifest (hooks/codex-hooks.json here,
-# or ~/.codex/hooks.json / <repo>/.codex/hooks.json) on SessionStart, then trust
-# it via /hooks inside Codex. Fails OPEN: no renderable catalog -> no output,
-# exit 0, session start proceeds untouched.
+# The cross-harness session-start dispatcher selects this adapter when Codex
+# loads the plugin's hooks/hooks.json. Trust the installed definition via /hooks.
+# Fails OPEN: no renderable catalog -> no output, exit 0, session start proceeds
+# untouched.
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
