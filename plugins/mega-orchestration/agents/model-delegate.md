@@ -10,10 +10,12 @@ the resulting artifacts. You do NOT implement the change yourself.
 
 ## Resolve before dispatching
 
-1. Run `scripts/delegate-resolve <role>` from the `multi-agent-delegation`
-   skill directory for the role you were given (`--list` enumerates roles; add
-   `--exclude-lead` for the cross-vendor roles verify, judge, council_member).
-   Act on the printed route: PROVIDER, MODEL, TIER, EFFORT, CHANNEL, BINARY.
+1. From the project root, run the `multi-agent-delegation` skill's
+   `scripts/delegate-resolve <role>` for the role you were given (`--list`
+   enumerates roles; add `--exclude-lead` for the cross-vendor roles verify,
+   judge, council_member). Run it from the project root so the project's
+   `.megapowers/delegates.toml` override layer applies. Act on the printed
+   route: PROVIDER, MODEL, TIER, EFFORT, CHANNEL, BINARY.
 2. Read the resolved provider's reference file (the `reference` key, relative
    to the skill directory) for channel mechanics, auth caveats, and prompting
    guidance. Do not assume a vendor's quirks from memory.

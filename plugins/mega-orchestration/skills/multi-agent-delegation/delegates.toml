@@ -28,8 +28,10 @@ scale = ["fast", "strong", "frontier"]
 # `binary` is the CLI delegate-resolve probes with `command -v`; a role whose
 # provider binary is not installed is skipped in favour of the next fallback.
 # `reference` names the file with channel mechanics and prompting guidance.
-# `detect` lists transcript markers the delegate-nudge hook matches (mcp__ names
-# match tool-use name fields; entries with spaces match Bash command fields).
+# `detect` lists transcript markers of review-capable delegate invocations; the
+# delegate-nudge hook suppresses its nudge when one appears (mcp__ entries match
+# tool-use name fields, entries with spaces match Bash command fields). Entries
+# from disabled providers still count: it is a fail-open heuristic, not a grant.
 #
 # Inside Claude Code workflows/subagents the model parameter is Claude-only; reach
 # a non-Claude provider through a thin wrapper agent that shells its CLI — see
@@ -75,7 +77,6 @@ vendor  = "none"
 binary  = "playwright-cli"
 channel = "playwright-cli"
 capabilities = ["computer_use", "vision"]
-detect  = ["playwright-cli"]
 reference = "references/providers/browser.md"
 notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .megapowers/evidence/. See agents/browser-delegate.md."
 

@@ -204,6 +204,25 @@ else
 fi
 git checkout -q -- svc.go 2>/dev/null || printf 'func handler() {}\n' > svc.go
 
+# A whitespace-only detect entry must not become a match-anything pattern.
+cat > "$TMP/blank-detect.toml" <<'EOF'
+[providers.blank]
+vendor = "acme"
+binary = "blankcli"
+channel = "cli"
+detect = [" "]
+EOF
+printf 'func handler() { billing() }\n' > svc.go
+printf '{"type":"tool_use","name":"Bash","input":{"command":"echo hello world"}}\n' > "$TR"
+reset_sentinel
+out="$(printf '%s' "$(j false "$TR")" | DELEGATES_TOML="$TMP/blank-detect.toml" bash "$HOOK" 2>/dev/null)"
+if printf '%s' "$out" | grep -q '"decision":"block"'; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1)); printf '  FAIL whitespace-only detect entry must not suppress the nudge\n'
+fi
+git checkout -q -- svc.go 2>/dev/null || printf 'func handler() {}\n' > svc.go
+
 echo "== $pass passed, $fail failed =="
 rm -rf "$TMP"
 [ "$fail" -eq 0 ]
