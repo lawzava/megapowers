@@ -177,8 +177,8 @@ Which do I want?
 Context cost: a full seven-plugin install adds about 1,908 words of always-on
 context (the 30 skill descriptions summed with `wc -w`, 1,590 words, plus the
 injected session-start note, 318 words); at ~1.3 tokens per word, about 2,480
-tokens. The `megapowers` bundle alone is ~990 words (729 in its descriptions
-plus the same note), ~1,290 tokens. Skill bodies load only when invoked.
+tokens. The `megapowers` bundle alone is ~1,050 words (729 in its descriptions
+plus the same note), ~1,360 tokens. Skill bodies load only when invoked.
 
 Plugins are independent; the pairing that adds the most is `megapowers` plus
 `mega-orchestration`. Nine skills are also published as standalone entries
