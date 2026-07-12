@@ -8,6 +8,14 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.4 - 2026-07-13
+
+### Fixed
+
+- `templates/codex-config.toml` no longer emits the removed
+  `commit_attribution` key. Commit-trailer policy remains in `AGENTS.md` and
+  repository Git hooks, where current Codex versions actually honor it.
+
 ## 0.3.3 - 2026-07-13
 
 ### Fixed
