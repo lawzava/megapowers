@@ -8,6 +8,41 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.1 - 2026-07-12
+
+### Changed
+
+- The shipped catalog now declares codex as lead (gpt-5.6-sol, frontier) with
+  claude as the cross-vendor delegate: plan_review/verify/judge/council_member
+  route to claude, claude's dispatch effort is capped at high by policy, and
+  the antigravity provider is removed. Claude Code leads declare themselves in
+  an override layer (`[lead] provider = "claude"`); templates/CLAUDE.md says
+  how.
+
+### Added
+
+- Review-role fallbacks: plan_review and code_review carry cross-vendor
+  `[fallbacks]` chains, so `delegate-resolve <role> --exclude-lead` resolves
+  reviews away from the lead's vendor under either lead. Lead-swap tests pin
+  both directions.
+- templates/CODEX-LEAD.md: a Codex-as-lead AGENTS.md charter (lead
+  declaration, session catalog, delegation routes, single-writer, hook
+  caveats). templates/codex-config.toml pins the catalog's frontier model.
+- Codex hook pilot ports (manual wiring, trust-gated, fail-open; see
+  docs/setup.md): a SessionStart adapter injecting the rendered model catalog
+  (megapowers hooks/codex-session-catalog.sh) and a Stop manifest running
+  delegate-nudge.sh, whose delegate detection now also matches Codex rollout
+  transcripts (both observed `cmd` serializations) in the config-driven regex
+  and the static fallback.
+
+### Fixed
+
+- delegate-resolve: exit 4 (provider disabled) is reserved for single-candidate
+  routes and reports the actual sole candidate; a fully-disabled multi-candidate
+  chain exits 3 (no available route).
+- references/providers/claude.md documents pinning effort via `claude --effort`
+  (the CLI speaks the catalog's low/medium/high/xhigh/max scale unmapped).
+
 ## 0.3.0 - 2026-07-12
 
 ### Changed
