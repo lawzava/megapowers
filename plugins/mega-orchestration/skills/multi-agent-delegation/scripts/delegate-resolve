@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
 # delegate-resolve <role> — resolve a role to its provider + invocation details by
-# reading this skill's delegates.toml. Makes routing EXECUTED rather than eyeballed:
-# any harness can run this (or read its KEY=VALUE output) to learn where a role goes
-# and how to reach it. Portable: bash + awk, no external deps.
+# reading delegates.toml. Makes routing EXECUTED rather than eyeballed: any harness
+# can run this (or read its KEY=VALUE output) to learn where a role goes and how to
+# reach it. Portable: bash + awk, no external deps.
+# Tested by tests/delegate-resolve.test.sh (run via scripts/validate.sh).
+#
+# Config layering: DELEGATES_TOML (env) and --config are exclusive single-file
+# modes; when either is set, only that file is read. Otherwise up to three layers
+# merge per key, highest priority first:
+#   1. project  .megapowers/delegates.toml            (relative to the caller's cwd)
+#   2. user     ${XDG_CONFIG_HOME:-~/.config}/megapowers/delegates.toml
+#   3. shipped  the delegates.toml in this skill's directory (always present)
+# The first layer that defines a key wins; arrays replace whole, never merge.
+# `--where` prints the active layers in priority order.
 #
 # Reads a restricted TOML subset matching delegates.toml: [section] and
 # [section.name] headers (internal whitespace tolerated), one `key = value` per
 # line, values either bare or single/double quoted, `#` comments outside quotes,
-# plus single-line arrays of quoted strings for the `[fallbacks]` keys. Multi-line
-# strings and inline tables are not parsed.
+# plus single-line arrays of quoted strings. Multi-line strings and inline tables
+# are not parsed.
 #
 # Resolution walks the role's fallback chain (or its single [roles] provider when it
 # has none), skipping any candidate that is --excluded, disabled, or whose CLI is not
@@ -19,84 +29,125 @@
 #   delegate-resolve <role> [--config <file>] [--exclude <vendor|provider>]... [--list]
 #   delegate-resolve --preset <name> [--config <file>]
 #   delegate-resolve --list-presets [--config <file>]
+#   delegate-resolve --where [--config <file>]
 # Exit:  0 resolved · 2 usage/config/parse error · 3 unknown role OR no available
 #        route (every candidate excluded/disabled/absent) · 4 provider disabled (a
 #        single-route role whose only provider is switched off in config)
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-toml="${DELEGATES_TOML:-$here/../delegates.toml}"   # scripts/../delegates.toml
+shipped="$here/../delegates.toml"   # scripts/../delegates.toml
 
 usage() {
   echo "usage: delegate-resolve <role> [--config <file>] [--exclude <vendor|provider>]... [--list]" >&2
-  echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets" >&2
+  echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --where" >&2
 }
 
-role=""; list=0; preset=""; list_presets=0; excludes=()
+role=""; list=0; preset=""; list_presets=0; where=0; cfg=""; excludes=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
-              toml="$2"; shift 2 ;;
+              cfg="$2"; shift 2 ;;
     --exclude) [ $# -ge 2 ] || { echo "delegate-resolve: --exclude needs a vendor or provider name" >&2; usage; exit 2; }
               excludes+=("$2"); shift 2 ;;
     --preset) [ $# -ge 2 ] || { echo "delegate-resolve: --preset needs a name" >&2; usage; exit 2; }
               preset="$2"; shift 2 ;;
     --list) list=1; shift ;;
     --list-presets) list_presets=1; shift ;;
+    --where) where=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) usage; exit 2 ;;
     *) role="$1"; shift ;;
   esac
 done
-[ -f "$toml" ] || { echo "delegate-resolve: no config at $toml" >&2; exit 2; }
 
-# --- restricted-TOML parse guard -------------------------------------------------
-# A syntactically broken config must fail loudly (exit 2, naming the line), not be
-# mistaken for an unknown role (exit 3). Every non-blank, non-comment line must be a
-# [section] header or a `key =` assignment.
-lint="$(awk '
-  { s=$0; sub(/^[[:space:]]+/,"",s); sub(/[[:space:]]+$/,"",s) }
-  s=="" || s ~ /^#/ { next }
-  s ~ /^\[[A-Za-z0-9_.-]+\][[:space:]]*(#.*)?$/ { next }
-  s ~ /^[A-Za-z0-9_.-]+[[:space:]]*=/ { next }
-  { printf "%d\t%s", NR, $0; exit }
-' "$toml")"
-if [ -n "$lint" ]; then
-  ln="${lint%%$'\t'*}"; txt="${lint#*$'\t'}"
-  echo "delegate-resolve: parse error in $toml at line $ln: $txt" >&2
-  exit 2
+# --- config layers -----------------------------------------------------------------
+tomls=()
+if [ -n "${DELEGATES_TOML:-}" ]; then
+  tomls=("$DELEGATES_TOML")
+elif [ -n "$cfg" ]; then
+  tomls=("$cfg")
+else
+  [ -f ".megapowers/delegates.toml" ] && tomls+=(".megapowers/delegates.toml")
+  user_toml="${XDG_CONFIG_HOME:-$HOME/.config}/megapowers/delegates.toml"
+  [ -f "$user_toml" ] && tomls+=("$user_toml")
+  tomls+=("$shipped")
 fi
+layers=()
+for f in "${tomls[@]}"; do
+  if [ ! -f "$f" ]; then echo "delegate-resolve: no config at $f" >&2; exit 2; fi
+  if [ ! -r "$f" ]; then echo "delegate-resolve: cannot read $f (layer skipped)" >&2; continue; fi
+  layers+=("$f")
+done
+[ "${#layers[@]}" -gt 0 ] || { echo "delegate-resolve: no readable config" >&2; exit 2; }
 
-# --- readers ---------------------------------------------------------------------
-# does a [section] (or [section.name]) header exist? (internal whitespace tolerated)
-section_exists() { awk -v sec="[$1]" '{h=$0; gsub(/[[:space:]]/,"",h)} h==sec {found=1; exit} END{exit !found}' "$toml"; }
+if [ "$where" -eq 1 ]; then printf '%s\n' "${layers[@]}"; exit 0; fi
 
-list_roles() { awk '{h=$0; gsub(/[[:space:]]/,"",h)} h=="[roles]"{r=1;next} /^[[:space:]]*\[/{r=0} r && /=/{l=$0;sub(/=.*/,"",l);gsub(/[[:space:]]/,"",l);if(l!="")print l}' "$toml"; }
+# --- restricted-TOML parse guard -----------------------------------------------------
+# A syntactically broken layer must fail loudly (exit 2, naming file and line), not
+# be mistaken for an unknown role (exit 3).
+for f in "${layers[@]}"; do
+  lint="$(awk '
+    { s=$0; sub(/^[[:space:]]+/,"",s); sub(/[[:space:]]+$/,"",s) }
+    s=="" || s ~ /^#/ { next }
+    s ~ /^\[[A-Za-z0-9_.-]+\][[:space:]]*(#.*)?$/ { next }
+    s ~ /^[A-Za-z0-9_.-]+[[:space:]]*=/ { next }
+    { printf "%d\t%s", NR, $0; exit }
+  ' "$f")"
+  if [ -n "$lint" ]; then
+    ln="${lint%%$'\t'*}"; txt="${lint#*$'\t'}"
+    echo "delegate-resolve: parse error in $f at line $ln: $txt" >&2
+    exit 2
+  fi
+done
 
-list_preset_names() { awk '{h=$0; gsub(/[[:space:]]/,"",h)} h ~ /^\[presets\./{n=h; sub(/^\[presets\./,"",n); sub(/\].*/,"",n); if(n!="")print n}' "$toml"; }
+# --- readers -------------------------------------------------------------------------
+# Scalar and array lookups return the first (highest-priority) layer's value;
+# existence checks and listings union across layers.
 
-# read a scalar key from a named [section] (handles [roles] and [providers.name];
-# tolerates internal header whitespace; unquotes single- or double-quoted values).
-section_val() {  # $1=section header (e.g. "roles" | "providers.codex") $2=key
-  awk -v sec="[$1]" -v key="$2" '
-    { hn=$0; gsub(/[[:space:]]/,"",hn) }                 # header, whitespace-normalized
+section_exists_in() { awk -v sec="[$2]" '{h=$0; gsub(/[[:space:]]/,"",h)} h==sec {found=1; exit} END{exit !found}' "$1"; }
+section_exists() { local f; for f in "${layers[@]}"; do section_exists_in "$f" "$1" && return 0; done; return 1; }
+
+list_roles() {
+  local f
+  for f in "${layers[@]}"; do
+    awk '{h=$0; gsub(/[[:space:]]/,"",h)} h=="[roles]"{r=1;next} /^[[:space:]]*\[/{r=0} r && /=/{l=$0;sub(/=.*/,"",l);gsub(/[[:space:]]/,"",l);if(l!="")print l}' "$f"
+  done | awk '!seen[$0]++'
+}
+
+list_preset_names() {
+  local f
+  for f in "${layers[@]}"; do
+    awk '{h=$0; gsub(/[[:space:]]/,"",h)} h ~ /^\[presets\./{n=h; sub(/^\[presets\./,"",n); sub(/\].*/,"",n); if(n!="")print n}' "$f"
+  done | awk '!seen[$0]++'
+}
+
+section_val_in() {  # $1=file $2=section (e.g. "roles" | "providers.codex") $3=key
+  awk -v sec="[$2]" -v key="$3" '
+    { hn=$0; gsub(/[[:space:]]/,"",hn) }
     hn==sec {inx=1; next}
     /^[[:space:]]*\[/ {inx=0}
     inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
-      rest=$0; sub(/^[^=]*=[[:space:]]*/,"",rest)        # value side of key = value
+      rest=$0; sub(/^[^=]*=[[:space:]]*/,"",rest)
       if (rest ~ /^"/)      { sub(/^"/,"",rest); sub(/".*/,"",rest); print rest; exit }
       else if (rest ~ /^'\''/) { sub(/^'\''/,"",rest); sub(/'\''.*/,"",rest); print rest; exit }
       else { sub(/#.*/,"",rest); gsub(/[[:space:]]+$/,"",rest); print rest; exit }
     }
-  ' "$toml"
+  ' "$1"
+}
+section_val() {  # $1=section $2=key -> first layer that defines the key wins
+  local f v
+  for f in "${layers[@]}"; do
+    v="$(section_val_in "$f" "$1" "$2")"
+    [ -n "$v" ] && { printf '%s\n' "$v"; return 0; }
+  done
+  return 1
 }
 
-# read the ordered fallback chain for a role from [fallbacks] (single-line array of
-# quoted strings), one provider per line.
-fallbacks_of() {  # $1=role
-  awk -v key="$1" '
+array_val_in() {  # $1=file $2=section $3=key -> one element per line
+  awk -v sec="[$2]" -v key="$3" '
     { hn=$0; gsub(/[[:space:]]/,"",hn) }
-    hn=="[fallbacks]" {inx=1; next}
+    hn==sec {inx=1; next}
     /^[[:space:]]*\[/ {inx=0}
     inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
       rest=$0; sub(/^[^=]*=/,"",rest)
@@ -106,8 +157,18 @@ fallbacks_of() {  # $1=role
       }
       exit
     }
-  ' "$toml"
+  ' "$1"
 }
+array_val() {  # $1=section $2=key -> the first layer that defines the key wins whole
+  local f out
+  for f in "${layers[@]}"; do
+    out="$(array_val_in "$f" "$1" "$2")"
+    [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+  done
+  return 1
+}
+
+fallbacks_of() { array_val fallbacks "$1"; }
 
 # --- list / preset modes ---------------------------------------------------------
 if [ "$list" -eq 1 ]; then list_roles; exit 0; fi
@@ -115,7 +176,7 @@ if [ "$list_presets" -eq 1 ]; then list_preset_names; exit 0; fi
 
 if [ -n "$preset" ]; then
   if ! section_exists "presets.$preset"; then
-    echo "delegate-resolve: no preset '$preset' in $toml" >&2
+    echo "delegate-resolve: no preset '$preset' in ${layers[*]}" >&2
     echo "presets available:" >&2; list_preset_names | sed 's/^/  /' >&2
     exit 3
   fi
@@ -132,7 +193,7 @@ fi
 # --- role resolution -------------------------------------------------------------
 primary="$(section_val roles "$role")"
 if [ -z "$primary" ]; then
-  echo "delegate-resolve: no route for role '$role' in $toml" >&2
+  echo "delegate-resolve: no route for role '$role' in ${layers[*]}" >&2
   echo "roles available:" >&2
   list_roles | sed 's/^/  /' >&2
   exit 3
@@ -157,7 +218,7 @@ selected=""; only_disabled=1
 while IFS= read -r p; do
   [ -n "$p" ] || continue
   section_exists "providers.$p" || {
-    echo "delegate-resolve: role '$role' routes to provider '$p', but no [providers.$p] section exists in $toml" >&2
+    echo "delegate-resolve: role '$role' routes to provider '$p', but no [providers.$p] section exists in ${layers[*]}" >&2
     exit 2
   }
   if excluded "$p"; then only_disabled=0; continue; fi
