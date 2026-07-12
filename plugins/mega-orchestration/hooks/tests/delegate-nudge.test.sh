@@ -161,6 +161,49 @@ check BLOCK "$(j false "$TR")" "(repro-3) same risky hunk reappears uncommitted 
 
 git checkout -q -- svc.go 2>/dev/null || printf 'func handler() {}\n' > svc.go
 
+echo "== detect-from-config tests =="
+
+# A provider declared only in a custom config layer must suppress the nudge
+# when its CLI appears in a real Bash command field.
+CUSTOM_TOML="$TMP/custom-delegates.toml"
+cat > "$CUSTOM_TOML" <<'EOF'
+[providers.mycli]
+vendor = "acme"
+binary = "mycli"
+channel = "cli"
+detect = ["mycli review"]
+EOF
+printf 'func handler() { billing() }\n' > svc.go
+printf '{"type":"tool_use","name":"Bash","input":{"command":"mycli review the diff"}}\n' > "$TR"
+reset_sentinel
+out="$(printf '%s' "$(j false "$TR")" | DELEGATES_TOML="$CUSTOM_TOML" bash "$HOOK" 2>/dev/null)"
+if printf '%s' "$out" | grep -q '"decision":"block"'; then
+  fail=$((fail + 1)); printf '  FAIL custom-provider detect should suppress the nudge\n'
+else
+  pass=$((pass + 1))
+fi
+
+# A prose mention of the same CLI must still nudge (command-field anchored).
+printf 'notes say run mycli review sometime\n' > "$TR"
+reset_sentinel
+out="$(printf '%s' "$(j false "$TR")" | DELEGATES_TOML="$CUSTOM_TOML" bash "$HOOK" 2>/dev/null)"
+if printf '%s' "$out" | grep -q '"decision":"block"'; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1)); printf '  FAIL prose mention of a detect entry must not suppress\n'
+fi
+
+# Unreadable config falls back to the static regex: codex exec still suppresses.
+printf '{"type":"tool_use","name":"Bash","input":{"command":"codex exec \\"review\\""}}\n' > "$TR"
+reset_sentinel
+out="$(printf '%s' "$(j false "$TR")" | DELEGATES_TOML="$TMP/does-not-exist.toml" bash "$HOOK" 2>/dev/null)"
+if printf '%s' "$out" | grep -q '"decision":"block"'; then
+  fail=$((fail + 1)); printf '  FAIL static-regex fallback should still suppress codex exec\n'
+else
+  pass=$((pass + 1))
+fi
+git checkout -q -- svc.go 2>/dev/null || printf 'func handler() {}\n' > svc.go
+
 echo "== $pass passed, $fail failed =="
 rm -rf "$TMP"
 [ "$fail" -eq 0 ]

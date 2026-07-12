@@ -11,6 +11,49 @@ input="$(cat)"
 
 command -v jq >/dev/null 2>&1 || exit 0
 
+# Delegate-invocation markers come from delegates.toml `detect` arrays, so a new
+# provider becomes visible to this hook by editing config, not this script. Layer
+# lookup mirrors delegate-resolve (DELEGATES_TOML > project > user > shipped);
+# detect entries UNION across layers because this is a fail-open heuristic.
+# Entries starting mcp__ match tool_use name fields; entries containing a space
+# match Bash command fields. Returns nonzero when nothing parses, and the caller
+# falls back to the static regex.
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+delegate_regex() {
+  local files=() f pats mcp="" cli="" p esc re=""
+  if [ -n "${DELEGATES_TOML:-}" ]; then
+    files=("$DELEGATES_TOML")
+  else
+    [ -f ".megapowers/delegates.toml" ] && files+=(".megapowers/delegates.toml")
+    f="${XDG_CONFIG_HOME:-$HOME/.config}/megapowers/delegates.toml"
+    [ -f "$f" ] && files+=("$f")
+    files+=("$HOOK_DIR/../skills/multi-agent-delegation/delegates.toml")
+  fi
+  pats="$(awk '
+    { h=$0; gsub(/[[:space:]]/,"",h) }
+    h ~ /^\[providers\.[A-Za-z0-9_-]+\]$/ { inp=1; next }
+    h ~ /^\[/ { inp=0 }
+    inp && $0 ~ /^[[:space:]]*detect[[:space:]]*=/ {
+      rest=$0; sub(/^[^=]*=/,"",rest)
+      while (match(rest, /"[^"]*"/)) { print substr(rest, RSTART+1, RLENGTH-2); rest=substr(rest, RSTART+RLENGTH) }
+    }
+  ' "${files[@]}" 2>/dev/null | awk '!seen[$0]++')"
+  [ -n "$pats" ] || return 1
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    esc="$(printf '%s' "$p" | sed 's/[][\\.*^$()+?{}|]/\\&/g')"
+    esc="${esc// / +}"
+    case "$p" in
+      mcp__*) mcp="${mcp:+$mcp|}$esc" ;;
+      *)      cli="${cli:+$cli|}$esc" ;;
+    esac
+  done <<< "$pats"
+  [ -n "$mcp" ] && re='"name"[[:space:]]*:[[:space:]]*"('"$mcp"')'
+  re="${re:+$re|}"'"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)'
+  [ -n "$cli" ] && re="$re"'|"command"[[:space:]]*:[[:space:]]*"[^"]*('"$cli"')'
+  printf '%s' "$re"
+}
+
 # Avoid loops: if this stop was already triggered by a stop hook, allow.
 [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false')" = "true" ] && exit 0
 
@@ -25,12 +68,15 @@ command -v jq >/dev/null 2>&1 || exit 0
 # code-block mention (not inside a "name"/"subagent_type"/"command" value) does not match.
 transcript="$(printf '%s' "$input" | jq -r '.transcript_path // empty')"
 if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  # This is a heuristic backstop, not a proof of review: it looks for the JSON
-  # signatures of a real delegate call. The subagent_type value must START with
-  # "codex" or END in "-delegate" (so "notdelegate" does NOT count); the command
-  # must run a review-capable delegate CLI ("codex apply" is excluded — applying a
-  # patch is not an independent review). It fails open on any doubt.
-  grep -qE '"name"[[:space:]]*:[[:space:]]*"mcp__codex__codex|"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)|"command"[[:space:]]*:[[:space:]]*"[^"]*(codex +exec|agy +(exec|run))' "$transcript" 2>/dev/null && exit 0
+  # Patterns come from delegates.toml `detect` keys, falling back to the old
+  # static regex when no config layer parses. This is a heuristic backstop, not
+  # a proof of review: it looks for the JSON signatures of a real delegate call.
+  # The subagent_type value must START with "codex" or END in "-delegate" (so
+  # "notdelegate" does NOT count); the command must run a review-capable
+  # delegate CLI ("codex apply" is excluded — applying a patch is not an
+  # independent review). It fails open on any doubt.
+  re="$(delegate_regex)" || re='"name"[[:space:]]*:[[:space:]]*"mcp__codex__codex|"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)|"command"[[:space:]]*:[[:space:]]*"[^"]*(codex +exec|agy +(exec|run))'
+  grep -qE "$re" "$transcript" 2>/dev/null && exit 0
 fi
 
 # Hash stdin to a hex digest with whatever tool is on PATH; normalizes each
@@ -124,7 +170,7 @@ if [ "$hit" -eq 1 ]; then
     fi
     printf '%s' "$key" > "$sentinel" 2>/dev/null
   fi
-  printf '%s\n' '{"decision":"block","reason":"Risky logic (auth/billing/concurrency) changed without an independent delegate review. Run an independent pass on the diff with a different model (e.g. Codex via mcp__codex__codex or codex exec, or a verified Antigravity path), then finish. If you already reviewed it with a delegate this session, say so and stop."}'
+  printf '%s\n' '{"decision":"block","reason":"Risky logic (auth/billing/concurrency) changed without an independent delegate review. Resolve a reviewer with the multi-agent-delegation skill (scripts/delegate-resolve verify --exclude-lead) and run an independent pass on the diff with that model, then finish. If you already reviewed it with a delegate this session, say so and stop."}'
 else
   clear_sentinel
 fi
