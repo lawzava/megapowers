@@ -1,48 +1,82 @@
 # megapowers delegate routing.
-# Last reviewed: 2026-07-10 (model IDs and routes age; scripts/check-freshness.sh
+# Last reviewed: 2026-07-12 (model IDs and routes age; scripts/check-freshness.sh
 # fails a scheduled CI run when this date is older than 90 days).
-# Edit this file to change which model handles which role. Nothing auto-executes
-# it: the multi-agent-delegation skill and the delegate agents READ it to decide
-# where to send work. scripts/delegate-resolve <role> resolves a route the same way,
-# so a harness can execute the table instead of eyeballing it. Keep it in sync with
-# the runtimes you actually have.
+# Edit an OVERRIDE LAYER to change routing, not this shipped file: a project
+# .megapowers/delegates.toml or user ~/.config/megapowers/delegates.toml wins per
+# key and survives plugin updates (see scripts/delegate-resolve --where). Nothing
+# auto-executes this file: the multi-agent-delegation skill and the delegate agents
+# READ it, and scripts/delegate-resolve resolves it executably.
 # It ships inside the multi-agent-delegation skill directory so the skill stays
 # self-contained when installed on its own (Agent Skills standard).
 
+# --- Lead: what orchestrates ---
+# The intended orchestrator. delegate-resolve --lead prints it; --exclude-lead
+# resolves a role away from the lead's vendor, which is how the cross-vendor roles
+# (verify, judge, council_member) stay independent no matter who leads. Swap the
+# lead in an override layer; skill prose never hardcodes it.
+[lead]
+provider = "claude"
+tier     = "frontier"
+
+# --- Tiers: the vendor-neutral capability scale, weakest first ---
+# Roles, the floor, and the lead speak tier language; each provider maps its own
+# model ids to tiers below. A new model release is a one-line tier-map edit.
+[tiers]
+scale = ["fast", "strong", "frontier"]
+
 # --- Providers: how to reach each backend ---
 # `binary` is the CLI delegate-resolve probes with `command -v`; a role whose
-# provider binary is not installed is skipped in favour of the next fallback, so a
-# route never resolves to a runtime you do not have.
+# provider binary is not installed is skipped in favour of the next fallback.
+# `reference` names the file with channel mechanics and prompting guidance.
+# `detect` lists transcript markers the delegate-nudge hook matches (mcp__ names
+# match tool-use name fields; entries with spaces match Bash command fields).
 #
 # Inside Claude Code workflows/subagents the model parameter is Claude-only; reach
-# this provider through a thin wrapper agent (sonnet, effort medium) that shells
-# `codex exec` — see orchestrating references/harness-primitives.md.
+# a non-Claude provider through a thin wrapper agent that shells its CLI — see
+# orchestrating references/harness-primitives.md.
 [providers.codex]
-model   = "gpt-5.6-sol"
 effort  = "high"   # default model_reasoning_effort on dispatch; verify/judge roles may spend higher (see templates/codex-agents/)
 vendor  = "openai"
 binary  = "codex"
 channel = "native-or-mcp-or-cli"
-notes   = "Native Codex subagents inside Codex. From another tool: `codex exec` (one-shot, --output-schema for machine-checkable verdicts, resume --last to continue a thread), the Codex SDK (@openai/codex-sdk on npm, openai-codex on PyPI), or `codex mcp-server` (the first-party MCP channel exposing codex/codex-reply). Sandbox caveat: exec and the SDK need ~/.codex/auth.json, which command sandboxes typically deny, so from a sandboxed lead use the MCP channel (the harness spawns the server outside its command sandbox; a container around the whole harness still applies); no profile param over MCP, pin model and model_reasoning_effort per call."
+default_tier = "frontier"
+capabilities = ["code", "vision", "computer_use"]
+detect  = ["mcp__codex__codex", "codex exec"]
+reference = "references/providers/codex.md"
+notes   = "Native Codex subagents inside Codex; codex exec / SDK / codex mcp-server from elsewhere. Channel mechanics and sandbox-auth caveats: see the reference file."
 
-# Second model vendor, so the cross-vendor roles (verify/judge/council_member) have a
-# real different-vendor route to fall back to when the lead (or an --exclude) rules
-# out the primary. Headless Claude CLI: `claude -p`.
+[providers.codex.tiers]
+frontier = "gpt-5.6-sol"
+
+# Second model vendor, so the cross-vendor roles (verify/judge/council_member) have
+# a real different-vendor route when the lead (or an --exclude) rules out the
+# primary. Headless Claude CLI: `claude -p`.
 [providers.claude]
-model   = "claude-fable-5"
 vendor  = "anthropic"
 binary  = "claude"
 channel = "claude-cli"
-notes   = "Headless `claude -p <prompt>`; the different-vendor route for a Codex-led run (resolve with --exclude openai)."
+default_tier = "frontier"
+capabilities = ["code", "vision", "computer_use"]
+detect  = ["claude -p"]
+reference = "references/providers/claude.md"
+notes   = "Headless `claude -p <prompt>`; the different-vendor route when a non-Anthropic model leads (resolve with --exclude-lead)."
+
+[providers.claude.tiers]
+frontier = "claude-fable-5"
+strong   = "claude-sonnet-5"
+fast     = "claude-haiku-4-5-20251001"
 
 # Browser / visual verification and fallback: drive the UI with playwright-cli and
 # reason over the screenshots with a vision-capable model (the lead itself when it
-# is vision-capable, e.g. Claude; otherwise route the screenshot to one). Depends
-# only on a standalone CLI, not on any single vendor's browser agent.
+# is vision-capable; otherwise route the screenshot to one). Depends only on a
+# standalone CLI, not on any single vendor's browser agent.
 [providers.browser]
 vendor  = "none"
 binary  = "playwright-cli"
 channel = "playwright-cli"
+capabilities = ["computer_use", "vision"]
+detect  = ["playwright-cli"]
+reference = "references/providers/browser.md"
 notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .megapowers/evidence/. See agents/browser-delegate.md."
 
 # Alternative browser/visual backend, disabled by default. Use only after verifying
@@ -54,33 +88,40 @@ model   = "configured-in-agy"
 vendor  = "google"
 binary  = "agy"
 channel = "agy-cli"
+detect  = ["agy exec", "agy run"]
 enabled = false
 
 # NOTE: the Gemini CLI route was removed — the Gemini CLI was discontinued for
-# consumer use in mid-2026. The vendor-neutral `browser` provider above now serves
-# visual verification and fallback; Codex leads visual/browser work (see [roles]).
+# consumer use in mid-2026. The vendor-neutral `browser` provider above serves
+# visual verification and fallback.
 
 # --- Defaults: cross-cutting routing rules ---
 [defaults]
-# Minimum model:effort for anything that ships; outside Claude, map to the nearest
-# equivalent tier. Exception: wrapper agents relaying to codex run sonnet:medium,
-# a faithful self-contained prompt is worth the extra effort.
-floor = "sonnet:low"
+# Minimum tier:effort for anything that ships, on the [tiers] scale. A provider
+# whose default_tier sits below the floor tier is skipped at resolution.
+# Exception: wrapper agents relaying to an external CLI run strong:medium, a
+# faithful self-contained prompt is worth the extra effort.
+floor = "strong:low"
+
+# --- Requirements: capabilities a role's provider must declare ---
+[requires]
+visual        = ["computer_use"]
+browser_test  = ["computer_use"]
+visual_verify = ["computer_use", "vision"]
 
 # --- Roles: which provider handles what ---
 # Visual/browser routing is a cost-adjusted call (bench check 2026-07-04, run
 # against the then-current GPT-5.5; the route moved to gpt-5.6-sol on 2026-07-10
 # without a re-bench): OSWorld-Verified had Claude ahead (Fable 5 ~85 / Opus 4.8
 # 83.4 vs GPT-5.5 78.7, Gemini 3.1 Pro well behind), but Codex runs 3-4x cheaper
-# in tokens, so it leads
-# computer-use work and the browser provider referees (visual_verify) and serves
-# as the redo path when Codex output misses the bar (escalation rule in
-# mega-orchestration:orchestrating).
+# in tokens, so it leads computer-use work and the browser provider referees
+# (visual_verify) and serves as the redo path when the primary's output misses
+# the bar (escalation rule in mega-orchestration:orchestrating).
 [roles]
 plan_review    = "codex"     # review a plan before implementing
 code_review    = "codex"     # review a diff
 small_impl     = "codex"     # well-scoped, small-sized implementation
-visual         = "codex"     # UI / visual work (native Codex computer use)
+visual         = "codex"     # UI / visual work (native computer use)
 browser_test   = "codex"     # browser / end-to-end testing
 visual_verify  = "browser"   # independent cross-vendor pass on rendered UI/UX work
 verify         = "codex"     # cross-model-verification: adversarial refute pass (must differ from the author's vendor)
@@ -89,10 +130,10 @@ council_member = "codex"     # council-adjudication: independent answer + blind 
 
 # --- Fallbacks: ordered cross-vendor chains for the different-vendor roles ---
 # The [roles] value is the first choice; delegate-resolve walks this chain and skips
-# any provider that is --excluded (e.g. `--exclude openai` when Codex is the lead),
-# disabled, or whose binary is not installed. Each chain crosses vendors so the
-# constraint the role carries (verify differs from the author, judge/council prefer
-# an unused vendor) stays satisfiable no matter which vendor authored the work.
+# any provider that is --excluded (use --exclude-lead so the lead's vendor drops out
+# automatically), disabled, or whose binary is not installed. Each chain crosses
+# vendors so the constraint the role carries (verify differs from the author,
+# judge/council prefer an unused vendor) stays satisfiable no matter who leads.
 [fallbacks]
 verify         = ["codex", "claude"]
 judge          = ["codex", "claude"]

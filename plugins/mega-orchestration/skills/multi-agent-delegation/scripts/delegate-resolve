@@ -40,10 +40,10 @@ shipped="$here/../delegates.toml"   # scripts/../delegates.toml
 
 usage() {
   echo "usage: delegate-resolve <role> [--config <file>] [--exclude <vendor|provider>]... [--list]" >&2
-  echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --where" >&2
+  echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --where | --lead | --check" >&2
 }
 
-role=""; list=0; preset=""; list_presets=0; where=0; cfg=""; excludes=()
+role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; cfg=""; excludes=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
@@ -55,6 +55,9 @@ while [ $# -gt 0 ]; do
     --list) list=1; shift ;;
     --list-presets) list_presets=1; shift ;;
     --where) where=1; shift ;;
+    --lead) lead=1; shift ;;
+    --exclude-lead) exclude_lead=1; shift ;;
+    --check) check=1; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) usage; exit 2 ;;
     *) role="$1"; shift ;;
@@ -170,9 +173,92 @@ array_val() {  # $1=section $2=key -> the first layer that defines the key wins 
 
 fallbacks_of() { array_val fallbacks "$1"; }
 
+providers_list() {  # every [providers.X] name across layers (tier subsections excluded)
+  local f
+  for f in "${layers[@]}"; do
+    awk '{h=$0; gsub(/[[:space:]]/,"",h)} h ~ /^\[providers\.[A-Za-z0-9_-]+\]$/ {n=h; sub(/^\[providers\./,"",n); sub(/\]$/,"",n); print n}' "$f"
+  done | awk '!seen[$0]++'
+}
+
+# model id and tier for a provider: default_tier maps through [providers.X.tiers];
+# a provider without default_tier falls back to its legacy `model` key (schema v1).
+provider_model() {  # $1=provider ; prints "model<TAB>tier"
+  local p="$1" dt m
+  dt="$(section_val "providers.$p" default_tier)"
+  if [ -n "$dt" ]; then
+    m="$(section_val "providers.$p.tiers" "$dt")"
+    if [ -z "$m" ]; then
+      echo "delegate-resolve: provider '$p': default_tier '$dt' has no [providers.$p.tiers] entry" >&2
+      return 2
+    fi
+    printf '%s\t%s\n' "$m" "$dt"
+  else
+    printf '%s\t\n' "$(section_val "providers.$p" model)"
+  fi
+}
+
+scale_list="$(array_val tiers scale)"   # empty on v1 configs
+tier_index() { printf '%s\n' "$scale_list" | grep -nx -- "$1" | cut -d: -f1; }
+
+# --- --check mode ------------------------------------------------------------------
+if [ "$check" -eq 1 ]; then
+  errs=0
+  note() { echo "delegate-resolve --check: $1" >&2; errs=$((errs+1)); }
+  while IFS= read -r r; do
+    [ -n "$r" ] || continue
+    p="$(section_val roles "$r")"
+    [ -n "$p" ] || continue
+    section_exists "providers.$p" || note "role '$r' routes to missing provider '$p'"
+    while IFS= read -r fp; do
+      [ -n "$fp" ] || continue
+      section_exists "providers.$fp" || note "fallback for '$r' names missing provider '$fp'"
+    done <<< "$(fallbacks_of "$r")"
+  done <<< "$(list_roles)"
+  lp="$(section_val lead provider)"
+  if [ -n "$lp" ] && ! section_exists "providers.$lp"; then note "[lead] provider '$lp' missing"; fi
+  fl="$(section_val defaults floor)"
+  if [ -n "$fl" ] && [ -n "$scale_list" ]; then
+    ft="${fl%%:*}"
+    printf '%s\n' "$scale_list" | grep -qx -- "$ft" || note "floor tier '$ft' not in [tiers] scale"
+  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    dt="$(section_val "providers.$p" default_tier)"
+    if [ -n "$dt" ]; then
+      [ -n "$(section_val "providers.$p.tiers" "$dt")" ] || note "provider '$p' default_tier '$dt' has no tier-map entry"
+      if [ -n "$scale_list" ]; then
+        printf '%s\n' "$scale_list" | grep -qx -- "$dt" || note "provider '$p' default_tier '$dt' not in [tiers] scale"
+      fi
+    fi
+    ref="$(section_val "providers.$p" reference)"
+    if [ -n "$ref" ] && [ ! -f "$here/../$ref" ]; then note "provider '$p' reference file missing: $ref"; fi
+  done <<< "$(providers_list)"
+  if [ "$errs" -eq 0 ]; then echo "delegate-resolve --check: OK (${layers[*]})"; exit 0; fi
+  exit 1
+fi
+
 # --- list / preset modes ---------------------------------------------------------
 if [ "$list" -eq 1 ]; then list_roles; exit 0; fi
 if [ "$list_presets" -eq 1 ]; then list_preset_names; exit 0; fi
+
+if [ "$lead" -eq 1 ]; then
+  lp="$(section_val lead provider)"
+  [ -n "$lp" ] || { echo "delegate-resolve: no [lead] section in ${layers[*]}" >&2; exit 3; }
+  section_exists "providers.$lp" || { echo "delegate-resolve: [lead] provider '$lp' has no [providers.$lp] section" >&2; exit 2; }
+  lt="$(section_val lead tier)"
+  if [ -n "$lt" ]; then
+    lm="$(section_val "providers.$lp.tiers" "$lt")"
+  else
+    pm="$(provider_model "$lp")" || exit 2
+    lm="${pm%%$'\t'*}"; lt="${pm#*$'\t'}"
+  fi
+  echo "LEAD_PROVIDER=$lp"
+  [ -n "$lt" ] && echo "LEAD_TIER=$lt"
+  echo "LEAD_MODEL=${lm:-}"
+  lv="$(section_val "providers.$lp" vendor)"
+  [ -n "$lv" ] && echo "LEAD_VENDOR=$lv"
+  exit 0
+fi
 
 if [ -n "$preset" ]; then
   if ! section_exists "presets.$preset"; then
@@ -189,6 +275,15 @@ if [ -n "$preset" ]; then
 fi
 
 [ -n "$role" ] || { usage; exit 2; }
+
+if [ "$exclude_lead" -eq 1 ]; then
+  lp="$(section_val lead provider)"
+  if [ -n "$lp" ]; then
+    excludes+=("$lp")
+    lv="$(section_val "providers.$lp" vendor)"
+    [ -n "$lv" ] && excludes+=("$lv")
+  fi
+fi
 
 # --- role resolution -------------------------------------------------------------
 primary="$(section_val roles "$role")"
@@ -214,6 +309,18 @@ excluded() {  # $1=provider
   return 1
 }
 
+floor="$(section_val defaults floor)"
+floor_idx=""
+if [ -n "$floor" ] && [ -n "$scale_list" ]; then
+  ftier="${floor%%:*}"
+  floor_idx="$(tier_index "$ftier")"
+  if [ -z "$floor_idx" ]; then
+    echo "delegate-resolve: floor tier '$ftier' is not in the [tiers] scale" >&2
+    exit 2
+  fi
+fi
+req="$(array_val requires "$role")"
+
 selected=""; only_disabled=1
 while IFS= read -r p; do
   [ -n "$p" ] || continue
@@ -227,10 +334,30 @@ while IFS= read -r p; do
   only_disabled=0
   bin="$(section_val "providers.$p" binary)"
   if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi   # absent -> next
+  if [ -n "$req" ]; then
+    caps="$(array_val "providers.$p" capabilities)"
+    capmiss=0
+    while IFS= read -r rc_; do
+      [ -n "$rc_" ] || continue
+      printf '%s\n' "$caps" | grep -qx -- "$rc_" || { capmiss=1; break; }
+    done <<< "$req"
+    if [ "$capmiss" -eq 1 ]; then
+      echo "delegate-resolve: provider '$p' lacks a required capability for role '$role' (skipped)" >&2
+      continue
+    fi
+  fi
+  if [ -n "$floor_idx" ]; then
+    pdt="$(section_val "providers.$p" default_tier)"
+    if [ -n "$pdt" ]; then
+      pidx="$(tier_index "$pdt")"
+      if [ -n "$pidx" ] && [ "$pidx" -lt "$floor_idx" ]; then
+        echo "delegate-resolve: provider '$p' tier '$pdt' is below floor '${floor%%:*}' (skipped)" >&2
+        continue
+      fi
+    fi
+  fi
   selected="$p"; break
 done <<< "$candidates"
-
-floor="$(section_val defaults floor)"
 
 if [ -z "$selected" ]; then
   # nothing usable: distinguish "the one provider is switched off" (exit 4) from
@@ -238,7 +365,10 @@ if [ -z "$selected" ]; then
   if [ "$only_disabled" -eq 1 ]; then
     echo "ROLE=$role"
     echo "PROVIDER=$primary"
-    echo "MODEL=$(section_val "providers.$primary" model)"
+    pm="$(provider_model "$primary")" || exit 2
+    dmodel="${pm%%$'\t'*}"; dtier="${pm#*$'\t'}"
+    echo "MODEL=${dmodel:-}"
+    [ -n "$dtier" ] && echo "TIER=$dtier"
     ef="$(section_val "providers.$primary" effort)"
     [ -n "$ef" ] && echo "EFFORT=$ef"
     echo "CHANNEL=$(section_val "providers.$primary" channel)"
@@ -253,7 +383,8 @@ if [ -z "$selected" ]; then
 fi
 
 # --- emit the resolved route -----------------------------------------------------
-model="$(section_val "providers.$selected" model)"
+pm="$(provider_model "$selected")" || exit 2
+model="${pm%%$'\t'*}"; tier="${pm#*$'\t'}"
 effort="$(section_val "providers.$selected" effort)"
 channel="$(section_val "providers.$selected" channel)"
 vendor="$(section_val "providers.$selected" vendor)"
@@ -263,6 +394,7 @@ notes="$(section_val "providers.$selected" notes)"
 echo "ROLE=$role"
 echo "PROVIDER=$selected"
 echo "MODEL=${model:-}"
+[ -n "$tier" ] && echo "TIER=$tier"
 [ -n "$effort" ] && echo "EFFORT=$effort"
 echo "CHANNEL=${channel:-}"
 echo "ENABLED=true"
