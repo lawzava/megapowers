@@ -8,6 +8,18 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+- models.toml: the model catalog (lead, tiers with per-tier purposes, providers,
+  floor) split out of delegates.toml, layered project > user > shipped, shipped
+  as identical twins in both plugin roots (CI-asserted). delegates.toml keeps
+  roles, requires, fallbacks, and presets; pre-0.3 override files with inline
+  provider sections keep working and win over the catalog.
+- Every session now starts with a rendered model-catalog block: megapowers
+  session-start runs hooks/render-model-catalog (fail-open, <=600B), so tier and
+  delegate choices need no skill invocation.
+- delegate-resolve: --models flag and MODELS_TOML env pin the catalog stack;
+  --where lists both stacks; --check validates across both. delegate-nudge reads
+  detect markers from catalog layers too.
+
 ## 0.2.0 - 2026-07-12
 
 ### Changed

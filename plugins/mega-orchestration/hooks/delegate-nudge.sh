@@ -11,22 +11,29 @@ input="$(cat)"
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-# Delegate-invocation markers come from delegates.toml `detect` arrays, so a new
-# provider becomes visible to this hook by editing config, not this script. Layer
-# lookup mirrors delegate-resolve (DELEGATES_TOML > project > user > shipped);
-# detect entries UNION across layers because this is a fail-open heuristic.
-# Entries starting mcp__ match tool_use name fields; entries containing a space
-# match Bash command fields. Returns nonzero when nothing parses, and the caller
-# falls back to the static regex.
+# Delegate-invocation markers come from models.toml catalog layers and
+# delegates.toml layers' `detect` arrays, so a new provider becomes visible to
+# this hook by editing config, not this script. Layer lookup mirrors
+# delegate-resolve (DELEGATES_TOML/MODELS_TOML exclusive for tests > project >
+# user > shipped); detect entries UNION across layers because this is a
+# fail-open heuristic. Entries starting mcp__ match tool_use name fields;
+# entries containing a space match Bash command fields. Returns nonzero when
+# nothing parses, and the caller falls back to the static regex.
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 delegate_regex() {
   local files=() f pats mcp="" cli="" p esc re=""
-  if [ -n "${DELEGATES_TOML:-}" ]; then
-    files=("$DELEGATES_TOML")
+  if [ -n "${DELEGATES_TOML:-}" ] || [ -n "${MODELS_TOML:-}" ]; then
+    # Env-pinned modes stay exclusive so tests and CI are deterministic.
+    [ -n "${MODELS_TOML:-}" ] && files+=("$MODELS_TOML")
+    [ -n "${DELEGATES_TOML:-}" ] && files+=("$DELEGATES_TOML")
   else
+    [ -f ".megapowers/models.toml" ] && files+=(".megapowers/models.toml")
     [ -f ".megapowers/delegates.toml" ] && files+=(".megapowers/delegates.toml")
+    f="${XDG_CONFIG_HOME:-$HOME/.config}/megapowers/models.toml"
+    [ -f "$f" ] && files+=("$f")
     f="${XDG_CONFIG_HOME:-$HOME/.config}/megapowers/delegates.toml"
     [ -f "$f" ] && files+=("$f")
+    [ -f "$HOOK_DIR/../models.toml" ] && files+=("$HOOK_DIR/../models.toml")
     files+=("$HOOK_DIR/../skills/multi-agent-delegation/delegates.toml")
   fi
   pats="$(awk '

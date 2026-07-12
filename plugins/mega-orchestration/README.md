@@ -50,7 +50,9 @@ The skills and the delegate agents read `delegates.toml` (inside the
 
 Shipped defaults; current model ids live in `delegates.toml` tier maps, and a
 project `.megapowers/delegates.toml` or user `~/.config/megapowers/delegates.toml`
-layer overrides them per key.
+layer overrides them per key. The provider and tier data now lives in
+`models.toml` (plugin root, twin of the copy shipped with the megapowers core
+plugin); `delegates.toml` keeps roles, fallbacks, and presets.
 
 The visual/browser route is a cost-adjusted call, dated in the comment above
 `[roles]` in `delegates.toml`; re-bench before moving it.

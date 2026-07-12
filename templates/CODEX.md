@@ -59,7 +59,11 @@ Same conventions as the rest of the project:
 ## Routing and presets
 
 You do not choose your own assignments. Role routing and run presets are defined
-in the mega-orchestration plugin's `skills/multi-agent-delegation/delegates.toml`. In short:
+in the mega-orchestration plugin's `skills/multi-agent-delegation/delegates.toml`.
+The model catalog (lead, tiers, providers) is `models.toml` at the
+mega-orchestration plugin root, same override layers; render a session summary
+with the megapowers plugin's `hooks/render-model-catalog` if your harness loads
+no hooks. In short:
 
 - **read_only**: sandbox read-only, approvals never. For reviews and
   verification: look and report, change nothing.
