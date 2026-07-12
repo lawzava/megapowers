@@ -378,12 +378,21 @@ fi
 echo "== delegates.toml =="
 dr="plugins/mega-orchestration/skills/multi-agent-delegation/scripts/delegate-resolve"
 dt="plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml"
+mc_core="plugins/megapowers/models.toml"
+mc_orch="plugins/mega-orchestration/models.toml"
+if [[ -f $mc_core && -f $mc_orch ]]; then
+  # Twin shipped catalogs: plugins cannot locate each other at runtime, so the
+  # same file ships in both plugin roots; any drift is a release bug.
+  if cmp -s "$mc_core" "$mc_orch"; then ok "shipped models.toml twins identical"; else bad "models.toml twin drift: $mc_core vs $mc_orch"; fi
+else
+  bad "shipped models.toml missing ($mc_core / $mc_orch)"
+fi
 if [[ -x $dr && -f $dt ]]; then
-  # Pin to the shipped file so local override layers cannot color CI results.
-  if DELEGATES_TOML="$dt" "$dr" --check >/dev/null 2>&1; then
-    ok "delegate-resolve --check (shipped delegates.toml)"
+  # Pin both stacks to the shipped files so local override layers cannot color CI.
+  if DELEGATES_TOML="$dt" MODELS_TOML="$mc_orch" "$dr" --check >/dev/null 2>&1; then
+    ok "delegate-resolve --check (shipped delegates.toml + models.toml)"
   else
-    bad "delegate-resolve --check failed (run: DELEGATES_TOML=$dt $dr --check)"
+    bad "delegate-resolve --check failed (run: DELEGATES_TOML=$dt MODELS_TOML=$mc_orch $dr --check)"
   fi
 else
   bad "delegate-resolve or shipped delegates.toml missing"
