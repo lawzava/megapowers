@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# render-model-catalog: print a compact always-in-context summary of the model
+# catalog (models.toml), resolved across layers: project .megapowers/models.toml,
+# user ${XDG_CONFIG_HOME:-~/.config}/megapowers/models.toml, then the copy shipped
+# at this plugin's root. MODELS_TOML overrides with a single file (tests, CI).
+# Fail-open by design: no catalog, unreadable file, or malformed content prints
+# nothing and exits 0; the SessionStart payload simply omits the block.
+# Tested by tests/render-model-catalog.test.sh (run via scripts/validate.sh).
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+files=()
+if [ -n "${MODELS_TOML:-}" ]; then
+  files=("$MODELS_TOML")
+else
+  [ -f ".megapowers/models.toml" ] && files+=(".megapowers/models.toml")
+  u="${XDG_CONFIG_HOME:-$HOME/.config}/megapowers/models.toml"
+  [ -f "$u" ] && files+=("$u")
+  [ -f "$SCRIPT_DIR/../models.toml" ] && files+=("$SCRIPT_DIR/../models.toml")
+fi
+[ "${#files[@]}" -gt 0 ] || exit 0
+
+val() {  # $1=section $2=key -> first file that defines it wins
+  local f v
+  for f in "${files[@]}"; do
+    [ -r "$f" ] || continue
+    v="$(awk -v sec="[$1]" -v key="$2" '
+      { hn=$0; gsub(/[[:space:]]/,"",hn) }
+      hn==sec {inx=1; next}
+      /^[[:space:]]*\[/ {inx=0}
+      inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
+        rest=$0; sub(/^[^=]*=[[:space:]]*/,"",rest)
+        if (rest ~ /^"/) { sub(/^"/,"",rest); sub(/".*/,"",rest); print rest; exit }
+        sub(/#.*/,"",rest); gsub(/[[:space:]]+$/,"",rest); print rest; exit
+      }' "$f" 2>/dev/null)"
+    [ -n "$v" ] && { printf '%s' "$v"; return 0; }
+  done
+  return 1
+}
+arr() {  # $1=section $2=key -> elements one per line, first file wins
+  local f out
+  for f in "${files[@]}"; do
+    [ -r "$f" ] || continue
+    out="$(awk -v sec="[$1]" -v key="$2" '
+      { hn=$0; gsub(/[[:space:]]/,"",hn) }
+      hn==sec {inx=1; next}
+      /^[[:space:]]*\[/ {inx=0}
+      inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
+        rest=$0; sub(/^[^=]*=/,"",rest)
+        while (match(rest, /"[^"]*"/)) { print substr(rest, RSTART+1, RLENGTH-2); rest=substr(rest, RSTART+RLENGTH) }
+        exit
+      }' "$f" 2>/dev/null)"
+    [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+  done
+  return 1
+}
+providers() {  # provider names, union across files, file order
+  local f
+  for f in "${files[@]}"; do
+    [ -r "$f" ] || continue
+    awk '{h=$0; gsub(/[[:space:]]/,"",h)} h ~ /^\[providers\.[A-Za-z0-9_-]+\]$/ {n=h; sub(/^\[providers\./,"",n); sub(/\]$/,"",n); print n}' "$f" 2>/dev/null
+  done | awk '!seen[$0]++'
+}
+
+lp="$(val lead provider)" || exit 0
+lt="$(val lead tier)" || lt=""
+lm=""
+if [ -n "$lt" ]; then lm="$(val "providers.$lp.tiers" "$lt")" || lm=""; fi
+
+tier_lines=""
+while IFS= read -r t; do
+  [ -n "$t" ] || continue
+  m="$(val "providers.$lp.tiers" "$t")" || m=""
+  u="$(val tiers.use "$t")" || u=""
+  tier_lines="${tier_lines:+$tier_lines | }${t}=${m:-?}${u:+ (}${u}${u:+)}"
+done <<< "$(arr tiers scale)"
+[ -n "$tier_lines" ] || exit 0
+
+del_lines=""
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  [ "$p" = "$lp" ] && continue
+  en="$(val "providers.$p" enabled)" || en=""
+  [ "$en" = "false" ] && continue
+  u="$(val "providers.$p" use)" || u=""
+  dt="$(val "providers.$p" default_tier)" || dt=""
+  dm=""
+  if [ -n "$dt" ]; then dm="$(val "providers.$p.tiers" "$dt")" || dm=""; fi
+  del_lines="${del_lines:+$del_lines | }${p}=${u:-${dm:-?}}"
+done <<< "$(providers)"
+
+floor="$(val defaults floor)" || floor=""
+
+printf 'Model catalog (models.toml; override layers project>user>shipped):\n'
+printf 'lead: %s%s%s\n' "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
+printf 'tiers: %s\n' "$tier_lines"
+[ -n "$del_lines" ] && printf 'delegates: %s\n' "$del_lines"
+printf '%sRoutes: delegate-resolve <role> (mega-orchestration:multi-agent-delegation).\n' "${floor:+floor $floor. }"
+exit 0

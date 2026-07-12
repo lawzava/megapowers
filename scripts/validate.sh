@@ -162,9 +162,9 @@ done < <(find plugins skills -name SKILL.md 2>/dev/null | sort)
 #    injected payload sit in context on every turn. Payload = preface + trimmed
 #    using-megapowers (frontmatter and Platform Adaptation stripped, mirroring
 #    the hook). Measured 2026-07: 10045B descriptions + 1935B payload = 11980B.
-#    Ceiling 13200B is ~10% above measured — catches real growth without
-#    churning on small wording edits.
-ALWAYS_MAX=13200
+#    Ceiling 13800B: 13200B (measured 2026-07 + ~10% headroom) plus the <=600B
+#    session-start model-catalog block added 2026-07-12.
+ALWAYS_MAX=13800
 skfile="plugins/megapowers/skills/using-megapowers/SKILL.md"
 if [[ -f $skfile ]]; then
   trimmed="$(awk '
@@ -178,11 +178,18 @@ if [[ -f $skfile ]]; then
   ' "$skfile")"
   preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request (including clarifying questions or exploring code), check whether a skill applies and, if so, follow it."
   payload_bytes="$(byte_len "${preface}"$'\n\n'"${trimmed}")"
-  always_total=$((desc_sum + payload_bytes))
-  if (( always_total <= ALWAYS_MAX )); then
-    ok "always-loaded context within ${ALWAYS_MAX}B (${always_total}B = ${desc_sum}B descriptions + ${payload_bytes}B session-start payload)"
+  catalog_block="$(MODELS_TOML="plugins/megapowers/models.toml" plugins/megapowers/hooks/render-model-catalog 2>/dev/null || true)"
+  catalog_bytes="$(byte_len "$catalog_block")"
+  if [[ -n $catalog_block ]] && (( catalog_bytes <= 600 )); then
+    ok "session-start catalog block within 600B (${catalog_bytes}B)"
   else
-    bad "always-loaded context over ${ALWAYS_MAX}B (${always_total}B = ${desc_sum}B descriptions + ${payload_bytes}B session-start payload)"
+    bad "session-start catalog block empty or over 600B (${catalog_bytes}B)"
+  fi
+  always_total=$((desc_sum + payload_bytes + catalog_bytes))
+  if (( always_total <= ALWAYS_MAX )); then
+    ok "always-loaded context within ${ALWAYS_MAX}B (${always_total}B = ${desc_sum}B descriptions + ${payload_bytes}B session-start payload + ${catalog_bytes}B catalog block)"
+  else
+    bad "always-loaded context over ${ALWAYS_MAX}B (${always_total}B = ${desc_sum}B descriptions + ${payload_bytes}B session-start payload + ${catalog_bytes}B catalog block)"
   fi
 else
   bad "using-megapowers SKILL.md missing (cannot measure always-loaded budget)"
