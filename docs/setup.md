@@ -58,15 +58,16 @@ adds the most is `megapowers` plus `mega-orchestration`: the process pipeline
 escalates into delegation, verification, and autonomous runs when both are
 present.
 
-- mega-orchestration: the Codex roles (plan/code review, small impl) need
-  Codex native subagents when running in Codex, or the Codex CLI/SDK from
-  other harnesses. The visual/browser role needs `playwright-cli` plus a
-  vision-capable model to read the screenshots: `npm i -g @playwright/cli`,
-  then `playwright-cli install --skills` installs Microsoft's own
-  playwright-cli skill into `.claude/skills/`. megapowers does not vendor
-  that skill: Playwright distributes and updates it, and a shipped copy would
-  register twice. Antigravity is documented but disabled; see the
-  [mega-orchestration README](../plugins/mega-orchestration/README.md). Roles
+- mega-orchestration: each role needs the CLI of the provider it resolves to
+  (`delegate-resolve <role>` prints BINARY). The Codex routes need Codex
+  native subagents when running in Codex, or the Codex CLI/SDK from other
+  harnesses; the Claude routes (plan review, and the cross-vendor
+  review/verify chains under a non-Anthropic lead) need the Claude CLI. The
+  visual/browser role needs `playwright-cli` plus a vision-capable model to
+  read the screenshots: `npm i -g @playwright/cli`, then `playwright-cli
+  install --skills` installs Microsoft's own playwright-cli skill into
+  `.claude/skills/`. megapowers does not vendor that skill: Playwright
+  distributes and updates it, and a shipped copy would register twice. Roles
   you don't use don't need their tools installed.
 - mega-go: `greenfield-go-stack` optionally uses the context7 MCP server to
   fetch current library docs while scaffolding; it degrades gracefully without it.
@@ -290,7 +291,8 @@ fleet forward.
 `templates/` holds copyable examples, not files to install wholesale:
 
 - `templates/CLAUDE.md` and `templates/CODEX.md` are starter instruction files
-  for other projects.
+  for other projects (Claude Code lead, Codex delegate); `templates/CODEX-LEAD.md`
+  is the variant for running Codex as the lead.
 - `templates/codex-config.toml` is a minimal Codex baseline with no
   user-configured MCP bridge requirement.
 - `templates/playwright-mcp-settings.json` is a starter MCP registration for the

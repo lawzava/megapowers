@@ -35,7 +35,7 @@ done
 # passed; an explicit --max-age-days applies to every entry (validate.sh passes
 # a huge value as a pure date-line format guard).
 #
-# Codex config reviewed: 2026-07-04
+# Codex config reviewed: 2026-07-12
 #   Sentinel for the Codex-facing surface (templates/codex-config.toml and the
 #   docs/setup.md Codex section), neither of which carries a date line of its
 #   own. Codex ships weekly, so this entry rides a 30-day window: re-review those

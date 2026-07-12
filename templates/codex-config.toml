@@ -1,14 +1,16 @@
 # Minimal ~/.codex/config.toml baseline for using Codex with megapowers.
 # Copy only the keys you want into ~/.codex/config.toml.
-# Last reviewed: 2026-07-04 (Codex ships roughly weekly; scripts/check-freshness.sh
+# Last reviewed: 2026-07-12 (Codex ships roughly weekly; scripts/check-freshness.sh
 # flags this file once the date is older than its review window).
 
-# Let Codex choose the current best model by default. Pin only when a workflow
-# needs reproducibility.
-# model = "gpt-5.6-sol"
+# Pin the model to the catalog's codex frontier tier (models.toml [providers.codex.tiers])
+# so a Codex lead runs the model the catalog declares; keep it in sync when the catalog
+# moves. Comment it out to let Codex choose its own default instead.
+model = "gpt-5.6-sol"
 
-# Reasoning depth. "high" balances quality and latency for development work.
-model_reasoning_effort = "high"
+# Reasoning depth. Matches the codex provider's xhigh lead default in models.toml;
+# drop to "high" for latency-sensitive delegate use. Never "max" by policy.
+model_reasoning_effort = "xhigh"
 
 # Sandbox: allow writes within the workspace (needed for build/apply roles).
 sandbox_mode = "workspace-write"
