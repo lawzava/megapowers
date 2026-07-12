@@ -32,10 +32,10 @@ survives plugin updates (`scripts/delegate-resolve --where` shows the active
 layers). Edit an override layer to change routing; the skill and the delegate
 agents read the config at dispatch time, so no code changes are needed.
 
-Each provider's `reference` key names a file under `references/providers/`
-with that provider's channel mechanics and prompting guidance. Read the
-resolved provider's file before dispatching instead of assuming any vendor's
-quirks from memory.
+Each provider's `reference` key names that provider's channel mechanics and
+prompting guidance: references/providers/codex.md, references/providers/claude.md,
+and references/providers/browser.md. Read the resolved provider's file before
+dispatching instead of assuming any vendor's quirks from memory.
 
 Antigravity is disabled in the config; leave it disabled until you verify its
 approvals, artifact review, and artifact edit behavior on this machine.
