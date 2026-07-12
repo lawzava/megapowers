@@ -64,7 +64,7 @@ The verb is `add`, not `install`. `codex plugin marketplace add` accepts
 `owner/repo[@ref]` (codex-cli 0.142.5+); unpinned tracks the default branch.
 Updates: `codex plugin marketplace upgrade megapowers`, then re-run
 `codex plugin add` for each plugin. Change-controlled installs pin with
-`@v0.3.2` instead and update by re-adding at the new tag. To track a fork,
+`@v0.3.3` instead and update by re-adding at the new tag. To track a fork,
 clone it and run `codex plugin marketplace add ./` from the checkout.
 Start a fresh Codex session, open `/hooks`, review the five hook handlers from
 the three plugin manifests, and trust the handlers the user approves. The
@@ -144,6 +144,9 @@ Present these to the user; apply only what they approve:
   `max_threads = 4` and `max_depth = 1`. If this Codex lead has a
   `[mcp_servers.codex]` self-registration, offer to remove it after showing the
   exact config change.
+  Offer `templates/codex-complex.config.toml` as
+  `$CODEX_HOME/complex.config.toml` for deliberate Sol ultra sessions started
+  with `codex --profile complex`; do not embed it under `[profiles.*]`.
   The lead must create a dedicated linked worktree before invoking `builder`
   and pass that path in the task brief; the profile refuses to edit the primary
   checkout.

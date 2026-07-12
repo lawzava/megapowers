@@ -12,11 +12,9 @@ model = "gpt-5.6-sol"
 # drop to "high" for latency-sensitive delegate use. Never "max" by policy.
 model_reasoning_effort = "xhigh"
 
-# Optional deliberate profile for unusually complex lead work. Ultra is not the
-# everyday default and does not flow through to the Terra or Claude delegates.
-# [profiles.complex]
-# model = "gpt-5.6-sol"
-# model_reasoning_effort = "ultra"
+# Named profiles are separate `$CODEX_HOME/<name>.config.toml` files, not
+# `[profiles.*]` tables here. `templates/codex-complex.config.toml` is the
+# optional Sol ultra layer for deliberate complex work.
 
 # Sandbox: allow writes within the workspace (needed for build/apply roles).
 sandbox_mode = "workspace-write"
