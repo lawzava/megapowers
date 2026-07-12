@@ -14,6 +14,14 @@
 # The first layer that defines a key wins; arrays replace whole, never merge.
 # `--where` prints the active layers in priority order.
 #
+# Catalog stack: the model catalog (lead, tiers, providers, floor) lives in
+# models.toml, layered the same way: MODELS_TOML (env) and --models are exclusive
+# single-file modes; otherwise project .megapowers/models.toml, then user
+# ${XDG_CONFIG_HOME:-~/.config}/megapowers/models.toml, then the copy shipped at
+# this plugin's root. Catalog data resolves DELEGATES stack first (legacy
+# compatibility: provider sections in delegates.toml layers win), then the
+# catalog stack. The catalog stack may be empty.
+#
 # Reads a restricted TOML subset matching delegates.toml: [section] and
 # [section.name] headers (internal whitespace tolerated), one `key = value` per
 # line, values either bare or single/double quoted, `#` comments outside quotes,
@@ -26,7 +34,7 @@
 # fabricated primitive). The first usable candidate wins.
 #
 # Usage:
-#   delegate-resolve <role> [--config <file>] [--exclude <vendor|provider>]... [--list]
+#   delegate-resolve <role> [--config <file>] [--models <file>] [--exclude <vendor|provider>]... [--list]
 #   delegate-resolve --preset <name> [--config <file>]
 #   delegate-resolve --list-presets [--config <file>]
 #   delegate-resolve --where [--config <file>]
@@ -41,15 +49,17 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 shipped="$here/../delegates.toml"   # scripts/../delegates.toml
 
 usage() {
-  echo "usage: delegate-resolve <role> [--config <file>] [--exclude <vendor|provider>]... [--list]" >&2
+  echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--exclude <vendor|provider>]... [--list]" >&2
   echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --where | --lead | --check" >&2
 }
 
-role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; cfg=""; excludes=()
+role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; cfg=""; mcfg=""; excludes=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
               cfg="$2"; shift 2 ;;
+    --models) [ $# -ge 2 ] || { echo "delegate-resolve: --models needs a file argument" >&2; usage; exit 2; }
+              mcfg="$2"; shift 2 ;;
     --exclude) [ $# -ge 2 ] || { echo "delegate-resolve: --exclude needs a vendor or provider name" >&2; usage; exit 2; }
               excludes+=("$2"); shift 2 ;;
     --preset) [ $# -ge 2 ] || { echo "delegate-resolve: --preset needs a name" >&2; usage; exit 2; }
@@ -86,12 +96,36 @@ for f in "${tomls[@]}"; do
 done
 [ "${#layers[@]}" -gt 0 ] || { echo "delegate-resolve: no readable config" >&2; exit 2; }
 
-if [ "$where" -eq 1 ]; then printf '%s\n' "${layers[@]}"; exit 0; fi
+# --- catalog layers (models.toml) --------------------------------------------------
+plugin_models="$here/../../../models.toml"   # <plugin root>/models.toml
+mtomls=()
+if [ -n "${MODELS_TOML:-}" ]; then
+  mtomls=("$MODELS_TOML")
+elif [ -n "$mcfg" ]; then
+  mtomls=("$mcfg")
+else
+  [ -f ".megapowers/models.toml" ] && mtomls+=(".megapowers/models.toml")
+  user_models="${XDG_CONFIG_HOME:-$HOME/.config}/megapowers/models.toml"
+  [ -f "$user_models" ] && mtomls+=("$user_models")
+  [ -f "$plugin_models" ] && mtomls+=("$plugin_models")
+fi
+mlayers=()
+for f in ${mtomls[@]+"${mtomls[@]}"}; do
+  if [ ! -f "$f" ]; then echo "delegate-resolve: no catalog at $f" >&2; exit 2; fi
+  if [ ! -r "$f" ]; then echo "delegate-resolve: cannot read $f (layer skipped)" >&2; continue; fi
+  mlayers+=("$f")
+done
+
+if [ "$where" -eq 1 ]; then
+  printf '%s\n' "${layers[@]}"
+  [ "${#mlayers[@]}" -gt 0 ] && printf '%s\n' "${mlayers[@]}"
+  exit 0
+fi
 
 # --- restricted-TOML parse guard -----------------------------------------------------
 # A syntactically broken layer must fail loudly (exit 2, naming file and line), not
 # be mistaken for an unknown role (exit 3).
-for f in "${layers[@]}"; do
+for f in "${layers[@]}" ${mlayers[@]+"${mlayers[@]}"}; do
   lint="$(awk '
     { s=$0; sub(/^[[:space:]]+/,"",s); sub(/[[:space:]]+$/,"",s) }
     s=="" || s ~ /^#/ { next }
@@ -173,11 +207,44 @@ array_val() {  # $1=section $2=key -> the first layer that defines the key wins 
   return 1
 }
 
+msection_exists() { local f; for f in ${mlayers[@]+"${mlayers[@]}"}; do section_exists_in "$f" "$1" && return 0; done; return 1; }
+msection_val() {
+  local f v
+  for f in ${mlayers[@]+"${mlayers[@]}"}; do
+    v="$(section_val_in "$f" "$1" "$2")"
+    [ -n "$v" ] && { printf '%s\n' "$v"; return 0; }
+  done
+  return 1
+}
+marray_val() {
+  local f out
+  for f in ${mlayers[@]+"${mlayers[@]}"}; do
+    out="$(array_val_in "$f" "$1" "$2")"
+    [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+  done
+  return 1
+}
+
+# Catalog data (lead, tiers, providers, floor) resolves DELEGATES stack first
+# (legacy: inline provider sections and pre-0.3 override files win), then the
+# catalog stack.
+cat_exists() { section_exists "$1" || msection_exists "$1"; }
+cat_val() {
+  local v
+  v="$(section_val "$1" "$2")" && [ -n "$v" ] && { printf '%s\n' "$v"; return 0; }
+  msection_val "$1" "$2"
+}
+cat_array() {
+  local out
+  out="$(array_val "$1" "$2")" && [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+  marray_val "$1" "$2"
+}
+
 fallbacks_of() { array_val fallbacks "$1"; }
 
 providers_list() {  # every [providers.X] name across layers (tier subsections excluded)
   local f
-  for f in "${layers[@]}"; do
+  for f in "${layers[@]}" ${mlayers[@]+"${mlayers[@]}"}; do
     awk '{h=$0; gsub(/[[:space:]]/,"",h)} h ~ /^\[providers\.[A-Za-z0-9_-]+\]$/ {n=h; sub(/^\[providers\./,"",n); sub(/\]$/,"",n); print n}' "$f"
   done | awk '!seen[$0]++'
 }
@@ -186,20 +253,20 @@ providers_list() {  # every [providers.X] name across layers (tier subsections e
 # a provider without default_tier falls back to its legacy `model` key (schema v1).
 provider_model() {  # $1=provider ; prints "model<TAB>tier"
   local p="$1" dt m
-  dt="$(section_val "providers.$p" default_tier)"
+  dt="$(cat_val "providers.$p" default_tier)"
   if [ -n "$dt" ]; then
-    m="$(section_val "providers.$p.tiers" "$dt")"
+    m="$(cat_val "providers.$p.tiers" "$dt")"
     if [ -z "$m" ]; then
       echo "delegate-resolve: provider '$p': default_tier '$dt' has no [providers.$p.tiers] entry" >&2
       return 2
     fi
     printf '%s\t%s\n' "$m" "$dt"
   else
-    printf '%s\t\n' "$(section_val "providers.$p" model)"
+    printf '%s\t\n' "$(cat_val "providers.$p" model)"
   fi
 }
 
-scale_list="$(array_val tiers scale)"   # empty on v1 configs
+scale_list="$(cat_array tiers scale)"   # empty on v1 configs
 tier_index() { printf '%s\n' "$scale_list" | grep -nx -- "$1" | cut -d: -f1; }
 
 # --- --check mode ------------------------------------------------------------------
@@ -210,35 +277,35 @@ if [ "$check" -eq 1 ]; then
     [ -n "$r" ] || continue
     p="$(section_val roles "$r")"
     [ -n "$p" ] || continue
-    section_exists "providers.$p" || note "role '$r' routes to missing provider '$p'"
+    cat_exists "providers.$p" || note "role '$r' routes to missing provider '$p'"
     while IFS= read -r fp; do
       [ -n "$fp" ] || continue
-      section_exists "providers.$fp" || note "fallback for '$r' names missing provider '$fp'"
+      cat_exists "providers.$fp" || note "fallback for '$r' names missing provider '$fp'"
     done <<< "$(fallbacks_of "$r")"
   done <<< "$(list_roles)"
-  lp="$(section_val lead provider)"
-  if [ -n "$lp" ] && ! section_exists "providers.$lp"; then note "[lead] provider '$lp' missing"; fi
-  if [ -n "$lp" ] && section_exists "providers.$lp"; then
-    ltc="$(section_val lead tier)"
-    if [ -n "$ltc" ] && [ -z "$(section_val "providers.$lp.tiers" "$ltc")" ]; then
+  lp="$(cat_val lead provider)"
+  if [ -n "$lp" ] && ! cat_exists "providers.$lp"; then note "[lead] provider '$lp' missing"; fi
+  if [ -n "$lp" ] && cat_exists "providers.$lp"; then
+    ltc="$(cat_val lead tier)"
+    if [ -n "$ltc" ] && [ -z "$(cat_val "providers.$lp.tiers" "$ltc")" ]; then
       note "[lead] tier '$ltc' has no [providers.$lp.tiers] entry"
     fi
   fi
-  fl="$(section_val defaults floor)"
+  fl="$(cat_val defaults floor)"
   if [ -n "$fl" ] && [ -n "$scale_list" ]; then
     ft="${fl%%:*}"
     printf '%s\n' "$scale_list" | grep -qx -- "$ft" || note "floor tier '$ft' not in [tiers] scale"
   fi
   while IFS= read -r p; do
     [ -n "$p" ] || continue
-    dt="$(section_val "providers.$p" default_tier)"
+    dt="$(cat_val "providers.$p" default_tier)"
     if [ -n "$dt" ]; then
-      [ -n "$(section_val "providers.$p.tiers" "$dt")" ] || note "provider '$p' default_tier '$dt' has no tier-map entry"
+      [ -n "$(cat_val "providers.$p.tiers" "$dt")" ] || note "provider '$p' default_tier '$dt' has no tier-map entry"
       if [ -n "$scale_list" ]; then
         printf '%s\n' "$scale_list" | grep -qx -- "$dt" || note "provider '$p' default_tier '$dt' not in [tiers] scale"
       fi
     fi
-    ref="$(section_val "providers.$p" reference)"
+    ref="$(cat_val "providers.$p" reference)"
     if [ -n "$ref" ] && [ ! -f "$here/../$ref" ]; then note "provider '$p' reference file missing: $ref"; fi
   done <<< "$(providers_list)"
   if [ "$errs" -eq 0 ]; then echo "delegate-resolve --check: OK (${layers[*]})"; exit 0; fi
@@ -250,12 +317,12 @@ if [ "$list" -eq 1 ]; then list_roles; exit 0; fi
 if [ "$list_presets" -eq 1 ]; then list_preset_names; exit 0; fi
 
 if [ "$lead" -eq 1 ]; then
-  lp="$(section_val lead provider)"
+  lp="$(cat_val lead provider)"
   [ -n "$lp" ] || { echo "delegate-resolve: no [lead] section in ${layers[*]}" >&2; exit 3; }
-  section_exists "providers.$lp" || { echo "delegate-resolve: [lead] provider '$lp' has no [providers.$lp] section" >&2; exit 2; }
-  lt="$(section_val lead tier)"
+  cat_exists "providers.$lp" || { echo "delegate-resolve: [lead] provider '$lp' has no [providers.$lp] section" >&2; exit 2; }
+  lt="$(cat_val lead tier)"
   if [ -n "$lt" ]; then
-    lm="$(section_val "providers.$lp.tiers" "$lt")"
+    lm="$(cat_val "providers.$lp.tiers" "$lt")"
     if [ -z "$lm" ]; then
       echo "delegate-resolve: [lead] tier '$lt' has no [providers.$lp.tiers] entry" >&2
       exit 2
@@ -267,7 +334,7 @@ if [ "$lead" -eq 1 ]; then
   echo "LEAD_PROVIDER=$lp"
   [ -n "$lt" ] && echo "LEAD_TIER=$lt"
   echo "LEAD_MODEL=${lm:-}"
-  lv="$(section_val "providers.$lp" vendor)"
+  lv="$(cat_val "providers.$lp" vendor)"
   [ -n "$lv" ] && echo "LEAD_VENDOR=$lv"
   exit 0
 fi
@@ -289,10 +356,10 @@ fi
 [ -n "$role" ] || { usage; exit 2; }
 
 if [ "$exclude_lead" -eq 1 ]; then
-  lp="$(section_val lead provider)"
+  lp="$(cat_val lead provider)"
   if [ -n "$lp" ]; then
     excludes+=("$lp")
-    lv="$(section_val "providers.$lp" vendor)"
+    lv="$(cat_val "providers.$lp" vendor)"
     [ -n "$lv" ] && excludes+=("$lv")
   fi
 fi
@@ -312,7 +379,7 @@ candidates="$(fallbacks_of "$role")"
 
 # a candidate is excluded when its provider name OR its vendor is in --exclude.
 excluded() {  # $1=provider
-  local p="$1" v x; v="$(section_val "providers.$p" vendor)"
+  local p="$1" v x; v="$(cat_val "providers.$p" vendor)"
   [ "${#excludes[@]}" -gt 0 ] || return 1
   for x in "${excludes[@]}"; do
     [ "$x" = "$p" ] && return 0
@@ -321,7 +388,7 @@ excluded() {  # $1=provider
   return 1
 }
 
-floor="$(section_val defaults floor)"
+floor="$(cat_val defaults floor)"
 floor_idx=""
 if [ -n "$floor" ] && [ -n "$scale_list" ]; then
   ftier="${floor%%:*}"
@@ -336,18 +403,18 @@ req="$(array_val requires "$role")"
 selected=""; only_disabled=1
 while IFS= read -r p; do
   [ -n "$p" ] || continue
-  section_exists "providers.$p" || {
+  cat_exists "providers.$p" || {
     echo "delegate-resolve: role '$role' routes to provider '$p', but no [providers.$p] section exists in ${layers[*]}" >&2
     exit 2
   }
   if excluded "$p"; then only_disabled=0; continue; fi
-  en="$(section_val "providers.$p" enabled)"; en="${en:-true}"
+  en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
   [ "$en" = "false" ] && continue                    # disabled -> try the next candidate
   only_disabled=0
-  bin="$(section_val "providers.$p" binary)"
+  bin="$(cat_val "providers.$p" binary)"
   if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi   # absent -> next
   if [ -n "$req" ]; then
-    caps="$(array_val "providers.$p" capabilities)"
+    caps="$(cat_array "providers.$p" capabilities)"
     capmiss=0
     while IFS= read -r rc_; do
       [ -n "$rc_" ] || continue
@@ -359,7 +426,7 @@ while IFS= read -r p; do
     fi
   fi
   if [ -n "$floor_idx" ]; then
-    pdt="$(section_val "providers.$p" default_tier)"
+    pdt="$(cat_val "providers.$p" default_tier)"
     if [ -n "$pdt" ]; then
       pidx="$(tier_index "$pdt")"
       if [ -n "$pidx" ] && [ "$pidx" -lt "$floor_idx" ]; then
@@ -381,9 +448,9 @@ if [ -z "$selected" ]; then
     dmodel="${pm%%$'\t'*}"; dtier="${pm#*$'\t'}"
     echo "MODEL=${dmodel:-}"
     [ -n "$dtier" ] && echo "TIER=$dtier"
-    ef="$(section_val "providers.$primary" effort)"
+    ef="$(cat_val "providers.$primary" effort)"
     [ -n "$ef" ] && echo "EFFORT=$ef"
-    echo "CHANNEL=$(section_val "providers.$primary" channel)"
+    echo "CHANNEL=$(cat_val "providers.$primary" channel)"
     echo "ENABLED=false"
     [ -n "$floor" ] && echo "FLOOR=$floor"
     echo "delegate-resolve: provider '$primary' for role '$role' is DISABLED in config: enable it or re-route the role before dispatching." >&2
@@ -397,11 +464,11 @@ fi
 # --- emit the resolved route -----------------------------------------------------
 pm="$(provider_model "$selected")" || exit 2
 model="${pm%%$'\t'*}"; tier="${pm#*$'\t'}"
-effort="$(section_val "providers.$selected" effort)"
-channel="$(section_val "providers.$selected" channel)"
-vendor="$(section_val "providers.$selected" vendor)"
-binv="$(section_val "providers.$selected" binary)"
-notes="$(section_val "providers.$selected" notes)"
+effort="$(cat_val "providers.$selected" effort)"
+channel="$(cat_val "providers.$selected" channel)"
+vendor="$(cat_val "providers.$selected" vendor)"
+binv="$(cat_val "providers.$selected" binary)"
+notes="$(cat_val "providers.$selected" notes)"
 
 echo "ROLE=$role"
 echo "PROVIDER=$selected"
