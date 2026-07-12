@@ -49,9 +49,18 @@ escape_for_json() {
 
 preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request (including clarifying questions or exploring code), check whether a skill applies and, if so, follow it."
 
+# Model catalog block: rendered live from models.toml layers so every session
+# knows what models exist and what each is for. Fail-open: absent or malformed
+# catalog leaves the payload exactly as before.
+catalog_block="$("${SCRIPT_DIR}/render-model-catalog" 2>/dev/null || true)"
+
 using_megapowers_escaped=$(escape_for_json "$using_megapowers_content")
 preface_escaped=$(escape_for_json "$preface")
 session_context="${preface_escaped}\n\n${using_megapowers_escaped}"
+if [ -n "${catalog_block}" ]; then
+  catalog_escaped=$(escape_for_json "$catalog_block")
+  session_context="${session_context}\n\n${catalog_escaped}"
+fi
 
 # Output context injection as JSON for Claude Code.
 # Claude Code reads hookSpecificOutput.additionalContext (nested).
