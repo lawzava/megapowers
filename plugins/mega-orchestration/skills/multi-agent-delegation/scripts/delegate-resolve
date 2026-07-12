@@ -216,6 +216,12 @@ if [ "$check" -eq 1 ]; then
   done <<< "$(list_roles)"
   lp="$(section_val lead provider)"
   if [ -n "$lp" ] && ! section_exists "providers.$lp"; then note "[lead] provider '$lp' missing"; fi
+  if [ -n "$lp" ] && section_exists "providers.$lp"; then
+    ltc="$(section_val lead tier)"
+    if [ -n "$ltc" ] && [ -z "$(section_val "providers.$lp.tiers" "$ltc")" ]; then
+      note "[lead] tier '$ltc' has no [providers.$lp.tiers] entry"
+    fi
+  fi
   fl="$(section_val defaults floor)"
   if [ -n "$fl" ] && [ -n "$scale_list" ]; then
     ft="${fl%%:*}"
@@ -248,6 +254,10 @@ if [ "$lead" -eq 1 ]; then
   lt="$(section_val lead tier)"
   if [ -n "$lt" ]; then
     lm="$(section_val "providers.$lp.tiers" "$lt")"
+    if [ -z "$lm" ]; then
+      echo "delegate-resolve: [lead] tier '$lt' has no [providers.$lp.tiers] entry" >&2
+      exit 2
+    fi
   else
     pm="$(provider_model "$lp")" || exit 2
     lm="${pm%%$'\t'*}"; lt="${pm#*$'\t'}"
