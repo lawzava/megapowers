@@ -315,6 +315,64 @@ for r in plan_review verify; do
   check "$r falls back cross-vendor under claude lead" "PROVIDER=codex" "$out"
 done
 
+echo "== disabled-route exit codes =="
+
+# A multi-candidate chain that is entirely disabled is "no available route"
+# (exit 3); exit 4 stays reserved for a single-route role whose only provider
+# is switched off.
+cat > "$TMP/alldisabled.toml" <<'EOF'
+[providers.alpha]
+model = "alpha-1"
+binary = "sh"
+channel = "cli"
+enabled = false
+[providers.beta]
+model = "beta-1"
+binary = "sh"
+channel = "cli"
+enabled = false
+[roles]
+verify = "alpha"
+[fallbacks]
+verify = ["alpha", "beta"]
+EOF
+out="$("$DR" verify --config "$TMP/alldisabled.toml" 2>&1)"; rc=$?
+check_exit "fully-disabled chain exits 3, not 4" 3 "$rc"
+
+cat > "$TMP/onedisabled.toml" <<'EOF'
+[providers.alpha]
+model = "alpha-1"
+binary = "sh"
+channel = "cli"
+enabled = false
+[roles]
+verify = "alpha"
+EOF
+out="$("$DR" verify --config "$TMP/onedisabled.toml" 2>&1)"; rc=$?
+check_exit "single-route disabled provider exits 4" 4 "$rc"
+check "single-route disabled prints ENABLED=false" "ENABLED=false" "$out"
+
+# A one-entry chain that names a different provider than the role's primary
+# must report THAT provider as the disabled one, not the primary.
+cat > "$TMP/chainofone.toml" <<'EOF'
+[providers.alpha]
+model = "alpha-1"
+binary = "sh"
+channel = "cli"
+[providers.beta]
+model = "beta-1"
+binary = "sh"
+channel = "cli"
+enabled = false
+[roles]
+verify = "alpha"
+[fallbacks]
+verify = ["beta"]
+EOF
+out="$("$DR" verify --config "$TMP/chainofone.toml" 2>&1)"; rc=$?
+check_exit "one-entry disabled chain exits 4" 4 "$rc"
+check "one-entry disabled chain names the sole candidate" "PROVIDER=beta" "$out"
+
 echo "== efforts tests =="
 
 # Floor effort outside the [efforts] scale fails loudly.

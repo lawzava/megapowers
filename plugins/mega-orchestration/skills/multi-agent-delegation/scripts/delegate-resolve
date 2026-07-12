@@ -469,20 +469,24 @@ done <<< "$candidates"
 
 if [ -z "$selected" ]; then
   # nothing usable: distinguish "the one provider is switched off" (exit 4) from
-  # "everything was excluded or its CLI is absent" (exit 3).
-  if [ "$only_disabled" -eq 1 ]; then
+  # "everything was excluded, disabled along a chain, or its CLI is absent"
+  # (exit 3). Exit 4 is a single-route contract, so a multi-candidate chain
+  # never takes it, even when every candidate is disabled.
+  n_cand="$(printf '%s\n' "$candidates" | grep -c .)"
+  if [ "$only_disabled" -eq 1 ] && [ "$n_cand" -eq 1 ]; then
+    sole="$(printf '%s\n' "$candidates" | grep -m1 .)"
     echo "ROLE=$role"
-    echo "PROVIDER=$primary"
-    pm="$(provider_model "$primary")" || exit 2
+    echo "PROVIDER=$sole"
+    pm="$(provider_model "$sole")" || exit 2
     dmodel="${pm%%$'\t'*}"; dtier="${pm#*$'\t'}"
     echo "MODEL=${dmodel:-}"
     [ -n "$dtier" ] && echo "TIER=$dtier"
-    ef="$(cat_val "providers.$primary" effort)"
+    ef="$(cat_val "providers.$sole" effort)"
     [ -n "$ef" ] && echo "EFFORT=$ef"
-    echo "CHANNEL=$(cat_val "providers.$primary" channel)"
+    echo "CHANNEL=$(cat_val "providers.$sole" channel)"
     echo "ENABLED=false"
     [ -n "$floor" ] && echo "FLOOR=$floor"
-    echo "delegate-resolve: provider '$primary' for role '$role' is DISABLED in config: enable it or re-route the role before dispatching." >&2
+    echo "delegate-resolve: provider '$sole' for role '$role' is DISABLED in config: enable it or re-route the role before dispatching." >&2
     exit 4
   fi
   echo "delegate-resolve: no available route for role '$role': every candidate is excluded, disabled, or its CLI is not installed." >&2
