@@ -8,6 +8,15 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.3 - 2026-07-13
+
+### Fixed
+
+- Codex config guidance now matches the current CLI contract: named profiles
+  are separate `$CODEX_HOME/<name>.config.toml` files. The Sol `ultra` example
+  introduced in v0.3.2 moves out of the invalid `[profiles.complex]` table and
+  into `templates/codex-complex.config.toml`.
+
 ## 0.3.2 - 2026-07-13
 
 ### Added

@@ -1,0 +1,6 @@
+# Optional `$CODEX_HOME/complex.config.toml` layer for deliberate complex work.
+# Start it with `codex --profile complex`. The base config still applies; this
+# layer changes only the lead model and effort. Last reviewed: 2026-07-13.
+
+model = "gpt-5.6-sol"
+model_reasoning_effort = "ultra"

@@ -141,11 +141,16 @@ max_threads = 4
 max_depth = 1
 ```
 
-Keep the lead on `gpt-5.6-sol` at `xhigh`; the optional `complex` profile in
-`templates/codex-config.toml` raises deliberate, unusually difficult lead work
-to `ultra`. A Codex lead should not register `codex mcp-server` under
-`[mcp_servers.codex]`: that channel is for another harness delegating into
-Codex, while native subagents are the direct path inside Codex.
+Keep the normal lead on `gpt-5.6-sol` at `xhigh`. The current bundled Sol model
+also supports `ultra`, which adds automatic task delegation. Named profiles
+live in separate `$CODEX_HOME/<name>.config.toml` files and are selected with
+`--profile`; do not put `[profiles.*]` tables in the main config. Copy
+`templates/codex-complex.config.toml` to `$CODEX_HOME/complex.config.toml` for
+deliberate complex work, then start it with `codex --profile complex`. Complex
+plan/spec review can still route independently to Fable. A Codex lead should
+not register `codex mcp-server` under `[mcp_servers.codex]`: that channel is
+for another harness delegating into Codex, while native subagents are the
+direct path inside Codex.
 
 ### Codex hooks
 
@@ -202,8 +207,8 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.3.2`, or, for Claude Code,
-  add `"ref": "v0.3.2"` to the `extraKnownMarketplaces` source (see
+  `codex plugin marketplace add lawzava/megapowers@v0.3.3`, or, for Claude Code,
+  add `"ref": "v0.3.3"` to the `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
   pin, remove the marketplace and re-add it at the new tag.
@@ -215,7 +220,7 @@ does:
 Neither is an integrity pin (no sha in the ref), so a pin controls when you
 move, not cryptographic provenance — though release tags from `v0.1.3` on are
 GPG-signed and can be verified out of band (see SECURITY.md, Release
-integrity). Tags `v0.1.1` through `v0.3.2` are the release pin range once this
+integrity). Tags `v0.1.1` through `v0.3.3` are the release pin range once this
 version is published.
 
 ## Every other harness: the skills CLI
@@ -336,6 +341,9 @@ fleet forward.
   is the variant for running Codex as the lead.
 - `templates/codex-config.toml` is a minimal Codex baseline with no
   user-configured MCP bridge requirement.
+- `templates/codex-complex.config.toml` is the optional named Sol ultra layer;
+  save it as `$CODEX_HOME/complex.config.toml` and select it with
+  `codex --profile complex`.
 - `templates/playwright-mcp-settings.json` is a starter MCP registration for the
   Playwright browser server, for harnesses that drive the browser through an MCP
   rather than `playwright-cli` directly.

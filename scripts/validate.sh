@@ -395,6 +395,16 @@ if jq -e '.permissions.deny | all(test("\\*"; "") | not)' templates/settings.exa
 else
   bad "templates/settings.example.json permission denies must not use ineffective wildcard paths"
 fi
+if rg -q '^\[profiles\.' templates/codex-config.toml; then
+  bad "Codex config guidance must not embed named profiles in config.toml"
+else
+  ok "Codex config guidance keeps named profiles out of config.toml"
+fi
+if grep -q '^model = "gpt-5.6-sol"$' templates/codex-complex.config.toml 2>/dev/null && grep -q '^model_reasoning_effort = "ultra"$' templates/codex-complex.config.toml 2>/dev/null; then
+  ok "Codex complex profile ships as a separate Sol ultra config layer"
+else
+  bad "templates/codex-complex.config.toml must ship the separate Sol ultra profile"
+fi
 
 echo "== hook tests =="
 ht_found=0
@@ -488,6 +498,21 @@ if [[ -f $claude_mp && -f $codex_mp ]] && command -v jq >/dev/null 2>&1; then
     ok "setup.md states the exact Codex hook handler count"
   else
     bad "setup.md must state that Codex exposes five hook handlers across three plugins"
+  fi
+  release_version="$(sed -n 's/^## \([0-9][0-9.]*\) -.*/\1/p' CHANGELOG.md | head -1)"
+  version_drift=0
+  while IFS= read -r manifest; do
+    [[ "$(jq -r '.version // empty' "$manifest" 2>/dev/null)" == "$release_version" ]] || version_drift=1
+  done < <(find plugins -type f \( -path '*/.claude-plugin/plugin.json' -o -path '*/.codex-plugin/plugin.json' \) | sort)
+  if [[ -n $release_version && $version_drift -eq 0 ]]; then
+    ok "all plugin manifests match latest changelog release ($release_version)"
+  else
+    bad "plugin manifest versions must match latest changelog release ($release_version)"
+  fi
+  if grep -qF "/v${release_version}/docs/agent-install.md" README.md && grep -qF "@v${release_version}" docs/agent-install.md && grep -qF "@v${release_version}" docs/setup.md; then
+    ok "public install pins match latest changelog release (v$release_version)"
+  else
+    bad "README/setup/agent-install pins must match latest changelog release (v$release_version)"
   fi
   # every plugin bundle must be mentioned in both user-facing docs (word-bounded:
   # "mega-go" must not be satisfied by a hypothetical "mega-golang" token)
