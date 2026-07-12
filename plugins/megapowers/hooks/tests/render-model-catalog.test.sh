@@ -35,6 +35,11 @@ frontier = "beta-9"
 [providers.off]
 enabled = false
 use = "never shown"
+[efforts]
+scale = ["low", "high"]
+[efforts.use]
+low  = "cheap steps"
+high = "hard calls"
 [defaults]
 floor = "fast:low"
 EOF
@@ -45,6 +50,7 @@ printf '%s' "$out" | grep -q "fast=alpha-mini (cheap fan-out)" && ok || no "tier
 printf '%s' "$out" | grep -q "beta=review delegate" && ok || no "delegate line"
 if printf '%s' "$out" | grep -q "off="; then no "disabled provider leaked into block"; else ok; fi
 printf '%s' "$out" | grep -q "floor fast:low" && ok || no "floor rendered"
+printf '%s' "$out" | grep -q "efforts: low=cheap steps | high=hard calls" && ok || no "efforts line rendered"
 printf '%s' "$out" | grep -q "delegate-resolve <role>" && ok || no "route pointer rendered"
 
 out="$(MODELS_TOML="$TMP/does-not-exist.toml" "$R")"; rc=$?
@@ -57,7 +63,7 @@ if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok; else no "malformed catalog is sile
 if [ -f "$SHIPPED" ]; then
   out="$(MODELS_TOML="$SHIPPED" "$R")"
   n="$(printf '%s' "$out" | LC_ALL=C wc -c | tr -d '[:space:]')"
-  if [ -n "$out" ] && [ "$n" -le 600 ]; then ok; else no "shipped catalog renders non-empty and <= 600B (got ${n}B)"; fi
+  if [ -n "$out" ] && [ "$n" -le 900 ]; then ok; else no "shipped catalog renders non-empty and <= 900B (got ${n}B)"; fi
 else
   no "shipped models.toml missing at plugin root"
 fi

@@ -30,6 +30,19 @@ fast     = "mechanical fan-out, bulk reads, cheap transcription"
 strong   = "default implementer and reviewer; the ship floor"
 frontier = "lead, judge, verify, hard design calls"
 
+# --- Efforts: the vendor-neutral spend scale, weakest first ---
+# The floor's effort half (tier:effort) and each provider's default `effort`
+# speak this scale; a provider's `efforts` array lists the subset it accepts.
+[efforts]
+scale = ["low", "medium", "high", "xhigh", "max"]
+
+[efforts.use]
+low    = "mechanical steps, relays, latency-sensitive work"
+medium = "routine implementation, cost-sensitive runs"
+high   = "the default: reviews, verification, primary work"
+xhigh  = "hardest agentic and judge work"
+max    = "correctness over cost; rare"
+
 # --- Providers: how to reach each backend ---
 # `binary` is the CLI delegate-resolve probes with `command -v`. `reference` names
 # the channel-mechanics file, resolved relative to the multi-agent-delegation skill
@@ -41,6 +54,7 @@ frontier = "lead, judge, verify, hard design calls"
 # the always-loaded session block.
 [providers.codex]
 effort  = "high"   # default model_reasoning_effort on dispatch; verify/judge roles may spend higher (see templates/codex-agents/)
+efforts = ["low", "medium", "high", "xhigh"]
 vendor  = "openai"
 binary  = "codex"
 channel = "native-or-mcp-or-cli"
@@ -48,16 +62,19 @@ default_tier = "frontier"
 capabilities = ["code", "vision", "computer_use"]
 detect  = ["mcp__codex__codex", "codex exec"]
 reference = "references/providers/codex.md"
-use     = "plan/code review, small impl, computer use (cheap frontier)"
+use     = "plan/code review, small impl, computer use (~2x cheaper frontier)"
 notes   = "Native Codex subagents inside Codex; codex exec / SDK / codex mcp-server from elsewhere. Channel mechanics and sandbox-auth caveats: see the reference file."
 
 [providers.codex.tiers]
 frontier = "gpt-5.6-sol"
+strong   = "gpt-5.6-terra"
+fast     = "gpt-5.6-luna"
 
 # Second model vendor, so the cross-vendor roles have a real different-vendor route
 # when the lead (or an --exclude) rules out the primary.
 [providers.claude]
 vendor  = "anthropic"
+efforts = ["low", "medium", "high", "xhigh", "max"]
 binary  = "claude"
 channel = "claude-cli"
 default_tier = "frontier"
@@ -70,7 +87,7 @@ notes   = "Headless `claude -p <prompt>`; the different-vendor route when a non-
 [providers.claude.tiers]
 frontier = "claude-fable-5"
 strong   = "claude-sonnet-5"
-fast     = "claude-haiku-4-5-20251001"
+fast     = "claude-haiku-4-5"
 
 # Browser / visual verification and fallback: drive the UI with playwright-cli and
 # reason over the screenshots with a vision-capable model. Depends only on a

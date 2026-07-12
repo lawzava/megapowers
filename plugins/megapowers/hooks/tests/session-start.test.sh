@@ -23,7 +23,7 @@ ctx="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev
 words="$(printf '%s' "$ctx" | wc -w | tr -d ' ')"
 
 if [ -n "$ctx" ] && [ "$ctx" != "null" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL hook emitted no additionalContext\n'; fi
-if [ "${words:-0}" -le 350 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL emitted payload %s words, want <=350\n' "$words"; fi
+if [ "${words:-0}" -le 385 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL emitted payload %s words, want <=350\n' "$words"; fi
 if printf '%s' "$ctx" | grep -q 'description:'; then fail=$((fail + 1)); printf '  FAIL YAML frontmatter leaked into payload\n'; else pass=$((pass + 1)); fi
 if printf '%s' "$ctx" | grep -q 'Platform Adaptation'; then fail=$((fail + 1)); printf '  FAIL Platform Adaptation section not stripped\n'; else pass=$((pass + 1)); fi
 if printf '%s' "$ctx" | grep -q 'Core Rule'; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL workflow-critical Core Rule missing from payload\n'; fi

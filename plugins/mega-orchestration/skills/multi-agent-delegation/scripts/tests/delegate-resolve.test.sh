@@ -275,5 +275,56 @@ out="$("$DR" code_review --config "$TMP/routes.toml" --models "$TMP/badcat.toml"
 check_exit "broken catalog exits 2" 2 "$rc"
 check "broken catalog error names the file" "badcat.toml" "$out"
 
+
+echo "== efforts tests =="
+
+# Floor effort outside the [efforts] scale fails loudly.
+cat > "$TMP/badflooreffort.toml" <<'EOF'
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[efforts]
+scale = ["low", "medium", "high", "xhigh", "max"]
+[providers.alpha]
+binary = "sh"
+channel = "cli"
+model = "alpha-1"
+[defaults]
+floor = "strong:zzz"
+[roles]
+code_review = "alpha"
+EOF
+out="$("$DR" code_review --config "$TMP/badflooreffort.toml" 2>&1)"; rc=$?
+check_exit "floor effort outside scale exits 2" 2 "$rc"
+check "floor effort error names the effort" "zzz" "$out"
+
+# A valid floor effort passes; a floor with no effort half also passes.
+sed 's/floor = "strong:zzz"/floor = "strong:low"/' "$TMP/badflooreffort.toml" > "$TMP/goodflooreffort.toml"
+out="$("$DR" code_review --config "$TMP/goodflooreffort.toml" 2>&1)"; rc=$?
+check_exit "valid floor effort resolves" 0 "$rc"
+sed 's/floor = "strong:zzz"/floor = "strong"/' "$TMP/badflooreffort.toml" > "$TMP/noeffort.toml"
+out="$("$DR" code_review --config "$TMP/noeffort.toml" 2>&1)"; rc=$?
+check_exit "floor without effort half resolves" 0 "$rc"
+
+# --check flags a provider default effort its own efforts list does not allow.
+cat > "$TMP/badproveffort.toml" <<'EOF'
+[efforts]
+scale = ["low", "medium", "high", "xhigh", "max"]
+[providers.alpha]
+binary = "sh"
+channel = "cli"
+model = "alpha-1"
+effort = "max"
+efforts = ["low", "medium", "high", "xhigh"]
+[roles]
+code_review = "alpha"
+EOF
+out="$("$DR" --check --config "$TMP/badproveffort.toml" 2>&1)"; rc=$?
+check_exit "--check flags provider effort outside its efforts list" 1 "$rc"
+check "--check names the offending effort" "max" "$out"
+
+# Shipped catalog carries the efforts scale.
+out="$(DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" "$DR" --check 2>&1)"; rc=$?
+check_exit "--check shipped files with efforts exits 0" 0 "$rc"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

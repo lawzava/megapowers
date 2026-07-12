@@ -174,11 +174,11 @@ Which do I want?
 - Starting a new Go / Python / TypeScript project: `mega-go` / `mega-python` / `mega-ts`
 - Building or reshaping UI with a design bar: `mega-frontend`
 
-Context cost: a full seven-plugin install adds about 1,908 words of always-on
+Context cost: a full seven-plugin install adds about 1,938 words of always-on
 context (the 30 skill descriptions summed with `wc -w`, 1,590 words, plus the
-injected session-start note, 318 words); at ~1.3 tokens per word, about 2,480
-tokens. The `megapowers` bundle alone is ~1,050 words (729 in its descriptions
-plus the same note), ~1,360 tokens. Skill bodies load only when invoked.
+injected session-start note, 348 words); at ~1.3 tokens per word, about 2,520
+tokens. The `megapowers` bundle alone is ~1,080 words (729 in its descriptions
+plus the same note), ~1,400 tokens. Skill bodies load only when invoked.
 
 Plugins are independent; the pairing that adds the most is `megapowers` plus
 `mega-orchestration`. Nine skills are also published as standalone entries
