@@ -2,12 +2,14 @@
 # Payload-size regression for the megapowers session-start hook. The SessionStart
 # injection must stay a lean nudge, not the whole skill re-pasted into every session
 # (and again after every /clear and compaction). Assert the emitted additionalContext
-# is under 350 words (measured 2026-07-12 with the shipped model-catalog block
-# resolved: 318 words, plus ~10% headroom), that the dead-weight blocks are stripped
-# (YAML frontmatter, whose name+description already appear in the skills listing, and
-# the "## Platform Adaptation" section, which points other harnesses at their own
-# reference files), and that the workflow-critical Core Rule survives. The
-# communication-register rules must also survive (condensed in SKILL.md, not stripped
+# is under 350 words, that the dead-weight blocks are stripped (YAML frontmatter,
+# whose name+description already appear in the skills listing, and the "## Platform
+# Adaptation" section, which points other harnesses at their own reference files),
+# and that the workflow-critical Core Rule survives. Ceiling 350: measured 318 word
+# payload (base note plus the model-catalog block) plus about 10% headroom; the
+# block's byte budget is separately capped at 600B by validate.sh and the renderer
+# test. The communication-register rules must also survive (condensed in SKILL.md,
+# not stripped
 # by this hook): the maintainer requires them in every session. SKILL.md on disk stays
 # complete and portable.
 set -u
