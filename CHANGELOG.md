@@ -8,6 +8,10 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.2.0 - 2026-07-12
+
+### Changed
+
 - delegates.toml is now the model-agnostic source of truth: `[lead]` declares the
   orchestrator, `[tiers]` defines a vendor-neutral scale (fast/strong/frontier),
   providers carry tier maps, capabilities, detect markers, and reference files.
