@@ -43,6 +43,7 @@ done
 FILES='docs/harness-support.md|Last reviewed:
 evals/RESULTS.md|Last run:
 plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml|Last reviewed:
+plugins/megapowers/models.toml|Last reviewed:
 plugins/mega-orchestration/skills/orchestrating/references/harness-primitives.md|Last reviewed:|30
 plugins/mega-frontend/skills/designing-frontends/SKILL.md|Calibration reviewed:
 scripts/check-freshness.sh|Codex config reviewed:|30'

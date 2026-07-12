@@ -11,6 +11,10 @@ for b in codex claude playwright-cli mp_present_bin; do
 done
 export PATH="$shims:$PATH"
 
+# Hermetic: user-level megapowers config layers must not leak into fixtures.
+export XDG_CONFIG_HOME="$PWD/xdg-isolated"
+mkdir -p "$XDG_CONFIG_HOME"
+
 {
   # --- existing contract ---
   echo "=== code_review ==="; "$R" code_review --config "$cfg"; echo "rc=$?"
