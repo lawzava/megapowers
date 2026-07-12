@@ -24,9 +24,12 @@ present() { if grep -qiE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "B
 
   # the cross-vendor discipline must be EXECUTABLE, not just prose: the shipped
   # routing config has to express a real second-vendor route the different-vendor
-  # roles can fall back to (the audit's unsatisfiable-constraint gap).
+  # roles can fall back to (the audit's unsatisfiable-constraint gap). Provider
+  # vendor data lives in models.toml at the plugin root; role/fallback data stays
+  # in the skill's delegates.toml.
+  mt="$ROOT/plugins/mega-orchestration/models.toml"
   dt="$S/multi-agent-delegation/delegates.toml"
-  present 'vendor[[:space:]]*=[[:space:]]*"anthropic"' "$dt" "delegation: a second model vendor route is shipped (anthropic)"
+  present 'vendor[[:space:]]*=[[:space:]]*"anthropic"' "$mt" "delegation: a second model vendor route is shipped (anthropic)"
   present '\[fallbacks\]'            "$dt" "delegation: per-role fallback chains exist in config"
   present 'verify[[:space:]]*=[[:space:]]*\[[^]]*claude' "$dt" "delegation: verify carries a cross-vendor fallback (codex -> claude)"
 } > inv.out
