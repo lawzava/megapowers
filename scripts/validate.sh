@@ -347,6 +347,15 @@ while IFS= read -r t; do
 done < <(find plugins -type f -path '*/hooks/tests/*.test.sh' 2>/dev/null | sort)
 [[ $ht_found -eq 1 ]] || bad "no hook tests found (expected plugins/*/hooks/tests/*.test.sh)"
 
+echo "== skill script tests =="
+st_found=0
+while IFS= read -r t; do
+  [ -n "$t" ] || continue
+  st_found=1
+  if bash "$t" >/dev/null 2>&1; then ok "skill script test $t"; else bad "skill script test $t"; fi
+done < <(find plugins -type f -path '*/skills/*/scripts/tests/*.test.sh' 2>/dev/null | sort)
+[[ $st_found -eq 1 ]] || bad "no skill script tests found (expected plugins/*/skills/*/scripts/tests/*.test.sh)"
+
 echo "== evals =="
 if [[ -d evals/scenarios ]]; then
   ev_bad=0; ev_n=0

@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Dependency-free tests for delegate-resolve config layering. Builds throwaway
+# config layers under mktemp and asserts resolution output and exit codes.
+# Run: plugins/mega-orchestration/skills/multi-agent-delegation/scripts/tests/delegate-resolve.test.sh
+set -u
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DR="$HERE/../delegate-resolve"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+unset DELEGATES_TOML
+export XDG_CONFIG_HOME="$TMP/xdg"   # isolate the user layer
+export HOME="$TMP/home"             # never read the real user config
+mkdir -p "$TMP/xdg" "$TMP/home" "$TMP/proj"
+
+pass=0; fail=0
+check() {  # $1=desc $2=want-substring $3=got
+  if printf '%s' "$3" | grep -qF "$2"; then pass=$((pass+1)); else fail=$((fail+1)); printf '  FAIL %s\n    want: %s\n    got:  %s\n' "$1" "$2" "$3"; fi
+}
+check_exit() {  # $1=desc $2=want-code $3=got-code
+  if [ "$2" = "$3" ]; then pass=$((pass+1)); else fail=$((fail+1)); printf '  FAIL %s (want exit %s, got %s)\n' "$1" "$2" "$3"; fi
+}
+
+echo "== delegate-resolve layering tests =="
+
+# Minimal self-contained v1 config for single-file mode.
+cat > "$TMP/single.toml" <<'EOF'
+[providers.alpha]
+model   = "alpha-1"
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+[defaults]
+floor = "strong:low"
+[roles]
+code_review = "alpha"
+EOF
+
+out="$("$DR" code_review --config "$TMP/single.toml" 2>&1)"; rc=$?
+check_exit "single-file --config resolves" 0 "$rc"
+check "single-file MODEL" "MODEL=alpha-1" "$out"
+
+out="$(DELEGATES_TOML="$TMP/single.toml" "$DR" code_review 2>&1)"; rc=$?
+check_exit "env single-file resolves" 0 "$rc"
+check "env single-file MODEL" "MODEL=alpha-1" "$out"
+
+# Layered mode: shipped defaults plus a project override. binary=sh keeps
+# resolution independent of which CLIs this machine has installed.
+mkdir -p "$TMP/proj/.megapowers"
+cat > "$TMP/proj/.megapowers/delegates.toml" <<'EOF'
+[providers.codex]
+model  = "project-override-model"
+binary = "sh"
+EOF
+out="$(cd "$TMP/proj" && "$DR" code_review 2>&1)"; rc=$?
+check_exit "project layer resolves" 0 "$rc"
+check "project layer overrides model" "MODEL=project-override-model" "$out"
+check "shipped layer still supplies vendor" "VENDOR=openai" "$out"
+
+# User layer: wins over shipped, loses to project.
+mkdir -p "$XDG_CONFIG_HOME/megapowers"
+cat > "$XDG_CONFIG_HOME/megapowers/delegates.toml" <<'EOF'
+[providers.codex]
+model  = "user-override-model"
+binary = "sh"
+EOF
+out="$(cd "$TMP/home" && "$DR" code_review 2>&1)"
+check "user layer overrides shipped" "MODEL=user-override-model" "$out"
+out="$(cd "$TMP/proj" && "$DR" code_review 2>&1)"
+check "project layer beats user layer" "MODEL=project-override-model" "$out"
+
+# --where lists active layers, highest priority first.
+out="$(cd "$TMP/proj" && "$DR" --where 2>&1)"
+check "--where lists project layer first" ".megapowers/delegates.toml" "$(printf '%s' "$out" | head -1)"
+
+# A malformed override layer fails loudly, naming the file.
+printf 'not toml at all\n' > "$TMP/proj/.megapowers/delegates.toml"
+out="$(cd "$TMP/proj" && "$DR" code_review 2>&1)"; rc=$?
+check_exit "broken project layer exits 2" 2 "$rc"
+check "broken layer error names the file" ".megapowers/delegates.toml" "$out"
+
+echo "== $pass passed, $fail failed =="
+[ "$fail" -eq 0 ]
