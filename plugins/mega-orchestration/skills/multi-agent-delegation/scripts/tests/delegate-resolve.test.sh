@@ -206,5 +206,72 @@ SHIPPED="$HERE/../../delegates.toml"
 out="$(DELEGATES_TOML="$SHIPPED" "$DR" --check 2>&1)"; rc=$?
 check_exit "--check shipped delegates.toml exits 0" 0 "$rc"
 
+echo "== catalog (models.toml) tests =="
+
+# Split resolution: slim routing file plus catalog file resolving together.
+cat > "$TMP/routes.toml" <<'EOF'
+[roles]
+code_review = "beta"
+[presets.read_only]
+sandbox = "read-only"
+EOF
+cat > "$TMP/catalog.toml" <<'EOF'
+[lead]
+provider = "beta"
+tier     = "frontier"
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[tiers.use]
+frontier = "lead and judge"
+[providers.beta]
+vendor = "bmax"
+binary = "sh"
+channel = "cli"
+default_tier = "frontier"
+[providers.beta.tiers]
+frontier = "beta-max-9"
+[defaults]
+floor = "strong:low"
+EOF
+out="$("$DR" code_review --config "$TMP/routes.toml" --models "$TMP/catalog.toml" 2>&1)"; rc=$?
+check_exit "split files resolve" 0 "$rc"
+check "split MODEL from catalog" "MODEL=beta-max-9" "$out"
+check "split FLOOR from catalog" "FLOOR=strong:low" "$out"
+
+out="$("$DR" --lead --config "$TMP/routes.toml" --models "$TMP/catalog.toml" 2>&1)"
+check "--lead from catalog" "LEAD_MODEL=beta-max-9" "$out"
+
+# Legacy compatibility: inline providers in the delegates file win over the catalog.
+out="$("$DR" code_review --config "$TMP/v2.toml" --models "$TMP/catalog.toml" 2>&1)"
+check "inline providers beat the catalog" "MODEL=alpha-strong-1" "$out"
+
+# MODELS_TOML env behaves like --models.
+out="$(MODELS_TOML="$TMP/catalog.toml" "$DR" code_review --config "$TMP/routes.toml" 2>&1)"; rc=$?
+check_exit "MODELS_TOML env resolves" 0 "$rc"
+check "env catalog MODEL" "MODEL=beta-max-9" "$out"
+
+# Layered catalog: user models.toml overrides the shipped catalog tier map.
+# Remove the user delegates override from an earlier scenario first: the delegates
+# stack wins over the catalog by design, and this scenario tests the catalog layer.
+rm -f "$XDG_CONFIG_HOME/megapowers/delegates.toml"
+mkdir -p "$XDG_CONFIG_HOME/megapowers"
+cat > "$XDG_CONFIG_HOME/megapowers/models.toml" <<'EOF'
+[providers.codex.tiers]
+frontier = "user-catalog-model"
+EOF
+out="$(cd "$TMP/home" && "$DR" code_review 2>&1)"
+check "user catalog layer overrides shipped tier map" "MODEL=user-catalog-model" "$out"
+rm -f "$XDG_CONFIG_HOME/megapowers/models.toml"
+
+# --check spans both stacks.
+out="$("$DR" --check --config "$TMP/routes.toml" --models "$TMP/catalog.toml" 2>&1)"; rc=$?
+check_exit "--check across split files exits 0" 0 "$rc"
+
+# A malformed catalog layer fails loudly, naming the file.
+printf 'not toml either\n' > "$TMP/badcat.toml"
+out="$("$DR" code_review --config "$TMP/routes.toml" --models "$TMP/badcat.toml" 2>&1)"; rc=$?
+check_exit "broken catalog exits 2" 2 "$rc"
+check "broken catalog error names the file" "badcat.toml" "$out"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

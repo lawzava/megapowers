@@ -1,108 +1,11 @@
-# megapowers delegate routing.
-# Last reviewed: 2026-07-12 (model IDs and routes age; scripts/check-freshness.sh
-# fails a scheduled CI run when this date is older than 90 days).
-# Edit an OVERRIDE LAYER to change routing, not this shipped file: a project
-# .megapowers/delegates.toml or user ~/.config/megapowers/delegates.toml wins per
-# key and survives plugin updates (see scripts/delegate-resolve --where). Nothing
-# auto-executes this file: the multi-agent-delegation skill and the delegate agents
-# READ it, and scripts/delegate-resolve resolves it executably.
-# It ships inside the multi-agent-delegation skill directory so the skill stays
-# self-contained when installed on its own (Agent Skills standard).
-
-# --- Lead: what orchestrates ---
-# The intended orchestrator. delegate-resolve --lead prints it; --exclude-lead
-# resolves a role away from the lead's vendor, which is how the cross-vendor roles
-# (verify, judge, council_member) stay independent no matter who leads. Swap the
-# lead in an override layer; skill prose never hardcodes it.
-[lead]
-provider = "claude"
-tier     = "frontier"
-
-# --- Tiers: the vendor-neutral capability scale, weakest first ---
-# Roles, the floor, and the lead speak tier language; each provider maps its own
-# model ids to tiers below. A new model release is a one-line tier-map edit.
-[tiers]
-scale = ["fast", "strong", "frontier"]
-
-# --- Providers: how to reach each backend ---
-# `binary` is the CLI delegate-resolve probes with `command -v`; a role whose
-# provider binary is not installed is skipped in favour of the next fallback.
-# `reference` names the file with channel mechanics and prompting guidance.
-# `detect` lists transcript markers of review-capable delegate invocations; the
-# delegate-nudge hook suppresses its nudge when one appears (mcp__ entries match
-# tool-use name fields, entries with spaces match Bash command fields). Entries
-# from disabled providers still count: it is a fail-open heuristic, not a grant.
-#
-# Inside Claude Code workflows/subagents the model parameter is Claude-only; reach
-# a non-Claude provider through a thin wrapper agent that shells its CLI — see
-# orchestrating references/harness-primitives.md.
-[providers.codex]
-effort  = "high"   # default model_reasoning_effort on dispatch; verify/judge roles may spend higher (see templates/codex-agents/)
-vendor  = "openai"
-binary  = "codex"
-channel = "native-or-mcp-or-cli"
-default_tier = "frontier"
-capabilities = ["code", "vision", "computer_use"]
-detect  = ["mcp__codex__codex", "codex exec"]
-reference = "references/providers/codex.md"
-notes   = "Native Codex subagents inside Codex; codex exec / SDK / codex mcp-server from elsewhere. Channel mechanics and sandbox-auth caveats: see the reference file."
-
-[providers.codex.tiers]
-frontier = "gpt-5.6-sol"
-
-# Second model vendor, so the cross-vendor roles (verify/judge/council_member) have
-# a real different-vendor route when the lead (or an --exclude) rules out the
-# primary. Headless Claude CLI: `claude -p`.
-[providers.claude]
-vendor  = "anthropic"
-binary  = "claude"
-channel = "claude-cli"
-default_tier = "frontier"
-capabilities = ["code", "vision", "computer_use"]
-detect  = ["claude -p"]
-reference = "references/providers/claude.md"
-notes   = "Headless `claude -p <prompt>`; the different-vendor route when a non-Anthropic model leads (resolve with --exclude-lead)."
-
-[providers.claude.tiers]
-frontier = "claude-fable-5"
-strong   = "claude-sonnet-5"
-fast     = "claude-haiku-4-5-20251001"
-
-# Browser / visual verification and fallback: drive the UI with playwright-cli and
-# reason over the screenshots with a vision-capable model (the lead itself when it
-# is vision-capable; otherwise route the screenshot to one). Depends only on a
-# standalone CLI, not on any single vendor's browser agent.
-[providers.browser]
-vendor  = "none"
-binary  = "playwright-cli"
-channel = "playwright-cli"
-capabilities = ["computer_use", "vision"]
-reference = "references/providers/browser.md"
-notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .megapowers/evidence/. See agents/browser-delegate.md."
-
-# Alternative browser/visual backend, disabled by default. Use only after verifying
-# your local `agy` automation path and approval behavior. Bench check 2026-07-04:
-# Gemini 3.1 Pro trails on computer-use benchmarks (OSWorld-class aggregates), so
-# there is no performance case for enabling it either; re-check before flipping.
-[providers.antigravity]
-model   = "configured-in-agy"
-vendor  = "google"
-binary  = "agy"
-channel = "agy-cli"
-detect  = ["agy exec", "agy run"]
-enabled = false
-
-# NOTE: the Gemini CLI route was removed — the Gemini CLI was discontinued for
-# consumer use in mid-2026. The vendor-neutral `browser` provider above serves
-# visual verification and fallback.
-
-# --- Defaults: cross-cutting routing rules ---
-[defaults]
-# Minimum tier:effort for anything that ships, on the [tiers] scale. A provider
-# whose default_tier sits below the floor tier is skipped at resolution.
-# Exception: wrapper agents relaying to an external CLI run strong:medium, a
-# faithful self-contained prompt is worth the extra effort.
-floor = "strong:low"
+# megapowers delegate routing: which provider handles which role, and run presets.
+# Last reviewed: 2026-07-12 (routes age; scripts/check-freshness.sh guards this date).
+# The model CATALOG (lead, tiers, providers, floor) lives in models.toml at the
+# plugin root, layered the same way: project .megapowers/models.toml, then user
+# ~/.config/megapowers/models.toml, then the shipped copy. Edit an override layer,
+# not a shipped file. scripts/delegate-resolve resolves both files together, and
+# provider sections written HERE (pre-0.3 style, in any layer) still parse and win
+# over the catalog, so old override files keep working.
 
 # --- Requirements: capabilities a role's provider must declare ---
 [requires]
@@ -130,11 +33,9 @@ judge          = "codex"     # best-of-n: blind judge when no oracle decides (pr
 council_member = "codex"     # council-adjudication: independent answer + blind ranking member
 
 # --- Fallbacks: ordered cross-vendor chains for the different-vendor roles ---
-# The [roles] value is the first choice; delegate-resolve walks this chain and skips
-# any provider that is --excluded (use --exclude-lead so the lead's vendor drops out
-# automatically), disabled, or whose binary is not installed. Each chain crosses
-# vendors so the constraint the role carries (verify differs from the author,
-# judge/council prefer an unused vendor) stays satisfiable no matter who leads.
+# delegate-resolve walks this chain and skips any provider that is --excluded (use
+# --exclude-lead so the lead's vendor drops out automatically), disabled, or whose
+# binary is not installed.
 [fallbacks]
 verify         = ["codex", "claude"]
 judge          = ["codex", "claude"]
