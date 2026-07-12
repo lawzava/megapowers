@@ -76,6 +76,13 @@ while IFS= read -r t; do
 done <<< "$(arr tiers scale)"
 [ -n "$tier_lines" ] || exit 0
 
+eff_lines=""
+while IFS= read -r e; do
+  [ -n "$e" ] || continue
+  u="$(val efforts.use "$e")" || u=""
+  eff_lines="${eff_lines:+$eff_lines | }${e}${u:+=$u}"
+done <<< "$(arr efforts scale)"
+
 del_lines=""
 while IFS= read -r p; do
   [ -n "$p" ] || continue
@@ -95,6 +102,7 @@ render() {
   printf 'Model catalog (models.toml; override layers project>user>shipped):\n'
   printf 'lead: %s%s%s\n' "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
   printf 'tiers: %s\n' "$tier_lines"
+[ -n "$eff_lines" ] && printf 'efforts: %s\n' "$eff_lines"
   [ -n "$del_lines" ] && printf 'delegates: %s\n' "$del_lines"
   printf '%sRoutes: delegate-resolve <role> (mega-orchestration:multi-agent-delegation).\n' "${floor:+floor $floor. }"
   return 0

@@ -296,6 +296,13 @@ if [ "$check" -eq 1 ]; then
     ft="${fl%%:*}"
     printf '%s\n' "$scale_list" | grep -qx -- "$ft" || note "floor tier '$ft' not in [tiers] scale"
   fi
+  ce_scale="$(cat_array efforts scale)"
+  if [ -n "$fl" ] && [ -n "$ce_scale" ]; then
+    fe="${fl#*:}"
+    if [ "$fe" != "$fl" ] && [ -n "$fe" ]; then
+      printf '%s\n' "$ce_scale" | grep -qx -- "$fe" || note "floor effort '$fe' not in [efforts] scale"
+    fi
+  fi
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     dt="$(cat_val "providers.$p" default_tier)"
@@ -307,6 +314,17 @@ if [ "$check" -eq 1 ]; then
     fi
     ref="$(cat_val "providers.$p" reference)"
     if [ -n "$ref" ] && [ ! -f "$here/../$ref" ]; then note "provider '$p' reference file missing: $ref"; fi
+    pe="$(cat_val "providers.$p" effort)"
+    plist="$(cat_array "providers.$p" efforts)"
+    if [ -n "$pe" ] && [ -n "$plist" ]; then
+      printf '%s\n' "$plist" | grep -qx -- "$pe" || note "provider '$p' default effort '$pe' not in its efforts list"
+    fi
+    if [ -n "$plist" ] && [ -n "$ce_scale" ]; then
+      while IFS= read -r pev; do
+        [ -n "$pev" ] || continue
+        printf '%s\n' "$ce_scale" | grep -qx -- "$pev" || note "provider '$p' efforts entry '$pev' not in [efforts] scale"
+      done <<< "$plist"
+    fi
   done <<< "$(providers_list)"
   if [ "$errs" -eq 0 ]; then echo "delegate-resolve --check: OK (${layers[*]}${mlayers[*]:+ + ${mlayers[*]}})"; exit 0; fi
   exit 1
@@ -396,6 +414,17 @@ if [ -n "$floor" ] && [ -n "$scale_list" ]; then
   if [ -z "$floor_idx" ]; then
     echo "delegate-resolve: floor tier '$ftier' is not in the [tiers] scale" >&2
     exit 2
+  fi
+fi
+# The floor's effort half validates against the [efforts] scale the same way.
+if [ -n "$floor" ]; then
+  feff="${floor#*:}"
+  if [ "$feff" != "$floor" ] && [ -n "$feff" ]; then
+    effort_scale="$(cat_array efforts scale)"
+    if [ -n "$effort_scale" ] && ! printf '%s\n' "$effort_scale" | grep -qx -- "$feff"; then
+      echo "delegate-resolve: floor effort '$feff' is not in the [efforts] scale" >&2
+      exit 2
+    fi
   fi
 fi
 req="$(array_val requires "$role")"

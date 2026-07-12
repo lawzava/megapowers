@@ -10,6 +10,15 @@ field by design (their schema allows only name and description). Format:
 
 ### Changed
 
+- models.toml refresh (verified against live sources 2026-07-12): Haiku pinned
+  by alias (`claude-haiku-4-5`), the codex provider gains the full GPT-5.6 tier
+  ladder (sol/terra/luna, GA 2026-07-09), and the cost hint trued to ~2x at
+  current list prices.
+- `[efforts]`: a second vendor-neutral scale (low/medium/high/xhigh/max) with
+  per-effort purposes and per-provider `efforts` subsets. The floor's effort
+  half now validates against it (exit 2 unknown; `--check` finding), and the
+  session-start block renders the efforts ladder (block budget 900B).
+
 - models.toml: the model catalog (lead, tiers with per-tier purposes, providers,
   floor) split out of delegates.toml, layered project > user > shipped, shipped
   as identical twins in both plugin roots (CI-asserted). delegates.toml keeps

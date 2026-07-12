@@ -180,10 +180,10 @@ if [[ -f $skfile ]]; then
   payload_bytes="$(byte_len "${preface}"$'\n\n'"${trimmed}")"
   catalog_block="$(MODELS_TOML="plugins/megapowers/models.toml" plugins/megapowers/hooks/render-model-catalog 2>/dev/null || true)"
   catalog_bytes="$(byte_len "$catalog_block")"
-  if [[ -n $catalog_block ]] && (( catalog_bytes <= 600 )); then
-    ok "session-start catalog block within 600B (${catalog_bytes}B)"
+  if [[ -n $catalog_block ]] && (( catalog_bytes <= 900 )); then
+    ok "session-start catalog block within 900B (${catalog_bytes}B)"
   else
-    bad "session-start catalog block empty or over 600B (${catalog_bytes}B)"
+    bad "session-start catalog block empty or over 900B (${catalog_bytes}B)"
   fi
   always_total=$((desc_sum + payload_bytes + catalog_bytes))
   if (( always_total <= ALWAYS_MAX )); then
