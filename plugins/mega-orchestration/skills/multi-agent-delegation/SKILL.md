@@ -46,9 +46,6 @@ prompting guidance: references/providers/codex.md, references/providers/claude.m
 and references/providers/browser.md. Read the resolved provider's file before
 dispatching instead of assuming any vendor's quirks from memory.
 
-Antigravity is disabled in the config; leave it disabled until you verify its
-approvals, artifact review, and artifact edit behavior on this machine.
-
 The nine roles: plan_review, code_review, small_impl, visual, browser_test,
 visual_verify, verify, judge, council_member.
 
@@ -92,7 +89,9 @@ must resolve to a vendor different from the author's. Resolve with
 the exclusion follows a lead swap automatically) or an explicit `--exclude
 <vendor>`; the helper walks the chain to a different-vendor route, and if none
 is available it exits 3 rather than handing the work back to the author's
-vendor.
+vendor. plan_review and code_review carry the same chains so a lead swap keeps
+them resolvable with `--exclude-lead`; small_impl stays single-route, it is
+not an independence role.
 
 ## Role Defaults
 

@@ -276,6 +276,45 @@ check_exit "broken catalog exits 2" 2 "$rc"
 check "broken catalog error names the file" "badcat.toml" "$out"
 
 
+echo "== lead-swap review-role tests =="
+
+# With a codex lead, the review roles must resolve cross-vendor through their
+# shipped [fallbacks] chains. Binaries pin to sh so the result does not depend
+# on which CLIs this machine has installed.
+mkdir -p "$TMP/codexlead/.megapowers"
+cat > "$TMP/codexlead/.megapowers/models.toml" <<'EOF'
+[lead]
+provider = "codex"
+tier     = "frontier"
+[providers.codex]
+binary = "sh"
+[providers.claude]
+binary = "sh"
+EOF
+for r in plan_review code_review; do
+  out="$(cd "$TMP/codexlead" && "$DR" "$r" --exclude-lead 2>&1)"; rc=$?
+  check_exit "$r --exclude-lead resolves under codex lead" 0 "$rc"
+  check "$r falls back cross-vendor under codex lead" "PROVIDER=claude" "$out"
+done
+
+# The reverse swap: under a claude lead, the claude-primary roles must walk
+# their chains to codex rather than dead-ending or resolving same-vendor.
+mkdir -p "$TMP/claudelead/.megapowers"
+cat > "$TMP/claudelead/.megapowers/models.toml" <<'EOF'
+[lead]
+provider = "claude"
+tier     = "frontier"
+[providers.codex]
+binary = "sh"
+[providers.claude]
+binary = "sh"
+EOF
+for r in plan_review verify; do
+  out="$(cd "$TMP/claudelead" && "$DR" "$r" --exclude-lead 2>&1)"; rc=$?
+  check_exit "$r --exclude-lead resolves under claude lead" 0 "$rc"
+  check "$r falls back cross-vendor under claude lead" "PROVIDER=codex" "$out"
+done
+
 echo "== efforts tests =="
 
 # Floor effort outside the [efforts] scale fails loudly.

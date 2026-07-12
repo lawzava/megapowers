@@ -294,8 +294,8 @@ published numbers yet; whatever a keyed run produces will be published, includin
 The opinions are meant to be edited. The edit points:
 
 - Routing and models: `plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml`
-  maps each role to a delegate (channel, model, invocation). Change a model,
-  point a role at a different backend, or enable Antigravity here.
+  maps each role to a delegate (channel, model, invocation). Change a model
+  or point a role at a different backend here.
 - Stacks: the greenfield pickers live in `plugins/mega-go`,
   `plugins/mega-python`, and `plugins/mega-ts`. Swap frameworks, database,
   auth, or payments there.

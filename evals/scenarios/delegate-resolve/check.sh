@@ -13,8 +13,8 @@ awk '/=== missing-provider-section ===/{f=1} f&&/no \[providers.ghost\] section/
 awk '/=== bad-args/{f=1} f&&/needs a file argument/{m=1} f&&/rc=2/{r=1} END{exit !(m&&r)}' "$o" || { echo "--config with no file should exit 2, not crash"; exit 1; }
 
 # --- second vendor, fallbacks, --exclude, availability, presets, parse error ---
-awk '/=== verify-primary ===/{f=1} /=== verify-exclude-openai ===/{f=0} f&&/PROVIDER=codex/{ok=1} END{exit !ok}' "$o" || { echo "verify did not resolve to its codex primary"; exit 1; }
-awk '/=== verify-exclude-openai ===/{f=1} /=== verify-exclude-both ===/{f=0} f&&/PROVIDER=claude/{p=1} f&&/rc=0/{r=1} END{exit !(p&&r)}' "$o" || { echo "verify --exclude openai should fall through to the claude route (rc 0)"; exit 1; }
+awk '/=== verify-primary ===/{f=1} /=== verify-exclude-anthropic ===/{f=0} f&&/PROVIDER=claude/{ok=1} END{exit !ok}' "$o" || { echo "verify did not resolve to its claude primary"; exit 1; }
+awk '/=== verify-exclude-anthropic ===/{f=1} /=== verify-exclude-both ===/{f=0} f&&/PROVIDER=codex/{p=1} f&&/rc=0/{r=1} END{exit !(p&&r)}' "$o" || { echo "verify --exclude anthropic should fall through to the codex route (rc 0)"; exit 1; }
 awk '/=== verify-exclude-both ===/{f=1} /=== fallback-skip-absent ===/{f=0} f&&/no available route/{m=1} f&&/rc=3/{r=1} END{exit !(m&&r)}' "$o" || { echo "verify with both vendors excluded should report no available route + exit 3"; exit 1; }
 awk '/=== fallback-skip-absent ===/{f=1} /=== no-available-route ===/{f=0} f&&/PROVIDER=p_present/{p=1} f&&/rc=0/{r=1} END{exit !(p&&r)}' "$o" || { echo "fallback resolution should skip the absent-binary primary and pick the present fallback"; exit 1; }
 awk '/=== no-available-route ===/{f=1} /=== preset ===/{f=0} f&&/no available route/{m=1} f&&/rc=3/{r=1} END{exit !(m&&r)}' "$o" || { echo "excluded + absent candidates should yield no available route + exit 3"; exit 1; }
