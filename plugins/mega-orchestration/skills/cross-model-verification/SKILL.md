@@ -42,9 +42,9 @@ actually do what it claims".
 
 3. **Prompt it to refute, with the burden of proof on "verified".** Ask for the
    bug, the counterexample, the missed case, and a default of not verified
-   under any real doubt. For a Codex verifier, the adversarial template and
-   output schema in multi-agent-delegation's references/prompting-codex.md make
-   the verdict machine-checkable.
+   under any real doubt. The resolved provider's reference file
+   (multi-agent-delegation, `references/providers/`) carries the adversarial
+   template and output schema that make the verdict machine-checkable.
 
 4. **Escalate to a perspective-diverse panel for high stakes.** Run several
    independent verifiers, each with a distinct lens: correctness, security,

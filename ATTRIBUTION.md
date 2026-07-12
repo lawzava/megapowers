@@ -88,7 +88,7 @@ Affaan Mustafa: https://github.com/affaan-m/everything-claude-code
 
 ## codex-plugin-cc (prompting reference in `mega-orchestration`)
 
-`plugins/mega-orchestration/skills/multi-agent-delegation/references/prompting-codex.md`
+`plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/codex.md`
 adapts prompting guidance, the adversarial-review framing, and the review
 output schema from **codex-plugin-cc** by OpenAI:
 https://github.com/openai/codex-plugin-cc.
