@@ -60,6 +60,13 @@ delegate_regex() {
   [ -n "$mcp" ] && re='"name"[[:space:]]*:[[:space:]]*"('"$mcp"')'
   re="${re:+$re|}"'"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)'
   [ -n "$cli" ] && re="$re"'|"command"[[:space:]]*:[[:space:]]*"[^"]*('"$cli"')'
+  # Codex rollout transcripts record shell calls inside serialized argument
+  # strings, in two observed key shapes (codex-cli 0.144): exec_command({cmd:
+  # \"...\"}) with a bare key, and {\"cmd\":\"...\"} with an escaped-JSON key.
+  # Anchor on the cmd key (optionally quote-escaped) plus the (optionally
+  # escaped) opening value quote so prose mentions of the same CLI still do
+  # not match.
+  [ -n "$cli" ] && re="$re"'|(\\")?cmd(\\")?:[[:space:]]*\\?"[^"]*('"$cli"')'
   printf '%s' "$re"
 }
 
@@ -86,7 +93,7 @@ if [ -n "$transcript" ] && [ -f "$transcript" ]; then
   # independent review). It fails open on any doubt. A partial parse (awk
   # failure mid-list) also falls back: a half-built pattern set is neither
   # open nor honest.
-  re="$(delegate_regex)" || re='"name"[[:space:]]*:[[:space:]]*"mcp__codex__codex|"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)|"command"[[:space:]]*:[[:space:]]*"[^"]*(codex +exec|agy +(exec|run))'
+  re="$(delegate_regex)" || re='"name"[[:space:]]*:[[:space:]]*"mcp__codex__codex|"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)|"command"[[:space:]]*:[[:space:]]*"[^"]*(codex +exec|agy +(exec|run)|claude +-p)|(\\")?cmd(\\")?:[[:space:]]*\\?"[^"]*(codex +exec|claude +-p)'
   grep -qE "$re" "$transcript" 2>/dev/null && exit 0
 fi
 

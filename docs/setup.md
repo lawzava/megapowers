@@ -141,10 +141,38 @@ shape the Claude Code guard already emits. This repo ships a pilot port of the
   installed plugin, or a `hooks.json` next to any config layer
   (`~/.codex/hooks.json`, `<repo>/.codex/hooks.json`).
 
-`mega-guardrails` is not published as a Codex marketplace plugin, so wiring is
-manual today: point a Codex `hooks.json` at the adapter (it reads
-`CLAUDE_PLUGIN_ROOT`, which Codex sets as a compatibility alias alongside its
-native `PLUGIN_ROOT`).
+Two more pilot ports ship for a Codex lead, each with its own
+`hooks/codex-hooks.json` next to it:
+
+- `plugins/megapowers/hooks/codex-session-catalog.sh` (SessionStart): injects
+  the rendered model catalog as `additionalContext`, replacing the manual
+  `render-model-catalog` step the Codex-lead charter otherwise requires.
+  Payload is the catalog only; the using-megapowers nudge stays Claude Code
+  specific.
+- `plugins/mega-orchestration/hooks/delegate-nudge.sh` (Stop): the manifest
+  points at the existing script unmodified, since Codex's Stop input carries
+  the same `stop_hook_active` and `transcript_path` fields. Its delegate
+  detection also matches Codex rollout transcripts (`exec_command({cmd:...})`
+  shapes), so a `claude -p` review dispatched from a Codex lead suppresses the
+  nudge.
+
+Pilot status: the PreToolUse contract is verified; the SessionStart and Stop
+ports match the schema the Codex binary declares (event names, input fields,
+`additionalContext`, block decisions) but have not been exercised end to end,
+and both fail open, so the worst case is a silent no-op, never a broken
+session.
+
+The `codex-hooks.json` files are not auto-discovered, so wiring is manual
+today: point a Codex `hooks.json` (`~/.codex/hooks.json` or
+`<repo>/.codex/hooks.json`) at the script (it reads `CLAUDE_PLUGIN_ROOT`,
+which Codex sets as a compatibility alias alongside its native
+`PLUGIN_ROOT`). One interaction to know: when megapowers or
+mega-orchestration is installed as a Codex plugin, Codex may also discover
+the plugin's Claude-facing `hooks/hooks.json`. Nothing runs until you trust
+it, and you should not: those payloads are Claude Code specific
+(`run-hook.cmd session-start`, `run-loop.sh`), and trusting them alongside a
+manual wiring would run SessionStart and Stop twice. Trust only the
+`codex-*.sh` entries you wired.
 
 Trust prompt: before a non-managed command hook runs, Codex requires you to
 review and trust the exact hook definition. Trust is recorded against the hook's
