@@ -62,5 +62,17 @@ else
   no "shipped models.toml missing at plugin root"
 fi
 
+# Hostile fixture: a raw control byte (0x0B) in a catalog value must not reach
+# the rendered output. escape_for_json in session-start only handles \, ", \n,
+# \r, \t; anything else raw would corrupt the JSON payload downstream. Put the
+# byte in a delegate's `use` value so it lands in del_lines, which is what
+# actually reaches the SessionStart payload.
+printf '[lead]\nprovider = "alpha"\ntier = "frontier"\n[tiers]\nscale = ["fast"]\n[tiers.use]\nfast = "ok"\n[providers.alpha]\nvendor = "acme"\ndefault_tier = "fast"\nuse = "leads"\n[providers.alpha.tiers]\nfast = "alpha-mini"\n[providers.beta]\nvendor = "bmax"\ndefault_tier = "fast"\nuse = "delegate\x0Bwith control byte"\n[providers.beta.tiers]\nfast = "beta-mini"\n[defaults]\nfloor = "fast:low"\n' > "$TMP/hostile.toml"
+out="$(MODELS_TOML="$TMP/hostile.toml" "$R")"; rc=$?
+[ "$rc" -eq 0 ] && ok || no "hostile control-byte fixture exits 0"
+[ -n "$out" ] && ok || no "hostile control-byte fixture renders non-empty output"
+stripped="$(printf '%s' "$out" | tr -d '\t\n\r')"
+if printf '%s' "$stripped" | LC_ALL=C grep -q '[[:cntrl:]]'; then no "control byte leaked into rendered output"; else ok; fi
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

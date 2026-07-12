@@ -33,7 +33,11 @@ shipped copy per key, so a new model release is one tier-map line in a file
 that survives plugin updates (`scripts/delegate-resolve --where` shows the
 active layers of both). Provider sections written in delegates.toml layers
 (pre-0.3 style) still parse and win over the catalog, so old override files
-keep working. Edit an override layer to change routing; the skill, the
+keep working. Prefer migrating provider data to a models.toml layer: the
+always-loaded session block renders from catalog layers only, so a legacy
+delegates-layer override resolves correctly but is not reflected in that
+block, and partial overrides split across both stacks resolve per key, which
+can surprise. Edit an override layer to change routing; the skill, the
 delegate agents, and the session-start catalog block read the config live, so
 no code changes are needed.
 

@@ -308,7 +308,7 @@ if [ "$check" -eq 1 ]; then
     ref="$(cat_val "providers.$p" reference)"
     if [ -n "$ref" ] && [ ! -f "$here/../$ref" ]; then note "provider '$p' reference file missing: $ref"; fi
   done <<< "$(providers_list)"
-  if [ "$errs" -eq 0 ]; then echo "delegate-resolve --check: OK (${layers[*]})"; exit 0; fi
+  if [ "$errs" -eq 0 ]; then echo "delegate-resolve --check: OK (${layers[*]}${mlayers[*]:+ + ${mlayers[*]}})"; exit 0; fi
   exit 1
 fi
 

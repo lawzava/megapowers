@@ -100,4 +100,6 @@ enabled = false
 [defaults]
 # Minimum tier:effort for anything that ships, on the [tiers] scale. A provider
 # whose default_tier sits below the floor tier is skipped at resolution.
+# Exception: wrapper agents relaying to an external CLI run strong:medium, a
+# faithful self-contained prompt is worth the extra effort.
 floor = "strong:low"

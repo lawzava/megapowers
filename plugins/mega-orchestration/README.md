@@ -35,8 +35,9 @@ config file, so swapping a backend is an edit, not a rewrite.
   Claude-only deny-destructive command tripwire.
 
 The plugin also ships two delegate agents and two Stop hooks, described below.
-The skills and the delegate agents read `delegates.toml` (inside the
-`multi-agent-delegation` skill directory) for backend and model choices.
+The skills and the delegate agents read `models.toml` (catalog) and
+`delegates.toml` (routing, inside the `multi-agent-delegation` skill
+directory) for backend and model choices.
 
 ## Role routing
 
@@ -92,9 +93,10 @@ ship here:
 - `agents/browser-delegate.md`: independent verification of rendered UI/UX
   work (and visual/browser fallback), driven by playwright-cli
 
-Each reads `delegates.toml` from the `multi-agent-delegation` skill to decide
-which backend and model to invoke. Edit the agent files to change how the
-handoff works; edit `delegates.toml` to change where work goes.
+Each reads `models.toml` (catalog) and `delegates.toml` (routing) from the
+`multi-agent-delegation` skill to decide which backend and model to invoke.
+Edit the agent files to change how the handoff works; edit `delegates.toml`
+to change where work goes.
 
 ## Stop hooks (Claude Code only)
 
