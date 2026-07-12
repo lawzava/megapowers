@@ -223,6 +223,26 @@ else
 fi
 git checkout -q -- svc.go 2>/dev/null || printf 'func handler() {}\n' > svc.go
 
+# detect entries sourced from a models.toml catalog layer.
+CUSTOM_MODELS="$TMP/custom-models.toml"
+cat > "$CUSTOM_MODELS" <<'EOF'
+[providers.newcli]
+vendor = "acme"
+detect = ["newcli verify"]
+EOF
+EMPTY_DELEGATES="$TMP/empty-delegates.toml"
+printf '[roles]\n' > "$EMPTY_DELEGATES"
+printf 'func handler() { billing() }\n' > svc.go
+printf '{"type":"tool_use","name":"Bash","input":{"command":"newcli verify the diff"}}\n' > "$TR"
+reset_sentinel
+out="$(printf '%s' "$(j false "$TR")" | MODELS_TOML="$CUSTOM_MODELS" DELEGATES_TOML="$EMPTY_DELEGATES" bash "$HOOK" 2>/dev/null)"
+if printf '%s' "$out" | grep -q '"decision":"block"'; then
+  fail=$((fail + 1)); printf '  FAIL catalog-sourced detect entry should suppress the nudge\n'
+else
+  pass=$((pass + 1))
+fi
+git checkout -q -- svc.go 2>/dev/null || printf 'func handler() {}\n' > svc.go
+
 echo "== $pass passed, $fail failed =="
 rm -rf "$TMP"
 [ "$fail" -eq 0 ]

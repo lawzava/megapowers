@@ -25,9 +25,11 @@ conditions, so the right practice is applied at the right moment.
 ## Discoverability and context cost
 
 A SessionStart hook (Claude Code) injects the `using-megapowers` skill plus a
-one-sentence preface and a model-catalog block rendered from models.toml at
-session start, so the agent checks for a matching skill before acting instead
-of waiting for you to name one. The injection is about 318 words (~410
+one-sentence preface and a model-catalog block rendered from models.toml
+(`hooks/render-model-catalog`) at session start, so the agent checks for a
+matching skill before acting instead of waiting for you to name one, and every
+session knows the available models, tiers, and delegates without invoking a
+skill. The injection is about 318 words (~410
 tokens); the sixteen skill descriptions add about 730 words (~950 tokens) of
 always-on metadata. Skill bodies load only when a skill is invoked. Verify
 yourself: `bash hooks/tests/session-start.test.sh` prints the exact payload

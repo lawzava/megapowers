@@ -21,16 +21,21 @@ delegation route it picks.
 
 The lead keeps the broad context, plans and decomposes the work, does cheap
 bulk reads, and owns final integration and commits. Narrow, specialized work
-goes to whichever model is best suited for it. Routing lives in
-`delegates.toml`: who leads (`[lead]`), the vendor-neutral tier scale
-(`[tiers]`), the providers with their tier maps and capabilities, which
-provider handles which role (`[roles]`), and how each run preset behaves. The
-shipped file in this skill's directory is the default layer; a project
-`.megapowers/delegates.toml` or user `~/.config/megapowers/delegates.toml`
-overrides it per key, so a new model release is one line in a file that
-survives plugin updates (`scripts/delegate-resolve --where` shows the active
-layers). Edit an override layer to change routing; the skill and the delegate
-agents read the config at dispatch time, so no code changes are needed.
+goes to whichever model is best suited for it. Routing lives in two layered
+files. `models.toml` is the model catalog: who leads (`[lead]`), the
+vendor-neutral tier scale and per-tier purposes (`[tiers]`, `[tiers.use]`),
+the providers with their tier maps, capabilities, and channel data, and the
+ship floor (`[defaults]`). `delegates.toml` is the routing: which provider
+handles which role (`[roles]`, `[requires]`, `[fallbacks]`) and how each run
+preset behaves (`[presets]`). Both resolve the same way: a project
+`.megapowers/<file>` or user `~/.config/megapowers/<file>` layer overrides the
+shipped copy per key, so a new model release is one tier-map line in a file
+that survives plugin updates (`scripts/delegate-resolve --where` shows the
+active layers of both). Provider sections written in delegates.toml layers
+(pre-0.3 style) still parse and win over the catalog, so old override files
+keep working. Edit an override layer to change routing; the skill, the
+delegate agents, and the session-start catalog block read the config live, so
+no code changes are needed.
 
 Each provider's `reference` key names that provider's channel mechanics and
 prompting guidance: references/providers/codex.md, references/providers/claude.md,
@@ -43,17 +48,18 @@ approvals, artifact review, and artifact edit behavior on this machine.
 The nine roles: plan_review, code_review, small_impl, visual, browser_test,
 visual_verify, verify, judge, council_member.
 
-The floor is `[defaults] floor`, written as tier:effort on the `[tiers]` scale
-(shipped: `"strong:low"`). Nothing that ships routes below it; a provider whose
-tier sits below the floor is skipped at resolution.
+The floor is `[defaults] floor` in the catalog, written as tier:effort on the
+`[tiers]` scale (shipped: `"strong:low"`). Nothing that ships routes below it;
+a provider whose tier sits below the floor is skipped at resolution.
 
 ## Resolving a Route
 
 `scripts/delegate-resolve <role>` resolves the config executably (`--preset
 <name>` for presets, `--exclude <vendor|provider>` to drop a backend,
-`--exclude-lead` to drop whatever `[lead]` declares, `--lead` to print the
-declared orchestrator, `--where` to print the active config layers, `--check`
-to validate the table, `--list` and `--list-presets` to enumerate). It walks
+`--exclude-lead` to drop whatever `[lead]` declares, `--models <file>` to pin
+the catalog, `--lead` to print the declared orchestrator, `--where` to print
+the active config layers, `--check` to validate the table, `--list` and
+`--list-presets` to enumerate). It walks
 the role's fallback chain, skipping any provider that is excluded, disabled,
 missing a required capability, below the floor tier, or whose CLI is not
 installed, so a route never resolves to a runtime you do not have, and prints

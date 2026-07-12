@@ -25,15 +25,17 @@ just say when to reach for which.
 ## Delegation
 
 Route specialized work to the best model via the mega-orchestration plugin rather than
-doing everything inline. Routing lives in delegates.toml: the shipped copy in
-`mega-orchestration/skills/multi-agent-delegation/` is the default layer, and a
-project `.megapowers/delegates.toml` or user `~/.config/megapowers/delegates.toml`
-overrides it per key. Model updates go in an override layer, which survives plugin
-updates. The file declares who leads (`[lead]`), the vendor-neutral tier scale and
-each provider's tier map, which provider handles which role, the floor for anything
-that ships, and how each delegate runs. Resolve routes with
-`scripts/delegate-resolve <role>`; the delegation skill and the delegate agents read
-the same table.
+doing everything inline. The model catalog (lead, tiers, providers, floor) lives in
+models.toml and the role routing in delegates.toml; both are layered, with a project
+`.megapowers/<file>` or user `~/.config/megapowers/<file>` override winning per key
+over the shipped copies. Every session sees a rendered catalog block at start (the
+megapowers SessionStart hook runs hooks/render-model-catalog), so model and tier
+choices need no skill invocation. Model updates go in an override layer, which
+survives plugin updates. The catalog declares who leads (`[lead]`), the
+vendor-neutral tier scale and each provider's tier map, which provider handles which
+role, the floor for anything that ships, and how each delegate runs. Resolve routes
+with `scripts/delegate-resolve <role>`; the delegation skill and the delegate agents
+read the same table.
 
 Single-writer rule: delegates write only inside worktrees or return patches. The lead
 owns integration and commits. Always run the tests yourself and confirm the output;
