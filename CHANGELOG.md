@@ -8,6 +8,8 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.0 - 2026-07-12
+
 ### Changed
 
 - models.toml refresh (verified against live sources 2026-07-12): Haiku pinned
