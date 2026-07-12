@@ -51,21 +51,25 @@ Add `mega-go`, `mega-python`, `mega-ts` if the user works in those languages;
 omit `mega-guardrails` if the user does not want the safety hooks.
 Interactive sessions can use `/plugin` instead.
 
-**Codex** (skills + marketplace metadata; the guardrail hooks are not ported
-here yet):
+**Codex** (skills + hooks + packaged native-agent profiles):
 
 ```
 codex plugin marketplace add lawzava/megapowers
 codex plugin add megapowers@megapowers
 codex plugin add mega-orchestration@megapowers
+codex plugin add mega-guardrails@megapowers
 ```
 
 The verb is `add`, not `install`. `codex plugin marketplace add` accepts
 `owner/repo[@ref]` (codex-cli 0.142.5+); unpinned tracks the default branch.
 Updates: `codex plugin marketplace upgrade megapowers`, then re-run
 `codex plugin add` for each plugin. Change-controlled installs pin with
-`@v0.3.1` instead and update by re-adding at the new tag. To track a fork,
+`@v0.3.2` instead and update by re-adding at the new tag. To track a fork,
 clone it and run `codex plugin marketplace add ./` from the checkout.
+Start a fresh Codex session, open `/hooks`, review the five hook handlers from
+the three plugin manifests, and trust the handlers the user approves. The
+run-loop Stop and formatter PostToolUse handlers intentionally no-op on Codex.
+Do not add manual entries to `~/.codex/hooks.json`.
 
 **OpenCode, Antigravity, or any other Agent Skills harness** (skills only):
 
@@ -110,6 +114,12 @@ Also confirm the listing: `claude plugin list` / `codex plugin list` shows
 the plugins with matching versions, or the skills directory contains the
 skill folders.
 
+For Codex, also compare `codex app-server daemon version` with
+`codex --version`, verify the rendered model-catalog block appears in the fresh
+session, and use `/hooks` to confirm five handlers: one SessionStart, two Stop,
+one PreToolUse, and one PostToolUse. If the versions differ, restart with
+`codex app-server daemon restart` and re-check.
+
 ## 4. Optional, with explicit user approval
 
 Present these to the user; apply only what they approve:
@@ -126,10 +136,23 @@ Present these to the user; apply only what they approve:
 - Instructions baseline: offer [`templates/CLAUDE.md`](../templates/CLAUDE.md)
   as the project or global instruction file. Merge, don't overwrite; back up
   the existing file first.
+- Codex lead baseline: offer `templates/CODEX-LEAD.md` as `AGENTS.md` and merge
+  wanted keys from `templates/codex-config.toml`. Copy the Terra-pinned
+  `builder.toml` and `reviewer.toml` from the installed mega-orchestration
+  plugin's `assets/codex-agents/` into `~/.codex/agents/` or the project's
+  `.codex/agents/`. Native multi-agent support needs no feature flag; suggest
+  `max_threads = 4` and `max_depth = 1`. If this Codex lead has a
+  `[mcp_servers.codex]` self-registration, offer to remove it after showing the
+  exact config change.
+  The lead must create a dedicated linked worktree before invoking `builder`
+  and pass that path in the task brief; the profile refuses to edit the primary
+  checkout.
 - Remove superseded duplicates: if the user previously hand-installed copies
   of these hooks or skills (session-start, deny-destructive, auto-format, or
   standalone skill folders that the bundles now provide), list them and offer
-  to remove the old copies. Duplicates run twice.
+  to remove the old copies. For a v0.3.1 Codex pilot, remove only megapowers'
+  manual entries from the applicable hooks.json and preserve unrelated hooks.
+  Duplicates run twice.
 
 ## 5. Report
 
@@ -141,5 +164,6 @@ skipped and why:
 | Harness + channel used | e.g. Claude Code, native marketplace |
 | Plugins/skills installed | names + versions from the list command |
 | First-task probe (step 3) | quoted sentence matched: yes/no |
+| Codex runtime + hooks | CLI/app-server versions; trusted hooks; duplicate count |
 | Duplicates found/avoided | e.g. none; or "~/.agents/skills skipped, Claude plugins present" |
 | Optional steps applied | which of step 4, with user approval noted |

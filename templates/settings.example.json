@@ -7,17 +7,20 @@
     ],
     "deny": [
       "Read(./.env)",
-      "Read(./.env.*)",
-      "Read(./secrets/**)",
-      "Read(~/.ssh/**)",
-      "Read(~/.aws/**)",
-      "Read(~/.gnupg/**)"
+      "Read(./.env.local)",
+      "Read(./.env.production)",
+      "Read(./secrets)",
+      "Read(~/.ssh)",
+      "Read(~/.aws)",
+      "Read(~/.gnupg)",
+      "Read(~/.netrc)",
+      "Read(~/.pgpass)"
     ]
   },
   "sandbox": {
     "enabled": true,
     "credentials": {
-      "files": ["~/.ssh", "~/.aws", "~/.gnupg", "~/.netrc", "~/.pgpass", ".env"],
+      "files": ["~/.ssh", "~/.aws", "~/.gnupg", "~/.netrc", "~/.pgpass", ".env", ".env.local", ".env.production", "secrets"],
       "envVars": ["GITHUB_TOKEN", "NPM_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
     }
   },

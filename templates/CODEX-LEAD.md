@@ -26,19 +26,14 @@ Pin the matching model in `~/.codex/config.toml` (see
 
 ## Session catalog
 
-No megapowers hooks are wired into Codex by default, so render the catalog
-yourself when a session starts:
+The megapowers SessionStart hook injects the rendered model catalog: who leads,
+the tier and effort scales, delegate providers, and the ship floor from the
+layered models.toml. Review and trust the installed hook in `/hooks`. If the
+block is missing (untrusted hook or fail-open error), render it manually:
 
 ```bash
 <megapowers plugin dir>/hooks/render-model-catalog
 ```
-
-It prints who leads, the tier and effort scales, the delegate providers, and
-the ship floor from the layered models.toml. To automate it, wire the pilot
-SessionStart port instead: point a Codex `hooks.json` at the megapowers
-plugin's `hooks/codex-session-catalog.sh` and trust it via `/hooks` (see
-docs/setup.md, Codex hooks). A Stop-hook port of the delegate-review nudge
-wires the same way from the mega-orchestration plugin.
 
 ## Role: you are the lead
 
@@ -46,13 +41,17 @@ You hold the broad context: plan and decompose the work, do the bulk reads,
 own final integration. Delegate narrow, well-specified, testable, isolated
 work; keep planning, decomposition, and the final write with yourself.
 
-- Same-vendor fan-out (parallelism, not independence): native Codex subagents.
-  Role templates: `templates/codex-agents/builder.toml` and `reviewer.toml`.
-- Cross-vendor independence (verify, judge, council_member, plan_review,
-  code_review): resolve with the mega-orchestration plugin's
+- Same-vendor fan-out (parallelism, not independence): native Codex subagents,
+  pinned to `gpt-5.6-terra` by the `builder` and `reviewer` role templates.
+  Routine implementation and code review belong here. Create a dedicated
+  linked worktree before dispatching `builder` and include its path in the
+  brief; the profile refuses edits from the primary checkout.
+- Complex plan/spec review and cross-vendor independence (verify, judge,
+  council_member): resolve with the mega-orchestration plugin's
   `skills/multi-agent-delegation/scripts/delegate-resolve <role> --exclude-lead`;
   the fallback chains route away from your vendor, typically to `claude -p`
-  (channel mechanics: the skill's `references/providers/claude.md`).
+  with `plan_review` for the planning companion (channel mechanics: the
+  skill's `references/providers/claude.md`).
 - Visual verification: the browser provider, `playwright-cli` plus a
   vision-capable reader; screenshots land in `.megapowers/evidence/` and you
   re-read them rather than trusting a text summary.
@@ -66,16 +65,15 @@ There is exactly one writer to shared branches: you.
 - Re-run the tests yourself before believing a task is done. Never trust a
   self-reported pass.
 
-## Hook backstops are opt-in
+## Hook backstops
 
-No megapowers hooks are active under Codex by default: no delegation nudge,
-no destructive-command guard, no catalog injection (Codex may discover an
-installed plugin's Claude-facing hooks.json, but nothing runs untrusted, and
-those payloads are for Claude Code; leave them untrusted). Pilot ports of all
-three exist (docs/setup.md, Codex hooks) but each needs manual `hooks.json`
-wiring and a `/hooks` trust decision. Until you wire them there is no
-accident backstop; think before you run, especially deletes, resets, and
-force pushes.
+The installed megapowers, mega-orchestration, and mega-guardrails manifests
+dispatch to Codex-specific SessionStart, Stop, and PreToolUse behavior when
+`PLUGIN_ROOT` is present. Each runs only after a `/hooks` trust decision against
+its current hash; an update requires review again. The destructive guard maps
+only catastrophic `deny` decisions because Codex does not support the guard's
+reversible-risk `ask` tier. It is an accident backstop, not a sandbox; think
+before deletes, resets, and force pushes.
 
 ## Git and style
 

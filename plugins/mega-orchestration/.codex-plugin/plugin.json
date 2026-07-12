@@ -1,6 +1,6 @@
 {
   "name": "mega-orchestration",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Decide the structure (inline, fan-out, delegate, best-of-N, council, autonomous run), route each role to the best model, verify across vendors, and gate irreversible actions.",
   "author": {
     "name": "lawzava"
@@ -23,7 +23,8 @@
     "category": "Productivity",
     "capabilities": [
       "Skills",
-      "Multi-agent guidance"
+      "Multi-agent guidance",
+      "Codex agent role templates"
     ],
     "defaultPrompt": [
       "Use mega-orchestration to review this plan.",

@@ -21,6 +21,7 @@ docs/specs/
 .claude/
 .codex/
 .mcp.json
+.firecrawl/
 
 # Sandbox/agent workspace artifacts that materialize inside study dirs — never real content.
 evals/studies/**/.claude/

@@ -148,6 +148,11 @@ provider's file rather than assuming another vendor's behavior. A hand-rolled
 bridge is a fallback only when explicitly configured, so do not assume one
 exists.
 
+When Claude is the different-vendor plan reviewer, verifier, or judge, use its
+isolated one-shot channel (`--safe-mode --no-session-persistence`) and make the
+prompt self-contained. That keeps ambient Claude Code plugins and hooks from
+turning an independent review into a recursive or stateful session.
+
 For a delegate call that runs long, the sanctioned async channel is MCP Tasks,
 the durable call-now/fetch-later extension; it is still finalizing, so reach
 for it only where a harness actually exposes it. This repo stays CLI-first for

@@ -8,6 +8,42 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.2 - 2026-07-13
+
+### Added
+
+- Codex-native hook dispatch from the existing plugin manifests: megapowers
+  injects the model catalog at SessionStart, mega-orchestration runs the
+  independent-review nudge at Stop, and the newly published Codex
+  mega-guardrails bundle runs the destructive-command adapter at PreToolUse.
+  Claude-only run-loop and formatter payloads no-op under Codex.
+- Terra-pinned Codex `builder` and `reviewer` role profiles, packaged inside
+  mega-orchestration as installable assets as well as root templates. Builder
+  refuses edits unless the lead dispatched it into a dedicated linked worktree.
+
+### Changed
+
+- Claude Fable 5 delegation now defaults to isolated, stateless one-shots with
+  `--safe-mode --no-session-persistence`; read-only reviews add plan mode and
+  an explicit read-only tool set. The catalog names Claude as the planning,
+  verification, and judging companion at a deliberate `high` effort ceiling.
+- Codex lead guidance now distinguishes Sol lead work, Terra native fan-out,
+  and Fable plan/verification passes; documents an optional Sol `ultra`
+  profile, conservative native-agent limits, app-server refresh checks, hook
+  trust, duplicate cleanup, and v0.3.1 manual-hook migration.
+
+### Fixed
+
+- Claude permission-template secret denies use exact paths instead of wildcard
+  forms the harness does not interpret, and `.firecrawl/` local research state
+  is ignored.
+- Validation now locks the Codex marketplace count, role model pins and plugin
+  packaging, safe Claude channel flags, secret-deny syntax, and local research
+  hygiene.
+- The three legacy manual `codex-hooks.json` pilot manifests are removed now
+  that the normal plugin manifests dispatch by harness, preventing accidental
+  duplicate hook wiring after upgrade.
+
 ## 0.3.1 - 2026-07-12
 
 ### Changed

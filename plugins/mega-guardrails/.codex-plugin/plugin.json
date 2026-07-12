@@ -1,0 +1,30 @@
+{
+  "name": "mega-guardrails",
+  "version": "0.3.2",
+  "description": "Cross-harness accident backstops for destructive shell commands, plus Claude Code formatting and statusline tooling.",
+  "author": {
+    "name": "lawzava"
+  },
+  "repository": "https://github.com/lawzava/megapowers",
+  "license": "MIT",
+  "keywords": [
+    "hooks",
+    "safety",
+    "guardrails"
+  ],
+  "interface": {
+    "displayName": "mega-guardrails",
+    "shortDescription": "Accident backstops for destructive commands.",
+    "longDescription": "A cross-harness destructive-command hook for Codex and Claude Code. Claude Code also receives the optional formatter and Linux statusline tooling.",
+    "developerName": "lawzava",
+    "category": "Security",
+    "capabilities": [
+      "Hooks",
+      "Safety guardrails"
+    ],
+    "defaultPrompt": [
+      "Install the mega-guardrails destructive-command backstop."
+    ],
+    "brandColor": "#DC2626"
+  }
+}
