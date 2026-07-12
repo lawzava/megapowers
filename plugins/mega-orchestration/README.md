@@ -42,36 +42,35 @@ The skills and the delegate agents read `delegates.toml` (inside the
 
 | Role | Default delegate | Used for |
 | --- | --- | --- |
-| Plan / code review | Codex (`gpt-5.6-sol`) | Reviewing plans and diffs, adversarial "find the bug" passes |
-| Small implementation | Codex (`gpt-5.6-sol`) | Well-specified, testable, single-file or isolated changes |
-| Visual / browser | Codex (`gpt-5.6-sol`, native computer use) | UI work, browser-driven checks, end-to-end testing |
+| Plan / code review | codex (frontier tier) | Reviewing plans and diffs, adversarial "find the bug" passes |
+| Small implementation | codex (frontier tier) | Well-specified, testable, single-file or isolated changes |
+| Visual / browser | codex (frontier tier, native computer use) | UI work, browser-driven checks, end-to-end testing |
 | Visual verification | `playwright-cli` + a vision-capable model | Independent cross-vendor pass on rendered UI/UX work |
 | Visual / browser (alt) | Antigravity CLI | Disabled by default, see note below |
 
-Codex leads visual/browser work as a cost-adjusted call (dated in
-`delegates.toml`: Claude ahead on computer-use benchmarks by a modest margin,
-Codex several times cheaper in tokens). The verification route drives the UI
-with `playwright-cli` (a standalone CLI) and reasons over the screenshots with
-a vision-capable model: the lead itself when it is vision-capable (e.g.
-Claude), otherwise any vision-capable model from a different vendor than the
-author. It replaced the retired Gemini-CLI route (see
-[`docs/harness-support.md`](../../docs/harness-support.md)) and doubles as the
-fallback driver when the Codex route is unavailable or below the bar.
+Shipped defaults; current model ids live in `delegates.toml` tier maps, and a
+project `.megapowers/delegates.toml` or user `~/.config/megapowers/delegates.toml`
+layer overrides them per key.
+
+The visual/browser route is a cost-adjusted call, dated in the comment above
+`[roles]` in `delegates.toml`; re-bench before moving it.
 
 Antigravity is included as a documented alternative but is disabled until you
 verify a local `agy` automation path, approval behavior, and artifact
 workflow. Its current CLI exposes `/agents`, `/tasks`, and `/artifact`, but
 this repo does not ship an `agy` wrapper.
 
-To adjust the routing, edit `skills/multi-agent-delegation/delegates.toml`. It
-maps each role to a delegate (channel, model, and how to invoke it). Change a
-model, point a role at a different backend, or enable Antigravity there. No
-code changes needed.
+To adjust the routing, edit an override layer of `delegates.toml` (or the
+shipped file when changing project defaults). It declares the lead, the tier
+scale, each provider's tier map and capabilities, and maps each role to a
+provider. `scripts/delegate-resolve` resolves it executably; `--check`
+validates it and CI runs that.
 
 ## Prerequisites
 
-- Codex roles (plan/code review, small impl, visual/browser): Codex native
-  subagents when running in Codex, or the Codex CLI/SDK from another harness.
+- Roles route per `[roles]`: native subagents when the lead already is that
+  provider, otherwise the provider's CLI, SDK, or MCP channel (see its
+  `references/providers/` file).
 - Visual verification role: `playwright-cli` plus a vision-capable model to read
   the screenshots. Install: `npm i -g @playwright/cli`, then
   `playwright-cli install --skills` (Microsoft's own playwright-cli skill;
@@ -86,8 +85,8 @@ A delegate agent is a markdown agent definition the plugin registers with the
 harness; the lead invokes it like a subagent, and it routes the work out. Two
 ship here:
 
-- `agents/codex-delegate.md`: plan/code review, small testable
-  implementation, and visual/browser work, via Codex
+- `agents/model-delegate.md`: resolves a role via delegate-resolve, reads the
+  provider's reference file, dispatches, and returns summary plus diff
 - `agents/browser-delegate.md`: independent verification of rendered UI/UX
   work (and visual/browser fallback), driven by playwright-cli
 
@@ -141,13 +140,10 @@ Verify a finished run with scripts/run-verify-status."}
 ```
 
 `hooks/delegate-nudge.sh` asks for an independent review of risky diffs. When
-the session's git diff touches risky logic (auth, OAuth, JWT, billing,
-payments, Stripe, webhooks, concurrency) and the transcript shows no
-independent review by a delegate (neither a Codex pass via `codex exec`, the
-`mcp__codex__codex` channel, or a private bridge as defined in
-[`docs/harness-support.md`](../../docs/harness-support.md), nor an Antigravity
-pass), it blocks the stop and asks for an independent review before
-finishing.
+a Stop fires with auth, billing, or concurrency changes pending and the
+transcript shows no real delegate invocation (matched against the `detect`
+markers each provider declares in `delegates.toml`), it blocks once per diff
+state with a nudge to run an independent pass.
 
 ## Install
 

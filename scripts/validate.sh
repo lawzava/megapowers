@@ -375,6 +375,20 @@ else
   echo "  (no evals/ dir — skipped)"
 fi
 
+echo "== delegates.toml =="
+dr="plugins/mega-orchestration/skills/multi-agent-delegation/scripts/delegate-resolve"
+dt="plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml"
+if [[ -x $dr && -f $dt ]]; then
+  # Pin to the shipped file so local override layers cannot color CI results.
+  if DELEGATES_TOML="$dt" "$dr" --check >/dev/null 2>&1; then
+    ok "delegate-resolve --check (shipped delegates.toml)"
+  else
+    bad "delegate-resolve --check failed (run: DELEGATES_TOML=$dt $dr --check)"
+  fi
+else
+  bad "delegate-resolve or shipped delegates.toml missing"
+fi
+
 echo "== docs consistency =="
 # prose drifts twice went stale within a day of a manifest change; assert the
 # hand-written docs against the manifests they describe.
