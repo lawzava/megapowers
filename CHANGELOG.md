@@ -8,6 +8,8 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Changed
+
 - models.toml: the model catalog (lead, tiers with per-tier purposes, providers,
   floor) split out of delegates.toml, layered project > user > shipped, shipped
   as identical twins in both plugin roots (CI-asserted). delegates.toml keeps

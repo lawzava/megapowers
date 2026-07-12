@@ -48,8 +48,8 @@ The skills and the delegate agents read `delegates.toml` (inside the
 | Visual verification | `playwright-cli` + a vision-capable model | Independent cross-vendor pass on rendered UI/UX work |
 | Visual / browser (alt) | Antigravity CLI | Disabled by default, see note below |
 
-Shipped defaults; current model ids live in `delegates.toml` tier maps, and a
-project `.megapowers/delegates.toml` or user `~/.config/megapowers/delegates.toml`
+Shipped defaults; current model ids live in `models.toml` tier maps, and a
+project `.megapowers/models.toml` or user `~/.config/megapowers/models.toml`
 layer overrides them per key. The provider and tier data now lives in
 `models.toml` (plugin root, twin of the copy shipped with the megapowers core
 plugin); `delegates.toml` keeps roles, fallbacks, and presets.
@@ -62,11 +62,11 @@ verify a local `agy` automation path, approval behavior, and artifact
 workflow. Its current CLI exposes `/agents`, `/tasks`, and `/artifact`, but
 this repo does not ship an `agy` wrapper.
 
-To adjust the routing, edit an override layer of `delegates.toml` (or the
-shipped file when changing project defaults). It declares the lead, the tier
-scale, each provider's tier map and capabilities, and maps each role to a
-provider. `scripts/delegate-resolve` resolves it executably; `--check`
-validates it and CI runs that.
+To adjust the routing, edit an override layer: `models.toml` for the lead, the
+tier scale, and each provider's tier map and capabilities; `delegates.toml`
+for which provider handles which role. Edit the shipped copies only when
+changing project defaults. `scripts/delegate-resolve` resolves it executably;
+`--check` validates it and CI runs that.
 
 ## Prerequisites
 
