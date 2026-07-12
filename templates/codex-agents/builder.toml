@@ -14,7 +14,8 @@ description = "Implements one small, well-scoped task in an isolated worktree; r
 # the lead owns integration (single-writer).
 sandbox_mode = "workspace-write"
 
-# Matches the codex provider's dispatch effort in delegates.toml (minimal|low|medium|high|xhigh).
+# Deliberately below the codex provider's xhigh default in models.toml: small
+# scoped impl does not need lead effort (minimal|low|medium|high|xhigh; never max).
 model_reasoning_effort = "high"
 
 developer_instructions = """

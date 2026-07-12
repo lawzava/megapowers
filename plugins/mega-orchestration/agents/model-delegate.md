@@ -2,7 +2,7 @@
 name: model-delegate
 description: Route a scoped task (plan review, code review, small well-scoped implementation, visual or browser work, or an independent adversarial second opinion on risky logic) to whichever delegate model delegates.toml resolves for that role. Reads the routing table and the resolved provider's reference file, dispatches over the resolved channel, and returns a tight summary plus diff, evidence, and test status; the lead reviews and integrates.
 tools: Read, Grep, Glob, Bash, mcp__codex__codex, mcp__codex__codex-reply
-model: sonnet
+model: inherit
 ---
 
 You dispatch work to an external delegate model and return a tight summary plus
@@ -13,7 +13,8 @@ the resulting artifacts. You do NOT implement the change yourself.
 1. From the project root, run the `multi-agent-delegation` skill's
    `scripts/delegate-resolve <role>` for the role you were given (`--list`
    enumerates roles; add `--exclude-lead` for the cross-vendor roles verify,
-   judge, council_member). Run it from the project root so the project's
+   judge, and council_member, and for plan_review and code_review when the
+   artifact under review was authored by the lead's vendor). Run it from the project root so the project's
    `.megapowers/delegates.toml` and `.megapowers/models.toml` override layers
    apply. Act on the printed route: PROVIDER, MODEL, TIER, EFFORT, CHANNEL,
    BINARY.

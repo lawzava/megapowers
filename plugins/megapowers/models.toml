@@ -16,7 +16,7 @@
 # delegate-resolve --lead prints it; --exclude-lead resolves a role away from the
 # lead's vendor. Swap the lead in an override layer; prose never hardcodes it.
 [lead]
-provider = "claude"
+provider = "codex"
 tier     = "frontier"
 
 # --- Tiers: the vendor-neutral capability scale, weakest first ---
@@ -39,9 +39,9 @@ scale = ["low", "medium", "high", "xhigh", "max"]
 [efforts.use]
 low    = "mechanical steps, relays, latency-sensitive work"
 medium = "routine implementation, cost-sensitive runs"
-high   = "the default: reviews, verification, primary work"
-xhigh  = "hardest agentic and judge work"
-max    = "correctness over cost; rare"
+high   = "delegate default: reviews, verification, primary work"
+xhigh  = "lead default; hardest agentic and judge work"
+max    = "correctness over cost; no shipped provider allows it"
 
 # --- Providers: how to reach each backend ---
 # `binary` is the CLI delegate-resolve probes with `command -v`. `reference` names
@@ -53,8 +53,8 @@ max    = "correctness over cost; rare"
 # it is a fail-open heuristic, not a grant. `use` is the one-line purpose shown in
 # the always-loaded session block.
 [providers.codex]
-effort  = "high"   # default model_reasoning_effort on dispatch; verify/judge roles may spend higher (see templates/codex-agents/)
-efforts = ["low", "medium", "high", "xhigh"]
+effort  = "xhigh"  # lead default model_reasoning_effort; small scoped impl may run lower (see templates/codex-agents/)
+efforts = ["low", "medium", "high", "xhigh"]   # never max
 vendor  = "openai"
 binary  = "codex"
 channel = "native-or-mcp-or-cli"
@@ -62,7 +62,7 @@ default_tier = "frontier"
 capabilities = ["code", "vision", "computer_use"]
 detect  = ["mcp__codex__codex", "codex exec"]
 reference = "references/providers/codex.md"
-use     = "plan/code review, small impl, computer use (~2x cheaper frontier)"
+use     = "lead: orchestration, code review, small impl, computer use"
 notes   = "Native Codex subagents inside Codex; codex exec / SDK / codex mcp-server from elsewhere. Channel mechanics and sandbox-auth caveats: see the reference file."
 
 [providers.codex.tiers]
@@ -74,20 +74,21 @@ fast     = "gpt-5.6-luna"
 # when the lead (or an --exclude) rules out the primary.
 [providers.claude]
 vendor  = "anthropic"
-efforts = ["low", "medium", "high", "xhigh", "max"]
+effort  = "high"   # ceiling by policy: xhigh/max are never dispatched to claude
+efforts = ["low", "medium", "high"]
 binary  = "claude"
 channel = "claude-cli"
 default_tier = "frontier"
 capabilities = ["code", "vision", "computer_use"]
 detect  = ["claude -p"]
 reference = "references/providers/claude.md"
-use     = "native subagents when Claude leads; cross-vendor pass otherwise"
+use     = "planning buddy: plan review, decision double-checks on demand"
 notes   = "Headless `claude -p <prompt>`; the different-vendor route when a non-Anthropic model leads (resolve with --exclude-lead)."
 
+# Frontier only by policy: sonnet and haiku are never routed; anything claude
+# does runs fable.
 [providers.claude.tiers]
 frontier = "claude-fable-5"
-strong   = "claude-sonnet-5"
-fast     = "claude-haiku-4-5"
 
 # Browser / visual verification and fallback: drive the UI with playwright-cli and
 # reason over the screenshots with a vision-capable model. Depends only on a
@@ -101,22 +102,10 @@ reference = "references/providers/browser.md"
 use     = "visual verify: playwright-cli plus a vision-capable reader"
 notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .megapowers/evidence/. See agents/browser-delegate.md."
 
-# Alternative browser/visual backend, disabled by default. Verify your local `agy`
-# automation path and approval behavior before enabling. Bench check 2026-07-04:
-# Gemini 3.1 Pro trails on computer-use benchmarks, so there is no performance case
-# for enabling it either; re-check before flipping.
-[providers.antigravity]
-model   = "configured-in-agy"
-vendor  = "google"
-binary  = "agy"
-channel = "agy-cli"
-detect  = ["agy exec", "agy run"]
-enabled = false
-
 # --- Defaults: cross-cutting rules ---
 [defaults]
 # Minimum tier:effort for anything that ships, on the [tiers] scale. A provider
 # whose default_tier sits below the floor tier is skipped at resolution.
-# Exception: wrapper agents relaying to an external CLI run strong:medium, a
-# faithful self-contained prompt is worth the extra effort.
+# Wrapper agents relaying to an external CLI inherit the session model
+# (`model: inherit`); relay fidelity is worth the spend.
 floor = "strong:low"

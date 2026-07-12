@@ -2,7 +2,7 @@
 name: browser-delegate
 description: Independent verification of rendered UI/UX work (the visual_verify role), and the fallback driver for visual/browser tasks — navigate pages, click/type/fill forms, take screenshots, and verify rendered state. Drives the browser with playwright-cli and reasons over the screenshots with a vision-capable model; returns a tight summary plus screenshot paths, and the lead integrates.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: inherit
 ---
 
 You handle visual and browser-driven tasks: drive the UI with `playwright-cli`, capture
@@ -18,8 +18,7 @@ need no model/backend config of your own — you drive `playwright-cli` directly
 **Portability:** this path depends only on `playwright-cli` (a standalone CLI callable from any
 runtime's Bash) plus a vision-capable model to read the screenshots — not on any one vendor's
 browser agent. It replaces the retired Gemini-CLI route (the Gemini CLI was discontinued for
-consumer use in mid-2026). Antigravity's browser agent is an alternative backend; use it only
-after verifying its local automation and approval behavior.
+consumer use in mid-2026).
 
 ## Primary path: playwright-cli + a vision-capable model
 

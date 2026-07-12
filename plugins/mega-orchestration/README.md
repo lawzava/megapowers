@@ -43,11 +43,11 @@ directory) for backend and model choices.
 
 | Role | Default delegate | Used for |
 | --- | --- | --- |
-| Plan / code review | codex (frontier tier) | Reviewing plans and diffs, adversarial "find the bug" passes |
+| Plan review | claude (frontier tier) | The planning buddy: reviewing plans and double-checking decisions |
+| Code review | codex (frontier tier) | Reviewing diffs, adversarial "find the bug" passes |
 | Small implementation | codex (frontier tier) | Well-specified, testable, single-file or isolated changes |
 | Visual / browser | codex (frontier tier, native computer use) | UI work, browser-driven checks, end-to-end testing |
 | Visual verification | `playwright-cli` + a vision-capable model | Independent cross-vendor pass on rendered UI/UX work |
-| Visual / browser (alt) | Antigravity CLI | Disabled by default, see note below |
 
 Shipped defaults; current model ids live in `models.toml` tier maps, and a
 project `.megapowers/models.toml` or user `~/.config/megapowers/models.toml`
@@ -57,11 +57,6 @@ plugin); `delegates.toml` keeps roles, fallbacks, and presets.
 
 The visual/browser route is a cost-adjusted call, dated in the comment above
 `[roles]` in `delegates.toml`; re-bench before moving it.
-
-Antigravity is included as a documented alternative but is disabled until you
-verify a local `agy` automation path, approval behavior, and artifact
-workflow. Its current CLI exposes `/agents`, `/tasks`, and `/artifact`, but
-this repo does not ship an `agy` wrapper.
 
 To adjust the routing, edit an override layer: `models.toml` for the lead, the
 tier scale, and each provider's tier map and capabilities; `delegates.toml`

@@ -37,7 +37,6 @@ skills you need if your local `agy` build does not import that nested layout.
 
 ## Safety
 
-Do not enable the Antigravity delegate route in the `multi-agent-delegation`
-skill's `delegates.toml` until
-you have verified local `agy` command behavior, approvals, artifact review, and
-where file edits are written.
+This repo ships no Antigravity delegate route. If you add one in a
+`multi-agent-delegation` override layer, first verify local `agy` command
+behavior, approvals, artifact review, and where file edits are written.

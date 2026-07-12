@@ -18,7 +18,7 @@
   "interface": {
     "displayName": "mega-orchestration",
     "shortDescription": "Route scoped work to the right agent runtime.",
-    "longDescription": "A provider-agnostic delegation skill and config for deciding when to use Codex, a vendor-neutral browser/visual delegate (playwright-cli plus a vision-capable model), Antigravity, or same-model subagents for review, implementation, visual, and browser work.",
+    "longDescription": "A provider-agnostic delegation skill and config for deciding when to use Codex, Claude, a vendor-neutral browser/visual delegate (playwright-cli plus a vision-capable model), or same-model subagents for review, implementation, visual, and browser work.",
     "developerName": "lawzava",
     "category": "Productivity",
     "capabilities": [

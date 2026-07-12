@@ -22,24 +22,28 @@ visual_verify = ["computer_use", "vision"]
 # (visual_verify) and serves as the redo path when the primary's output misses
 # the bar (escalation rule in mega-orchestration:orchestrating).
 [roles]
-plan_review    = "codex"     # review a plan before implementing
+plan_review    = "claude"    # review a plan before implementing (the planning buddy)
 code_review    = "codex"     # review a diff
 small_impl     = "codex"     # well-scoped, small-sized implementation
 visual         = "codex"     # UI / visual work (native computer use)
 browser_test   = "codex"     # browser / end-to-end testing
 visual_verify  = "browser"   # independent cross-vendor pass on rendered UI/UX work
-verify         = "codex"     # cross-model-verification: adversarial refute pass (must differ from the author's vendor)
-judge          = "codex"     # best-of-n: blind judge when no oracle decides (prefer a vendor none of the authors used)
-council_member = "codex"     # council-adjudication: independent answer + blind ranking member
+verify         = "claude"    # cross-model-verification: adversarial refute pass (must differ from the author's vendor)
+judge          = "claude"    # best-of-n: blind judge when no oracle decides (prefer a vendor none of the authors used)
+council_member = "claude"    # council-adjudication: independent answer + blind ranking member
 
 # --- Fallbacks: ordered cross-vendor chains for the different-vendor roles ---
 # delegate-resolve walks this chain and skips any provider that is --excluded (use
 # --exclude-lead so the lead's vendor drops out automatically), disabled, or whose
-# binary is not installed.
+# binary is not installed. The review roles carry chains too, so a lead swap keeps
+# reviews resolvable away from the lead's own vendor; small_impl stays single-route
+# (it is not an independence role).
 [fallbacks]
-verify         = ["codex", "claude"]
-judge          = ["codex", "claude"]
-council_member = ["codex", "claude"]
+plan_review    = ["claude", "codex"]
+code_review    = ["codex", "claude"]
+verify         = ["claude", "codex"]
+judge          = ["claude", "codex"]
+council_member = ["claude", "codex"]
 
 # --- Presets: how a delegate runs (resolve with `delegate-resolve --preset <name>`) ---
 [presets.read_only]
