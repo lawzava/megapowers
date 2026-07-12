@@ -180,6 +180,28 @@ check_exit "--check broken config exits 1" 1 "$rc"
 check "--check names the missing role provider" "missing" "$out"
 check "--check names the missing lead provider" "ghost" "$out"
 
+cat > "$TMP/badleadtier.toml" <<'EOF'
+[lead]
+provider = "alpha"
+tier     = "frontier"
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[providers.alpha]
+vendor = "acme"
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.alpha.tiers]
+strong = "alpha-strong-1"
+[roles]
+code_review = "alpha"
+EOF
+out="$("$DR" --lead --config "$TMP/badleadtier.toml" 2>&1)"; rc=$?
+check_exit "--lead with unmapped lead tier exits 2" 2 "$rc"
+check "--lead unmapped-tier error names the tier" "frontier" "$out"
+out="$("$DR" --check --config "$TMP/badleadtier.toml" 2>&1)"; rc=$?
+check_exit "--check flags unmapped lead tier" 1 "$rc"
+
 SHIPPED="$HERE/../../delegates.toml"
 out="$(DELEGATES_TOML="$SHIPPED" "$DR" --check 2>&1)"; rc=$?
 check_exit "--check shipped delegates.toml exits 0" 0 "$rc"
