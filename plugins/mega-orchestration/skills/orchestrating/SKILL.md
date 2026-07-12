@@ -92,7 +92,7 @@ call to a primitive the runtime does not have.
 ## Guardrails
 
 - Decide the structure once, out loud, before dispatching anything. One
-  journal or chat line ("structure: SDD, 6 tasks, Codex review per task")
+  journal or chat line ("structure: SDD, 6 tasks, delegate review per task")
   makes the choice reviewable.
 - Single-writer always: whatever the structure, one integrator owns the tree
   and the commits (see mega-orchestration:multi-agent-delegation). On Claude

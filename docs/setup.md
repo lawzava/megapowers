@@ -302,7 +302,7 @@ fleet forward.
   while the harness spawns the MCP server outside that sandbox. Register the
   server as `codex`
   so its tools resolve as `mcp__codex__codex` / `mcp__codex__codex-reply`, the
-  names the codex-delegate agent lists.
+  names the model-delegate agent lists.
 - `templates/settings.example.json` holds conservative, generic Claude Code
   defaults (no attribution trailers, secret-path denies, sandbox credential
   blocks). It does not set a `defaultMode`, so it never loosens your permission
