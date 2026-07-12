@@ -57,7 +57,7 @@ to validate the table, `--list` and `--list-presets` to enumerate). It walks
 the role's fallback chain, skipping any provider that is excluded, disabled,
 missing a required capability, below the floor tier, or whose CLI is not
 installed, so a route never resolves to a runtime you do not have, and prints
-ROLE/PROVIDER/MODEL/TIER/CHANNEL/VENDOR/BINARY/ENABLED/FLOOR/NOTES.
+ROLE/PROVIDER/MODEL/TIER/EFFORT/CHANNEL/ENABLED/VENDOR/BINARY/FLOOR/NOTES.
 
 Exit codes are a stable contract a harness can branch on: 0 resolved, act on
 the printed route; 2 usage or config error, including a malformed config, with

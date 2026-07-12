@@ -30,9 +30,11 @@
 #   delegate-resolve --preset <name> [--config <file>]
 #   delegate-resolve --list-presets [--config <file>]
 #   delegate-resolve --where [--config <file>]
+#   delegate-resolve --lead | --exclude-lead | --check [--config <file>]
 # Exit:  0 resolved · 2 usage/config/parse error · 3 unknown role OR no available
 #        route (every candidate excluded/disabled/absent) · 4 provider disabled (a
 #        single-route role whose only provider is switched off in config)
+#        --check: 0 clean, 1 schema findings.
 set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

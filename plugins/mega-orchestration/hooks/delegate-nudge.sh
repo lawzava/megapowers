@@ -30,6 +30,7 @@ delegate_regex() {
     files+=("$HOOK_DIR/../skills/multi-agent-delegation/delegates.toml")
   fi
   pats="$(awk '
+    FNR==1 { inp=0 }
     { h=$0; gsub(/[[:space:]]/,"",h) }
     h ~ /^\[providers\.[A-Za-z0-9_-]+\]$/ { inp=1; next }
     h ~ /^\[/ { inp=0 }
@@ -37,10 +38,11 @@ delegate_regex() {
       rest=$0; sub(/^[^=]*=/,"",rest)
       while (match(rest, /"[^"]*"/)) { print substr(rest, RSTART+1, RLENGTH-2); rest=substr(rest, RSTART+RLENGTH) }
     }
-  ' "${files[@]}" 2>/dev/null | awk '!seen[$0]++')"
+  ' "${files[@]}" 2>/dev/null)" || return 1
+  pats="$(printf '%s' "$pats" | awk '!seen[$0]++')"
   [ -n "$pats" ] || return 1
   while IFS= read -r p; do
-    [ -n "$p" ] || continue
+    [ -n "${p//[[:space:]]/}" ] || continue
     esc="$(printf '%s' "$p" | sed 's/[][\\.*^$()+?{}|]/\\&/g')"
     esc="${esc// / +}"
     case "$p" in
@@ -74,7 +76,9 @@ if [ -n "$transcript" ] && [ -f "$transcript" ]; then
   # The subagent_type value must START with "codex" or END in "-delegate" (so
   # "notdelegate" does NOT count); the command must run a review-capable
   # delegate CLI ("codex apply" is excluded — applying a patch is not an
-  # independent review). It fails open on any doubt.
+  # independent review). It fails open on any doubt. A partial parse (awk
+  # failure mid-list) also falls back: a half-built pattern set is neither
+  # open nor honest.
   re="$(delegate_regex)" || re='"name"[[:space:]]*:[[:space:]]*"mcp__codex__codex|"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)|"command"[[:space:]]*:[[:space:]]*"[^"]*(codex +exec|agy +(exec|run))'
   grep -qE "$re" "$transcript" 2>/dev/null && exit 0
 fi
