@@ -8,6 +8,18 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+- delegates.toml is now the model-agnostic source of truth: `[lead]` declares the
+  orchestrator, `[tiers]` defines a vendor-neutral scale (fast/strong/frontier),
+  providers carry tier maps, capabilities, detect markers, and reference files.
+- delegate-resolve: layered config (project and user overrides win per key over the
+  shipped file), `--lead`, `--exclude-lead`, `--where`, `--check`, TIER output,
+  capability and floor filtering; tested by scripts/tests/delegate-resolve.test.sh.
+- Skills and agents de-branded: prose speaks roles and config keys;
+  `model-delegate` replaces `codex-delegate`; per-provider channel and prompting
+  guidance moved to `references/providers/`.
+- delegate-nudge.sh derives its delegate-detection patterns from delegates.toml
+  `detect` keys, with the old static regex as fail-open fallback.
+
 ## 0.1.10 - 2026-07-11
 
 ### Changed

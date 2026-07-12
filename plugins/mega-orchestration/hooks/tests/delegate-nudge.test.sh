@@ -52,13 +52,13 @@ reset_sentinel
 check ALLOW "$(j false "$TR")" "real codex exec Bash command suppresses nudge"
 
 # A real delegate subagent dispatch suppresses.
-printf '{"type":"tool_use","name":"Task","input":{"subagent_type":"codex-delegate"}}\n' > "$TR"
+printf '{"type":"tool_use","name":"Task","input":{"subagent_type":"model-delegate"}}\n' > "$TR"
 reset_sentinel
-check ALLOW "$(j false "$TR")" "codex-delegate subagent dispatch suppresses nudge"
+check ALLOW "$(j false "$TR")" "model-delegate subagent dispatch suppresses nudge"
 
 # REGRESSION (C8/C25): merely MENTIONING delegate names/CLIs in prose or a read
 # doc must NOT suppress — this is the whole point of the fix.
-printf 'assistant discussed mcp__codex__codex, codex exec, and codex-delegate from the docs\n' > "$TR"
+printf 'assistant discussed mcp__codex__codex, codex exec, and model-delegate from the docs\n' > "$TR"
 reset_sentinel
 check BLOCK "$(j false "$TR")" "prose mention of delegate names/CLIs does NOT suppress"
 
