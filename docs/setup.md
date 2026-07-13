@@ -200,8 +200,8 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.3.5`, or, for Claude Code,
-  add `"ref": "v0.3.5"` to the `extraKnownMarketplaces` source (see
+  `codex plugin marketplace add lawzava/megapowers@v0.3.6`, or, for Claude Code,
+  add `"ref": "v0.3.6"` to the `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
 pin, remove the marketplace and re-add it at the new tag.
@@ -213,7 +213,7 @@ pin, remove the marketplace and re-add it at the new tag.
 Neither is an integrity pin (no sha in the ref), so a pin controls when you
 move, not cryptographic provenance. Release tags from `v0.1.3` on are
 GPG-signed and can be verified out of band (see SECURITY.md, Release
-integrity). Tags `v0.1.1` through `v0.3.5` are the release pin range once this
+integrity). Tags `v0.1.1` through `v0.3.6` are the release pin range once this
 version is published.
 
 ## Every other harness: the skills CLI

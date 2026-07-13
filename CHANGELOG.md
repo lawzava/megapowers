@@ -8,11 +8,23 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.6 - 2026-07-14
+
 ### Added
 
 - The core `upgrading-megapowers` skill inspects existing install channels,
   preserves pins and scopes, upgrades the installed set after one summarized
   approval, and offers relevant uninstalled plugin bundles separately.
+
+### Changed
+
+- Skill descriptions are shorter and retain the trigger cues and boundaries
+  that distinguish neighboring workflows.
+- The writing-skills reference now summarizes current OpenAI and Anthropic
+  guidance instead of carrying a large vendor documentation snapshot.
+- Validation measures complete Codex skill metadata, including a conservative
+  reserve for the skill-root alias table, and fails before the 8,000-character
+  fallback budget is exceeded.
 
 ## 0.3.5 - 2026-07-13
 
