@@ -21,6 +21,9 @@
 # run is no longer certified). Portable: bash + coreutils + awk.
 set -uo pipefail
 base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+scriptdir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=run-lib.sh
+. "$scriptdir/run-lib.sh"
 
 # plan_digest <plan.md> — "<tag> <sha256>" per milestone (heading + acceptance
 # line(s), whitespace-normalized). Identical to run-init/run-verify-status so the
@@ -41,7 +44,9 @@ plan_digest() {
 }
 
 [ $# -ge 1 ] || { echo "usage: run-derive-status <run-id>" >&2; exit 2; }
-dir="$base/$1"
+id="$1"
+validate_run_id "$id" run-derive-status || exit 2
+dir="$base/$id"
 [ -f "$dir/journal.md" ] || { echo "run-derive-status: no journal at $dir (run run-init first)" >&2; exit 2; }
 [ -f "$dir/status" ]     || { echo "run-derive-status: no status at $dir (run run-init first)" >&2; exit 2; }
 

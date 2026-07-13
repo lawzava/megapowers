@@ -4,6 +4,13 @@ export MEGAPOWERS_RUN_DIR="$PWD/.megapowers/run"
 {
   echo "=== init ==="; "$S/run-init" r1 --level autonomous --model file-fallback; echo "rc=$?"
   ls "$MEGAPOWERS_RUN_DIR/r1" | sort | tr '\n' ' '; echo
+  echo "=== invalid-run-ids ==="
+  "$S/run-init" ../escaped --model test-model 2>&1; echo "rc_bad_init=$?"
+  "$S/run-journal" ../escaped action 0.5 "must not escape" 2>&1; echo "rc_bad_journal=$?"
+  "$S/run-report" ../escaped 2>&1; echo "rc_bad_report=$?"
+  "$S/run-derive-status" ../escaped 2>&1; echo "rc_bad_derive=$?"
+  "$S/run-verify-status" ../escaped 2>&1; echo "rc_bad_verify=$?"
+  rm -rf "$PWD/.megapowers/escaped"
   echo "=== freeze ==="; "$S/run-init" r1 2>&1; echo "rc=$?"
   echo "=== conf-validation ==="; "$S/run-journal" r1 decision 2 "too sure" 2>&1; echo "rc_conf2=$?"
   before=$(wc -l < "$MEGAPOWERS_RUN_DIR/r1/journal.md")

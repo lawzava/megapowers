@@ -4,8 +4,13 @@
 # where a human should look). Makes supervision cost a glance. Portable: bash + awk.
 set -uo pipefail
 base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+scriptdir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=run-lib.sh
+. "$scriptdir/run-lib.sh"
 [ $# -ge 1 ] || { echo "usage: run-report <run-id>" >&2; exit 2; }
-id="$1"; dir="$base/$id"
+id="$1"
+validate_run_id "$id" run-report || exit 2
+dir="$base/$id"
 [ -d "$dir" ] || { echo "run-report: no run at $dir" >&2; exit 2; }
 jr="$dir/journal.md"
 

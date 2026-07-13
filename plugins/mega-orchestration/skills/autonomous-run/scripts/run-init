@@ -8,6 +8,8 @@ set -uo pipefail
 id=""; base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"; level="on-the-loop"; model="${MEGAPOWERS_MODEL:-}"; replan=0
 usage() { echo "usage: run-init <run-id> [--base DIR] [--level autonomous|on-the-loop|in-the-loop] [--model MODEL-ID] [--replan]" >&2; }
 scriptdir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=run-lib.sh
+. "$scriptdir/run-lib.sh"
 
 # plan_digest <plan.md> — emit "<tag> <sha256>" per milestone: the hash covers the
 # milestone heading plus its acceptance line(s), whitespace-normalized. This is the
@@ -40,6 +42,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$id" ] || { usage; exit 2; }
+validate_run_id "$id" run-init || exit 2
 case "$level" in autonomous|on-the-loop|in-the-loop) ;; *) echo "run-init: unknown level '$level'" >&2; exit 2 ;; esac
 
 dir="$base/$id"

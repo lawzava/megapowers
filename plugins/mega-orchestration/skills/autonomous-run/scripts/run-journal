@@ -6,8 +6,12 @@
 # STATE=paused from a trailing paused entry, and any later entry resumes.
 set -uo pipefail
 base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+scriptdir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=run-lib.sh
+. "$scriptdir/run-lib.sh"
 [ $# -ge 4 ] || { echo "usage: run-journal <run-id> <action|decision|result|blocked|paused> <confidence 0-1> <message...>" >&2; exit 2; }
 id="$1"; kind="$2"; conf="$3"; shift 3; msg="$*"
+validate_run_id "$id" run-journal || exit 2
 dir="$base/$id"
 [ -f "$dir/journal.md" ] || { echo "run-journal: no journal at $dir (run run-init first)" >&2; exit 2; }
 case "$kind" in action|decision|result|blocked|paused) ;; *) echo "run-journal: kind must be action|decision|result|blocked|paused" >&2; exit 2 ;; esac

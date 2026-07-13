@@ -56,6 +56,17 @@ printf '%s' "$out" | grep -q "delegate-resolve <role>" && ok || no "route pointe
 out="$(MODELS_TOML="$TMP/does-not-exist.toml" "$R")"; rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok; else no "missing catalog is silent exit 0"; fi
 
+# A defined empty array in a higher-priority layer replaces the shipped array.
+# An empty tier scale therefore suppresses the catalog block instead of falling
+# through to the shipped scale.
+mkdir -p "$TMP/project/.megapowers" "$TMP/home" "$TMP/xdg"
+cat > "$TMP/project/.megapowers/models.toml" <<'EOF'
+[tiers]
+scale = []
+EOF
+out="$(cd "$TMP/project" && HOME="$TMP/home" XDG_CONFIG_HOME="$TMP/xdg" "$R")"; rc=$?
+if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok; else no "empty project array replaces shipped catalog array"; fi
+
 printf 'not toml at all\n' > "$TMP/bad.toml"
 out="$(MODELS_TOML="$TMP/bad.toml" "$R")"; rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok; else no "malformed catalog is silent exit 0"; fi
