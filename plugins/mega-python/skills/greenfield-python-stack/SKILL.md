@@ -1,11 +1,9 @@
 ---
 name: greenfield-python-stack
 description: >-
-  Use when starting a new Python project or service and choosing its stack and
-  layout — dependency manager, linter/formatter, type checker, test runner, web
-  framework, and the async/DB/middleware baseline. Triggers on "new Python
-  project", "scaffold a Python service", "set up a FastAPI app", "which Python
-  stack". For idioms within existing code, use mega-python:python-patterns.
+  Use to start or scaffold a Python project or service, or choose its package
+  manager, tooling, web framework, validation, async, database, middleware, and
+  layout.
 license: MIT
 ---
 

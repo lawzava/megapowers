@@ -1,6 +1,6 @@
 ---
 name: test-driven-development
-description: Use when implementing a feature or bugfix, before writing implementation code — write the failing test first. This includes ANY task that asks for new code plus its tests, in any order ("add a function with unit tests", "implement X and test it", "make sure the tests pass"). For diagnosing an existing failure, use systematic-debugging first, then return here to write the fix. Triggers on "TDD", "test-first", "write the test first", "red-green-refactor".
+description: Use for any feature or bug fix. Triggers on "TDD", "test-first", "write the test first", "red-green-refactor", "implement and test", or requests to add code with tests. Diagnose unknown failures first.
 license: MIT
 ---
 

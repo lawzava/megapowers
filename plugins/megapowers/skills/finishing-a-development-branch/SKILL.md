@@ -1,6 +1,6 @@
 ---
 name: finishing-a-development-branch
-description: Use when implementation is complete and tests pass, and you need to decide how to integrate the work — merge, open a PR, keep, or discard. Triggers on "how do I ship this", "merge or PR?", "wrap up the branch", "the work is done". Code review (requesting-code-review) typically comes first.
+description: Use when verified work needs branch integration or cleanup. Triggers on "work is done", "ship this", "merge or PR", or "wrap up the branch". Code review usually comes first.
 license: MIT
 ---
 

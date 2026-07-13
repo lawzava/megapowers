@@ -1,12 +1,9 @@
 ---
 name: project-memory
 description: >-
-  Use to remember durable, project-specific knowledge across sessions — a
-  non-obvious decision and why, a constraint not visible in the code, a hard-won
-  gotcha, a pointer to an external resource — in a repo-local markdown store any
-  runtime can read. Triggers on "remember this for the project", "note this
-  decision", "recall what we decided about ...", "why did we ...". Distinct from a
-  single run's resumability (that's mega-orchestration:autonomous-run's journal).
+  Use to save or recall durable project knowledge across sessions: decisions,
+  hidden constraints, gotchas, or references. Triggers: "remember
+  this", "note this decision", or "what did we decide". Not for run progress.
 license: MIT
 ---
 

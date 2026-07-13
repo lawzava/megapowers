@@ -1,6 +1,6 @@
 ---
 name: upgrading-megapowers
-description: Use when a user asks to update, upgrade, refresh, or migrate an existing Megapowers installation, check for a newer release, or discover newly available Megapowers plugins
+description: Use when asked to update, upgrade, refresh, or migrate Megapowers, check for a newer release, or discover new Megapowers plugins.
 license: MIT
 ---
 

@@ -1,12 +1,9 @@
 ---
 name: best-of-n
 description: >-
-  Use for hard or high-stakes work where the solution space is wide and one
-  attempt (even iterated) is risky — generate N independent candidate solutions,
-  then SELECT the best by an executable oracle first and a blind judge second.
-  Triggers on "try a few approaches and pick the best", "best-of-n", "generate
-  several solutions and choose", high-uncertainty implementation or design.
-  Distinct from consensus/averaging: you pick ONE winner, you do not blend views.
+  Use when a hard implementation or design task needs independent candidates
+  and one winner chosen by tests or blind comparison. Unlike a council, it
+  selects a work product.
 license: MIT
 ---
 

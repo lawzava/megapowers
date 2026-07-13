@@ -1,12 +1,9 @@
 ---
 name: council-adjudication
 description: >-
-  Use for a hard DECISION with a wide solution space and no executable oracle — an
-  architecture or design choice, a tradeoff, a strategy call — where you want
-  several models' judgment adjudicated well. Collect independent answers, rank them
-  ANONYMIZED, and synthesize from the best. Triggers on "get a panel", "have the
-  models debate this", "council", "which approach should we take". NOT opinion-
-  averaging: you synthesize from the strongest answer, you don't blend all views.
+  Use when a hard architecture, design, strategy, or tradeoff decision lacks an
+  executable oracle and needs independent model judgments. Unlike best-of-n, it
+  selects a recommendation.
 license: MIT
 ---
 

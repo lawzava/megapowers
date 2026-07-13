@@ -1,6 +1,6 @@
 ---
 name: systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes — including when asked to fix something ("the test suite is failing", "find the cause", "fix this bug", "why is this failing"), and for flaky or intermittent tests. After finding the root cause, hand off to test-driven-development to write the fix.
+description: Use to diagnose or fix bugs, failing or flaky tests, or unexpected behavior. Triggers on "why is this failing", "find the cause", "test suite is failing", or intermittent failures. Use TDD after finding the cause.
 license: MIT
 ---
 

@@ -1,13 +1,9 @@
 ---
 name: orchestrating
 description: >-
-  Use at task arrival, before non-trivial work, to decide how to structure it:
-  inline, fan out subagents, delegate to another model, generate competing
-  candidates, convene a council, or start an autonomous run, and how much
-  compute it deserves. Triggers on "how should we approach this", "split this
-  up", "what's the best way to tackle this", a multi-part or high-stakes task,
-  or uncertainty about which orchestration skill applies. This is the decision
-  root; the skills it routes to do the work.
+  Use before a non-trivial, multi-part, or high-stakes task to decide how to
+  approach, split, delegate, compare candidates, or run autonomously. This is
+  the routing skill.
 license: MIT
 ---
 

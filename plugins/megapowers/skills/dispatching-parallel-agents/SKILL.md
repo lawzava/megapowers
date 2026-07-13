@@ -1,6 +1,6 @@
 ---
 name: dispatching-parallel-agents
-description: Use when you have 2+ independent tasks with no shared state or ordering and want them done in parallel by separate agents — "do these at the same time", "parallelize", "fan out", "spin up an agent for each", bulk independent edits across files or modules. Not for sequential or dependent steps.
+description: Use for two or more independent tasks that can run concurrently in separate agents. Triggers on "parallelize", "fan out", or "agent for each". Not for dependent steps or shared state.
 license: MIT
 ---
 

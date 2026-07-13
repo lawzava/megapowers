@@ -1,6 +1,6 @@
 ---
 name: executing-plans
-description: Use when executing a written implementation plan yourself, inline, in a dedicated execution session — running tasks top to bottom and stopping only on blockers (distinct from subagent-driven-development, which dispatches each task to a fresh subagent with per-task review).
+description: Use to execute a written implementation plan inline with one writer, especially coupled tasks. Use subagent-driven-development for independent tasks with per-task review.
 license: MIT
 ---
 

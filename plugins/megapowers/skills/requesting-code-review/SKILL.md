@@ -1,6 +1,6 @@
 ---
 name: requesting-code-review
-description: Use when you have finished a task or feature and want the changes reviewed before merging. Triggers on "review this", "is this ready to merge", "check my work". Distinct from verification-before-completion (which runs the code to prove it works) and finishing-a-development-branch (which chooses how to integrate).
+description: Use when finished work needs review before merge. Triggers on "review this", "ready to merge", or "check my work". Verify behavior first.
 license: MIT
 ---
 

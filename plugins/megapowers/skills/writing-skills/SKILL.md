@@ -12,7 +12,7 @@ Writing skills is Test-Driven Development applied to process documentation. You 
 
 **Core principle:** if you didn't watch an agent fail without the skill, you don't know whether the skill teaches the right thing.
 
-Required background: megapowers:test-driven-development defines the RED-GREEN-REFACTOR cycle this skill adapts. For Anthropic's authoring guidance, see anthropic-best-practices.md. For the research on phrasing that lands, see effective-phrasing.md. When editing an existing skill down, de-prescription-rubric.md is the trim standard: it says what to remove, what to keep, and what never to touch.
+Required background: megapowers:test-driven-development defines the RED-GREEN-REFACTOR cycle this skill adapts. For current portable OpenAI and Anthropic guidance, see authoring-best-practices.md. For the research on phrasing that lands, see effective-phrasing.md. When editing an existing skill down, de-prescription-rubric.md is the trim standard: it says what to remove, what to keep, and what never to touch.
 
 ## What a Skill Is
 

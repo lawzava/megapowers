@@ -1,11 +1,9 @@
 ---
 name: golang-patterns
 description: >
-  Use when writing or refactoring Go and a design choice is in play — interfaces
-  vs structs, dependency wiring, concurrency (goroutines/channels/context), error
-  shaping, functional options, or package layout. Triggers on "idiomatic Go", "how
-  should I structure this", "functional options", "dependency injection",
-  "goroutine/channel pattern". Skip for trivial or mechanical edits.
+  Use for Go in an existing project when choosing interfaces, dependency
+  injection, goroutines, channels, context, errors, functional options, or
+  package layout. Skip mechanical edits.
 license: MIT
 ---
 

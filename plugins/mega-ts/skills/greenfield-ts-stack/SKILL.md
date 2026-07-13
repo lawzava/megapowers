@@ -1,11 +1,9 @@
 ---
 name: greenfield-ts-stack
 description: >-
-  Use when starting a new TypeScript project or service and choosing its stack and
-  layout — package manager, tsconfig, test runner, lint/format, web framework, and
-  validation. Triggers on "new TypeScript project", "scaffold a Node service", "set
-  up a Hono/Fastify app", "which TS stack". For idioms within existing code, use
-  mega-ts:typescript-patterns.
+  Use to start or scaffold a TypeScript or Node service, or choose its package
+  manager, tsconfig, tests, linting, validation, web framework, database, and
+  layout.
 license: MIT
 ---
 

@@ -1,13 +1,9 @@
 ---
 name: greenfield-go-stack
 description: >
-  Use when starting a new Go project, app, service, SaaS, or backend from
-  scratch (greenfield) — scaffolding a fresh repo, choosing the framework /
-  database / auth / payments / hosting, or picking the architecture for a new
-  full-stack or server-rendered Go codebase. Triggers on "new Go project",
-  "Go scaffold", "bootstrap a Go service", "start a Go app from scratch",
-  "what Go stack should I use". Skip if a non-Go language or runtime is named
-  or implied.
+  Use to start or scaffold a Go project, service, SaaS, backend, or server
+  rendered app, or choose its framework, database, auth, payments, hosting, and
+  architecture.
 license: MIT
 ---
 
