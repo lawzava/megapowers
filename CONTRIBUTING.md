@@ -28,8 +28,9 @@ claim of effect needs a run behind it.
 
 5. Keep changes portable. Skills must work as plain `SKILL.md` on Claude Code,
    Codex, OpenCode, and Antigravity; harness-specific enforcement (hooks) is
-   labeled by harness and fails open by absence elsewhere. Hooks ship for Claude
-   Code by default; a manual Codex pilot of the destructive-command guard exists.
+   labeled by harness and fails open by absence elsewhere. Plugin manifests ship
+   the supported Claude Code and Codex lifecycle hooks; the other harnesses are
+   skills-only.
 
 ## Conventions
 

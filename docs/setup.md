@@ -42,13 +42,6 @@ what the install-smoke study asserts; see `evals/studies/install-smoke/`.
 What visibly changes in day-to-day sessions is listed in the
 [README quickstart](../README.md#quickstart-claude-code).
 
-Nine skills are also published as standalone marketplace entries for
-cherry-pickers: `brainstorming`, `systematic-debugging`,
-`test-driven-development`, `writing-plans`, `writing-skills`,
-`multi-agent-delegation`, `golang-patterns`, `python-patterns`, and
-`typescript-patterns`. Default to the bundles. Install a bundle or its
-standalone skill, not both: a skill installed twice registers twice.
-
 ## Per-plugin prerequisites
 
 Each plugin installs and runs on its own; install only the tools for the parts
@@ -193,8 +186,8 @@ rendered model-catalog block appears and `/hooks` lists five hook handlers acros
 one SessionStart, two Stop, one PreToolUse, and one PostToolUse. The run-loop
 Stop handler and formatter PostToolUse handler intentionally no-op under Codex;
 the other three are active. Confirm `codex plugin list` reports one source for
-each megapowers plugin. If a skill appears twice, remove the older shared-directory or
-standalone install rather than keeping both registrations. Install language
+each megapowers plugin. If a skill appears twice, remove the older
+shared-directory or legacy standalone install. Install language
 plugins only where needed; loading every language bundle globally can exceed
 the initial skill-description budget even though each plugin is valid alone.
 
@@ -207,20 +200,20 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.3.4`, or, for Claude Code,
-  add `"ref": "v0.3.4"` to the `extraKnownMarketplaces` source (see
+  `codex plugin marketplace add lawzava/megapowers@v0.3.5`, or, for Claude Code,
+  add `"ref": "v0.3.5"` to the `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
-  pin, remove the marketplace and re-add it at the new tag.
+pin, remove the marketplace and re-add it at the new tag.
 - Plugin version field: each `plugin.json` declares a `version`. That version
   pins the installed plugin until the maintainer bumps the string; new commits
   that leave it unchanged do not reach existing installs. When the maintainer
   bumps it, background auto-update applies the new version.
 
 Neither is an integrity pin (no sha in the ref), so a pin controls when you
-move, not cryptographic provenance — though release tags from `v0.1.3` on are
+move, not cryptographic provenance. Release tags from `v0.1.3` on are
 GPG-signed and can be verified out of band (see SECURITY.md, Release
-integrity). Tags `v0.1.1` through `v0.3.4` are the release pin range once this
+integrity). Tags `v0.1.1` through `v0.3.5` are the release pin range once this
 version is published.
 
 ## Every other harness: the skills CLI
@@ -260,7 +253,7 @@ Two rules:
   [`docs/harness-support.md`](./harness-support.md)), so nothing real is lost.
 - One channel per agent per machine. Never install the same skill via a
   native marketplace and the skills CLI: a skill registered twice fires
-  twice, same as the bundle-vs-standalone rule above.
+  twice.
 
 The second rule has a trap on mixed machines: the skills CLI installs several
 agents (OpenCode, Antigravity, Codex among them) into the SHARED
@@ -435,16 +428,15 @@ Requires `jq`; `shellcheck` is optional (hook checks are skipped without it).
 ## Manual marketplace smoke test
 
 From a checkout, point Claude Code at the local dir and confirm the marketplace
-lists every entry in `.claude-plugin/marketplace.json` (currently 16: 7 plugin
-bundles plus 9 standalone skills):
+lists every plugin bundle in `.claude-plugin/marketplace.json`:
 
 ```
 /plugin marketplace add ./
 /plugin
 ```
 
-For Codex, confirm the repo marketplace lists every entry in
-`.agents/plugins/marketplace.json` (currently 7):
+For Codex, confirm the repo marketplace lists every plugin bundle in
+`.agents/plugins/marketplace.json`:
 
 ```
 codex plugin marketplace add ./

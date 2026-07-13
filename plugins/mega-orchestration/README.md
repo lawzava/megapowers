@@ -93,15 +93,14 @@ Each reads `models.toml` (catalog) and `delegates.toml` (routing) from the
 Edit the agent files to change how the handoff works; edit `delegates.toml`
 to change where work goes.
 
-## Stop hooks (Claude Code only)
+## Stop hooks
 
-Stop hooks are a Claude Code feature. On Codex, OpenCode, and Antigravity
-these hooks do not run, and the disciplines ride on the skills' instructions
-instead. Treat them as backstops where they fire, not as the reason the
-discipline holds. Both are fail-open (any error or uncertainty allows the
-stop), self-suppressing (they honor the `stop_hook_active` flag Claude Code
-sets in the hook's stdin payload on re-entry, so a blocked stop cannot loop),
-and depend only on `jq`, `git`, `grep`, and `sed`.
+`run-loop` is Claude Code-only and becomes a no-op on Codex.
+`delegate-nudge` runs on Claude Code and Codex and understands both transcript
+formats. Neither runs on OpenCode or Antigravity. Treat them as backstops where
+they fire, not as the reason the discipline holds. Both are fail-open; under
+Claude Code they honor `stop_hook_active` so a blocked stop cannot loop. They
+depend only on `jq`, `git`, `grep`, and `sed`.
 
 `hooks/run-loop.sh` keeps an active autonomous run's loop turning. When the
 session tries to stop while a run it touched still reads active
@@ -131,10 +130,10 @@ $ printf '{"transcript_path":"transcript.jsonl","stop_hook_active":false}' \
 (STATE=working, CURSOR=M3: cut DNS over to the new host) and its done-when
 criteria are not recorded as met. Continue the loop per its runbook: do the
 next unmet milestone, run its declared acceptance check, journal the result
-(scripts/run-journal), and re-derive status (scripts/run-derive-status — it
+(scripts/run-journal), and re-derive status (scripts/run-derive-status; it
 derives done when every milestone is done). If you are pausing deliberately,
 or you are blocked, or a charter cap is reached, journal a paused or blocked
-entry and re-derive status so STATE says so — then stopping is correct.
+entry and re-derive status so STATE says so; then stopping is correct.
 Verify a finished run with scripts/run-verify-status."}
 ```
 
@@ -149,7 +148,3 @@ state with a nudge to run an independent pass.
 ```
 /plugin install mega-orchestration@megapowers
 ```
-
-The `multi-agent-delegation` skill is also published as a standalone
-marketplace entry. Install the bundle or the standalone skill, not both: a
-skill installed twice registers twice.

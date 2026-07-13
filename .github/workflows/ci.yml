@@ -39,13 +39,16 @@ jobs:
         run: scripts/validate.sh
 
       - name: Eval suite (deterministic + mock agent)
-        run: bash evals/run-all.sh
+        run: bash evals/run-all.sh --json results.jsonl
 
       - name: Eval scorecard
         if: always()
         run: |
-          bash evals/run-all.sh --json results.jsonl || true
-          go run evals/score.go results.jsonl
+          if [ -f results.jsonl ]; then
+            go run evals/score.go results.jsonl
+          else
+            echo "No eval results were produced."
+          fi
 
   secret-scan:
     # Full-history secret scan with gitleaks. gitleaks-action is pinned to the

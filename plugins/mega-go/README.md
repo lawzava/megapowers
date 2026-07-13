@@ -33,10 +33,6 @@ gracefully and still works without it.
 /plugin install mega-go@megapowers
 ```
 
-`golang-patterns` is also published as a standalone marketplace entry. Install
-the bundle or the standalone skill, not both: a skill installed twice
-registers twice.
-
 ## Attribution
 
 The `golang-patterns` skill is vendored from Everything Claude Code

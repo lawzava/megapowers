@@ -374,9 +374,8 @@ never consults a skill, so a trivial query measures nothing either way. Run
 each query 3 times for a stable trigger rate, hold out roughly 40% of the
 queries, and pick the winning description by held-out score, not training
 score. Skills undertrigger more than they overtrigger, so when in doubt make
-the description a little pushy. This repo freezes shipped descriptions between
-releases (scripts/check-description-freeze.sh); run this loop to justify a
-change, not as a side effect of editing a body.
+the description a little pushy. Run this loop for every description change;
+body-only edits do not require a description freeze.
 
 Adapted from Anthropic's skill-creator (anthropics/skills, Apache-2.0); see
 ATTRIBUTION.md.

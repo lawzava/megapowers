@@ -41,11 +41,6 @@ word count (and gates it at 385).
 /plugin install megapowers@megapowers
 ```
 
-Five of these skills are also published as standalone marketplace entries:
-`brainstorming`, `systematic-debugging`, `test-driven-development`,
-`writing-plans`, and `writing-skills`. Install the bundle or a standalone
-skill, not both: a skill installed twice registers twice.
-
 ## Attribution
 
 megapowers is a restyled fork of

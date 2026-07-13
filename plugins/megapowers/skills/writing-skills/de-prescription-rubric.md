@@ -36,7 +36,6 @@ Only where the skill is the natural home, one or two sentences:
 
 ## Never
 
-- Touch frontmatter. Descriptions are the tuned trigger surface
-  (scripts/check-description-freeze.sh enforces this).
+- Change frontmatter without rerunning the trigger-recall evaluation.
 - Change the register: declarative prose, no dash punctuation, none of the
   banned vocabulary listed in CONTRIBUTING.md.

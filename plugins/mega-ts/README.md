@@ -16,7 +16,3 @@ harness.
 ```
 /plugin install mega-ts@megapowers
 ```
-
-`typescript-patterns` is also published as a standalone marketplace entry.
-Install the bundle or the standalone skill, not both: a skill installed twice
-registers twice.
