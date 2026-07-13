@@ -55,6 +55,11 @@ if [[ -f $claude_mp ]] && jq -e . "$claude_mp" >/dev/null 2>&1; then
   else
     bad "Claude marketplace missing name or plugins[]"
   fi
+  if jq -e '(.plugins | length) == 7 and all(.plugins[]; has("skills") | not)' "$claude_mp" >/dev/null 2>&1; then
+    ok "Claude marketplace publishes seven plugin bundles only"
+  else
+    bad "Claude marketplace must publish exactly seven plugin bundles and no standalone skill aliases"
+  fi
 else
   bad "$claude_mp missing or invalid JSON"
 fi
@@ -183,26 +188,16 @@ while IFS= read -r sk; do
 done < <(find plugins skills -name SKILL.md 2>/dev/null | sort)
 (( desc_over == 0 )) && ok "every skill description within ${DESC_MAX}B (peak: ${desc_peak_name} ${desc_peak}B)"
 
-# 2. Always-loaded budget: the 28 descriptions plus the SessionStart hook's
-#    injected payload sit in context on every turn. Payload = preface + trimmed
-#    using-megapowers (frontmatter and Platform Adaptation stripped, mirroring
-#    the hook). Measured 2026-07: 10045B descriptions + 1935B payload = 11980B.
-#    Ceiling 13800B: 13200B (measured 2026-07 + ~10% headroom) plus the <=600B
-#    session-start model-catalog block added 2026-07-12.
+# 2. Always-loaded budget: skill descriptions plus the real SessionStart hook
+#    context sit in context on every turn. Invoke the hook and parse its output
+#    instead of duplicating its trimming and preface logic here.
 ALWAYS_MAX=13800
 skfile="plugins/megapowers/skills/using-megapowers/SKILL.md"
-if [[ -f $skfile ]]; then
-  trimmed="$(awk '
-    NR==1 && /^---/ { fm=1; next }
-    fm && /^---/    { fm=0; next }
-    fm              { next }
-    /^## /          { drop = ($0 ~ /^## (Platform Adaptation)$/) }
-    drop            { next }
-    /^Origin: Derived from Superpowers / { next }
-                    { print }
-  ' "$skfile")"
-  preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request (including clarifying questions or exploring code), check whether a skill applies and, if so, follow it."
-  payload_bytes="$(byte_len "${preface}"$'\n\n'"${trimmed}")"
+session_hook="plugins/megapowers/hooks/session-start"
+if [[ -f $skfile && -x $session_hook ]]; then
+  hook_json="$(MODELS_TOML="plugins/megapowers/models.toml" "$session_hook" 2>/dev/null || true)"
+  hook_context="$(printf '%s' "$hook_json" | jq -er '.hookSpecificOutput.additionalContext' 2>/dev/null || true)"
+  hook_bytes="$(byte_len "$hook_context")"
   catalog_block="$(MODELS_TOML="plugins/megapowers/models.toml" plugins/megapowers/hooks/render-model-catalog 2>/dev/null || true)"
   catalog_bytes="$(byte_len "$catalog_block")"
   if [[ -n $catalog_block ]] && (( catalog_bytes <= 900 )); then
@@ -210,14 +205,14 @@ if [[ -f $skfile ]]; then
   else
     bad "session-start catalog block empty or over 900B (${catalog_bytes}B)"
   fi
-  always_total=$((desc_sum + payload_bytes + catalog_bytes))
-  if (( always_total <= ALWAYS_MAX )); then
-    ok "always-loaded context within ${ALWAYS_MAX}B (${always_total}B = ${desc_sum}B descriptions + ${payload_bytes}B session-start payload + ${catalog_bytes}B catalog block)"
+  always_total=$((desc_sum + hook_bytes))
+  if [[ -n $hook_context ]] && (( always_total <= ALWAYS_MAX )); then
+    ok "always-loaded context within ${ALWAYS_MAX}B (${always_total}B = ${desc_sum}B descriptions + ${hook_bytes}B SessionStart context)"
   else
-    bad "always-loaded context over ${ALWAYS_MAX}B (${always_total}B = ${desc_sum}B descriptions + ${payload_bytes}B session-start payload + ${catalog_bytes}B catalog block)"
+    bad "SessionStart context empty or always-loaded context over ${ALWAYS_MAX}B (${always_total}B)"
   fi
 else
-  bad "using-megapowers SKILL.md missing (cannot measure always-loaded budget)"
+  bad "using-megapowers skill or SessionStart hook missing (cannot measure always-loaded budget)"
 fi
 
 # 3. Codex initial skills-list budget: Codex caps the initial list at
@@ -268,23 +263,21 @@ if command -v shellcheck >/dev/null 2>&1; then
   while IFS= read -r h; do
     [ -n "$h" ] || continue
     if shellcheck -S warning "$h" >/dev/null 2>&1; then ok "shellcheck $h"; else bad "shellcheck $h"; fi
-  done < <(
-    {
-      find plugins scripts evals -type f -name '*.sh' 2>/dev/null
-      # extensionless executable shell scripts under */scripts/ and */hooks/
-      # (e.g. SDD helpers, the session-start hook) — shebang-detected
-      find plugins -type f \( -path '*/scripts/*' -o -path '*/hooks/*' \) ! -name '*.*' 2>/dev/null | while IFS= read -r f; do
-        head -1 "$f" 2>/dev/null | grep -qE '^#!.*sh' && printf '%s\n' "$f"
-      done
-    } | sort -u
-  )
+  done < <(git ls-files --cached --others --exclude-standard -- plugins scripts evals | while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    case "$f" in
+      *.sh) printf '%s\n' "$f" ;;
+      plugins/*/scripts/*|plugins/*/hooks/*)
+        head -1 "$f" 2>/dev/null | grep -qE '^#!.*sh' && printf '%s\n' "$f" ;;
+    esac
+  done | sort -u)
 else
   echo "  (shellcheck not installed — skipped)"
 fi
 
 echo "== security lint =="
 # Deterministic malicious-skill-marker scan over skill bodies, hooks, and
-# templates (fetch-in-exec to a non-doc host, base64|sh, eval of fetched
+# templates (fetch-in-exec, base64|sh, eval of fetched
 # content, bidi/Trojan-Source chars, safety-off instructions). No external
 # deps, so it always runs; SECURITY.md advertises it as a CI gate and this
 # wires it in. Exit 0 clean, nonzero on any hit (file:line: reason on stdout).
@@ -395,7 +388,7 @@ if jq -e '.permissions.deny | all(test("\\*"; "") | not)' templates/settings.exa
 else
   bad "templates/settings.example.json permission denies must not use ineffective wildcard paths"
 fi
-if rg -q '^\[profiles\.' templates/codex-config.toml; then
+if grep -q '^\[profiles\.' templates/codex-config.toml; then
   bad "Codex config guidance must not embed named profiles in config.toml"
 else
   ok "Codex config guidance keeps named profiles out of config.toml"
@@ -405,7 +398,7 @@ if grep -q '^model = "gpt-5.6-sol"$' templates/codex-complex.config.toml 2>/dev/
 else
   bad "templates/codex-complex.config.toml must ship the separate Sol ultra profile"
 fi
-if rg -q '^commit_attribution[[:space:]]*=' templates/codex-config.toml; then
+if grep -q '^commit_attribution[[:space:]]*=' templates/codex-config.toml; then
   bad "Codex config template must not ship the removed commit_attribution key"
 else
   ok "Codex config template omits removed commit_attribution key"
@@ -428,6 +421,15 @@ while IFS= read -r t; do
   if bash "$t" >/dev/null 2>&1; then ok "skill script test $t"; else bad "skill script test $t"; fi
 done < <(find plugins -type f -path '*/skills/*/scripts/tests/*.test.sh' 2>/dev/null | sort)
 [[ $st_found -eq 1 ]] || bad "no skill script tests found (expected plugins/*/skills/*/scripts/tests/*.test.sh)"
+
+echo "== repository script tests =="
+rt_found=0
+while IFS= read -r t; do
+  [ -n "$t" ] || continue
+  rt_found=1
+  if bash "$t" >/dev/null 2>&1; then ok "repository script test $t"; else bad "repository script test $t"; fi
+done < <(find scripts/tests -type f -name '*.test.sh' 2>/dev/null | sort)
+[[ $rt_found -eq 1 ]] || bad "no repository script tests found (expected scripts/tests/*.test.sh)"
 
 echo "== evals =="
 if [[ -d evals/scenarios ]]; then
@@ -481,24 +483,10 @@ echo "== docs consistency =="
 # prose drifts twice went stale within a day of a manifest change; assert the
 # hand-written docs against the manifests they describe.
 if [[ -f $claude_mp && -f $codex_mp ]] && command -v jq >/dev/null 2>&1; then
-  cl_total="$(jq '.plugins|length' "$claude_mp")"
-  cl_bundles="$(jq '[.plugins[]|select(has("skills")|not)]|length' "$claude_mp")"
-  cl_standalone="$(jq '[.plugins[]|select(has("skills"))]|length' "$claude_mp")"
   cx_total="$(jq '.plugins|length' "$codex_mp")"
   if [[ $cx_total -eq 7 ]]; then ok "Codex marketplace publishes all seven plugin bundles"; else bad "Codex marketplace expected 7 plugin bundles, found $cx_total"; fi
   # fold line wraps before matching: the doc sentence may wrap mid-pattern
   setup_flat="$(tr '\n' ' ' < docs/setup.md 2>/dev/null)"
-  if printf '%s' "$setup_flat" | grep -q "currently ${cl_total}: ${cl_bundles} plugin bundles plus ${cl_standalone} standalone"; then
-    ok "setup.md Claude marketplace count matches manifest (${cl_total} = ${cl_bundles}+${cl_standalone})"
-  else
-    bad "setup.md Claude marketplace count drifted (manifest: ${cl_total} = ${cl_bundles} bundles + ${cl_standalone} standalone)"
-  fi
-  # anchor with the closing paren so "currently 1" cannot false-match "currently 15: ..."
-  if printf '%s' "$setup_flat" | grep -q "(currently ${cx_total})"; then
-    ok "setup.md Codex marketplace count matches manifest (${cx_total})"
-  else
-    bad "setup.md Codex marketplace count drifted (manifest: ${cx_total})"
-  fi
   if printf '%s' "$setup_flat" | grep -q "five hook handlers across three plugins"; then
     ok "setup.md states the exact Codex hook handler count"
   else
@@ -526,6 +514,23 @@ if [[ -f $claude_mp && -f $codex_mp ]] && command -v jq >/dev/null 2>&1; then
     if grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)" docs/setup.md 2>/dev/null; then ok "setup.md mentions plugin $pname"; else bad "setup.md never mentions plugin $pname"; fi
     if grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)" README.md 2>/dev/null; then ok "README mentions plugin $pname"; else bad "README never mentions plugin $pname"; fi
   done < <(jq -r '.plugins[]|select(has("skills")|not)|.name' "$claude_mp")
+
+  codex_support="$(awk '/^## Codex$/{in_section=1;next} /^## /{in_section=0} in_section' docs/harness-support.md)"
+  while IFS= read -r pname; do
+    [[ -n $pname ]] || continue
+    if printf '%s\n' "$codex_support" | grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)"; then ok "Codex support matrix mentions $pname"; else bad "Codex support matrix omits $pname"; fi
+  done < <(jq -r '.plugins[].name' "$codex_mp")
+
+  antigravity_support="$(awk '/^## Google Antigravity$/{in_section=1;next} /^## /{in_section=0} in_section' docs/harness-support.md)"
+  while IFS= read -r manifest; do
+    pname="$(jq -r '.name' "$manifest")"
+    if printf '%s\n' "$antigravity_support" | grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)"; then ok "Antigravity support matrix mentions $pname"; else bad "Antigravity support matrix omits $pname"; fi
+  done < <(find plugins -mindepth 2 -maxdepth 2 -name plugin.json | sort)
+
+  while IFS= read -r pname; do
+    [[ -n $pname ]] || continue
+    if grep -qE "\| \`${pname}\` \|" SECURITY.md; then ok "SECURITY capability table mentions $pname"; else bad "SECURITY capability table omits $pname"; fi
+  done < <(jq -r '.plugins[].name' "$codex_mp")
 fi
 # each plugin README must name every skill directory the plugin ships;
 # a plugin that ships skills but has no README is itself a failure, not a skip

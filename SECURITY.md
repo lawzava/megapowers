@@ -50,8 +50,11 @@ What this repo does about it:
   hooks, and templates for the documented injection markers (a fetch of remote
   content in an executable step, a base64 blob piped into a shell, `eval` of
   fetched content, unicode direction-override characters, and disable-safety
-  instructions), failing on a hit. It runs in CI as part of `scripts/validate.sh`
-  and can be run locally the same way, or directly with `scripts/security-lint.sh`.
+  instructions), failing on a hit. Executable fetches require an exact
+  file-level allowlist entry; whole hosting domains are never trusted. It runs
+  in CI as part of `scripts/validate.sh` and can be run locally the same way,
+  or directly with `scripts/security-lint.sh`. On systems without `grep -P`, it
+  warns that the unicode bidi scan was skipped.
 
 What it cannot do: the harness executes what you trust it with. This repo
 cannot stop a model you have told to follow a malicious instruction, and it
@@ -78,12 +81,13 @@ network call. What each plugin runs:
 
 | Plugin | Hook (event) | Reads / writes | Skills | Network |
 | --- | --- | --- | --- | --- |
-| `megapowers` | `session-start` (SessionStart) | reads its own `using-megapowers` skill; writes a context string to stdout | process skills (planning, TDD, debugging, review, worktrees, memory) | none |
+| `megapowers` | `session-start` (SessionStart) | reads its own `using-megapowers` skill; writes a context string to stdout; the optional visual companion serves brainstorming frames from a local Node process | process skills (planning, TDD, debugging, review, worktrees, memory) | none for hooks; opt-in loopback HTTP/WebSocket for the visual companion |
 | `mega-guardrails` | `deny-destructive` (PreToolUse: Bash); `auto-format` (PostToolUse: Write/Edit); cross-harness dispatchers select the Codex destructive adapter and no-op formatter | deny-destructive reads the proposed command on stdin and writes an allow/ask/deny decision; the Codex adapter maps that same decision onto Codex's hook contract; auto-format reads the just-written file path and reformats that one file (`gofmt`/`goimports`/`prettier`) under Claude Code | none (hooks and an optional statusline only) | none |
 | `mega-orchestration` | `run-loop`, `delegate-nudge` (both Stop) | both read stdin and the session transcript; run-loop also reads `.megapowers/run/<id>/status`; delegate-nudge also reads `git diff` and writes a one-line marker to `.git/megapowers-delegate-nudge-seen`; both write a stop decision to stdout | orchestration and delegation skills | none |
 | `mega-go` | none | reads and writes nothing (skills only) | `golang-patterns`, `greenfield-go-stack` | none |
 | `mega-python` | none | reads and writes nothing (skills only) | `python-patterns`, `greenfield-python-stack` | none |
 | `mega-ts` | none | reads and writes nothing (skills only) | `typescript-patterns`, `greenfield-ts-stack` | none |
+| `mega-frontend` | none | reads and writes nothing (skills only) | `designing-frontends` | none |
 
 The optional `mega-guardrails` statusline (manual install, Linux only) reads
 `/proc`, `df`, `date`, and `git`, and writes only to the statusline; it too

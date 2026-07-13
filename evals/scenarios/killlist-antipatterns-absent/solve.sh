@@ -2,6 +2,19 @@
 # Assert (against the shipped skill files) that removed anti-patterns stay removed
 # and the intended replacements are present. Writes a report of OK/BAD lines.
 S="$ROOT/plugins/megapowers/skills"
+V="$ROOT/scripts/validate.sh"
+CI="$ROOT/.github/workflows/ci.yml"
+U="$S/using-megapowers/SKILL.md"
+G="$ROOT/plugins/mega-go/skills/greenfield-go-stack/SKILL.md"
+WS1="$S/writing-skills/testing-skills-with-subagents.md"
+WS2="$S/writing-skills/de-prescription-rubric.md"
+README="$ROOT/README.md"
+CONTRIB="$ROOT/CONTRIBUTING.md"
+HARNESS="$ROOT/docs/harness-support.md"
+SECURITY="$ROOT/SECURITY.md"
+ORCH_README="$ROOT/plugins/mega-orchestration/README.md"
+CODEX_GUARD="$ROOT/plugins/mega-guardrails/hooks/codex-deny-destructive.sh"
+EFFECT="$ROOT/plugins/mega-orchestration/skills/effect-broker/SKILL.md"
 report="lint.out"; : > "$report"
 
 # absent() PATTERN FILE LABEL  -> BAD if the pattern is present
@@ -20,5 +33,31 @@ present() { if grep -qE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "BA
   # replacements present
   present 'opts into per-task commits'              "$S/writing-plans/SKILL.md"       "writing-plans: discloses commit cadence"
   present 'Confirm sections proportionally'         "$S/brainstorming/SKILL.md"       "brainstorming: proportional section confirm"
+  # validator: tracked files only, no undeclared rg, and one source of truth for
+  # the SessionStart payload transformation
+  absent "find plugins scripts evals -type f -name '\\*\\.sh'" "$V" "validate: no ignored-tree shell discovery"
+  absent 'if rg -q'                                  "$V" "validate: no undeclared rg dependency"
+  absent 'trimmed="\$\(awk'                         "$V" "validate: no duplicated SessionStart awk"
+  present 'git ls-files .*plugins scripts evals'     "$V" "validate: tracked and new shell discovery"
+  present 'hookSpecificOutput.additionalContext'     "$V" "validate: measures real SessionStart payload"
+  # CI: a single eval run produces both the gate and scorecard input
+  if [ "$(grep -c 'bash evals/run-all.sh' "$CI")" -eq 1 ]; then echo "OK  ci: eval suite runs once"; else echo "BAD ci: eval suite runs once"; fi
+  absent 'Pi `references/pi-tools.md`'               "$U" "using-megapowers: no undeclared Pi harness"
+  absent 'context7 before wiring'                    "$G" "greenfield-go: Context7 is not mandatory"
+  present 'if (it is )?installed'                    "$G" "greenfield-go: optional docs tooling is explicit"
+  absent 'check-description-freeze\.sh'             "$WS1" "writing-skills: no dead freeze enforcement claim"
+  absent 'check-description-freeze\.sh'             "$WS2" "de-prescription: no dead freeze enforcement claim"
+  absent 'Everything executable is plain bash|no runtime' "$README" "README: executable runtime claim is accurate"
+  present 'local Node server'                        "$README" "README: Node companion disclosed"
+  absent 'standalone entries|standalone marketplace' "$README" "README: no removed standalone distribution"
+  absent 'manual Codex pilot'                        "$CONTRIB" "contributing: no stale manual Codex pilot"
+  present 'mega-frontend'                            "$HARNESS" "harness support: frontend manifests disclosed"
+  present 'local Node server'                        "$HARNESS" "harness support: runtime mix disclosed"
+  present 'mega-frontend'                            "$SECURITY" "security: frontend capability row disclosed"
+  absent 'Stop hooks \(Claude Code only\)'          "$ORCH_README" "orchestration: Stop hook scope is current"
+  present 'delegate-nudge.*Claude Code and Codex'    "$ORCH_README" "orchestration: Codex nudge disclosed"
+  absent 'codex-hooks\.json'                        "$CODEX_GUARD" "guard adapter: no obsolete manual wiring"
+  absent 'PreToolUse hook \(Claude Code only\)'     "$EFFECT" "effect broker: guard is not mislabeled Claude-only"
+  present 'Claude Code and Codex'                    "$EFFECT" "effect broker: guard adapter scope is current"
 } >> "$report"
 cat "$report"

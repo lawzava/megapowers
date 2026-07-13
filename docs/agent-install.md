@@ -64,7 +64,7 @@ The verb is `add`, not `install`. `codex plugin marketplace add` accepts
 `owner/repo[@ref]` (codex-cli 0.142.5+); unpinned tracks the default branch.
 Updates: `codex plugin marketplace upgrade megapowers`, then re-run
 `codex plugin add` for each plugin. Change-controlled installs pin with
-`@v0.3.4` instead and update by re-adding at the new tag. To track a fork,
+`@v0.3.5` instead and update by re-adding at the new tag. To track a fork,
 clone it and run `codex plugin marketplace add ./` from the checkout.
 Start a fresh Codex session, open `/hooks`, review the five hook handlers from
 the three plugin manifests, and trust the handlers the user approves. The
@@ -152,8 +152,8 @@ Present these to the user; apply only what they approve:
   checkout.
 - Remove superseded duplicates: if the user previously hand-installed copies
   of these hooks or skills (session-start, deny-destructive, auto-format, or
-  standalone skill folders that the bundles now provide), list them and offer
-  to remove the old copies. For a v0.3.1 Codex pilot, remove only megapowers'
+  legacy standalone skill folders that the bundles now provide), list them and
+  offer to remove the old copies. For a v0.3.1 Codex pilot, remove only megapowers'
   manual entries from the applicable hooks.json and preserve unrelated hooks.
   Duplicates run twice.
 

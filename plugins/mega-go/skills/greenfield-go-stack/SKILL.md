@@ -32,8 +32,8 @@ come from the baseline middleware and minimal images, not bolted on later.
   browser-facing edge. Prefer gRPC over hand-rolled REST between services.
 - **Pure-Go everything** so binaries stay static (CGO off → tiny, secure Wolfi
   images, no glibc).
-- **Fetch current docs via context7 before wiring each library** — the versions
-  and APIs below drift; confirm latest majors at build time.
+- **Consult current official docs before wiring each library** using the docs or
+  browser tools available in the active harness. Use Context7 if it is installed.
 
 ## The stack (fixed menu — include only what's needed)
 
@@ -176,5 +176,5 @@ ENTRYPOINT ["/app"]
 
 - Cloudflare Email Service is beta — verify current limits before relying on it
   for critical transactional mail.
-- Confirm current majors via context7 (Fiber v2/v3, `stripe-go`,
-  `clerk-sdk-go`) — pinned majors drift.
+- Confirm current majors using available official documentation (Fiber v2/v3,
+  `stripe-go`, `clerk-sdk-go`); use Context7 if it is installed.

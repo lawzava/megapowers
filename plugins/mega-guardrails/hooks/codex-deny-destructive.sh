@@ -22,10 +22,9 @@
 #                          do NOT return the unsupported "ask")
 #   guard allow/no hit  -> emit nothing, exit 0
 #
-# Wiring: reference this script from a Codex hooks manifest (hooks/codex-hooks.json
-# here, or ~/.codex/hooks.json / <repo>/.codex/hooks.json) on the PreToolUse Bash
-# matcher. Locating the sibling guard via BASH_SOURCE (not an env var) keeps it
-# runnable directly for tests. Fails OPEN: any error exits 0 (allow).
+# Wiring: deny-destructive-dispatch.sh selects this adapter from the plugin's
+# hooks.json when Codex sets PLUGIN_ROOT. Locating the sibling guard via
+# BASH_SOURCE keeps it directly testable. Fails OPEN: any error exits 0 (allow).
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 guard="$here/deny-destructive.sh"

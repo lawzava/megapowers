@@ -47,7 +47,7 @@ agent role templates.
 - Repo marketplace: `.agents/plugins/marketplace.json`.
 - Plugin manifests: `plugins/*/.codex-plugin/plugin.json` for `megapowers`,
   `mega-go`, `mega-python`, `mega-ts`, `mega-orchestration`, and
-  `mega-guardrails`.
+  `mega-guardrails`, and `mega-frontend`.
 - Native role templates: `mega-orchestration/assets/codex-agents/` packages
   Terra-pinned `builder` and `reviewer` profiles to copy into
   `~/.codex/agents/` or a project's `.codex/agents/`.
@@ -107,7 +107,8 @@ Status: supported as a skills target; CLI plugin manifests ship.
   `~/.gemini/config/skills/<name>/`. `description` is required; `name` defaults
   to the directory name.
 - CLI plugin manifests: `plugins/*/plugin.json` ship for `megapowers`,
-  `mega-go`, `mega-python`, `mega-ts`, and `mega-orchestration`;
+  `mega-go`, `mega-python`, `mega-ts`, `mega-orchestration`, and
+  `mega-frontend`;
   `mega-guardrails` is not offered (see the note at the top).
 - Verify a manual install with the same first-task probe used elsewhere:
   install one plugin or skill, then in a fresh Antigravity session ask the agent
@@ -126,14 +127,11 @@ Status: supported as a skills target; CLI plugin manifests ship.
 
 ## Operating systems
 
-Skills are plain markdown and work wherever the host tool runs. Everything
-executable (hooks, skill helper scripts, the eval harness) is bash plus
-jq/git/grep, developed on Linux and exercised in CI on Linux only. macOS is
-expected to work (the destructive-command guard knows macOS paths and device
-names) but is not CI-covered. Windows is untested: the hooks and helper
-scripts have not been run under Git Bash or WSL, and native Windows (no bash)
-will not execute them at all. The `run-hook.cmd` polyglot wrapper finds Git
-Bash on Windows and runs the SessionStart hook through it (silent no-op when
-no bash exists), but the hook scripts themselves have never been verified
-under Git Bash or WSL. Treat hook-based enforcement as unverified on Windows
-until someone tests it; the skills themselves still work.
+Skills are plain markdown and work wherever the host tool runs. Hooks and most
+helpers are Bash with jq, git, and grep. The optional brainstorming visual
+companion is a local Node server; the eval scorer is Go. CI exercises Linux.
+macOS is expected to work but is not CI-covered. Windows is untested: native
+Windows cannot run the shell helpers, while Git Bash and WSL have not been
+verified. The `run-hook.cmd` wrapper finds Git Bash for SessionStart and no-ops
+when Bash is absent. Treat hook enforcement as unverified on Windows; the
+skills themselves remain portable.

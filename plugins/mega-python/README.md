@@ -15,7 +15,3 @@ Python patterns. No hooks; plain skills that work on any harness.
 ```
 /plugin install mega-python@megapowers
 ```
-
-`python-patterns` is also published as a standalone marketplace entry. Install
-the bundle or the standalone skill, not both: a skill installed twice
-registers twice.

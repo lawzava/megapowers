@@ -23,11 +23,6 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ALLOWLIST_FILE="$ROOT/scripts/security-lint.allowlist"
 
-# Real fetch targets a skill may legitimately hit. A fetch to any host NOT on
-# this list, in executable context, is flagged. Hosts are matched as a suffix
-# (docs.anthropic.com matches, evil-anthropic.com.attacker.tld does not).
-DOC_HOSTS='raw.githubusercontent.com github.com docs.github.com docs.anthropic.com anthropic.com platform.openai.com openai.com agentskills.io'
-
 # --- allowlist -------------------------------------------------------------
 declare -A ALLOW=()
 if [ -r "$ALLOWLIST_FILE" ]; then
@@ -100,28 +95,14 @@ logical_lines() {
 HITS=0
 emit() { printf '%s:%s: %s\n' "$1" "$2" "$3"; HITS=$((HITS + 1)); }
 
-# host is allowlisted iff it equals or is a dot-suffix of a DOC_HOSTS entry
-host_allowed() {
-  local host="$1" d
-  for d in $DOC_HOSTS; do
-    [ "$host" = "$d" ] && return 0
-    case "$host" in *".$d") return 0 ;; esac
-  done
-  return 1
-}
-
 check_fetch() {
-  # a fetch command (curl/wget/fetch) plus an http(s) URL to a non-doc host
-  local rel="$1" stream="$2" ln rest host bad
+  # Any executable fetch requires an exact file-level allowlist entry. Trusting
+  # a whole hosting domain would let attacker-controlled paths bypass the lint.
+  local rel="$1" stream="$2" ln rest
   while IFS=$'\t' read -r ln rest; do
     printf '%s' "$rest" | grep -qEi '(^|[^[:alnum:]_])(curl|wget|fetch)([^[:alnum:]_]|$)' || continue
     printf '%s' "$rest" | grep -qEi 'https?://' || continue
-    bad=""
-    while IFS= read -r host; do
-      [ -n "$host" ] || continue
-      host_allowed "$host" || bad="$host"
-    done < <(printf '%s' "$rest" | grep -oEi 'https?://[a-zA-Z0-9.-]+' | sed -E 's#^https?://##I')
-    [ -n "$bad" ] && emit "$rel" "$ln" "fetch of remote content in executable context (host: $bad)"
+    emit "$rel" "$ln" "fetch of remote content in executable context"
   done < <(printf '%s\n' "$stream")
 }
 
@@ -136,6 +117,7 @@ check_regex() {
 check_unicode() {
   # bidi / direction-override code points (Trojan Source)
   local rel="$1" stream="$2" ln rest
+  [ "$BIDI_GREP" -eq 1 ] || return 0
   while IFS=$'\t' read -r ln rest; do
     emit "$rel" "$ln" "unicode direction-override / bidi control character"
   done < <(printf '%s\n' "$stream" \
@@ -146,6 +128,13 @@ check_unicode() {
 B64_PAT='base64([[:space:]]+[^|]*)?(-d|-di|--decode)[^|]*\|[[:space:]]*(env[[:space:]]+)?([^[:space:]]*/)?(sh|bash|zsh|dash|ksh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)'
 EVAL_PAT='eval[^#]*(\$\(|`)[^)]*(curl|wget|fetch)'
 INJECT_PAT='ignore (all |the )?(previous|prior) (instruction|message|context)|disregard (all |the )?(previous|prior|the above)|disable (the )?(sandbox|safety|guardrail|security)|bypass (the )?permission|bypass permissions|turn off (the )?(sandbox|safety)'
+
+BIDI_GREP=0
+if printf 'x\n' | grep -P 'x' >/dev/null 2>&1; then
+  BIDI_GREP=1
+else
+  echo "security-lint: warning: grep lacks -P; unicode bidi scan skipped" >&2
+fi
 
 # --- scan ------------------------------------------------------------------
 if [ "$#" -gt 0 ]; then

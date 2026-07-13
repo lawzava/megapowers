@@ -18,3 +18,4 @@ templates/agent-notify/agent-notify
 # inputs that prove the guardrail hook blocks them.
 plugins/mega-guardrails/hooks/tests/deny-destructive.test.sh
 plugins/mega-guardrails/hooks/tests/prefilter-grep-failure.test.sh
+plugins/mega-guardrails/hooks/tests/codex-deny-destructive.test.sh

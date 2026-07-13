@@ -40,8 +40,8 @@ Senior engineer's register for anything a human or agent reads:
 ## Platform Adaptation
 
 If your harness appears here, read its reference for tool specifics: Codex
-`references/codex-tools.md`, Pi `references/pi-tools.md`, Antigravity
-`references/antigravity-tools.md`, OpenCode `references/opencode-tools.md`.
+`references/codex-tools.md`, Antigravity `references/antigravity-tools.md`,
+OpenCode `references/opencode-tools.md`.
 
 ## User Instructions
 

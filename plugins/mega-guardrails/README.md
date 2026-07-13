@@ -114,6 +114,3 @@ usage.
 Claude Code: `/plugin install mega-guardrails@megapowers`.
 
 Codex: `codex plugin add mega-guardrails@megapowers`.
-
-mega-guardrails ships only hooks and the statusline, so there are no
-standalone skills to install separately.
