@@ -1,6 +1,6 @@
 ---
 name: humanizing-prose
-description: Use when writing or editing user-facing prose (README, docs, release notes, PR or announcement text, error messages) or when asked to make text sound less AI-generated. Triggers on "humanize", "sounds like AI", "slop", "make this read naturally".
+description: Use to draft or edit user-facing docs, release notes, PRs, announcements, or errors. Triggers on "humanize", "sounds like AI", "slop", or "read naturally".
 license: MIT
 ---
 

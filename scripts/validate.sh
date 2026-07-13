@@ -215,32 +215,42 @@ else
   bad "using-megapowers skill or SessionStart hook missing (cannot measure always-loaded budget)"
 fi
 
-# 3. Codex initial skills-list budget: Codex caps the initial list at
-#    min(2% of context, 8000 chars) and loads full SKILL.md only on selection,
-#    so descriptions compete for 8000 chars. Codex plugins install individually,
-#    so the actionable guard is per-plugin: no single Codex-shipped plugin may
-#    overflow the list on its own. The all-five aggregate (~10KB) is over cap and
-#    surfaced as a note below (a Codex user installing every plugin loses some
-#    initial-list discoverability until a skill is explicitly invoked).
+# 3. Codex initial skills-list budget: Codex uses 2% of a known context window
+#    or an 8000-character fallback. The budget covers rendered metadata lines,
+#    not descriptions alone. Model the current namespaced alias form with a
+#    conservative three-character root alias, then reserve 448 characters for
+#    the renderer's alias-table prose and one long marketplace install root.
 CODEX_MAX=8000
+CODEX_ALIAS_RESERVE=448
 codex_over=0; codex_peak=0; codex_peak_name=""; codex_agg=0; codex_found=0
 for cx in plugins/*/.codex-plugin/plugin.json; do
   [[ -f $cx ]] || continue
-  codex_found=1
   pdir="$(dirname "$(dirname "$cx")")"
+  pname="$(jq -r '.name // empty' "$cx" 2>/dev/null)"
+  skp="$(jq -r '.skills // empty' "$cx" 2>/dev/null)"
+  [[ -n $pname && -n $skp ]] || continue
+  codex_found=1
+  skdir="$pdir/${skp#./}"; skdir="${skdir%/}"
   psum=0
   while IFS= read -r sk; do
     [[ -z $sk ]] && continue
-    psum=$((psum + $(byte_len "$(skill_desc "$sk")")))
-  done < <(find "$pdir/skills" -name SKILL.md 2>/dev/null)
+    sname="$(basename "$(dirname "$sk")")"
+    rel="${sk#"$skdir/"}"
+    line="- ${pname}:${sname}: $(skill_desc "$sk") (file: r99/${rel})"
+    psum=$((psum + $(byte_len "$line") + 1))
+  done < <(find "$skdir" -name SKILL.md 2>/dev/null)
   codex_agg=$((codex_agg + psum))
-  if (( psum > codex_peak )); then codex_peak=$psum; codex_peak_name="$(basename "$pdir")"; fi
-  if (( psum > CODEX_MAX )); then bad "Codex plugin skills-list over ${CODEX_MAX}B: $(basename "$pdir") (${psum}B)"; codex_over=1; fi
+  ptotal=$((psum + CODEX_ALIAS_RESERVE))
+  if (( ptotal > codex_peak )); then codex_peak=$ptotal; codex_peak_name="$(basename "$pdir")"; fi
+  if (( ptotal > CODEX_MAX )); then bad "Codex plugin rendered metadata plus alias reserve over ${CODEX_MAX}B: $(basename "$pdir") (${ptotal}B)"; codex_over=1; fi
 done
 if (( codex_found == 1 )); then
-  (( codex_over == 0 )) && ok "every Codex plugin skills-list within ${CODEX_MAX}B (peak: ${codex_peak_name} ${codex_peak}B)"
-  if (( codex_agg > CODEX_MAX )); then
-    echo "  (note: all Codex-shipped plugins total ${codex_agg}B of skill descriptions, above Codex's ${CODEX_MAX}-char initial-list cap; installing every plugin on Codex drops some skills from the initial list until explicitly invoked)"
+  (( codex_over == 0 )) && ok "every Codex plugin rendered metadata plus alias reserve within ${CODEX_MAX}B (peak: ${codex_peak_name} ${codex_peak}B)"
+  codex_agg_total=$((codex_agg + CODEX_ALIAS_RESERVE))
+  if (( codex_agg_total > CODEX_MAX )); then
+    bad "all Codex plugin rendered metadata plus alias reserve exceeds ${CODEX_MAX}B initial-list budget (${codex_agg_total}B)"
+  else
+    ok "all Codex plugin rendered metadata plus alias reserve within ${CODEX_MAX}B initial-list budget (${codex_agg_total}B)"
   fi
 fi
 

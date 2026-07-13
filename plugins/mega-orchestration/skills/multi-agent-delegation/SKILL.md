@@ -1,13 +1,8 @@
 ---
 name: multi-agent-delegation
 description: >-
-  Use when the best executor is a different model or runtime rather than another
-  instance of the same one — route a scoped build, plan or code review,
-  adversarial verification, or visual/browser task while the lead orchestrates.
-  Distinct from dispatching-parallel-agents and subagent-driven-development, which
-  fan work out to same-model agents. Triggers on "delegate to Codex", "delegate
-  the visual/browser work", "hand this off to another model", "get an independent
-  model's review".
+  Use when a scoped build, plan or code review, or visual or browser task should
+  go to a different model or runtime rather than same-model subagents.
 license: MIT
 ---
 

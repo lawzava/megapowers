@@ -1,12 +1,8 @@
 ---
 name: cross-model-verification
 description: >-
-  Use to verify risky or high-stakes work with an independent, different-vendor
-  model that tries to REFUTE it — for billing/auth/concurrency/security logic, a
-  critical claim, or any artifact where a single model's blind spots are costly.
-  Triggers on "get an independent review", "find the bug in this", "verify this
-  before I trust it", "adversarial pass". Prefer an executable oracle over model
-  opinion wherever one exists.
+  Use when risky billing, auth, concurrency, security, or other high-stakes work
+  needs another vendor to independently refute or adversarially verify it.
 license: MIT
 ---
 

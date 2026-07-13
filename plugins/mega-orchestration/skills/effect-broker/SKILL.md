@@ -1,12 +1,8 @@
 ---
 name: effect-broker
 description: >-
-  Use before any real-world side effect that leaves the working tree — a deploy,
-  an email/notification send, a payment, a DB migration or destructive query, a
-  DNS change, an external API write. Classify the action by how reversible it is,
-  then simulate-then-commit the risky ones with approval scaled to the autonomy
-  level. Triggers on "deploy", "send", "charge", "run this migration", "delete the
-  production ...", "make this change live", or any irreversible external action.
+  Use before a deploy, send, charge, database migration, destructive query, DNS
+  change, external API write, or other costly real-world side effect.
 license: MIT
 ---
 

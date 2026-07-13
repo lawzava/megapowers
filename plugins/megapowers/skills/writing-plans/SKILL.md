@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: Use when you have a spec or clear requirements for a multi-step task and need to turn them into a step-by-step implementation plan before coding. Triggers on "write a plan", "write an implementation plan", "break this into steps", "plan before coding", "save the plan as a file", "don't implement yet". Comes after brainstorming (once intent and approach are clear) and before test-driven-development (which implements each step).
+description: Use when requirements need a multi-step plan before coding. Triggers on "write a plan", "break into steps", "save the plan", or "do not implement yet". Brainstorm unclear work first.
 license: MIT
 ---
 

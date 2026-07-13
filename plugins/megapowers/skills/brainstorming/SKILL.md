@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: Use before starting new or non-trivial design work — a new feature, component, or capability, or a behavior change whose approach is unclear — to explore intent, requirements, and design before implementing. Triggers on "I want to add <feature>", "work out the design", "figure out the approach", "let's build". Skip for mechanical edits, well-specified one-liners, and straightforward bug fixes.
+description: Use to shape a new feature, capability, or unclear behavior change. Triggers on "add a feature", "work out the design", "figure out the approach", or "let's build". Skip mechanical edits and bug fixes.
 license: MIT
 ---
 

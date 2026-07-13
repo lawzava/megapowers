@@ -1,10 +1,9 @@
 ---
 name: designing-frontends
 description: >-
-  Use when building new UI or reshaping an existing one and the visual design
-  matters: choosing aesthetic direction, palette, typography, layout, motion,
-  or UX copy, or when output looks templated or AI-generated. Skip for pure
-  logic, backend, or CLI work with no rendered surface.
+  Use to build or redesign a rendered UI when visual direction, palette,
+  typography, layout, motion, or UX copy matters, especially if output looks
+  templated or AI generated.
 license: MIT
 ---
 

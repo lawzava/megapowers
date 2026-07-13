@@ -1,10 +1,8 @@
 ---
 name: typescript-patterns
 description: >-
-  Use when writing or refactoring TypeScript and you want idiomatic types, error
-  handling, and promise/async code that is correct and readable. Triggers on
-  "idiomatic TypeScript", "review this TS", "fix this async code", "type this
-  properly". For choosing a new project's stack, use mega-ts:greenfield-ts-stack.
+  Use for TypeScript in an existing project when choosing idiomatic types,
+  discriminated unions, typed errors, promises, concurrency, or async design.
 license: MIT
 ---
 

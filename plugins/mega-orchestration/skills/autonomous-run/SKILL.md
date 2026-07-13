@@ -1,12 +1,8 @@
 ---
 name: autonomous-run
 description: >-
-  Use to run a long, largely-unattended task across many steps or sessions —
-  keeping durable state the run survives on (a frozen charter, a plan with
-  acceptance criteria, an operating runbook, an append-only journal, a
-  machine-readable status) plus an autonomy level that decides what proceeds vs
-  what waits for a human. Triggers on "work on this autonomously", "long-running
-  task", "keep going until it's done", "run this unattended", "resume the run".
+  Use when a long task must continue unattended across many steps or sessions,
+  preserve durable progress, resume later, or keep going until done.
 license: MIT
 ---
 

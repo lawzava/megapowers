@@ -1,11 +1,8 @@
 ---
 name: python-patterns
 description: >-
-  Use when writing or refactoring Python and you want idiomatic typing, error
-  handling, async, and concurrency that is correct and readable. Triggers on
-  "idiomatic Python", "review this Python", "fix this async code", "type this
-  properly". For choosing a new project's stack, use
-  mega-python:greenfield-python-stack.
+  Use for Python in an existing project when choosing idiomatic typing, Pydantic
+  models, error handling, asyncio, concurrency, or async design.
 license: MIT
 ---
 

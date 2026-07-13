@@ -1,6 +1,6 @@
 ---
 name: subagent-driven-development
-description: Use when executing a written plan of independent tasks in the current session by dispatching each task to a fresh subagent, with per-task review — same session, per-task subagent + review, no per-phase human checkpoint (distinct from executing-plans, which you run inline yourself without per-task subagents). Triggers on "dispatch a subagent per task", "subagent-driven", "fan out the plan tasks".
+description: Use when a written plan has independent tasks for per-task subagent implementation and review. Triggers on "subagent per task", "subagent-driven", or "fan out plan tasks". Use executing-plans for inline work.
 license: MIT
 ---
 
