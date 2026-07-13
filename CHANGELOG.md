@@ -8,6 +8,12 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Added
+
+- The core `upgrading-megapowers` skill inspects existing install channels,
+  preserves pins and scopes, upgrades the installed set after one summarized
+  approval, and offers relevant uninstalled plugin bundles separately.
+
 ## 0.3.5 - 2026-07-13
 
 ### Fixed

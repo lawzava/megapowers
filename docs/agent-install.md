@@ -66,6 +66,9 @@ Updates: `codex plugin marketplace upgrade megapowers`, then re-run
 `codex plugin add` for each plugin. Change-controlled installs pin with
 `@v0.3.5` instead and update by re-adding at the new tag. To track a fork,
 clone it and run `codex plugin marketplace add ./` from the checkout.
+After the core plugin is installed, use its `upgrading-megapowers` skill for
+future updates. It preserves the active channel and pinning policy and offers
+newly available bundles separately instead of installing them implicitly.
 Start a fresh Codex session, open `/hooks`, review the five hook handlers from
 the three plugin manifests, and trust the handlers the user approves. The
 run-loop Stop and formatter PostToolUse handlers intentionally no-op on Codex.

@@ -1,6 +1,6 @@
 # megapowers (plugin)
 
-The workflow core: sixteen process skills that take an idea to reviewed,
+The workflow core: seventeen process skills that take an idea to reviewed,
 tested, merged code. Each phase of the work has its own skill with clear entry
 conditions, so the right practice is applied at the right moment.
 
@@ -17,6 +17,7 @@ conditions, so the right practice is applied at the right moment.
   claiming done), `requesting-code-review`, `receiving-code-review`
 - Integrate: `using-git-worktrees` (isolated feature work),
   `finishing-a-development-branch` (merge, PR, keep, or discard)
+- Maintain: `upgrading-megapowers` (inspect, upgrade, and offer relevant additions)
 - Memory: `project-memory` (durable project knowledge across sessions)
 - Communicate: `humanizing-prose` (strip AI tells from user-facing prose)
 - Meta: `using-megapowers` (the session-start check-for-a-skill rule),
@@ -29,11 +30,11 @@ one-sentence preface and a model-catalog block rendered from models.toml
 (`hooks/render-model-catalog`) at session start, so the agent checks for a
 matching skill before acting instead of waiting for you to name one, and every
 session knows the available models, tiers, and delegates without invoking a
-skill. The injection is about 348 words (~450
-tokens); the sixteen skill descriptions add about 730 words (~950 tokens) of
-always-on metadata. Skill bodies load only when a skill is invoked. Verify
-yourself: `bash hooks/tests/session-start.test.sh` prints the exact payload
-word count (and gates it at 385).
+skill. The injection is about 348 words (~450 tokens). Skill descriptions are
+always-on metadata; full skill bodies load only when invoked.
+`scripts/validate.sh` enforces the context budgets. Verify yourself:
+`bash hooks/tests/session-start.test.sh` prints the exact payload word count
+(and gates it at 385).
 
 ## Install
 

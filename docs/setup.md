@@ -380,21 +380,23 @@ Plugins are versioned (see each `.claude-plugin/plugin.json` /
 `.codex-plugin/plugin.json` and the root `CHANGELOG.md`). Read the changelog
 before updating; behavioral guidance can change between versions.
 
-- Claude Code: `/plugin marketplace update megapowers` refreshes the
-  marketplace, then update the plugin from the `/plugin` installed list.
-  Installed plugins are copies: local edits you made inside an installed
-  plugin are overwritten on update. Keep customizations in a fork instead.
-- Codex: `codex plugin marketplace upgrade megapowers` refreshes the Git
-  snapshot, then re-run `codex plugin add <plugin>@megapowers` for each plugin,
-  or use `/plugins` inside Codex. On the contributor/fork variant, `git pull`
-  the checkout first instead of upgrading the marketplace.
-- skills CLI installs: `npx skills update` (all skills, interactive) or
-  `npx skills update <name> -y`.
-- OpenCode / Antigravity (symlinked skills): `git pull` the checkout;
-  symlinks pick the change up immediately. If you copied instead of
-  symlinking, re-copy the skill directories you use.
-- Forks: merge upstream when you want the changes; `scripts/validate.sh`
-  and `bash evals/run-all.sh` tell you whether your local edits still hold.
+If the core plugin is installed, ask the agent to use `upgrading-megapowers`.
+It inspects the active channel, preserves pins and scopes, proposes installed
+updates plus relevant optional additions, asks once before writes, and verifies
+the result. The exact native commands live in the skill's
+[`channels.md`](../plugins/megapowers/skills/upgrading-megapowers/references/channels.md)
+reference.
+
+Without the skill, refresh only the channel already in use, update the existing
+installed set, and verify it before adding anything. Marketplace installs use
+the harness plugin manager; skills CLI installs name the approved skills and
+preserve detected scope with `npx skills update <names> -p -y` or
+`npx skills update <names> -g -y`; symlinked checkouts use `git pull --ff-only`
+only on a clean floating branch with an upstream. Explicit pins fetch and
+select only an approved ref. Forks integrate upstream under their existing
+merge policy and run `scripts/validate.sh` plus `bash evals/run-all.sh`.
+Managed plugin copies can overwrite local edits, so preserve customizations in
+a fork.
 
 ## Uninstalling
 
