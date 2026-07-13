@@ -8,6 +8,34 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.5 - 2026-07-13
+
+### Fixed
+
+- Candidate anonymization preserves binary files and line endings, rejects
+  symlinks, and still refuses any surviving authorship marker.
+- Delegate resolution now honors empty-array overrides and enforces both
+  halves of the configured tier and effort floor.
+- Autonomous-run commands reject run IDs that can escape the run directory.
+- Local validation ignores generated eval caches, checks new untracked files,
+  uses no undeclared `rg` dependency, and measures the real SessionStart
+  payload.
+
+### Changed
+
+- The Claude marketplace publishes the seven plugin bundles only. Individual
+  skills remain available through the skills CLI for non-marketplace installs.
+- Security lint requires an exact file allowlist for executable network fetches
+  and reports when its unicode scan is unavailable.
+- CI scores the JSON artifact from its single eval-suite run.
+- Public docs now disclose the optional Node visual companion, the Go scorer,
+  current Codex hook dispatch, and the Codex initial skills-list limit.
+
+### Removed
+
+- The unwired description-freeze script and its stale enforcement claims.
+- The undeclared Pi harness reference.
+
 ## 0.3.4 - 2026-07-13
 
 ### Fixed
