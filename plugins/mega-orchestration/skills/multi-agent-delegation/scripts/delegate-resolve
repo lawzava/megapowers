@@ -146,6 +146,15 @@ done
 
 section_exists_in() { awk -v sec="[$2]" '{h=$0; gsub(/[[:space:]]/,"",h)} h==sec {found=1; exit} END{exit !found}' "$1"; }
 section_exists() { local f; for f in "${layers[@]}"; do section_exists_in "$f" "$1" && return 0; done; return 1; }
+key_exists_in() {  # $1=file $2=section $3=key
+  awk -v sec="[$2]" -v key="$3" '
+    { hn=$0; gsub(/[[:space:]]/,"",hn) }
+    hn==sec {inx=1; next}
+    /^[[:space:]]*\[/ {inx=0}
+    inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {found=1; exit}
+    END {exit !found}
+  ' "$1"
+}
 
 list_roles() {
   local f
@@ -177,8 +186,10 @@ section_val_in() {  # $1=file $2=section (e.g. "roles" | "providers.codex") $3=k
 section_val() {  # $1=section $2=key -> first layer that defines the key wins
   local f v
   for f in "${layers[@]}"; do
+    key_exists_in "$f" "$1" "$2" || continue
     v="$(section_val_in "$f" "$1" "$2")"
-    [ -n "$v" ] && { printf '%s\n' "$v"; return 0; }
+    printf '%s\n' "$v"
+    return 0
   done
   return 1
 }
@@ -201,8 +212,10 @@ array_val_in() {  # $1=file $2=section $3=key -> one element per line
 array_val() {  # $1=section $2=key -> the first layer that defines the key wins whole
   local f out
   for f in "${layers[@]}"; do
+    key_exists_in "$f" "$1" "$2" || continue
     out="$(array_val_in "$f" "$1" "$2")"
-    [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+    [ -n "$out" ] && printf '%s\n' "$out"
+    return 0
   done
   return 1
 }
@@ -211,16 +224,20 @@ msection_exists() { local f; for f in ${mlayers[@]+"${mlayers[@]}"}; do section_
 msection_val() {
   local f v
   for f in ${mlayers[@]+"${mlayers[@]}"}; do
+    key_exists_in "$f" "$1" "$2" || continue
     v="$(section_val_in "$f" "$1" "$2")"
-    [ -n "$v" ] && { printf '%s\n' "$v"; return 0; }
+    printf '%s\n' "$v"
+    return 0
   done
   return 1
 }
 marray_val() {
   local f out
   for f in ${mlayers[@]+"${mlayers[@]}"}; do
+    key_exists_in "$f" "$1" "$2" || continue
     out="$(array_val_in "$f" "$1" "$2")"
-    [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+    [ -n "$out" ] && printf '%s\n' "$out"
+    return 0
   done
   return 1
 }
@@ -230,13 +247,11 @@ marray_val() {
 # catalog stack.
 cat_exists() { section_exists "$1" || msection_exists "$1"; }
 cat_val() {
-  local v
-  v="$(section_val "$1" "$2")" && [ -n "$v" ] && { printf '%s\n' "$v"; return 0; }
+  section_val "$1" "$2" && return 0
   msection_val "$1" "$2"
 }
 cat_array() {
-  local out
-  out="$(array_val "$1" "$2")" && [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+  array_val "$1" "$2" && return 0
   marray_val "$1" "$2"
 }
 
@@ -316,6 +331,9 @@ if [ "$check" -eq 1 ]; then
     if [ -n "$ref" ] && [ ! -f "$here/../$ref" ]; then note "provider '$p' reference file missing: $ref"; fi
     pe="$(cat_val "providers.$p" effort)"
     plist="$(cat_array "providers.$p" efforts)"
+    if [ -n "$pe" ] && [ -n "$ce_scale" ]; then
+      printf '%s\n' "$ce_scale" | grep -qx -- "$pe" || note "provider '$p' default effort '$pe' not in [efforts] scale"
+    fi
     if [ -n "$pe" ] && [ -n "$plist" ]; then
       printf '%s\n' "$plist" | grep -qx -- "$pe" || note "provider '$p' default effort '$pe' not in its efforts list"
     fi
@@ -416,15 +434,18 @@ if [ -n "$floor" ] && [ -n "$scale_list" ]; then
     exit 2
   fi
 fi
-# The floor's effort half validates against the [efforts] scale the same way.
+# The floor's effort half validates against the [efforts] scale and becomes a
+# minimum for providers that declare a default effort.
+floor_effort_idx=""
+effort_scale="$(cat_array efforts scale)"
 if [ -n "$floor" ]; then
   feff="${floor#*:}"
   if [ "$feff" != "$floor" ] && [ -n "$feff" ]; then
-    effort_scale="$(cat_array efforts scale)"
     if [ -n "$effort_scale" ] && ! printf '%s\n' "$effort_scale" | grep -qx -- "$feff"; then
       echo "delegate-resolve: floor effort '$feff' is not in the [efforts] scale" >&2
       exit 2
     fi
+    [ -n "$effort_scale" ] && floor_effort_idx="$(printf '%s\n' "$effort_scale" | grep -nx -- "$feff" | cut -d: -f1)"
   fi
 fi
 req="$(array_val requires "$role")"
@@ -460,6 +481,20 @@ while IFS= read -r p; do
       pidx="$(tier_index "$pdt")"
       if [ -n "$pidx" ] && [ "$pidx" -lt "$floor_idx" ]; then
         echo "delegate-resolve: provider '$p' tier '$pdt' is below floor '${floor%%:*}' (skipped)" >&2
+        continue
+      fi
+    fi
+  fi
+  if [ -n "$floor_effort_idx" ]; then
+    peff="$(cat_val "providers.$p" effort)"
+    if [ -n "$peff" ]; then
+      peff_idx="$(printf '%s\n' "$effort_scale" | grep -nx -- "$peff" | cut -d: -f1)"
+      if [ -z "$peff_idx" ]; then
+        echo "delegate-resolve: provider '$p' effort '$peff' is not in the [efforts] scale" >&2
+        exit 2
+      fi
+      if [ "$peff_idx" -lt "$floor_effort_idx" ]; then
+        echo "delegate-resolve: provider '$p' effort '$peff' is below floor '${floor#*:}' (skipped)" >&2
         continue
       fi
     fi

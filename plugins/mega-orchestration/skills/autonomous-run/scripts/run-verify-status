@@ -15,6 +15,9 @@
 # fails. Portable: bash + coreutils + awk.
 set -uo pipefail
 base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
+scriptdir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=run-lib.sh
+. "$scriptdir/run-lib.sh"
 
 # plan_digest <plan.md> — "<tag> <sha256>" per milestone (heading + acceptance
 # line(s), whitespace-normalized). Identical to run-init/run-derive-status so the
@@ -35,7 +38,9 @@ plan_digest() {
 }
 
 [ $# -ge 1 ] || { echo "usage: run-verify-status <run-id>" >&2; exit 2; }
-dir="$base/$1"
+id="$1"
+validate_run_id "$id" run-verify-status || exit 2
+dir="$base/$id"
 [ -f "$dir/status" ]     || { echo "run-verify-status: FAIL — no status file at $dir" >&2; exit 1; }
 [ -f "$dir/journal.md" ] || { echo "run-verify-status: FAIL — no journal at $dir" >&2; exit 1; }
 

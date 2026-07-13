@@ -20,10 +20,21 @@ else
 fi
 [ "${#files[@]}" -gt 0 ] || exit 0
 
+defined_in() {  # $1=file $2=section $3=key
+  awk -v sec="[$2]" -v key="$3" '
+    { hn=$0; gsub(/[[:space:]]/,"",hn) }
+    hn==sec {inx=1; next}
+    /^[[:space:]]*\[/ {inx=0}
+    inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {found=1; exit}
+    END {exit !found}
+  ' "$1" 2>/dev/null
+}
+
 val() {  # $1=section $2=key -> first file that defines it wins
   local f v
   for f in "${files[@]}"; do
     [ -r "$f" ] || continue
+    defined_in "$f" "$1" "$2" || continue
     v="$(awk -v sec="[$1]" -v key="$2" '
       { hn=$0; gsub(/[[:space:]]/,"",hn) }
       hn==sec {inx=1; next}
@@ -33,7 +44,8 @@ val() {  # $1=section $2=key -> first file that defines it wins
         if (rest ~ /^"/) { sub(/^"/,"",rest); sub(/".*/,"",rest); print rest; exit }
         sub(/#.*/,"",rest); gsub(/[[:space:]]+$/,"",rest); print rest; exit
       }' "$f" 2>/dev/null)"
-    [ -n "$v" ] && { printf '%s' "$v"; return 0; }
+    printf '%s' "$v"
+    return 0
   done
   return 1
 }
@@ -41,6 +53,7 @@ arr() {  # $1=section $2=key -> elements one per line, first file wins
   local f out
   for f in "${files[@]}"; do
     [ -r "$f" ] || continue
+    defined_in "$f" "$1" "$2" || continue
     out="$(awk -v sec="[$1]" -v key="$2" '
       { hn=$0; gsub(/[[:space:]]/,"",hn) }
       hn==sec {inx=1; next}
@@ -50,7 +63,8 @@ arr() {  # $1=section $2=key -> elements one per line, first file wins
         while (match(rest, /"[^"]*"/)) { print substr(rest, RSTART+1, RLENGTH-2); rest=substr(rest, RSTART+RLENGTH) }
         exit
       }' "$f" 2>/dev/null)"
-    [ -n "$out" ] && { printf '%s\n' "$out"; return 0; }
+    [ -n "$out" ] && printf '%s\n' "$out"
+    return 0
   done
   return 1
 }

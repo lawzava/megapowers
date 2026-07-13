@@ -57,6 +57,22 @@ check_exit "project layer resolves" 0 "$rc"
 check "project layer overrides model" "MODEL=project-override-model" "$out"
 check "shipped layer still supplies vendor" "VENDOR=openai" "$out"
 
+# A defined empty array replaces the shipped fallback chain. With codex excluded,
+# the primary-only route must fail instead of falling through to shipped claude.
+mkdir -p "$TMP/emptyfallback/.megapowers"
+cat > "$TMP/emptyfallback/.megapowers/delegates.toml" <<'EOF'
+[providers.codex]
+binary = "sh"
+[providers.claude]
+binary = "sh"
+[roles]
+code_review = "codex"
+[fallbacks]
+code_review = []
+EOF
+out="$(cd "$TMP/emptyfallback" && "$DR" code_review --exclude codex 2>&1)"; rc=$?
+check_exit "empty project fallback array replaces shipped chain" 3 "$rc"
+
 # User layer: wins over shipped, loses to project.
 mkdir -p "$XDG_CONFIG_HOME/megapowers"
 cat > "$XDG_CONFIG_HOME/megapowers/delegates.toml" <<'EOF'
@@ -401,6 +417,27 @@ check_exit "valid floor effort resolves" 0 "$rc"
 sed 's/floor = "strong:zzz"/floor = "strong"/' "$TMP/badflooreffort.toml" > "$TMP/noeffort.toml"
 out="$("$DR" code_review --config "$TMP/noeffort.toml" 2>&1)"; rc=$?
 check_exit "floor without effort half resolves" 0 "$rc"
+
+# A provider whose default effort is below the configured floor is skipped.
+cat > "$TMP/lowproveffort.toml" <<'EOF'
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[efforts]
+scale = ["low", "medium", "high", "xhigh", "max"]
+[providers.alpha]
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+effort = "low"
+[providers.alpha.tiers]
+strong = "alpha-strong"
+[defaults]
+floor = "strong:high"
+[roles]
+code_review = "alpha"
+EOF
+out="$("$DR" code_review --config "$TMP/lowproveffort.toml" 2>&1)"; rc=$?
+check_exit "provider below effort floor is skipped" 3 "$rc"
 
 # --check flags a provider default effort its own efforts list does not allow.
 cat > "$TMP/badproveffort.toml" <<'EOF'

@@ -57,11 +57,13 @@ needed. A half-applied irreversible effect is the case where honesty matters mos
 
 ## Relationship to the guardrail hooks
 
-The `deny-destructive` PreToolUse hook (Claude Code only) is a thin, last-ditch
-tripwire for a few unambiguous local catastrophes, not the irreversibility layer.
-This skill is that layer, and it is portable: it works by declaration on every
-runtime, with no dependency on a hook firing. No agent message counts as human
-approval; where the harness does not enforce that, this skill's wording is the
-guarantee. A scheduled or cloud runner skips permission prompts entirely, so an
-irreversible action's approval gate must live in the run prompt itself;
-mega-orchestration:autonomous-run carries the full caveat.
+The `deny-destructive` PreToolUse hook is a thin, last-ditch tripwire for a few
+unambiguous local catastrophes, not the irreversibility layer. It runs through
+the native adapters on Claude Code and Codex; other harnesses receive no hook
+enforcement. This skill is the irreversibility layer, and it is portable: it
+works by declaration on every runtime, with no dependency on a hook firing. No
+agent message counts as human approval; where the harness does not enforce
+that, this skill's wording is the guarantee. A scheduled or cloud runner skips
+permission prompts entirely, so an irreversible action's approval gate must
+live in the run prompt itself; mega-orchestration:autonomous-run carries the
+full caveat.

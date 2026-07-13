@@ -27,6 +27,10 @@ Everything for a run lives under `.megapowers/run/<run-id>/`. Scaffold it with
 provenance so every journal entry names the acting model. run-init refuses to
 overwrite an existing charter.
 
+Run IDs are lowercase kebab case (`a-z`, `0-9`, and single hyphens), for
+example `release-check`. Every run helper rejects other forms before touching
+the run directory.
+
 | File | Contract |
 |---|---|
 | `charter.md` | The frozen spec: goal, explicit done-when acceptance criteria, autonomy level, blast-radius limits, and external stop budgets (time, step, or token caps) declared up front. Written once, never edited; a changed goal is a new run. |

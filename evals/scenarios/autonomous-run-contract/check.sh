@@ -2,6 +2,10 @@
 set -u
 o="$WORKDIR/out.txt"; [ -f "$o" ] || { echo "no output"; exit 1; }
 for f in charter.md plan.md runbook.md journal.md status; do grep -q "$f" "$o" || { echo "scaffold missing $f"; exit 1; }; done
+for cmd in init journal report derive verify; do
+  grep -q "rc_bad_${cmd}=2" "$o" || { echo "$cmd must reject a traversal run ID with exit 2"; exit 1; }
+done
+[ "$(grep -c 'run-id must be lowercase-kebab' "$o")" -eq 5 ] || { echo "every run command must explain the run-ID contract"; exit 1; }
 awk '/=== freeze ===/{f=1} f&&/frozen/{m=1} f&&/rc=3/{r=1} END{exit !(m&&r)}' "$o" || { echo "charter not frozen (second init must exit 3)"; exit 1; }
 grep -q "rc_conf2=2" "$o" || { echo "confidence '2' should be rejected (not in [0,1])"; exit 1; }
 grep -q "JOURNAL_GREW=4" "$o" || { echo "journal did not append the expected 4 lines"; exit 1; }

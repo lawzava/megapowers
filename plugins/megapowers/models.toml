@@ -104,8 +104,9 @@ notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .
 
 # --- Defaults: cross-cutting rules ---
 [defaults]
-# Minimum tier:effort for anything that ships, on the [tiers] scale. A provider
-# whose default_tier sits below the floor tier is skipped at resolution.
+# Minimum tier:effort for anything that ships, on the global scales. A provider
+# whose default_tier or declared default effort sits below the corresponding
+# floor is skipped at resolution. Providers without an effort use the tier only.
 # Wrapper agents relaying to an external CLI inherit the session model
 # (`model: inherit`); relay fidelity is worth the spend.
 floor = "strong:low"

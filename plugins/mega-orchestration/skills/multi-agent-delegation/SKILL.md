@@ -50,8 +50,10 @@ The nine roles: plan_review, code_review, small_impl, visual, browser_test,
 visual_verify, verify, judge, council_member.
 
 The floor is `[defaults] floor` in the catalog, written as tier:effort on the
-`[tiers]` scale (shipped: `"strong:low"`). Nothing that ships routes below it;
-a provider whose tier sits below the floor is skipped at resolution.
+`[tiers]` and `[efforts]` scales (shipped: `"strong:low"`). Nothing that ships
+routes below it. A provider whose tier or declared default effort sits below
+the corresponding floor is skipped at resolution; providers without an effort
+setting are compared by tier only.
 
 ## Resolving a Route
 
@@ -62,7 +64,7 @@ the catalog, `--lead` to print the declared orchestrator, `--where` to print
 the active config layers, `--check` to validate the table, `--list` and
 `--list-presets` to enumerate). It walks
 the role's fallback chain, skipping any provider that is excluded, disabled,
-missing a required capability, below the floor tier, or whose CLI is not
+missing a required capability, below the configured floor, or whose CLI is not
 installed, so a route never resolves to a runtime you do not have, and prints
 ROLE/PROVIDER/MODEL/TIER/EFFORT/CHANNEL/ENABLED/VENDOR/BINARY/FLOOR/NOTES.
 
