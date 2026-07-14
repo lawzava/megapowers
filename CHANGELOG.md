@@ -8,6 +8,33 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.7 - 2026-07-14
+
+### Added
+
+- Codex `multi_agent_v2` setup guidance enables ten concurrent subagents and
+  applies a model-visible depth-five task-path policy, with fresh-context
+  dispatch guidance for independent reviewers and candidates.
+- OpenAI's first-party `codex-plugin-cc` is documented as an optional Codex
+  companion when Claude Code is the active lead.
+
+### Changed
+
+- Codex reviewer profiles now describe same-vendor code review explicitly and
+  use the catalog's high review effort.
+- Claude Code documentation distinguishes isolated subagents from experimental
+  agent teams and no longer implies that agent teams enforce a single writer.
+- Provider and orchestration guidance separates native Codex fan-out from
+  cross-vendor independence and records v2's current context-fork behavior.
+
+### Fixed
+
+- The independent-review hook recognizes actual `codex-plugin-cc` review and
+  adversarial-review commands without allowing its status command to suppress
+  a required review.
+- Validation locks the v2 config shape, mirrored model catalogs, reviewer
+  profiles, and public release metadata against drift.
+
 ## 0.3.6 - 2026-07-14
 
 ### Added
