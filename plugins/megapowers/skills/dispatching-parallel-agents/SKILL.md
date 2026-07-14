@@ -8,7 +8,12 @@ license: MIT
 
 ## Overview
 
-You delegate tasks to agents with isolated context. Each agent receives exactly the context it needs, constructed by you; it never inherits your session's history. That keeps agents focused and preserves your own context for coordination. When several tasks are independent, one agent per task working concurrently beats working them in sequence.
+You delegate tasks to agents with deliberately scoped context. Use fresh context
+for independent candidates and reviewers; use inherited or forked context only
+when the task genuinely needs the parent history. Either way, construct a
+focused brief so the agent receives exactly what it needs. When several tasks
+are independent, one agent per task working concurrently beats working them in
+sequence.
 
 ## When to Use
 
@@ -29,7 +34,7 @@ Group the work by what is actually separate, then dispatch one agent per domain.
 Every agent prompt satisfies three requirements:
 
 1. Focused: one clearly scoped task, with constraints on what not to touch.
-2. Self-contained: everything needed to locate the problem, meaning paths, identifiers, and error messages. A document the agent needs goes in as its path plus an instruction to read it; quote verbatim only what the agent must match exactly. Never rely on the agent inheriting session context; it has none.
+2. Self-contained: everything needed to locate the problem, meaning paths, identifiers, and error messages. A document the agent needs goes in as its path plus an instruction to read it; quote verbatim only what the agent must match exactly. Pin the context mode explicitly when the harness supports it. Independence-sensitive work must use fresh context, such as a named fresh agent or Codex `fork_turns = "none"`; never accept an inherited-context default silently.
 3. Explicit about output: state what the agent should return.
 
 A prompt missing any of these produces an agent that wanders, guesses, or returns something you cannot integrate.

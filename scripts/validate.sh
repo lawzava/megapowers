@@ -41,6 +41,20 @@ byte_len() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d '[:space:]'; }
 claude_mp=".claude-plugin/marketplace.json"
 codex_mp=".agents/plugins/marketplace.json"
 
+catalog_codex_model() {
+  local tier="$1"
+  awk -v tier="$tier" '
+    /^\[providers\.codex\.tiers\]$/ { in_tiers=1; next }
+    in_tiers && /^\[/ { exit }
+    in_tiers && $1 == tier {
+      value=$3
+      gsub(/^"|"$/, "", value)
+      print value
+      exit
+    }
+  ' plugins/mega-orchestration/models.toml
+}
+
 echo "== marketplace =="
 if ! command -v jq >/dev/null 2>&1; then
   bad "jq is required"
@@ -105,13 +119,20 @@ else
   bad "mega-guardrails missing Codex plugin metadata"
 fi
 
+codex_frontier_model="$(catalog_codex_model frontier)"
+codex_strong_model="$(catalog_codex_model strong)"
+if [[ -n $codex_frontier_model ]] && grep -qF "model = \"$codex_frontier_model\"" templates/codex-config.toml; then
+  ok "Codex config lead model matches the catalog frontier tier ($codex_frontier_model)"
+else
+  bad "Codex config lead model must match the catalog frontier tier ($codex_frontier_model)"
+fi
 for role in builder reviewer; do
   root_role="templates/codex-agents/$role.toml"
   plugin_role="plugins/mega-orchestration/assets/codex-agents/$role.toml"
-  if grep -q '^model = "gpt-5.6-terra"$' "$root_role" 2>/dev/null; then
-    ok "Codex $role role pins gpt-5.6-terra"
+  if [[ -n $codex_strong_model ]] && grep -qF "model = \"$codex_strong_model\"" "$root_role" 2>/dev/null; then
+    ok "Codex $role role matches the catalog strong tier ($codex_strong_model)"
   else
-    bad "Codex $role role must pin gpt-5.6-terra instead of inheriting the lead model"
+    bad "Codex $role role must match the catalog strong tier ($codex_strong_model)"
   fi
   if [[ -f $plugin_role ]] && cmp -s "$root_role" "$plugin_role"; then
     ok "Codex $role role ships with mega-orchestration"
@@ -119,6 +140,11 @@ for role in builder reviewer; do
     bad "Codex $role role missing from mega-orchestration assets or differs from root template"
   fi
 done
+if grep -q '^model_reasoning_effort = "high"$' templates/codex-agents/reviewer.toml; then
+  ok "Codex reviewer uses the catalog delegate-default high effort"
+else
+  bad "Codex reviewer must use the catalog delegate-default high effort"
+fi
 if grep -qF 'git rev-parse --git-common-dir' templates/codex-agents/builder.toml; then
   ok "Codex builder refuses edits outside a dedicated linked worktree"
 else
@@ -412,6 +438,20 @@ if grep -q '^commit_attribution[[:space:]]*=' templates/codex-config.toml; then
   bad "Codex config template must not ship the removed commit_attribution key"
 else
   ok "Codex config template omits removed commit_attribution key"
+fi
+if awk '
+     /^\[features\.multi_agent_v2\]$/ { in_v2=1; next }
+     in_v2 && /^\[/ { exit }
+     in_v2 && /^enabled = true$/ { enabled=1 }
+     in_v2 && /^max_concurrent_threads_per_session = 11$/ { cap=1 }
+     in_v2 && /five task-name components beneath \/root/ { depth_policy=1 }
+     END { exit !(enabled && cap && depth_policy) }
+   ' templates/codex-config.toml &&
+   ! grep -q '^max_depth[[:space:]]*=' templates/codex-config.toml &&
+   ! grep -q '^max_threads[[:space:]]*=' templates/codex-config.toml; then
+  ok "Codex config opts into v2 with ten subagents, a depth-five policy, and no ignored v1 limits"
+else
+  bad "Codex config must enable v2 with 11 session threads, a depth-five mode hint, and no v1 agent limits"
 fi
 
 echo "== hook tests =="

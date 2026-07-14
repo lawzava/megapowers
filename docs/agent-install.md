@@ -143,8 +143,12 @@ Present these to the user; apply only what they approve:
   wanted keys from `templates/codex-config.toml`. Copy the Terra-pinned
   `builder.toml` and `reviewer.toml` from the installed mega-orchestration
   plugin's `assets/codex-agents/` into `~/.codex/agents/` or the project's
-  `.codex/agents/`. Native multi-agent support needs no feature flag; suggest
-  `max_threads = 4` and `max_depth = 1`. If this Codex lead has a
+  `.codex/agents/`. The shipped baseline opts into under-development v2: remove
+  `agents.max_threads`, enable `[features.multi_agent_v2]`, set
+  `enabled = true` and `max_concurrent_threads_per_session = 11` for ten
+  concurrent subagents plus the root, and copy the template's
+  `multi_agent_mode_hint_text` depth-five policy. Codex 0.144.3 does not hard
+  enforce `agents.max_depth` under v2. If this Codex lead has a
   `[mcp_servers.codex]` self-registration, offer to remove it after showing the
   exact config change.
   Offer `templates/codex-complex.config.toml` as

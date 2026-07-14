@@ -1,6 +1,6 @@
 # Harness primitives
 
-Last reviewed: 2026-07-07.
+Last reviewed: 2026-07-14.
 
 What each orchestration concept maps to per runtime, as of that date. Names
 and availability drift with releases; when a primitive is absent or you cannot
@@ -17,11 +17,11 @@ call to a primitive the runtime does not expose.
   SendMessage and keeps its full history, so re-dispatch-with-recap is obsolete.
   This is the surface dispatching-parallel-agents and subagent-driven-development
   use.
-- **Agent teams**: generally available; named teammates message each other and
-  the lead via SendMessage, and an idle teammate resumes with full history when
-  messaged (the same resume as background subagents above). Since v2.1.198 the
-  harness enforces that no teammate message counts as user approval or can
-  change permissions or config. Limits: one team per session, no nested teams.
+- **Agent teams**: experimental and disabled by default. When explicitly
+  enabled, named teammates message each other and the lead via SendMessage, and
+  an idle teammate resumes with full history when messaged. Since v2.1.198 a
+  teammate message cannot count as user approval or change permissions or
+  config. Limits: one team per session, no nested teams.
 - **Workflows**: the trigger keyword is `ultracode` (also `/effort ultracode`);
   repeatable jobs can be saved as named workflows in `.claude/workflows/`. A
   deterministic script orchestrates via `agent()` / `parallel()` / `pipeline()`,
@@ -57,18 +57,18 @@ call to a primitive the runtime does not expose.
 
 - **Subagents**: native, parallel, and Codex-orchestrated. Roles are TOML files
   in `~/.codex/agents/` and `.codex/agents/` (built-ins: default, worker,
-  explorer); `[agents] max_threads` defaults to 6. Codex runs the
-  spawn/route/wait/close loop itself via spawn_agent / send_input / resume_agent
-  (stable, on by default). Per-thread delegation modes (disabled,
-  explicit-request-only, proactive; default explicit-request-only) since
-  v0.142.0. Do not degrade to sequential dispatches here; fan out to native
-  subagents.
-- **Channel from another runtime**: reach Codex via `codex exec`, the Codex SDK,
-  or `codex mcp-server` (the first-party MCP channel exposing the codex /
-  codex-reply tools). From a sandboxed lead, exec and the SDK are auth-broken
-  (the command sandbox denies `~/.codex/auth.json`); use the MCP channel, whose
-  server the harness spawns outside that sandbox. See multi-agent-delegation
-  channel notes.
+  explorer). Stable multi-agent support is on by default. This repo's template
+  deliberately opts into the under-development `multi_agent_v2` surface, whose
+  `fork_turns` input makes fresh versus inherited context explicit. V2 uses
+  `features.multi_agent_v2.max_concurrent_threads_per_session`; do not also set
+  the v1 `agents.max_threads` key. The shipped value is 11 total threads, the
+  root plus up to 10 subagents. In Codex 0.144.3, v2 does not hard-enforce
+  `agents.max_depth`; the shipped `multi_agent_mode_hint_text` stops nesting at
+  depth five as a model-visible policy instead.
+- **Channel from another runtime**: use the first-party channel selected in
+  multi-agent-delegation's Codex provider reference. Claude Code prefers
+  OpenAI's `codex-plugin-cc`; other harnesses can use `codex exec`, the SDK, or
+  `codex mcp-server` as documented there.
 - **Teams / workflows**: no distinct primitive this repo relies on; native
   subagent fan-out covers it.
 - **Effort**: `model_reasoning_effort` is set per dispatch or per role (config

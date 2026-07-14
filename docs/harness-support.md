@@ -52,16 +52,18 @@ agent role templates.
   Terra-pinned `builder` and `reviewer` profiles to copy into
   `~/.codex/agents/` or a project's `.codex/agents/`.
 - Native multi-agent work: prefer Codex native subagents when running inside
-  Codex. From other harnesses, reach Codex through first-party channels:
-  `codex exec` (one-shot), the Codex SDK, or `codex mcp-server`, the first-party
-  MCP server that runs Codex over stdio and exposes the `codex` and
-  `codex-reply` tools. Use `codex mcp-server` as the persistent-thread channel
-  from a non-Codex lead, and as the working channel when the lead's command
-  sandbox denies `~/.codex/auth.json` (there `codex exec` and the SDK are
-  auth-broken, while the harness spawns the MCP server outside that per-command
-  sandbox; a process- or container-level sandbox around the whole harness still
-  applies to the server). A starter registration ships as
-  `templates/codex-mcp-settings.json`.
+  Codex. The shipped baseline deliberately opts into the under-development v2
+  collaboration surface with up to ten concurrent subagents. Codex 0.144.3
+  does not hard-enforce `agents.max_depth` under v2, so the template supplies a
+  model-visible policy that stops nesting at depth five instead.
+- From Claude Code, prefer OpenAI's first-party
+  [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) for Codex
+  review, adversarial review, rescue, transfer, and background job management.
+  It uses the local Codex CLI, app server, authentication, and configuration.
+- Other harnesses can reach Codex through `codex exec`, the Codex SDK, or
+  `codex mcp-server`. Full channel and sandbox-auth mechanics live in
+  `mega-orchestration`'s `references/providers/codex.md`; a starter MCP
+  registration ships as `templates/codex-mcp-settings.json`.
 - `mega-guardrails` supplies the Codex destructive-command hook. Its formatter
   and statusline remain Claude Code-only.
 

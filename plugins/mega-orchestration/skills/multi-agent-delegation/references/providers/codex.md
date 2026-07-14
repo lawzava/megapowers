@@ -10,6 +10,12 @@ ATTRIBUTION.md.
 ## Channels
 
 - Inside Codex: native subagents; spawn directly when parallelism helps.
+- From Claude Code: prefer OpenAI's first-party
+  [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc). Its
+  `/codex:review`, `/codex:adversarial-review`, `/codex:rescue`, and
+  `/codex:transfer` surfaces wrap the local Codex CLI and app server, reusing
+  the installed Codex authentication and configuration. Use its background job
+  commands when Claude Code should remain the lead interface.
 - From another harness under a sandboxed lead: the first-party MCP server
   (`codex mcp-server`, tools `codex` / `codex-reply`). The harness spawns the
   server outside its command sandbox, so Codex auth works even when that sandbox
