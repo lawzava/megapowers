@@ -51,6 +51,20 @@ printf '{"type":"tool_use","name":"Bash","input":{"command":"codex exec \\"revie
 reset_sentinel
 check ALLOW "$(j false "$TR")" "real codex exec Bash command suppresses nudge"
 
+# The first-party codex-plugin-cc wraps review commands through its companion
+# script, so those invocations must count as an independent Codex review too.
+printf '{"type":"tool_use","name":"Bash","input":{"command":"node \\"${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs\\" review --wait"}}\n' > "$TR"
+reset_sentinel
+check ALLOW "$(j false "$TR")" "codex-plugin-cc review command suppresses nudge"
+
+printf '{"type":"tool_use","name":"Bash","input":{"command":"node \\"${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs\\" adversarial-review --wait"}}\n' > "$TR"
+reset_sentinel
+check ALLOW "$(j false "$TR")" "codex-plugin-cc adversarial review command suppresses nudge"
+
+printf '{"type":"tool_use","name":"Bash","input":{"command":"node \\"${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs\\" status"}}\n' > "$TR"
+reset_sentinel
+check BLOCK "$(j false "$TR")" "codex-plugin-cc status command does NOT suppress review nudge"
+
 # A real delegate subagent dispatch suppresses.
 printf '{"type":"tool_use","name":"Task","input":{"subagent_type":"model-delegate"}}\n' > "$TR"
 reset_sentinel

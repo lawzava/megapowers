@@ -1,10 +1,10 @@
-# reviewer.toml: a read-only Codex reviewer/verifier subagent role.
+# reviewer.toml: a read-only same-vendor Codex code-review subagent role.
 # Save to ~/.codex/agents/reviewer.toml (global) or <repo>/.codex/agents/reviewer.toml
 # (project). The same file ships in mega-orchestration's assets/codex-agents/.
 #
-# Mirrors the delegates.toml `read_only` preset (sandbox read-only, approval never)
-# at the effort the code_review / verify / judge roles ask for. Source of truth:
-# plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml.
+# Mirrors the delegates.toml `read_only` preset for code_review and internal
+# Codex fan-out. Independent verify and judge roles resolve to a different
+# vendor through delegate-resolve. Source of truth: delegates.toml.
 
 name = "reviewer"
 description = "Reviews a diff or verifies a claim: looks and reports, changes nothing."
@@ -13,8 +13,8 @@ model = "gpt-5.6-terra"
 # read_only preset: the delegate cannot write the tree.
 sandbox_mode = "read-only"
 
-# verify / judge / decide steps earn the top effort tier (minimal|low|medium|high|xhigh).
-model_reasoning_effort = "xhigh"
+# Code review uses the catalog's delegate-default high effort.
+model_reasoning_effort = "high"
 
 developer_instructions = """
 You are a review/verification delegate. Read the diff or artifact and the stated

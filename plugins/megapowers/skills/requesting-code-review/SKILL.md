@@ -6,7 +6,10 @@ license: MIT
 
 # Requesting Code Review
 
-Dispatch a code reviewer subagent to catch issues before they cascade. The reviewer gets crafted context for evaluation, never your session history. That keeps it focused on the work product, not your thought process, and preserves your own context for continued work.
+Dispatch a code reviewer subagent to catch issues before they cascade. Request
+fresh context explicitly, then give the reviewer a crafted evaluation package.
+Do not let a fork default inherit the author's reasoning: that biases the
+review toward the implementation it should challenge.
 
 **Core principle:** Review early, review often.
 

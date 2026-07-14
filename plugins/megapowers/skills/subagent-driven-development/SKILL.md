@@ -8,7 +8,10 @@ license: MIT
 
 Execute a written plan by dispatching a fresh implementer subagent per task, reviewing each task in two stages (spec compliance, then code quality) with a fresh reviewer, and running one broad whole-branch review at the end. Plan tasks execute sequentially on a single branch: one writer at a time, never parallel implementers, because concurrent writers conflict.
 
-**Why subagents:** each gets an isolated context you construct. A subagent never inherits your session history; you hand it exactly what its task needs, which keeps it focused and preserves your own context for coordination.
+**Why subagents:** each task gets deliberately fresh context that you construct.
+Some harnesses can inherit or fork parent history, so request a fresh context
+explicitly for implementers and reviewers. Hand each one exactly what its task
+needs, which keeps it focused and preserves your own context for coordination.
 
 **Commit cadence:** this workflow commits once per task, and that commit stream is its recovery mechanism: the ledger records commit ranges, and git history survives the compactions that erase conversation memory. Choosing this skill is how the human opts into per-task commits; it is not a hidden side effect. Commits land on the feature branch or worktree; do not start implementation on a main or master branch without explicit consent. If per-task commits do not fit, use megapowers:executing-plans instead.
 
@@ -33,7 +36,7 @@ After all tasks: dispatch the final whole-branch review using megapowers:request
 
 ## Model Selection
 
-Use the least capable model that can handle each role. Transcribing a complete spec and single-file mechanical fixes take the cheapest tier; multi-file integration takes a standard model; design judgment and the final whole-branch review take the most capable. Turn count beats token price: the cheapest models routinely take two to three times the turns on multi-step work, so hold a mid-tier floor for reviewers and for implementers working from prose descriptions. Specify the model explicitly in every dispatch; an omitted model inherits your session's model, usually the most expensive, which silently defeats this section.
+Use the least capable model that can handle each role. Transcribing a complete spec and single-file mechanical fixes take the cheapest tier; multi-file integration takes a standard model; design judgment and the final whole-branch review take the most capable. Turn count beats token price: the cheapest models routinely take two to three times the turns on multi-step work, so hold a mid-tier floor for reviewers and for implementers working from prose descriptions. Specify the model explicitly in every dispatch. If an inherited-context mode forces the parent model, select fresh context instead; silently inheriting the lead model defeats this section.
 
 ## Handling Implementer Status
 

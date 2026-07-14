@@ -1,6 +1,6 @@
 # Minimal ~/.codex/config.toml baseline for using Codex with megapowers.
 # Copy only the keys you want into ~/.codex/config.toml.
-# Last reviewed: 2026-07-12 (Codex ships roughly weekly; scripts/check-freshness.sh
+# Last reviewed: 2026-07-14 (Codex ships roughly weekly; scripts/check-freshness.sh
 # flags this file once the date is older than its review window).
 
 # Pin the model to the catalog's codex frontier tier (models.toml [providers.codex.tiers])
@@ -22,15 +22,15 @@ sandbox_mode = "workspace-write"
 # Ask before actions that fall outside the sandbox policy.
 approval_policy = "on-request"
 
-# Native multi-agent support is stable and enabled by default. These limits keep
-# fan-out useful without turning every task into a swarm; no features.multi_agent
-# flag is required.
-# [agents]
-# max_threads = 4
-# max_depth = 1
+# This baseline deliberately opts into the under-development v2 collaboration
+# surface. V2 rejects the v1 `agents.max_threads` key. Its session-thread cap
+# includes the root, so 11 total threads permits up to 10 concurrent subagents.
+[features.multi_agent_v2]
+enabled = true
+max_concurrent_threads_per_session = 11
+multi_agent_mode_hint_text = """
+Use subagents only when the user or applicable AGENTS.md or skill instructions explicitly authorize delegation. Treat the canonical task path as the nesting counter. If it already has five task-name components beneath /root, do not spawn another subagent; continue locally or report the limit.
+"""
 
-# `codex mcp-server` is the first-party MCP channel for a non-Codex lead: it runs
-# Codex as a stdio MCP
-# server exposing the codex/codex-reply tools, so another harness can drive Codex
-# (or hold a persistent thread) without a hand-rolled bridge. A Codex lead should
-# not register itself under [mcp_servers.codex]; native subagents are the direct path.
+# Cross-runtime Codex channel mechanics live in mega-orchestration's
+# references/providers/codex.md. A Codex lead uses native subagents directly.

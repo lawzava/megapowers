@@ -1,8 +1,11 @@
 # Codex Tool Mapping
 
 Codex loads `AGENTS.md` automatically and supports skills, plugins, hooks, and
-explicit subagent workflows. Do not require a `multi_agent` feature flag; current
-Codex subagents are a native workflow surface.
+explicit subagent workflows. Stable subagents require no `multi_agent` feature
+flag. This repo's optional v2 baseline enables `multi_agent_v2`, removes the v1
+`agents.max_threads` key, and uses v2's session-thread cap instead. Codex 0.144.3
+does not hard-enforce `agents.max_depth` under v2, so the template uses
+`multi_agent_mode_hint_text` for its depth-five policy.
 
 ## Subagents
 

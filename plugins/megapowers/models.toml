@@ -48,8 +48,8 @@ max    = "correctness over cost; no shipped provider allows it"
 # the channel-mechanics file, resolved relative to the multi-agent-delegation skill
 # directory (the reference files ship with that skill). `detect` lists transcript
 # markers of review-capable delegate invocations; the delegate-nudge hook suppresses
-# its nudge when one appears (mcp__ entries match tool-use name fields, entries with
-# spaces match Bash command fields). Entries from disabled providers still count:
+# its nudge when one appears (mcp__ entries match tool-use name fields; all other
+# entries match Bash command fields). Entries from disabled providers still count:
 # it is a fail-open heuristic, not a grant. `use` is the one-line purpose shown in
 # the always-loaded session block.
 [providers.codex]
@@ -57,13 +57,13 @@ effort  = "xhigh"  # lead default model_reasoning_effort; small scoped impl may 
 efforts = ["low", "medium", "high", "xhigh"]   # never max
 vendor  = "openai"
 binary  = "codex"
-channel = "native-or-mcp-or-cli"
+channel = "native-or-plugin-or-mcp-or-cli"
 default_tier = "frontier"
 capabilities = ["code", "vision", "computer_use"]
-detect  = ["mcp__codex__codex", "codex exec"]
+detect  = ["mcp__codex__codex", "codex exec", "codex-companion.mjs review", "codex-companion.mjs adversarial-review"]
 reference = "references/providers/codex.md"
 use     = "lead: orchestration, code review, small impl, computer use"
-notes   = "Native Codex subagents inside Codex; codex exec / SDK / codex mcp-server from elsewhere. Channel mechanics and sandbox-auth caveats: see the reference file."
+notes   = "Native subagents inside Codex; codex-plugin-cc from Claude Code; codex exec / SDK / codex mcp-server elsewhere. Channel mechanics: see the reference file."
 
 [providers.codex.tiers]
 frontier = "gpt-5.6-sol"

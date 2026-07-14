@@ -145,6 +145,13 @@ provider's file rather than assuming another vendor's behavior. A hand-rolled
 bridge is a fallback only when explicitly configured, so do not assume one
 exists.
 
+Provider identity means the vendor that actually runs the model, not the name
+of the harness or compatibility protocol in front of it. A gateway or proxy is
+acceptable only as a distinct provider entry with a truthful `vendor` key.
+Never route an OpenAI model through a provider declared as Anthropic, or the
+reverse: `--exclude-lead` would report a false independent pass because vendor
+identity is the exclusion boundary.
+
 When Claude is the different-vendor plan reviewer, verifier, or judge, use its
 isolated one-shot channel (`--safe-mode --no-session-persistence`) and make the
 prompt self-contained. That keeps ambient Claude Code plugins and hooks from

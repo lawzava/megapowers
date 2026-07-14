@@ -16,8 +16,8 @@ command -v jq >/dev/null 2>&1 || exit 0
 # this hook by editing config, not this script. Layer lookup mirrors
 # delegate-resolve (DELEGATES_TOML/MODELS_TOML exclusive for tests > project >
 # user > shipped); detect entries UNION across layers because this is a
-# fail-open heuristic. Entries starting mcp__ match tool_use name fields;
-# entries containing a space match Bash command fields. Returns nonzero when
+# fail-open heuristic. Entries starting mcp__ match tool_use name fields; all
+# other entries match Bash command fields. Returns nonzero when
 # nothing parses, and the caller falls back to the static regex.
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 delegate_regex() {
@@ -51,7 +51,10 @@ delegate_regex() {
   while IFS= read -r p; do
     [ -n "${p//[[:space:]]/}" ] || continue
     esc="$(printf '%s' "$p" | sed 's/[][\\.*^$()+?{}|]/\\&/g')"
-    esc="${esc// / +}"
+    # Shell paths may be quoted between marker words, as in
+    # `codex-companion.mjs\" review` inside JSON. Accept that closing quote at
+    # whitespace boundaries while keeping the marker's words and order exact.
+    esc="${esc// /'([\\]")? +'}"
     case "$p" in
       mcp__*) mcp="${mcp:+$mcp|}$esc" ;;
       *)      cli="${cli:+$cli|}$esc" ;;
@@ -59,14 +62,17 @@ delegate_regex() {
   done <<< "$pats"
   [ -n "$mcp" ] && re='"name"[[:space:]]*:[[:space:]]*"('"$mcp"')'
   re="${re:+$re|}"'"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)'
-  [ -n "$cli" ] && re="$re"'|"command"[[:space:]]*:[[:space:]]*"[^"]*('"$cli"')'
+  # A command value can contain JSON-escaped shell quotes before the marker,
+  # as codex-plugin-cc does around its companion-script path. Consume escaped
+  # characters without treating an escaped quote as the end of the value.
+  [ -n "$cli" ] && re="$re"'|"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*('"$cli"')'
   # Codex rollout transcripts record shell calls inside serialized argument
   # strings, in two observed key shapes (codex-cli 0.144): exec_command({cmd:
   # \"...\"}) with a bare key, and {\"cmd\":\"...\"} with an escaped-JSON key.
   # Anchor on the cmd key (optionally quote-escaped) plus the (optionally
   # escaped) opening value quote so prose mentions of the same CLI still do
   # not match.
-  [ -n "$cli" ] && re="$re"'|(\\")?cmd(\\")?:[[:space:]]*\\?"[^"]*('"$cli"')'
+  [ -n "$cli" ] && re="$re"'|(\\")?cmd(\\")?:[[:space:]]*\\?"([^"\\]|\\.)*('"$cli"')'
   printf '%s' "$re"
 }
 

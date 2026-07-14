@@ -53,8 +53,9 @@ present.
 
 - mega-orchestration: each role needs the CLI of the provider it resolves to
   (`delegate-resolve <role>` prints BINARY). The Codex routes need Codex
-  native subagents when running in Codex, or the Codex CLI/SDK from other
-  harnesses; the Claude routes (plan review, and the cross-vendor
+  native subagents when running in Codex. From Claude Code, prefer OpenAI's
+  first-party `codex-plugin-cc`; other harnesses use the Codex CLI, SDK, or MCP
+  server as documented in the Codex provider reference. The Claude routes (plan review, and the cross-vendor
   review/verify chains under a non-Anthropic lead) need the Claude CLI. The
   visual/browser role needs `playwright-cli` plus a vision-capable model to
   read the screenshots: `npm i -g @playwright/cli`, then `playwright-cli
@@ -115,8 +116,9 @@ Update it with `git pull` in the checkout.
 
 ### Codex native agent roles
 
-Codex native multi-agent support is stable and enabled by default; no
-`features.multi_agent` flag is required. `mega-orchestration` packages two
+Codex native multi-agent support is stable and enabled by default. This repo's
+baseline deliberately opts into the under-development `multi_agent_v2`
+surface. `mega-orchestration` packages two
 profiles under `assets/codex-agents/`: `builder.toml` and `reviewer.toml` both
 pin `gpt-5.6-terra`, so fan-out does not inherit the Sol lead model. Find the
 installed plugin directory with `codex plugin list`, review the files, then
@@ -126,13 +128,22 @@ Before dispatching `builder`, the lead must create a dedicated linked worktree
 and include its path in the brief. The profile checks `git rev-parse --git-dir`
 against `--git-common-dir` and refuses to edit the primary checkout.
 
-A conservative global baseline is:
+A v2 global baseline with up to ten concurrent subagents is:
 
 ```toml
-[agents]
-max_threads = 4
-max_depth = 1
+[features.multi_agent_v2]
+enabled = true
+max_concurrent_threads_per_session = 11
+multi_agent_mode_hint_text = """
+Use subagents only when delegation is explicitly authorized. Treat the canonical
+task path as the nesting counter. At five components beneath /root, do not spawn.
+"""
 ```
+
+The v2 cap includes the root thread, so 11 permits ten subagents. Remove the
+v1 `agents.max_threads` key when enabling v2; Codex rejects that combination.
+As of Codex 0.144.3, v2 does not enforce `agents.max_depth`, so the depth-five
+limit is a model-visible system policy, not a hard runtime cap.
 
 Keep the normal lead on `gpt-5.6-sol` at `xhigh`. The current bundled Sol model
 also supports `ultra`, which adds automatic task delegation. Named profiles
@@ -341,13 +352,10 @@ fleet forward.
   Playwright browser server, for harnesses that drive the browser through an MCP
   rather than `playwright-cli` directly.
 - `templates/codex-mcp-settings.json` is a starter MCP registration for
-  `codex mcp-server`, the channel a sandboxed non-Codex lead needs to delegate
-  into Codex: `codex exec` and
-  the SDK read `~/.codex/auth.json`, which command sandboxes typically deny,
-  while the harness spawns the MCP server outside that sandbox. Register the
-  server as `codex`
-  so its tools resolve as `mcp__codex__codex` / `mcp__codex__codex-reply`, the
-  names the model-delegate agent lists.
+  `codex mcp-server` for a non-Codex lead. Register the server as `codex` so its
+  tools resolve as `mcp__codex__codex` / `mcp__codex__codex-reply`. Full auth,
+  sandbox, and thread mechanics live in mega-orchestration's Codex provider
+  reference.
 - `templates/settings.example.json` holds conservative, generic Claude Code
   defaults (no attribution trailers, secret-path denies, sandbox credential
   blocks). It does not set a `defaultMode`, so it never loosens your permission

@@ -91,9 +91,10 @@ call to a primitive the runtime does not have.
   journal or chat line ("structure: SDD, 6 tasks, delegate review per task")
   makes the choice reviewable.
 - Single-writer always: whatever the structure, one integrator owns the tree
-  and the commits (see mega-orchestration:multi-agent-delegation). On Claude
-  Code the harness enforces this from v2.1.198 (no agent message counts as a
-  human approval or can change permissions, CLAUDE.md, or config); on Codex,
-  OpenCode, and Antigravity that guarantee is skill wording only.
+  and the commits (see mega-orchestration:multi-agent-delegation). Claude Code
+  prevents teammate messages from counting as human approval or changing
+  permissions or config, but that does not make ordinary subagents or workflow
+  agents single-writer. Enforce the rule on every harness with sandbox, tool,
+  and worktree controls where available, plus explicit skill wording.
 - Re-route when the shape changes: a task that stops decomposing cleanly drops
   back to inline; a task that grows milestones graduates to autonomous-run.
