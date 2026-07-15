@@ -114,19 +114,23 @@ codex plugin add megapowers@megapowers
 
 Update it with `git pull` in the checkout.
 
-### Codex native agent roles
+### Codex native agents and v2
 
 Codex native multi-agent support is stable and enabled by default. This repo's
 baseline deliberately opts into the under-development `multi_agent_v2`
-surface. `mega-orchestration` packages two
-profiles under `assets/codex-agents/`: `builder.toml` and `reviewer.toml` both
-pin `gpt-5.6-terra`, so fan-out does not inherit the Sol lead model. Find the
-installed plugin directory with `codex plugin list`, review the files, then
-copy the profiles you want into `~/.codex/agents/` (global) or
-`<repo>/.codex/agents/` (project). Codex loads them on the next session.
-Before dispatching `builder`, the lead must create a dedicated linked worktree
-and include its path in the brief. The profile checks `git rev-parse --git-dir`
-against `--git-common-dir` and refuses to edit the primary checkout.
+surface. V2 is a same-model context-sharding surface: its native spawn call
+does not expose a per-spawn role, model, or effort selector, so workers inherit
+the active session model. It does not automatically select this repo's
+Terra-pinned `builder` or `reviewer` profiles.
+
+`mega-orchestration` still packages those optional profiles under
+`assets/codex-agents/` for Codex surfaces that support named role selection.
+Find the installed plugin directory with `codex plugin list`, review the files,
+then copy the profiles you want into `~/.codex/agents/` (global) or
+`<repo>/.codex/agents/` (project). For a cheaper or differently configured
+Codex worker outside native v2, use a bounded `codex exec` run; for another
+provider, use `delegate-resolve`. Before dispatching any writer, create a
+dedicated linked worktree and include its path in the brief.
 
 A v2 global baseline with up to ten concurrent subagents is:
 
@@ -135,15 +139,26 @@ A v2 global baseline with up to ten concurrent subagents is:
 enabled = true
 max_concurrent_threads_per_session = 11
 multi_agent_mode_hint_text = """
-Use subagents only when delegation is explicitly authorized. Treat the canonical
-task path as the nesting counter. At five components beneath /root, do not spawn.
+Use subagents only when the user or applicable AGENTS.md or skill instructions explicitly authorize delegation. The root agent owns spawning by default; workers spawn only in a deliberately designed coordinator workflow with isolated artifact ownership. Keep each ordinary batch to at most six workers so the root retains capacity for integration and recovery, even though the session cap is higher.
+
+For independent workers, pass fork_turns = "none" and make the brief self-contained. Use a small positive fork_turns count only when specific recent turns are essential. Use fork_turns = "all" only for a true same-context continuation, never as a convenience default.
+
+The root owns integration. Do not finish gating work until all required workers have returned and their outputs have been reviewed and independently validated. Completed workers remain idle; send a follow-up only for the same assignment, start a fresh worker for a new problem, and interrupt only running workers.
+
+Treat the canonical task path as the nesting counter. If it already has five task-name components beneath /root, do not spawn another subagent; continue locally or report the limit.
 """
 ```
 
 The v2 cap includes the root thread, so 11 permits ten subagents. Remove the
 v1 `agents.max_threads` key when enabling v2; Codex rejects that combination.
-As of Codex 0.144.3, v2 does not enforce `agents.max_depth`, so the depth-five
-limit is a model-visible system policy, not a hard runtime cap.
+The six-worker ordinary-batch limit preserves root capacity for integration and
+recovery; ten is a ceiling, not a target. For independent work, fresh context
+avoids copying the root's transcript and compactions into every worker. Use a
+small positive `fork_turns` count only for essential recent turns, and reserve
+`all` for a genuine continuation of the same context. Reuse an idle worker only
+for the same assignment; start a fresh worker for a new problem. As observed in
+Codex 0.144.4, v2 does not enforce `agents.max_depth`, so the depth-five limit is
+a model-visible system policy, not a hard runtime cap.
 
 Keep the normal lead on `gpt-5.6-sol` at `xhigh`. The current bundled Sol model
 also supports `ultra`, which adds automatic task delegation. Named profiles

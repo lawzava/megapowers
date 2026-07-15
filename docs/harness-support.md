@@ -50,12 +50,17 @@ agent role templates.
   `mega-guardrails`, and `mega-frontend`.
 - Native role templates: `mega-orchestration/assets/codex-agents/` packages
   Terra-pinned `builder` and `reviewer` profiles to copy into
-  `~/.codex/agents/` or a project's `.codex/agents/`.
+  `~/.codex/agents/` or a project's `.codex/agents/`. They are optional for
+  role-aware Codex surfaces; native v2 does not select them automatically.
 - Native multi-agent work: prefer Codex native subagents when running inside
   Codex. The shipped baseline deliberately opts into the under-development v2
-  collaboration surface with up to ten concurrent subagents. Codex 0.144.3
-  does not hard-enforce `agents.max_depth` under v2, so the template supplies a
-  model-visible policy that stops nesting at depth five instead.
+  collaboration surface. V2 is same-model context sharding and exposes
+  `fork_turns`, but no per-spawn role, model, or effort selector. Its session
+  ceiling is ten subagents; the shipped policy keeps ordinary batches to six,
+  uses fresh context for independent work, leaves spawning and integration with
+  the root, and requires gating workers to return before completion. Codex
+  0.144.4 does not hard-enforce `agents.max_depth` under v2, so the template
+  supplies a model-visible policy that stops nesting at depth five instead.
 - From Claude Code, prefer OpenAI's first-party
   [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) for Codex
   review, adversarial review, rescue, transfer, and background job management.

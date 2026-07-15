@@ -140,23 +140,26 @@ Present these to the user; apply only what they approve:
   as the project or global instruction file. Merge, don't overwrite; back up
   the existing file first.
 - Codex lead baseline: offer `templates/CODEX-LEAD.md` as `AGENTS.md` and merge
-  wanted keys from `templates/codex-config.toml`. Copy the Terra-pinned
-  `builder.toml` and `reviewer.toml` from the installed mega-orchestration
-  plugin's `assets/codex-agents/` into `~/.codex/agents/` or the project's
-  `.codex/agents/`. The shipped baseline opts into under-development v2: remove
-  `agents.max_threads`, enable `[features.multi_agent_v2]`, set
+  wanted keys from `templates/codex-config.toml`. Optionally copy the
+  Terra-pinned `builder.toml` and `reviewer.toml` from the installed
+  mega-orchestration plugin's `assets/codex-agents/` into `~/.codex/agents/` or
+  the project's `.codex/agents/` for role-aware Codex surfaces; native v2 does
+  not select those profiles automatically. The shipped baseline opts into
+  under-development v2: remove `agents.max_threads`, enable
+  `[features.multi_agent_v2]`, set
   `enabled = true` and `max_concurrent_threads_per_session = 11` for ten
   concurrent subagents plus the root, and copy the template's
-  `multi_agent_mode_hint_text` depth-five policy. Codex 0.144.3 does not hard
-  enforce `agents.max_depth` under v2. If this Codex lead has a
+  full `multi_agent_mode_hint_text`: root-owned spawning and integration,
+  six-worker ordinary batches, fresh context for independent workers, explicit
+  join and lifecycle rules, and the depth-five policy. Codex 0.144.4 does not
+  hard enforce `agents.max_depth` under v2. If this Codex lead has a
   `[mcp_servers.codex]` self-registration, offer to remove it after showing the
   exact config change.
   Offer `templates/codex-complex.config.toml` as
   `$CODEX_HOME/complex.config.toml` for deliberate Sol ultra sessions started
   with `codex --profile complex`; do not embed it under `[profiles.*]`.
-  The lead must create a dedicated linked worktree before invoking `builder`
-  and pass that path in the task brief; the profile refuses to edit the primary
-  checkout.
+  The lead must create a dedicated linked worktree before invoking any writer
+  and pass that path in the task brief.
 - Remove superseded duplicates: if the user previously hand-installed copies
   of these hooks or skills (session-start, deny-destructive, auto-format, or
   legacy standalone skill folders that the bundles now provide), list them and

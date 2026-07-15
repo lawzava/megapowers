@@ -1,15 +1,20 @@
 # Provider: Codex
 
 Channel mechanics and prompting guidance for dispatching to Codex (OpenAI).
-Routing (which roles come here, tier, effort) lives in delegates.toml; this file
-is only how to reach the backend and word the dispatch. Prompting guidance
+Routing (which roles come here, tier, effort) lives in delegates.toml; a channel
+can apply only the route fields it exposes. This file is how to reach the
+backend and word the dispatch. Prompting guidance
 adapted from OpenAI's own guidance for prompting Codex (codex-plugin-cc,
 Apache-2.0, Copyright 2026 OpenAI), rewritten for this repo; provenance in
 ATTRIBUTION.md.
 
 ## Channels
 
-- Inside Codex: native subagents; spawn directly when parallelism helps.
+- Inside Codex: native subagents; spawn directly when same-model parallelism
+  helps. Native v2 uses the current session model and effort, and
+  `fork_turns = "none"` supplies fresh transcript context without changing
+  either. If the resolved route requires a different Codex model or effort, use
+  a role-aware surface or bounded `codex exec` run instead.
 - From Claude Code: prefer OpenAI's first-party
   [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc). Its
   `/codex:review`, `/codex:adversarial-review`, `/codex:rescue`, and

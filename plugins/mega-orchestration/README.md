@@ -66,9 +66,13 @@ changing project defaults. `scripts/delegate-resolve` resolves it executably;
 
 ## Prerequisites
 
-- Roles route per `[roles]`: native subagents when the lead already is that
-  provider, otherwise the provider's first-party plugin, CLI, SDK, or MCP
-  channel (see its `references/providers/` file).
+- Roles route per `[roles]` through a channel that can honor the resolved
+  provider, model, and effort.
+  Native v2 can honor only the current session model and effort, so use it for
+  same-session Codex fan-out; use a role-aware
+  or non-interactive Codex channel when those fields differ. Other providers
+  use their first-party plugin, CLI, SDK, or MCP channel (see
+  `references/providers/`).
 - Visual verification role: `playwright-cli` plus a vision-capable model to read
   the screenshots. Install: `npm i -g @playwright/cli`, then
   `playwright-cli install --skills` (Microsoft's own playwright-cli skill;
