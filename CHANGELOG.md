@@ -8,6 +8,12 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Changed
+
+- Codex v2 guidance now treats native workers as same-model context shards,
+  defaults independent work to fresh context, and keeps spawning, joins, and
+  lifecycle ownership with the root agent.
+
 ## 0.3.7 - 2026-07-14
 
 ### Added

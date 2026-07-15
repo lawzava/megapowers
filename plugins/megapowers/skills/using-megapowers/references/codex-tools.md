@@ -3,7 +3,7 @@
 Codex loads `AGENTS.md` automatically and supports skills, plugins, hooks, and
 explicit subagent workflows. Stable subagents require no `multi_agent` feature
 flag. This repo's optional v2 baseline enables `multi_agent_v2`, removes the v1
-`agents.max_threads` key, and uses v2's session-thread cap instead. Codex 0.144.3
+`agents.max_threads` key, and uses v2's session-thread cap instead. Codex 0.144.4
 does not hard-enforce `agents.max_depth` under v2, so the template uses
 `multi_agent_mode_hint_text` for its depth-five policy.
 
@@ -13,6 +13,23 @@ Use Codex subagents only when the user explicitly asks for parallel agent work
 or when a task is naturally independent across files, risks, or research tracks.
 Keep prompts narrow and ask for summaries, file references, and verification
 evidence instead of raw transcripts.
+
+Treat v2 as same-model context sharding. Its spawn surface exposes a task name,
+brief, and `fork_turns`, not a per-worker role, model, or effort selector. For
+independent work, use `fork_turns = "none"` and put all required paths,
+constraints, acceptance criteria, and expected output in the brief. Use a small
+positive count only for essential recent turns, and `all` only for a genuine
+same-context continuation. Named profiles do not automatically route v2 work;
+use a separate role-aware surface or bounded `codex exec` run when a different
+Codex model or effort is required.
+
+The root owns spawning and integration by default. Keep an ordinary batch to
+six workers even though the configured ceiling allows ten, wait for every
+gating worker, validate results yourself, and only then finish the task. A
+completed worker is idle: follow up only for the same assignment, create a
+fresh worker for a new problem, and interrupt only a worker that is still
+running. Nested spawning is for deliberately designed coordinator workflows
+with isolated artifact ownership, not routine fan-out.
 
 Good fits:
 

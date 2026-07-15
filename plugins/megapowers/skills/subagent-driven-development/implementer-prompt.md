@@ -5,8 +5,8 @@ Use this template when dispatching an implementer subagent.
 ```
 Subagent (general-purpose):
   description: "Implement Task N: [task name]"
-  model: [MODEL — required: choose per SKILL.md Model Selection; an omitted
-         model silently inherits the session's most expensive one]
+  model: [MODEL — include only when the dispatch surface supports per-worker
+         selection; omit this line for Codex v2]
   prompt: |
     You are implementing Task N: [task name]
 

@@ -41,11 +41,17 @@ You hold the broad context: plan and decompose the work, do the bulk reads,
 own final integration. Delegate narrow, well-specified, testable, isolated
 work; keep planning, decomposition, and the final write with yourself.
 
-- Same-vendor fan-out (parallelism, not independence): native Codex subagents,
-  pinned to `gpt-5.6-terra` by the `builder` and `reviewer` role templates.
-  Routine implementation and code review belong here. Create a dedicated
-  linked worktree before dispatching `builder` and include its path in the
-  brief; the profile refuses edits from the primary checkout.
+- Same-vendor fan-out (parallelism, not independence):
+  V2 is same-model context sharding. Its spawn surface does not select a role,
+  model, or effort per worker, so do not assume the optional Terra-pinned
+  `builder` and `reviewer` profiles apply.
+  Use `fork_turns = "none"` and a self-contained brief for independent work;
+  inherit only the smallest recent context a worker genuinely needs. Create a
+  dedicated linked worktree before dispatching any writer and include its path
+  in the brief.
+- Named or cheaper Codex workers: use a separate role-aware Codex surface or
+  bounded `codex exec` run. Use `delegate-resolve` when independence requires
+  another provider. The native V2 session remains same-model fan-out.
 - Complex plan/spec review and cross-vendor independence (verify, judge,
   council_member): resolve with the mega-orchestration plugin's
   `skills/multi-agent-delegation/scripts/delegate-resolve <role> --exclude-lead`;

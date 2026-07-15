@@ -36,7 +36,20 @@ After all tasks: dispatch the final whole-branch review using megapowers:request
 
 ## Model Selection
 
-Use the least capable model that can handle each role. Transcribing a complete spec and single-file mechanical fixes take the cheapest tier; multi-file integration takes a standard model; design judgment and the final whole-branch review take the most capable. Turn count beats token price: the cheapest models routinely take two to three times the turns on multi-step work, so hold a mid-tier floor for reviewers and for implementers working from prose descriptions. Specify the model explicitly in every dispatch. If an inherited-context mode forces the parent model, select fresh context instead; silently inheriting the lead model defeats this section.
+When the dispatch surface exposes a per-worker model selector, use the least
+capable model that can handle each role and specify it explicitly. Transcribing
+a complete spec and single-file mechanical fixes take the cheapest tier;
+multi-file integration takes a standard model; design judgment and the final
+whole-branch review take the most capable. Turn count beats token price: the
+cheapest models routinely take two to three times the turns on multi-step work,
+so hold a mid-tier floor for reviewers and for implementers working from prose
+descriptions.
+
+Codex v2 inherits the session model and effort even with fresh context;
+`fork_turns = "none"` controls transcript inheritance, not model selection. Omit
+the model field on that surface. If a task requires a different Codex model or
+effort, use a separate role-aware surface or bounded `codex exec` run. Use
+`delegate-resolve` when the role requires another provider.
 
 ## Handling Implementer Status
 

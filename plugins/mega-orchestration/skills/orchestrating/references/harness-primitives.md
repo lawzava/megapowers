@@ -62,17 +62,26 @@ call to a primitive the runtime does not expose.
   `fork_turns` input makes fresh versus inherited context explicit. V2 uses
   `features.multi_agent_v2.max_concurrent_threads_per_session`; do not also set
   the v1 `agents.max_threads` key. The shipped value is 11 total threads, the
-  root plus up to 10 subagents. In Codex 0.144.3, v2 does not hard-enforce
-  `agents.max_depth`; the shipped `multi_agent_mode_hint_text` stops nesting at
-  depth five as a model-visible policy instead.
+  root plus up to 10 subagents, while ordinary batches stop at six to preserve
+  integration headroom. Native v2 does not expose per-spawn role, model, or
+  effort selection; treat it as same-model context sharding and do not assume
+  named profiles are selected. Independent workers use `fork_turns = "none"` with self-contained
+  briefs; bounded inheritance is exceptional and `all` is only for a genuine
+  same-context continuation. The root owns spawning, joins every gating worker,
+  and validates integration. Completed workers remain idle; follow up only on
+  the same assignment and interrupt only running workers. In Codex 0.144.4, v2
+  does not hard-enforce `agents.max_depth`; the shipped
+  `multi_agent_mode_hint_text` stops nesting at depth five as a model-visible
+  policy instead.
 - **Channel from another runtime**: use the first-party channel selected in
   multi-agent-delegation's Codex provider reference. Claude Code prefers
   OpenAI's `codex-plugin-cc`; other harnesses can use `codex exec`, the SDK, or
   `codex mcp-server` as documented there.
 - **Teams / workflows**: no distinct primitive this repo relies on; native
   subagent fan-out covers it.
-- **Effort**: `model_reasoning_effort` is set per dispatch or per role (config
-  or call), not a global constant. Spend high on verify/judge/decide steps.
+- **Effort**: native v2 workers inherit the session effort. Use a separate
+  role-aware or non-interactive Codex run when a different model or effort is
+  required; spend high on verify/judge/decide steps.
 
 ## OpenCode
 

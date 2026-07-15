@@ -439,19 +439,69 @@ if grep -q '^commit_attribution[[:space:]]*=' templates/codex-config.toml; then
 else
   ok "Codex config template omits removed commit_attribution key"
 fi
+v2_hint() {
+  awk '
+    /^multi_agent_mode_hint_text = """$/ { in_hint=1; next }
+    in_hint && /^"""$/ { exit }
+    in_hint { print }
+  ' "$1"
+}
+config_v2_hint="$(v2_hint templates/codex-config.toml)"
+setup_v2_hint="$(v2_hint docs/setup.md)"
 if awk '
      /^\[features\.multi_agent_v2\]$/ { in_v2=1; next }
      in_v2 && /^\[/ { exit }
      in_v2 && /^enabled = true$/ { enabled=1 }
      in_v2 && /^max_concurrent_threads_per_session = 11$/ { cap=1 }
-     in_v2 && /five task-name components beneath \/root/ { depth_policy=1 }
-     END { exit !(enabled && cap && depth_policy) }
+     END { exit !(enabled && cap) }
    ' templates/codex-config.toml &&
-   ! grep -q '^max_depth[[:space:]]*=' templates/codex-config.toml &&
-   ! grep -q '^max_threads[[:space:]]*=' templates/codex-config.toml; then
-  ok "Codex config opts into v2 with ten subagents, a depth-five policy, and no ignored v1 limits"
+   printf '%s\n' "$config_v2_hint" | awk '
+     NF { nonempty=1 }
+     /applicable AGENTS.md or skill instructions explicitly authorize delegation/ { authorized=1 }
+     /five task-name components beneath \/root/ { depth_policy=1 }
+     /root agent owns spawning by default/ { root_only=1 }
+     /workers spawn only in a deliberately designed coordinator workflow with isolated artifact ownership/ { nested_exception=1 }
+     /ordinary batch to at most six workers/ { batch_limit=1 }
+     /fork_turns = "none"/ { fresh_default=1 }
+     /small positive fork_turns count only when specific recent turns are essential/ { bounded_inheritance=1 }
+     /fork_turns = "all"/ && /same-context continuation/ { all_exception=1 }
+     /root owns integration/ { root_integration=1 }
+     /required workers have returned/ { join_gate=1 }
+     /reviewed and independently validated/ { independent_validation=1 }
+     /Completed workers remain idle/ { completed_idle=1 }
+     /follow-up only for the same assignment/ { same_assignment=1 }
+     /fresh worker for a new problem/ { fresh_problem=1 }
+     /interrupt only running workers/ { running_interrupt=1 }
+     END { exit !(nonempty && authorized && depth_policy && root_only && nested_exception && batch_limit && fresh_default && bounded_inheritance && all_exception && root_integration && join_gate && independent_validation && completed_idle && same_assignment && fresh_problem && running_interrupt) }
+   ' &&
+   ! grep -Eq '^[[:space:]]*(agents\.)?max_(threads|depth)[[:space:]]*=' templates/codex-config.toml; then
+  ok "Codex config opts into v2 with bounded fresh-context fan-out, join/lifecycle rules, and no ignored v1 limits"
 else
-  bad "Codex config must enable v2 with 11 session threads, a depth-five mode hint, and no v1 agent limits"
+  bad "Codex config must enable v2 with 11 session threads, bounded root-owned fresh-context fan-out, join/lifecycle rules, a depth-five hint, and no v1 agent limits"
+fi
+if [[ "$config_v2_hint" == "$setup_v2_hint" ]]; then
+  ok "Codex setup copies the complete model-visible v2 policy verbatim"
+else
+  bad "docs/setup.md must copy templates/codex-config.toml multi_agent_mode_hint_text verbatim"
+fi
+if grep -qF 'V2 is same-model context sharding' templates/CODEX-LEAD.md &&
+   grep -qF 'does not expose a per-spawn role, model, or effort selector' docs/setup.md &&
+   grep -qF 'Native v2 does not expose per-spawn role, model, or' plugins/mega-orchestration/skills/orchestrating/references/harness-primitives.md &&
+   grep -qF 'effort selection; treat it as same-model context sharding' plugins/mega-orchestration/skills/orchestrating/references/harness-primitives.md &&
+   grep -qF 'Its spawn surface exposes a task name,' plugins/megapowers/skills/using-megapowers/references/codex-tools.md &&
+   grep -qF 'brief, and `fork_turns`, not a per-worker role, model, or effort selector' plugins/megapowers/skills/using-megapowers/references/codex-tools.md; then
+  ok "Codex v2 guidance distinguishes native same-model fan-out from named role and cross-runtime routing"
+else
+  bad "Codex v2 guidance must not claim that native v2 fan-out selects Terra-pinned role profiles"
+fi
+if grep -qF 'Codex v2 inherits the session model and effort even with fresh context' plugins/megapowers/skills/subagent-driven-development/SKILL.md &&
+   grep -qF 'omit this line for Codex v2' plugins/megapowers/skills/subagent-driven-development/implementer-prompt.md &&
+   grep -qF 'omit this line for Codex v2' plugins/megapowers/skills/subagent-driven-development/task-reviewer-prompt.md &&
+   grep -qF 'Native v2 uses the current session model and effort' plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/codex.md &&
+   grep -qF 'Native v2 can honor only the current session model and effort' plugins/mega-orchestration/README.md; then
+  ok "Codex operational guidance makes model selection conditional on the dispatch surface"
+else
+  bad "Codex operational guidance must not require unavailable per-worker model selection under native v2"
 fi
 
 echo "== hook tests =="
