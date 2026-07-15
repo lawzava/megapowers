@@ -16,6 +16,13 @@ evals/RESULTS.md for the measured gates each wave passed.
   worktree tools own, re-dispatch-with-recap patterns that resumable
   subagents made obsolete, background behavior subagents have by default.
 - Rationale stated more than once. State a reason exactly where it binds.
+- Guidance units that fail the guidance-unit deletion test: instructions,
+  bullets, fields, and fragments whose removal changes no permitted behavior,
+  decision, output, or required evidence and removes no protection against a
+  likely mistake. They are no-ops.
+- In scan-heavy workflow guidance, leading intensifiers or mental-state prompts
+  when an observable predicate, action, artifact, gate, or concrete concept
+  would improve recognition.
 
 ## Keep
 
@@ -25,6 +32,14 @@ evals/RESULTS.md for the measured gates each wave passed.
 - Verification oracles and evidence-before-claims wording.
 - Any wording with a published effect size in evals/RESULTS.md. Trimming a
   measured sentence needs a fresh measurement, not taste.
+- In scan-heavy workflow guidance, prefer a leading observable predicate,
+  action, artifact, gate, or concrete concept when it improves recognition.
+  Define a nonstandard term at first use.
+- Hard dependency setup gates and optional enrichment boundaries. A hard
+  dependency is required for correct execution. Hard dependencies must not be
+  skipped: execution blocks at an explicit setup gate until they are installed,
+  configured, or authorized. Optional enrichment does not block the correct
+  core workflow; when it is unavailable, skip it or use a stated fallback.
 
 ## Add sparingly
 

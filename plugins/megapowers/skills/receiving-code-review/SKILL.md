@@ -14,7 +14,15 @@ Code review is a technical evaluation, not an emotional performance.
 
 ## The Response Pattern
 
-Work through feedback in this order: read it fully, understand it (restate the requirement in your own words or ask), verify it against the actual code, evaluate whether it is technically sound for this codebase, respond substantively, then implement one item at a time, testing each. Order the work by severity: fix Critical findings immediately, address Important findings before proceeding, record Minor findings for later.
+Work through feedback in this order: read it fully, understand it (restate the
+requirement in your own words or ask), verify it against the actual code,
+evaluate whether it is technically sound for this codebase, respond
+substantively, then implement one item at a time, testing each. Keep the review
+axes distinct. A Specification Compliance Fail blocks proceeding regardless of
+local finding severity: correct the implementation or obtain explicit
+requirement-owner authorization, then re-review. For Engineering Standards,
+fix Critical findings immediately, address Important findings before
+proceeding, and record Minor findings for later.
 
 ## No Performative Agreement
 

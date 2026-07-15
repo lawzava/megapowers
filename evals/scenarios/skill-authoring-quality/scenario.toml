@@ -1,0 +1,4 @@
+id    = "skill-authoring-quality"
+title = "skill authoring prunes no-ops and makes dependencies and leading words observable"
+skill = "writing-skills"
+kind  = "artifact"

@@ -1,0 +1,4 @@
+id    = "wayfinding-contract"
+title = "wayfinding preserves uncertainty and decisions until downstream work is ready"
+skill = "wayfinding"
+kind  = "artifact"

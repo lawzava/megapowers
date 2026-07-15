@@ -42,6 +42,18 @@ specific UI or policy metadata in that harness's configuration surface.
 Assume the agent already understands common concepts. Include only knowledge,
 constraints, decisions, examples, and checks that change the result.
 
+Run a guidance-unit deletion test after drafting: remove each instruction,
+bullet, field, and fragment in turn. Removal matters only if it changes
+permitted behavior, a decision, an output, required evidence, or removes
+wording that prevents a likely mistake. Otherwise the unit is a no-op; delete
+it.
+
+For scan-heavy workflow guidance, prefer a leading observable predicate,
+action, artifact, gate, or concrete concept term when that improves recognition.
+Define a nonstandard term at first use. Replace leading intensifiers and
+mental-state prompts such as `carefully` or `think deeply` with that concrete
+vocabulary.
+
 State what to do. Explain why only where it prevents a likely mistake. Match instruction precision to risk:
 
 * Use broad goals and heuristics when several approaches are valid.
@@ -65,8 +77,12 @@ may preview a nested file instead of reading it fully. Give long reference files
 
 Use scripts when correctness is deterministic or repeated code generation would
 waste context. State whether the agent should run a script or read it. Verify
-dependencies rather than assuming they are installed. Use fully qualified MCP
-tool names when a skill depends on MCP.
+dependencies rather than assuming they are installed. A hard dependency is
+required for correct execution. Hard dependencies must not be skipped: block at
+an explicit setup gate that says how to install, configure, or authorize them.
+Optional enrichment does not block the correct core workflow. When it is
+unavailable, skip it or use a stated fallback. Use fully qualified MCP tool
+names when a skill depends on MCP.
 
 Avoid time sensitive facts in durable instructions. Link to the live source or
 isolate legacy details in a clearly labeled section.

@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# Validate the documented scalar subset of optional Codex skill metadata.
+# Usage: validate-codex-skill-metadata [repository-root]
+set -u
+
+root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+fail=0
+count=0
+
+bad() {
+  printf 'invalid Codex skill metadata: %s\n' "$*" >&2
+  fail=1
+}
+
+skill_name() {
+  awk '
+    NR == 1 && /^---[[:space:]]*$/ { frontmatter=1; next }
+    frontmatter && /^---[[:space:]]*$/ { exit }
+    frontmatter && /^name:[[:space:]]*/ {
+      value=$0
+      sub(/^name:[[:space:]]*/, "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value ~ /^".*"$/ || value ~ /^'"'"'.*'"'"'$/) {
+        value=substr(value, 2, length(value) - 2)
+      }
+      print value
+      exit
+    }
+  ' "$1"
+}
+
+yaml_value() {
+  section="$1"
+  wanted="$2"
+  file="$3"
+  unquote="${4:-true}"
+  awk -v section="$section" -v wanted="$wanted" -v unquote="$unquote" '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    /^[^[:space:]]/ {
+      current=$0
+      sub(/[[:space:]]*:.*$/, "", current)
+      next
+    }
+    current == section && /^[[:space:]]+[A-Za-z_][A-Za-z0-9_-]*[[:space:]]*:/ {
+      line=$0
+      sub(/^[[:space:]]+/, "", line)
+      key=line
+      sub(/[[:space:]]*:.*$/, "", key)
+      if (key != wanted) next
+      sub(/^[^:]*:[[:space:]]*/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (unquote == "true" && (line ~ /^".*"$/ || line ~ /^'"'"'.*'"'"'$/)) {
+        line=substr(line, 2, length(line) - 2)
+      }
+      print line
+    }
+  ' "$file"
+}
+
+unknown_keys() {
+  file="$1"
+  awk '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    /^[^[:space:]]/ {
+      current=$0
+      sub(/[[:space:]]*:.*$/, "", current)
+      if (current != "interface" && current != "policy" && current != "dependencies") {
+        print "top-level " current
+      }
+      next
+    }
+    current == "interface" && /^[[:space:]]+[A-Za-z_][A-Za-z0-9_-]*[[:space:]]*:/ {
+      key=$0
+      sub(/^[[:space:]]+/, "", key)
+      sub(/[[:space:]]*:.*$/, "", key)
+      if (key != "display_name" && key != "short_description" &&
+          key != "icon_small" && key != "icon_large" &&
+          key != "brand_color" && key != "default_prompt") {
+        print "interface." key
+      }
+      next
+    }
+    current == "policy" && /^[[:space:]]+[A-Za-z_][A-Za-z0-9_-]*[[:space:]]*:/ {
+      key=$0
+      sub(/^[[:space:]]+/, "", key)
+      sub(/[[:space:]]*:.*$/, "", key)
+      if (key != "allow_implicit_invocation") print "policy." key
+    }
+  ' "$file"
+}
+
+while IFS= read -r sidecar; do
+  [ -n "$sidecar" ] || continue
+  count=$((count + 1))
+  skill_dir="$(dirname "$(dirname "$sidecar")")"
+  skill_file="$skill_dir/SKILL.md"
+  display_name=''
+  short_description=''
+  default_prompt=''
+  implicit=''
+
+  if [ ! -f "$skill_file" ]; then
+    bad "$sidecar has no sibling SKILL.md"
+    continue
+  fi
+  if grep -q $'\t' "$sidecar"; then
+    bad "$sidecar contains tabs"
+  fi
+
+  name="$(skill_name "$skill_file")"
+  if [[ ! $name =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+    bad "$sidecar has invalid or missing SKILL.md name '$name'"
+    continue
+  fi
+
+  while IFS= read -r unknown; do
+    [ -n "$unknown" ] && bad "$sidecar uses unsupported $unknown key"
+  done < <(unknown_keys "$sidecar")
+
+  display_name="$(yaml_value interface display_name "$sidecar")"
+  short_description="$(yaml_value interface short_description "$sidecar")"
+  default_prompt="$(yaml_value interface default_prompt "$sidecar")"
+  # Preserve quotes here: YAML strings such as "false" are not booleans.
+  implicit="$(yaml_value policy allow_implicit_invocation "$sidecar" false)"
+
+  [ -n "$display_name" ] || bad "$sidecar requires interface.display_name"
+  if [ -z "$short_description" ]; then
+    bad "$sidecar requires interface.short_description"
+  else
+    short_len="${#short_description}"
+    if (( short_len < 25 || short_len > 64 )); then
+      bad "$sidecar interface.short_description must be 25-64 characters (${short_len})"
+    fi
+  fi
+  if [ -z "$default_prompt" ]; then
+    bad "$sidecar requires interface.default_prompt"
+  elif ! printf '%s\n' "$default_prompt" | grep -Eq "(^|[^[:alnum:]_-])\\\$${name}([^[:alnum:]_-]|$)"; then
+    bad "$sidecar interface.default_prompt must name exact \$$name"
+  fi
+  if [[ $implicit != true && $implicit != false ]]; then
+    bad "$sidecar policy.allow_implicit_invocation must be true or false"
+  fi
+  if [[ $name == wayfinding && $implicit != false ]]; then
+    bad "$sidecar wayfinding policy.allow_implicit_invocation must be false"
+  fi
+done < <(find "$root/plugins" -type f -path '*/skills/*/agents/openai.yaml' 2>/dev/null | sort)
+
+if (( fail != 0 )); then
+  exit 1
+fi
+printf 'validated %d Codex skill metadata sidecar(s)\n' "$count"

@@ -22,6 +22,16 @@ User preferences for plan location override this default.
 If the work needs an isolated worktree, megapowers:using-git-worktrees
 creates it at execution time.
 
+## Input and Source Pass
+
+Before decomposing work, read the repository instructions. If present, read
+canonical `CONTEXT.md` (or the repository-named equivalent). Read relevant
+accepted ADRs when present, and matching project memories when present.
+Repository instructions govern process. `CONTEXT.md` supplies current domain
+vocabulary; accepted ADRs govern narrower design intent. Treat project memories
+as hidden historical hints and reverify them against current sources. Surface
+conflicts for resolution; never silently choose a source.
+
 ## Scope Check
 
 If the spec covers multiple independent subsystems, suggest one plan per
@@ -90,8 +100,11 @@ progress ledger.
 
 ## Task Structure
 
-Each task (`### Task N: [Component Name]`) declares its files and
-interfaces, then its steps as checkbox (`- [ ]`) items.
+Each task (`### Task N: [Component Name]`) declares its files, interfaces, and
+`Blocked by` task relationships, then its steps as checkbox (`- [ ]`) items.
+Use `Blocked by: None` when it has no dependency. For every material unresolved
+input, add `Blocker:`, `Owner:`, and `Unblocks when:` fields and mark the
+affected task not execution-ready until that condition is met.
 
 **Files:** exact paths, grouped as Create, Modify (with line ranges), and
 Test.
@@ -100,6 +113,12 @@ Test.
 later ones, with exact function names, parameter and return types. A task's
 implementer sees only their own task; this block is how they learn the
 names and types neighboring tasks use.
+
+For a broad compatibility-sensitive replacement whose consumers cannot change
+atomically, order separate expand, migrate, and contract tasks. Expand adds the
+compatible path, migrate moves every consumer while both paths work, and
+contract removes the old path only after migration is verified. Each stage
+must leave tests and deployment green for every supported mixed state.
 
 **Steps:** each carries its full content inline. The test step shows the
 test code. Verification steps give the exact command and the expected

@@ -11,6 +11,11 @@ config file, so swapping a backend is an edit, not a rewrite.
   best-of-n, council, autonomous run) with spend-by-stakes effort defaults,
   and maps subagent/team/workflow/effort primitives per harness in its
   `references/harness-primitives.md`.
+- `wayfinding`: map long-horizon work whose unknown ownership, unresolved
+  decisions, or unclear sequencing prevents an honest spec or plan. It keeps a
+  local uncertainty map and resolves one decision at a time, without required
+  tracker or commit behavior. Codex invocation is explicit-only through the
+  skill's `agents/openai.yaml`; other harnesses may still invoke it implicitly.
 - `multi-agent-delegation`: when and how the lead (the agent session you are
   talking to, which orchestrates and owns integration) hands work to a
   delegate (a separately invoked model or CLI that returns results), plus

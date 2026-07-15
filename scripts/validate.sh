@@ -38,6 +38,32 @@ skill_desc() {
 # peak anyway).
 byte_len() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d '[:space:]'; }
 
+# Optional Codex skill metadata can make a skill explicit-only. The dedicated
+# metadata validator checks the sidecar first, so this budget helper only needs
+# to read the documented scalar policy value.
+codex_implicit_invocation() {
+  local sidecar
+  sidecar="$(dirname "$1")/agents/openai.yaml"
+  if [[ ! -f $sidecar ]]; then
+    printf 'true\n'
+    return
+  fi
+  awk '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    /^[^[:space:]]/ {
+      section=$0
+      sub(/[[:space:]]*:.*$/, "", section)
+      next
+    }
+    section == "policy" && /^[[:space:]]+allow_implicit_invocation[[:space:]]*:/ {
+      value=$0
+      sub(/^[^:]*:[[:space:]]*/, "", value)
+      sub(/[[:space:]]+$/, "", value)
+      print value
+    }
+  ' "$sidecar"
+}
+
 claude_mp=".claude-plugin/marketplace.json"
 codex_mp=".agents/plugins/marketplace.json"
 
@@ -195,11 +221,24 @@ while IFS= read -r sk; do
   if [[ -z $unknown ]]; then ok "skill $sk frontmatter portable"; else bad "skill $sk: unsupported frontmatter keys: $(printf '%s' "$unknown" | tr '\n' ' ')"; fi
 done < <(find plugins skills -name SKILL.md 2>/dev/null)
 
+echo "== Codex skill metadata =="
+if [[ -x scripts/validate-codex-skill-metadata ]]; then
+  if metadata_result="$(scripts/validate-codex-skill-metadata "$ROOT" 2>&1)"; then
+    ok "$metadata_result"
+  else
+    bad "optional agents/openai.yaml validation failed"
+    printf '%s\n' "$metadata_result" | sed 's/^/    /'
+  fi
+else
+  bad "scripts/validate-codex-skill-metadata missing or not executable"
+fi
+
 echo "== context budgets =="
-# Skill descriptions are always in context (Claude's skills listing, Codex's
-# initial skills-list). writing-skills states token-efficiency limits for them;
-# these checks make that budget visible to CI so drift stops passing silently.
-# All measured in bytes (LC_ALL=C) for determinism across CI locales.
+# Skill descriptions consume discovery context. Claude lists all skills, while
+# Codex can omit explicit-only skills from implicit discovery. writing-skills
+# states token-efficiency limits for them; these checks make that budget
+# visible to CI so drift stops passing silently. All measured in bytes
+# (LC_ALL=C) for determinism across CI locales.
 
 # 1. Per-skill description budget: writing-skills keeps each under ~500 chars
 #    (Task 12 trimmed the one offender, orchestrating, to 494 — this pins it).
@@ -214,9 +253,10 @@ while IFS= read -r sk; do
 done < <(find plugins skills -name SKILL.md 2>/dev/null | sort)
 (( desc_over == 0 )) && ok "every skill description within ${DESC_MAX}B (peak: ${desc_peak_name} ${desc_peak}B)"
 
-# 2. Always-loaded budget: skill descriptions plus the real SessionStart hook
-#    context sit in context on every turn. Invoke the hook and parse its output
-#    instead of duplicating its trimming and preface logic here.
+# 2. Cross-harness upper bound: every skill description plus the real
+#    SessionStart hook context. Keep explicit-only Codex skills in this total
+#    because other harnesses can still discover them. Invoke the hook and parse
+#    its output instead of duplicating its trimming and preface logic here.
 ALWAYS_MAX=13800
 skfile="plugins/megapowers/skills/using-megapowers/SKILL.md"
 session_hook="plugins/megapowers/hooks/session-start"
@@ -241,14 +281,17 @@ else
   bad "using-megapowers skill or SessionStart hook missing (cannot measure always-loaded budget)"
 fi
 
-# 3. Codex initial skills-list budget: Codex uses 2% of a known context window
-#    or an 8000-character fallback. The budget covers rendered metadata lines,
-#    not descriptions alone. Model the current namespaced alias form with a
-#    conservative three-character root alias, then reserve 448 characters for
-#    the renderer's alias-table prose and one long marketplace install root.
+# 3. Codex implicit initial skills-list budget: Codex uses 2% of a known context
+#    window or an 8000-character fallback. Skills whose sidecar sets
+#    policy.allow_implicit_invocation to false remain explicitly invocable but
+#    are outside this implicit chooser budget. The budget covers rendered
+#    metadata lines, not descriptions alone. Model the current namespaced alias
+#    form with a conservative three-character root alias, then reserve 448
+#    characters for the renderer's alias-table prose and one long marketplace
+#    install root.
 CODEX_MAX=8000
 CODEX_ALIAS_RESERVE=448
-codex_over=0; codex_peak=0; codex_peak_name=""; codex_agg=0; codex_found=0
+codex_over=0; codex_peak=0; codex_peak_name=""; codex_agg=0; codex_found=0; codex_explicit_only=0
 for cx in plugins/*/.codex-plugin/plugin.json; do
   [[ -f $cx ]] || continue
   pdir="$(dirname "$(dirname "$cx")")"
@@ -260,6 +303,10 @@ for cx in plugins/*/.codex-plugin/plugin.json; do
   psum=0
   while IFS= read -r sk; do
     [[ -z $sk ]] && continue
+    if [[ $(codex_implicit_invocation "$sk") == false ]]; then
+      codex_explicit_only=$((codex_explicit_only + 1))
+      continue
+    fi
     sname="$(basename "$(dirname "$sk")")"
     rel="${sk#"$skdir/"}"
     line="- ${pname}:${sname}: $(skill_desc "$sk") (file: r99/${rel})"
@@ -271,12 +318,13 @@ for cx in plugins/*/.codex-plugin/plugin.json; do
   if (( ptotal > CODEX_MAX )); then bad "Codex plugin rendered metadata plus alias reserve over ${CODEX_MAX}B: $(basename "$pdir") (${ptotal}B)"; codex_over=1; fi
 done
 if (( codex_found == 1 )); then
+  ok "Codex implicit initial-list budget excludes ${codex_explicit_only} explicit-only skill(s)"
   (( codex_over == 0 )) && ok "every Codex plugin rendered metadata plus alias reserve within ${CODEX_MAX}B (peak: ${codex_peak_name} ${codex_peak}B)"
   codex_agg_total=$((codex_agg + CODEX_ALIAS_RESERVE))
   if (( codex_agg_total > CODEX_MAX )); then
-    bad "all Codex plugin rendered metadata plus alias reserve exceeds ${CODEX_MAX}B initial-list budget (${codex_agg_total}B)"
+    bad "all Codex plugin rendered metadata plus alias reserve exceeds ${CODEX_MAX}B implicit initial-list budget (${codex_agg_total}B)"
   else
-    ok "all Codex plugin rendered metadata plus alias reserve within ${CODEX_MAX}B initial-list budget (${codex_agg_total}B)"
+    ok "all Codex plugin rendered metadata plus alias reserve within ${CODEX_MAX}B implicit initial-list budget (${codex_agg_total}B)"
   fi
 fi
 
@@ -303,7 +351,7 @@ if command -v shellcheck >/dev/null 2>&1; then
     [ -f "$f" ] || continue
     case "$f" in
       *.sh) printf '%s\n' "$f" ;;
-      plugins/*/scripts/*|plugins/*/hooks/*)
+      plugins/*/scripts/*|plugins/*/hooks/*|scripts/*)
         head -1 "$f" 2>/dev/null | grep -qE '^#!.*sh' && printf '%s\n' "$f" ;;
     esac
   done | sort -u)

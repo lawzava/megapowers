@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: Use to shape a new feature, capability, or unclear behavior change. Triggers on "add a feature", "work out the design", "figure out the approach", or "let's build". Skip mechanical edits and bug fixes.
+description: Use to design a feature, capability, or unclear behavior change. Triggers on "add a feature" or "figure out the approach". Use wayfinding when uncertainty blocks scoping. Skip mechanical edits and bug fixes.
 license: MIT
 ---
 
