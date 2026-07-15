@@ -30,7 +30,7 @@ Full install, update, verification, and uninstall instructions are in
 [`docs/agent-install.md`](./docs/agent-install.md), then give it this prompt:
 
 > Install megapowers on this machine by fetching and following
-> https://raw.githubusercontent.com/lawzava/megapowers/v0.3.7/docs/agent-install.md
+> https://raw.githubusercontent.com/lawzava/megapowers/v0.3.8/docs/agent-install.md
 
 The guide asks before changing permissions or settings.
 
@@ -68,10 +68,10 @@ Install only what you use. `megapowers` plus `mega-orchestration` is the main
 workflow pairing. Add a language plugin for a new project, `mega-frontend` for
 UI work, or `mega-guardrails` for hook backstops.
 
-On Codex, installing all seven plugins exceeds the initial skills-list budget,
-although each plugin fits by itself. Some skills then disappear from the
-initial list until explicitly invoked. `scripts/validate.sh` reports the
-current aggregate, so prefer an à-la-carte install.
+On Codex, installing all seven plugins approaches the initial skills-list
+budget, although each plugin fits by itself. `wayfinding` is intentionally
+explicit-only and remains available through `$wayfinding`; `scripts/validate.sh`
+reports the current aggregate, so prefer an à-la-carte install when possible.
 
 ## Other harnesses
 
