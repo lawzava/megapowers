@@ -8,11 +8,33 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.8 - 2026-07-15
+
+### Added
+
+- `mega-orchestration:wayfinding` maps long-horizon uncertainty before an
+  honest specification or plan, using local decision records without requiring
+  a tracker or commit behavior. Codex keeps it explicit-only through
+  `agents/openai.yaml`.
+- Five RED-backed artifact scenarios pin the new debugging, planning,
+  authoring, review-axis, and wayfinding contracts. Validation now checks the
+  supported Codex per-skill metadata shape and invocation policy.
+
 ### Changed
 
 - Codex v2 guidance now treats native workers as same-model context shards,
   defaults independent work to fresh context, and keeps spawning, joins, and
   lifecycle ownership with the root agent.
+- Debugging guidance now builds the smallest red-capable loop, ranks
+  hypotheses by evidence and test cost, controls temporary probes, and defines
+  substitute evidence for irreducibly external failures.
+- Plans expose dependencies, blocker owners, unblock conditions, and staged
+  expand-migrate-contract replacements. Planning, debugging, and project memory
+  now distinguish repository context, ADRs, observed behavior, and historical
+  hints.
+- Skill authoring prunes no-op guidance and distinguishes hard dependencies
+  from optional enrichment. Code review reports specification compliance and
+  engineering standards as separate axes.
 
 ## 0.3.7 - 2026-07-14
 
