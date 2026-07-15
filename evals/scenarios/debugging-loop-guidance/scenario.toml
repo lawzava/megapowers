@@ -1,0 +1,4 @@
+id    = "debugging-loop-guidance"
+title = "systematic debugging defines a minimal evidence-driven regression loop"
+skill = "systematic-debugging"
+kind  = "artifact"

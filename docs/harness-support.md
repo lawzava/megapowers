@@ -1,6 +1,6 @@
 # Harness support matrix
 
-Last reviewed: 2026-07-13.
+Last reviewed: 2026-07-15.
 
 This repo is cross-harness, but not every harness has the same extension
 surface. Two facts apply across the whole matrix:
@@ -52,6 +52,15 @@ agent role templates.
   Terra-pinned `builder` and `reviewer` profiles to copy into
   `~/.codex/agents/` or a project's `.codex/agents/`. They are optional for
   role-aware Codex surfaces; native v2 does not select them automatically.
+- Optional per-skill metadata: Codex reads `agents/openai.yaml` beside a
+  skill's `SKILL.md` for interface and policy fields. Setting
+  `policy.allow_implicit_invocation: false` prevents implicit activation while
+  explicit `$skill-name` invocation still works. This repo pilots that policy
+  only on `wayfinding`; other harnesses may ignore the sidecar and discover the
+  portable skill normally. The repository validator excludes explicit-only
+  skills from Codex's implicit initial-list budget and keeps them in the
+  cross-harness upper bound. See OpenAI's
+  [Build skills](https://learn.chatgpt.com/docs/build-skills.md) documentation.
 - Native multi-agent work: prefer Codex native subagents when running inside
   Codex. The shipped baseline deliberately opts into the under-development v2
   collaboration surface. V2 is same-model context sharding and exposes

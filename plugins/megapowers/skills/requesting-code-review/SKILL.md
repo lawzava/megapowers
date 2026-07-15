@@ -29,7 +29,14 @@ It prints the path of a unique file containing the commit list, the diff stat, a
 
 **Dispatch the reviewer.** Fill the template at [code-reviewer.md](code-reviewer.md) and dispatch it as a `general-purpose` subagent. It takes a brief description of what you built, the plan or requirements, the review package path (leave it blank to have the reviewer derive the diff from the SHAs), BASE_SHA, and HEAD_SHA.
 
-**Act on the findings.** Handle them per megapowers:receiving-code-review: verify each finding against the code before implementing it, fix Critical issues immediately, fix Important issues before proceeding, and record Minor issues for later. Do not argue with valid feedback; push back only when the reviewer is factually wrong, backed by the code or tests that prove the behavior.
+**Act on the findings.** Handle them per megapowers:receiving-code-review and
+keep the axes distinct. A Specification Compliance Fail blocks proceeding
+regardless of local finding severity: correct the implementation or obtain
+explicit requirement-owner authorization, then re-review. For Engineering
+Standards, fix Critical issues immediately, fix Important issues before
+proceeding, and record Minor issues for later. Do not argue with valid feedback;
+push back only when the reviewer is factually wrong, backed by the code or tests
+that prove the behavior.
 
 ## Escalation
 

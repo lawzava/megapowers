@@ -1,0 +1,4 @@
+id    = "review-axes"
+title = "code review preserves specification and engineering findings as independent axes"
+skill = "requesting-code-review"
+kind  = "artifact"

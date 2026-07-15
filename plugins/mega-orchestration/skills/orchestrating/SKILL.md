@@ -34,6 +34,7 @@ than the work.
 | Task shape | Structure |
 |---|---|
 | One clear path, routine stakes | Inline. No structure. |
+| Long-horizon work with unknown ownership, unresolved decisions, or unclear sequencing that prevents an honest spec or plan | mega-orchestration:wayfinding: map uncertainty and resolve the next decision before design or planning. |
 | 2+ independent tasks, no shared state | megapowers:dispatching-parallel-agents (if installed): one focused agent per task, dispatched together. |
 | A written plan of mostly-independent tasks | megapowers:subagent-driven-development (if installed): fresh subagent per task with per-task review. |
 | A subtask another model/runtime does better (review, small scoped impl, browser/visual) | mega-orchestration:multi-agent-delegation: resolve the role via `delegates.toml`. |
