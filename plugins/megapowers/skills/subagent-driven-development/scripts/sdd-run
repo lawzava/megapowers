@@ -152,6 +152,119 @@ mp_report_native_ref_locks() {
   return 1
 }
 
+MP_OPEN_STATE_VERIFICATIONS=''
+MP_OPEN_CLOSING_REF=''
+MP_OPEN_CLOSED_REF=''
+
+mp_require_run_open() {
+  local run=$1 zero
+  MP_OPEN_CLOSING_REF=$(mp_run_ref "$run" closing) || return
+  MP_OPEN_CLOSED_REF=$(mp_run_ref "$run" closed) || return
+  zero=$(mp_zero_oid) || return
+  if [ "$(mp_ref_oid_or_zero "$MP_OPEN_CLOSING_REF")" != "$zero" ] ||
+     [ "$(mp_ref_oid_or_zero "$MP_OPEN_CLOSED_REF")" != "$zero" ]; then
+    mp_die "run is closing or closed" 4
+    return
+  fi
+  MP_OPEN_STATE_VERIFICATIONS="verify $MP_OPEN_CLOSING_REF $zero
+verify $MP_OPEN_CLOSED_REF $zero
+"
+}
+
+mp_run_is_open() {
+  local run=$1 closing_ref closed_ref zero
+  closing_ref=$(mp_run_ref "$run" closing) || return
+  closed_ref=$(mp_run_ref "$run" closed) || return
+  zero=$(mp_zero_oid) || return
+  [ "$(mp_ref_oid_or_zero "$closing_ref")" = "$zero" ] &&
+    [ "$(mp_ref_oid_or_zero "$closed_ref")" = "$zero" ]
+}
+
+mp_run_branch_worktrees_clear() {
+  local run=$1 worktrees line key value
+  worktrees=$(git worktree list --porcelain) || return 3
+  while IFS= read -r line; do
+    key=${line%% *}
+    value=${line#* }
+    if [ "$key" = branch ]; then
+      case "$value" in "refs/heads/mp/$run/"*) return 1 ;; esac
+    fi
+  done <<<"$worktrees"
+  return 0
+}
+
+mp_cleanup_worktrees_clear() {
+  local run=$1 top tool_root worktrees line key value path
+  top=$(git rev-parse --show-toplevel) || return 3
+  tool_root="$top/.worktrees/$run"
+  worktrees=$(git worktree list --porcelain) || return 3
+  while IFS= read -r line; do
+    key=${line%% *}
+    value=${line#* }
+    case "$key" in
+      worktree)
+        path=$value
+        case "$path/" in "$tool_root/"*) return 1 ;; esac
+        ;;
+      branch)
+        case "$value" in "refs/heads/mp/$run/"*) return 1 ;; esac
+        ;;
+    esac
+  done <<<"$worktrees"
+  return 0
+}
+
+MP_CLOSE_RESULT_VERIFICATIONS=''
+MP_CLOSE_RESULT_REFS=()
+
+mp_prepare_close_snapshot() {
+  local run=$1 manifest=$2 target_head=$3 refs root result_ref result_oid result result_head node
+  MP_CLOSE_RESULT_VERIFICATIONS=''
+  MP_CLOSE_RESULT_REFS=()
+  refs=$(LC_ALL=C git for-each-ref --format='%(refname) %(objectname)' \
+    "$(mp_run_ref "$run" nodes)/") || return
+  while IFS= read -r root; do
+    result_ref=$(mp_run_ref "$run" "nodes/$root/result") || return
+    result_oid=''
+    while IFS=' ' read -r ref_oid_name ref_oid_value; do
+      [ "$ref_oid_name" = "$result_ref" ] && result_oid=$ref_oid_value
+    done <<<"$refs"
+    [ -n "$result_oid" ] || { mp_die "root does not have a result: $root" 4; return; }
+    result=$(mp_read_result_json "$result_oid") || { mp_die "root result is malformed: $root" 3; return; }
+    jq -e '.status == "done" and (.head | type == "string")' >/dev/null <<<"$result" || {
+      mp_die "root result is not terminal done: $root" 4
+      return
+    }
+  done < <(jq -r '.roots[]' <<<"$manifest")
+  while IFS=' ' read -r result_ref result_oid; do
+    [ -n "$result_ref" ] || continue
+    case "$result_ref" in */result) ;; *) continue ;; esac
+    node=${result_ref#"$(mp_run_ref "$run" nodes)/"}
+    node=${node%/result}
+    result=$(mp_read_result_json "$result_oid") || { mp_die "node result is malformed: $node" 3; return; }
+    jq -e '(.head | type == "string")' >/dev/null <<<"$result" || {
+      mp_die "node result head is missing: $node" 3
+      return
+    }
+    result_head=$(jq -r '.head' <<<"$result")
+    [ "$(git cat-file -t "$result_head" 2>/dev/null || true)" = commit ] || {
+      mp_die "node result head is not a commit: $node" 3
+      return
+    }
+    git merge-base --is-ancestor "$result_head" "$target_head" 2>/dev/null || {
+      mp_die "node result is not integrated into the target: $node" 4
+      return
+    }
+    MP_CLOSE_RESULT_VERIFICATIONS="${MP_CLOSE_RESULT_VERIFICATIONS}verify $result_ref $result_oid
+"
+    MP_CLOSE_RESULT_REFS+=("$result_ref")
+  done <<<"$refs"
+}
+
+mp_report_close_native_locks() {
+  mp_report_native_ref_locks "$@" "${MP_CLOSE_RESULT_REFS[@]}"
+}
+
 mp_nodes_related() {
   case "$1/" in
     "$2/"*) return 0 ;;
@@ -768,6 +881,7 @@ cmd_brief_put() {
       mp_die "run generation is missing" 3
       return
     }
+    mp_require_run_open "$run" || return
     total=0
     if jq -e '.parent == null' >/dev/null <<<"$brief"; then
       jq -e --arg node "$node" '.roots | index($node) != null' >/dev/null \
@@ -853,7 +967,7 @@ cmd_brief_put() {
     new_generation=$(mp_generation_oid "$run" "$generation_oid" brief-put "$generation_data") || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-verify $authorization_ref $authorization_oid
+${MP_OPEN_STATE_VERIFICATIONS}verify $authorization_ref $authorization_oid
 verify $head_ref $current_head
 create $brief_ref $brief_oid
 update $generation_ref $new_generation $generation_oid
@@ -863,6 +977,7 @@ EOF
     then
       return
     fi
+    mp_run_is_open "$run" || { mp_die "run started closing before brief creation" 4; return; }
     if ! mp_generation_moved "$generation_ref" "$generation_oid"; then
       [ "$(mp_read_ref "$authorization_ref" || true)" = "$authorization_oid" ] || {
         mp_die "brief authorization changed" 4
@@ -917,6 +1032,7 @@ cmd_claim() {
   generation_ref=$(mp_generation_ref "$run") || return
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     brief_oid=$(mp_read_ref "$brief_ref") || { mp_die "node brief does not exist" 3; return; }
     brief=$(mp_read_json_ref "$brief_oid") || { mp_die "node brief is malformed" 3; return; }
     result_oid=$(mp_ref_oid_or_zero "$result_ref")
@@ -946,7 +1062,7 @@ cmd_claim() {
     )
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-verify $brief_ref $brief_oid
+${MP_OPEN_STATE_VERIFICATIONS}verify $brief_ref $brief_oid
 verify $result_ref $result_oid
 verify $MP_SCOPE_HEAD_REF $MP_SCOPE_HEAD_OID
 ${MP_DEPENDENCY_VERIFICATIONS}create $claim_ref $claim_oid
@@ -958,6 +1074,7 @@ EOF
       printf '%s %s\n' "$claim_oid" "$(jq -r '.branch' <<<"$brief")"
       return
     fi
+    mp_run_is_open "$run" || { mp_die "run started closing before claim" 4; return; }
     [ "$(mp_ref_oid_or_zero "$brief_ref")" = "$brief_oid" ] || {
       mp_die "node brief changed before claim" 4
       return
@@ -1018,6 +1135,7 @@ cmd_heartbeat() {
   generation_ref=$(mp_generation_ref "$run") || return
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     at=$(mp_now)
     generation_data=$(jq -cn --arg node "$node" --arg session "$session" \
       --arg expected "$expected" --arg at "$at" \
@@ -1029,7 +1147,7 @@ cmd_heartbeat() {
       git hash-object -w --stdin)
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-update $claim_ref $new_oid $expected
+${MP_OPEN_STATE_VERIFICATIONS}update $claim_ref $new_oid $expected
 update $generation_ref $new_generation $generation_oid
 prepare
 commit
@@ -1038,6 +1156,7 @@ EOF
       printf '%s\n' "$new_oid"
       return
     fi
+    mp_run_is_open "$run" || { mp_die "run started closing before heartbeat" 4; return; }
     [ "$(mp_ref_oid_or_zero "$claim_ref")" = "$expected" ] || {
       mp_die "claim changed before heartbeat" 4
       return
@@ -1085,10 +1204,11 @@ cmd_release_claim() {
     '{node:$node,session:$session,expected:$expected}')
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     new_generation=$(mp_generation_oid "$run" "$generation_oid" release-claim "$generation_data") || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-delete $claim_ref $expected
+${MP_OPEN_STATE_VERIFICATIONS}delete $claim_ref $expected
 update $generation_ref $new_generation $generation_oid
 prepare
 commit
@@ -1096,6 +1216,7 @@ EOF
     then
       return
     fi
+    mp_run_is_open "$run" || { mp_die "run started closing before claim release" 4; return; }
     [ "$(mp_ref_oid_or_zero "$claim_ref")" = "$expected" ] || {
       mp_die "claim changed before release" 4
       return
@@ -1164,6 +1285,7 @@ cmd_slot_acquire() {
 
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     identity_oid=$(mp_read_ref "$identity_ref") || {
       if [ "$scope" = target ]; then mp_die "run owner is missing" 3
       else mp_die "node is not actively claimed" 4
@@ -1231,7 +1353,7 @@ cmd_slot_acquire() {
     slot_ref=$(mp_run_ref "$run" "slots/$kind/$slot") || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-verify $identity_ref $identity_oid
+${MP_OPEN_STATE_VERIFICATIONS}verify $identity_ref $identity_oid
 create $slot_ref $slot_oid
 update $generation_ref $new_generation $generation_oid
 prepare
@@ -1241,6 +1363,7 @@ EOF
       printf '%s %s\n' "$slot" "$slot_oid"
       return
     fi
+    mp_run_is_open "$run" || { mp_die "run started closing before slot creation" 4; return; }
     [ "$(mp_ref_oid_or_zero "$identity_ref")" = "$identity_oid" ] || {
       mp_die "slot authorization changed before creation" 4
       return
@@ -1298,10 +1421,11 @@ cmd_slot_release() {
     '{kind:$kind,slot:$slot,session:$session,expected:$expected}')
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     new_generation=$(mp_generation_oid "$run" "$generation_oid" slot-release "$generation_data") || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-delete $slot_ref $expected
+${MP_OPEN_STATE_VERIFICATIONS}delete $slot_ref $expected
 update $generation_ref $new_generation $generation_oid
 prepare
 commit
@@ -1309,6 +1433,7 @@ EOF
     then
       return
     fi
+    mp_run_is_open "$run" || { mp_die "run started closing before slot release" 4; return; }
     [ "$(mp_ref_oid_or_zero "$slot_ref")" = "$expected" ] || {
       mp_die "slot changed before release" 4
       return
@@ -1577,6 +1702,7 @@ cmd_result_put() {
   local generation_oid new_generation generation_data existing existing_json attempt=0
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     existing=$(mp_ref_oid_or_zero "$result_ref")
     if [ "$existing" = "$(mp_zero_oid)" ]; then
       [ "$seen_expected" -eq 0 ] || { mp_die "--expected requires an existing blocked result" 4; return; }
@@ -1601,7 +1727,7 @@ cmd_result_put() {
     new_generation=$(mp_generation_oid "$run" "$generation_oid" result-put "$generation_data") || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-verify $brief_ref $brief_oid
+${MP_OPEN_STATE_VERIFICATIONS}verify $brief_ref $brief_oid
 verify $claim_ref $claim_oid
 verify $branch_ref $head
 update $result_ref $result_tree $existing
@@ -1613,7 +1739,9 @@ EOF
       printf '%s\n' "$result_tree"
       return
     fi
-    mp_report_native_ref_locks "$brief_ref" "$claim_ref" "$branch_ref" "$result_ref" "$generation_ref" && return 4
+    mp_report_native_ref_locks "$brief_ref" "$claim_ref" "$branch_ref" "$result_ref" \
+      "$generation_ref" "$MP_OPEN_CLOSING_REF" "$MP_OPEN_CLOSED_REF" && return 4
+    mp_run_is_open "$run" || { mp_die "run started closing before result update" 4; return; }
     [ "$(mp_ref_oid_or_zero "$brief_ref")" = "$brief_oid" ] || { mp_die "node brief changed before result" 4; return; }
     [ "$(mp_ref_oid_or_zero "$claim_ref")" = "$claim_oid" ] || { mp_die "node claim changed before result" 4; return; }
     [ "$(mp_ref_oid_or_zero "$branch_ref")" = "$head" ] || { mp_die "node branch changed before result" 4; return; }
@@ -1645,8 +1773,13 @@ cmd_status() {
   local prefix refs manifest_ref manifest_oid manifest owner_ref owner_oid owner=null now
   local closed_ref closed_oid closed=null nodes_file slots_file ref oid suffix node
   local brief_oid claim_ref claim_oid claim result_ref result_oid result kind slot slot_json
-  local node_json slot_output
+  local node_json slot_output generation_ref generation_before generation_after status_json attempt=0
   prefix="refs/megapowers/runs/$run/"
+  generation_ref=$(mp_generation_ref "$run") || return
+  while :; do
+  generation_before=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+  owner=null
+  closed=null
   refs=$(LC_ALL=C git for-each-ref --format='%(refname) %(objectname)' "$prefix")
   [ -n "$refs" ] || { mp_die "run does not exist: $run" 3; return; }
   manifest_ref=$(mp_run_ref "$run" manifest) || return
@@ -1727,9 +1860,19 @@ cmd_status() {
         ;;
     esac
   done <<<"$refs"
-  jq -cn --arg run_id "$run" --argjson manifest "$manifest" --argjson owner "$owner" \
+  status_json=$(jq -cn --arg run_id "$run" --argjson manifest "$manifest" --argjson owner "$owner" \
     --slurpfile nodes "$nodes_file" --slurpfile slots "$slots_file" --argjson closed "$closed" \
-    '{run_id:$run_id,manifest:$manifest,owner:$owner,nodes:$nodes,slots:$slots,closed:$closed}'
+    '{run_id:$run_id,manifest:$manifest,owner:$owner,nodes:$nodes,slots:$slots,closed:$closed}') || return
+  generation_after=$(mp_read_ref "$generation_ref" || true)
+  rm -f "$nodes_file" "$slots_file"
+  trap - EXIT HUP INT TERM
+  if [ "$generation_before" = "$generation_after" ]; then
+    printf '%s\n' "$status_json"
+    return
+  fi
+  attempt=$((attempt + 1))
+  mp_generation_retry "$attempt" || return
+  done
 }
 
 cmd_owner_heartbeat() {
@@ -1764,6 +1907,7 @@ cmd_owner_heartbeat() {
   generation_ref=$(mp_generation_ref "$run") || return
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     at=$(mp_now)
     data=$(jq -cn --arg session "$session" --arg expected "$expected" --arg at "$at" \
       '{session:$session,expected:$expected,last_activity:$at}')
@@ -1772,7 +1916,7 @@ cmd_owner_heartbeat() {
       '.last_activity=$at | .generation=$generation' | git hash-object -w --stdin) || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-update $owner_ref $new_oid $expected
+${MP_OPEN_STATE_VERIFICATIONS}update $owner_ref $new_oid $expected
 update $generation_ref $new_generation $generation_oid
 prepare
 commit
@@ -1781,7 +1925,9 @@ EOF
       printf '%s\n' "$new_oid"
       return
     fi
-    mp_report_native_ref_locks "$owner_ref" "$generation_ref" && return 4
+    mp_report_native_ref_locks "$owner_ref" "$generation_ref" \
+      "$MP_OPEN_CLOSING_REF" "$MP_OPEN_CLOSED_REF" && return 4
+    mp_run_is_open "$run" || { mp_die "run started closing before owner heartbeat" 4; return; }
     [ "$(mp_ref_oid_or_zero "$owner_ref")" = "$expected" ] || { mp_die "owner changed before heartbeat" 4; return; }
     attempt=$((attempt + 1))
     mp_generation_retry "$attempt" || return
@@ -1827,6 +1973,7 @@ cmd_recover_claim() {
   generation_ref=$(mp_generation_ref "$run") || return
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     owner_oid=$(mp_read_ref "$owner_ref") || { mp_die "run owner is missing" 3; return; }
     owner=$(mp_read_json_ref "$owner_oid") || { mp_die "run owner is malformed" 3; return; }
     [ "$(jq -r '.session' <<<"$owner")" = "$owner_session" ] || { mp_die "recovery requires the current owner session" 4; return; }
@@ -1835,7 +1982,7 @@ cmd_recover_claim() {
     new_generation=$(mp_generation_oid "$run" "$generation_oid" recover-claim "$data") || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-verify $owner_ref $owner_oid
+${MP_OPEN_STATE_VERIFICATIONS}verify $owner_ref $owner_oid
 delete $claim_ref $expected
 update $generation_ref $new_generation $generation_oid
 prepare
@@ -1844,7 +1991,9 @@ EOF
     then
       return
     fi
-    mp_report_native_ref_locks "$owner_ref" "$claim_ref" "$generation_ref" && return 4
+    mp_report_native_ref_locks "$owner_ref" "$claim_ref" "$generation_ref" \
+      "$MP_OPEN_CLOSING_REF" "$MP_OPEN_CLOSED_REF" && return 4
+    mp_run_is_open "$run" || { mp_die "run started closing before claim recovery" 4; return; }
     [ "$(mp_ref_oid_or_zero "$claim_ref")" = "$expected" ] || { mp_die "claim changed before recovery" 4; return; }
     attempt=$((attempt + 1))
     mp_generation_retry "$attempt" || return
@@ -1895,6 +2044,7 @@ cmd_recover_slot() {
   generation_ref=$(mp_generation_ref "$run") || return
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     owner_oid=$(mp_read_ref "$owner_ref") || { mp_die "run owner is missing" 3; return; }
     owner=$(mp_read_json_ref "$owner_oid") || { mp_die "run owner is malformed" 3; return; }
     [ "$(jq -r '.session' <<<"$owner")" = "$owner_session" ] || { mp_die "recovery requires the current owner session" 4; return; }
@@ -1903,7 +2053,7 @@ cmd_recover_slot() {
     new_generation=$(mp_generation_oid "$run" "$generation_oid" recover-slot "$data") || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-verify $owner_ref $owner_oid
+${MP_OPEN_STATE_VERIFICATIONS}verify $owner_ref $owner_oid
 delete $slot_ref $expected
 update $generation_ref $new_generation $generation_oid
 prepare
@@ -1912,7 +2062,9 @@ EOF
     then
       return
     fi
-    mp_report_native_ref_locks "$owner_ref" "$slot_ref" "$generation_ref" && return 4
+    mp_report_native_ref_locks "$owner_ref" "$slot_ref" "$generation_ref" \
+      "$MP_OPEN_CLOSING_REF" "$MP_OPEN_CLOSED_REF" && return 4
+    mp_run_is_open "$run" || { mp_die "run started closing before slot recovery" 4; return; }
     [ "$(mp_ref_oid_or_zero "$slot_ref")" = "$expected" ] || { mp_die "slot changed before recovery" 4; return; }
     attempt=$((attempt + 1))
     mp_generation_retry "$attempt" || return
@@ -1961,6 +2113,7 @@ cmd_recover_owner() {
   generation_ref=$(mp_generation_ref "$run") || return
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+    mp_require_run_open "$run" || return
     at=$(mp_now)
     data=$(jq -cn --arg session "$session" --arg harness "$harness" --arg expected "$expected" \
       '{session:$session,harness:$harness,expected:$expected}')
@@ -1973,7 +2126,7 @@ cmd_recover_owner() {
       git hash-object -w --stdin) || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
-update $owner_ref $new_oid $expected
+${MP_OPEN_STATE_VERIFICATIONS}update $owner_ref $new_oid $expected
 update $generation_ref $new_generation $generation_oid
 prepare
 commit
@@ -1982,7 +2135,9 @@ EOF
       printf '%s\n' "$new_oid"
       return
     fi
-    mp_report_native_ref_locks "$owner_ref" "$generation_ref" && return 4
+    mp_report_native_ref_locks "$owner_ref" "$generation_ref" \
+      "$MP_OPEN_CLOSING_REF" "$MP_OPEN_CLOSED_REF" && return 4
+    mp_run_is_open "$run" || { mp_die "run started closing before owner recovery" 4; return; }
     [ "$(mp_ref_oid_or_zero "$owner_ref")" = "$expected" ] || { mp_die "owner changed before recovery" 4; return; }
     attempt=$((attempt + 1))
     mp_generation_retry "$attempt" || return
@@ -2015,46 +2170,38 @@ cmd_close() {
   mp_validate_session_id "$owner_session" || return
   mp_object_id "$expected" || { mp_die "expected must be an object ID" 2; return; }
 
-  local owner owner_ref manifest target_branch target_ref closed_ref generation_ref
-  local generation_oid new_generation target_head closed_at closed_oid data attempt=0
-  local root result_ref result_oid result result_head result_verifications refs ref worktrees line key value
+  local owner owner_ref manifest target_branch target_ref closed_ref closing_ref generation_ref
+  local generation_oid new_generation target_head closed_at closed_oid data attempt=0 zero
+  local refs ref closing_oid closing barrier_oid barrier_at worktree_status rollback_generation
   owner=$(mp_read_json_ref "$expected") || { mp_die "expected owner object is missing" 3; return; }
-  [ "$(jq -r '.session' <<<"$owner")" = "$owner_session" ] || { mp_die "owner belongs to another session" 4; return; }
+  [ "$(jq -r '.session' <<<"$owner")" = "$owner_session" ] || {
+    mp_die "owner belongs to another session" 4
+    return
+  }
   manifest=$(mp_manifest_json "$run") || { mp_die "run manifest is missing or malformed" 3; return; }
   target_branch=$(jq -r '.target_branch' <<<"$manifest")
   target_ref="refs/heads/$target_branch"
   owner_ref=$(mp_run_ref "$run" owner) || return
   closed_ref=$(mp_run_ref "$run" closed) || return
+  closing_ref=$(mp_run_ref "$run" closing) || return
   generation_ref=$(mp_generation_ref "$run") || return
+  zero=$(mp_zero_oid) || return
 
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
-    [ "$(mp_ref_oid_or_zero "$owner_ref")" = "$expected" ] || { mp_die "run owner changed before closure" 4; return; }
-    [ "$(mp_ref_oid_or_zero "$closed_ref")" = "$(mp_zero_oid)" ] || { mp_die "run is already closed" 4; return; }
+    [ "$(mp_ref_oid_or_zero "$owner_ref")" = "$expected" ] || {
+      mp_die "run owner changed before closure" 4
+      return
+    }
+    [ "$(mp_ref_oid_or_zero "$closed_ref")" = "$zero" ] || {
+      mp_die "run is already closed" 4
+      return
+    }
     target_head=$(mp_read_ref "$target_ref") || { mp_die "target branch is missing" 3; return; }
-    result_verifications=''
-    while IFS= read -r root; do
-      result_ref=$(mp_run_ref "$run" "nodes/$root/result") || return
-      result_oid=$(mp_read_ref "$result_ref") || { mp_die "root does not have a result: $root" 4; return; }
-      result=$(mp_read_result_json "$result_oid") || { mp_die "root result is malformed: $root" 3; return; }
-      jq -e '.status == "done" and (.head | type == "string")' >/dev/null <<<"$result" || {
-        mp_die "root result is not terminal done: $root" 4
-        return
-      }
-      result_head=$(jq -r '.head' <<<"$result")
-      [ "$(git cat-file -t "$result_head" 2>/dev/null || true)" = commit ] || {
-        mp_die "root result head is not a commit: $root" 3
-        return
-      }
-      git merge-base --is-ancestor "$result_head" "$target_head" 2>/dev/null || {
-        mp_die "root result is not integrated into the target: $root" 4
-        return
-      }
-      result_verifications="${result_verifications}verify $result_ref $result_oid
-"
-    done < <(jq -r '.roots[]' <<<"$manifest")
+    mp_prepare_close_snapshot "$run" "$manifest" "$target_head" || return
 
-    refs=$(LC_ALL=C git for-each-ref --format='%(refname)' "$(mp_run_ref "$run" nodes)/" "$(mp_run_ref "$run" slots)/")
+    refs=$(LC_ALL=C git for-each-ref --format='%(refname)' \
+      "$(mp_run_ref "$run" nodes)/" "$(mp_run_ref "$run" slots)/")
     while IFS= read -r ref; do
       [ -n "$ref" ] || continue
       case "$ref" in
@@ -2064,47 +2211,157 @@ cmd_close() {
           ;;
       esac
     done <<<"$refs"
-    worktrees=$(git worktree list --porcelain) || { mp_die "could not inspect worktrees" 3; return; }
-    while IFS= read -r line; do
-      key=${line%% *}
-      value=${line#* }
-      if [ "$key" = branch ]; then
-        case "$value" in
-          "refs/heads/mp/$run/"*) mp_die "a run branch is checked out in a worktree" 4; return ;;
-        esac
-      fi
-    done <<<"$worktrees"
 
-    closed_at=$(mp_now)
-    closed_oid=$(jq -cn --arg closed_by "$owner_session" --arg target_branch "$target_branch" \
-      --arg target_head "$target_head" --arg closed_at "$closed_at" \
-      '{closed_by:$closed_by,target_branch:$target_branch,target_head:$target_head,closed_at:$closed_at}' |
+    closing_oid=$(mp_ref_oid_or_zero "$closing_ref")
+    if [ "$closing_oid" != "$zero" ]; then
+      closing=$(mp_read_json_ref "$closing_oid") || {
+        mp_die "run closing barrier is malformed" 3
+        return
+      }
+      jq -e --arg owner "$expected" --arg session "$owner_session" \
+        --arg target_branch "$target_branch" --arg target_head "$target_head" \
+        '.version == 1 and .owner_object_id == $owner and .closed_by == $session and
+         .target_branch == $target_branch and .target_head == $target_head' \
+        >/dev/null <<<"$closing" || {
+        mp_die "run is closing under a different closure snapshot" 4
+        return
+      }
+      barrier_oid=$closing_oid
+      break
+    fi
+
+    if mp_run_branch_worktrees_clear "$run"; then
+      :
+    else
+      worktree_status=$?
+      [ "$worktree_status" -eq 1 ] && {
+        mp_die "a run branch is checked out in a worktree" 4
+        return
+      }
+      mp_die "could not inspect worktrees" 3
+      return
+    fi
+    barrier_at=$(mp_now)
+    barrier_oid=$(jq -cn --arg owner_object_id "$expected" --arg closed_by "$owner_session" \
+      --arg target_branch "$target_branch" --arg target_head "$target_head" \
+      --arg started_at "$barrier_at" \
+      '{version:1,owner_object_id:$owner_object_id,closed_by:$closed_by,
+        target_branch:$target_branch,target_head:$target_head,started_at:$started_at}' |
       git hash-object -w --stdin) || return
-    data=$(jq -cn --arg owner "$expected" --arg closed "$closed_oid" --arg target_head "$target_head" \
-      '{owner:$owner,closed:$closed,target_head:$target_head}')
-    new_generation=$(mp_generation_oid "$run" "$generation_oid" close "$data") || return
+    data=$(jq -cn --arg owner "$expected" --arg closing "$barrier_oid" \
+      --arg target_head "$target_head" \
+      '{owner:$owner,closing:$closing,target_head:$target_head}')
+    new_generation=$(mp_generation_oid "$run" "$generation_oid" close-begin "$data") || return
+    mp_report_close_native_locks "$target_ref" "$closing_ref" "$closed_ref" \
+      "$owner_ref" "$generation_ref" && return 4
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
 verify $target_ref $target_head
-${result_verifications}create $closed_ref $closed_oid
-delete $owner_ref $expected
+${MP_CLOSE_RESULT_VERIFICATIONS}verify $closed_ref $zero
+verify $owner_ref $expected
+create $closing_ref $barrier_oid
 update $generation_ref $new_generation $generation_oid
 prepare
 commit
 EOF
     then
-      printf '%s\n' "$closed_oid"
-      return
+      break
     fi
-    mp_report_native_ref_locks "$target_ref" "$closed_ref" "$owner_ref" "$generation_ref" && return 4
-    [ "$(mp_ref_oid_or_zero "$owner_ref")" = "$expected" ] || { mp_die "run owner changed before closure" 4; return; }
-    [ "$(mp_ref_oid_or_zero "$target_ref")" = "$target_head" ] || { mp_die "target branch changed before closure" 4; return; }
-    mp_verifications_current "$result_verifications" || { mp_die "root result changed before closure" 4; return; }
+    mp_report_close_native_locks "$target_ref" "$closing_ref" "$closed_ref" \
+      "$owner_ref" "$generation_ref" && return 4
+    [ "$(mp_ref_oid_or_zero "$owner_ref")" = "$expected" ] || {
+      mp_die "run owner changed before closure" 4
+      return
+    }
+    [ "$(mp_ref_oid_or_zero "$target_ref")" = "$target_head" ] || {
+      mp_die "target branch changed before closure" 4
+      return
+    }
+    mp_verifications_current "$MP_CLOSE_RESULT_VERIFICATIONS" || {
+      mp_die "node result changed before closure" 4
+      return
+    }
     attempt=$((attempt + 1))
     mp_generation_retry "$attempt" || return
   done
-}
 
+  if mp_run_branch_worktrees_clear "$run"; then
+    :
+  else
+    worktree_status=$?
+    [ "$worktree_status" -eq 1 ] && {
+      mp_die "a run branch appeared during closure; the run remains closing" 4
+      return
+    }
+    mp_die "could not inspect worktrees" 3
+    return
+  fi
+  [ "$(mp_ref_oid_or_zero "$target_ref")" = "$target_head" ] || {
+    mp_die "target branch changed while the run was closing" 4
+    return
+  }
+  mp_prepare_close_snapshot "$run" "$manifest" "$target_head" || return
+  generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
+  closed_at=$(mp_now)
+  closed_oid=$(jq -cn --arg closed_by "$owner_session" --arg target_branch "$target_branch" \
+    --arg target_head "$target_head" --arg closed_at "$closed_at" \
+    '{closed_by:$closed_by,target_branch:$target_branch,target_head:$target_head,closed_at:$closed_at}' |
+    git hash-object -w --stdin) || return
+  data=$(jq -cn --arg owner "$expected" --arg closing "$barrier_oid" --arg closed "$closed_oid" \
+    --arg target_head "$target_head" \
+    '{owner:$owner,closing:$closing,closed:$closed,target_head:$target_head}')
+  new_generation=$(mp_generation_oid "$run" "$generation_oid" close "$data") || return
+  mp_report_close_native_locks "$target_ref" "$closing_ref" "$closed_ref" \
+    "$owner_ref" "$generation_ref" && return 4
+  if ! git update-ref --stdin >/dev/null 2>&1 <<EOF
+start
+verify $target_ref $target_head
+${MP_CLOSE_RESULT_VERIFICATIONS}create $closed_ref $closed_oid
+delete $owner_ref $expected
+delete $closing_ref $barrier_oid
+update $generation_ref $new_generation $generation_oid
+prepare
+commit
+EOF
+  then
+    mp_report_close_native_locks "$target_ref" "$closing_ref" "$closed_ref" \
+      "$owner_ref" "$generation_ref" && return 4
+    mp_die "closure snapshot changed before finalization; the run remains closing" 4
+    return
+  fi
+
+  if mp_run_branch_worktrees_clear "$run"; then
+    printf '%s\n' "$closed_oid"
+    return
+  fi
+  worktree_status=$?
+  [ "$worktree_status" -eq 1 ] || {
+    mp_die "could not inspect worktrees after closure" 3
+    return
+  }
+  data=$(jq -cn --arg closed "$closed_oid" --arg closing "$barrier_oid" \
+    '{closed:$closed,closing:$closing}')
+  rollback_generation=$(mp_generation_oid "$run" "$new_generation" close-rollback "$data") || return
+  mp_report_close_native_locks "$target_ref" "$closing_ref" "$closed_ref" \
+    "$owner_ref" "$generation_ref" && return 4
+  if git update-ref --stdin >/dev/null 2>&1 <<EOF
+start
+verify $target_ref $target_head
+${MP_CLOSE_RESULT_VERIFICATIONS}delete $closed_ref $closed_oid
+create $closing_ref $barrier_oid
+create $owner_ref $expected
+update $generation_ref $rollback_generation $new_generation
+prepare
+commit
+EOF
+  then
+    mp_die "a run branch appeared during closure; closure was rolled back and the run remains closing" 4
+    return
+  fi
+  mp_report_close_native_locks "$target_ref" "$closing_ref" "$closed_ref" \
+    "$owner_ref" "$generation_ref" && return 4
+  mp_die "a run worktree exists and closure rollback requires manual recovery" 3
+}
 cmd_cleanup() {
   if [ "$#" -lt 1 ]; then
     mp_die "usage: sdd-run cleanup RUN_ID --expected-closed OBJECT_ID --confirmed" 2
@@ -2129,31 +2386,32 @@ cmd_cleanup() {
   [ "$confirmed" -eq 1 ] || { mp_die "--confirmed is required" 2; return; }
   mp_object_id "$expected" || { mp_die "expected closed object must be an object ID" 2; return; }
 
-  local closed_ref generation_ref closed_oid generation_oid worktrees line key value
-  local top tool_root path refs ref oid commands
+  local closed_ref generation_ref closing_ref closed_oid generation_oid worktree_status
+  local refs post_refs ref oid current commands restore_commands restored=1
   local -a ref_names=()
   closed_ref=$(mp_run_ref "$run" closed) || return
+  closing_ref=$(mp_run_ref "$run" closing) || return
   generation_ref=$(mp_generation_ref "$run") || return
   closed_oid=$(mp_read_ref "$closed_ref") || { mp_die "run is not closed" 3; return; }
   [ "$closed_oid" = "$expected" ] || { mp_die "closed object changed before cleanup" 4; return; }
   mp_read_json_ref "$closed_oid" >/dev/null || { mp_die "run closure is malformed" 3; return; }
+  [ "$(mp_ref_oid_or_zero "$closing_ref")" = "$(mp_zero_oid)" ] || {
+    mp_die "run is still closing" 4
+    return
+  }
   generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
-  top=$(git rev-parse --show-toplevel) || { mp_die "could not resolve repository root" 3; return; }
-  tool_root="$top/.worktrees/$run"
-  worktrees=$(git worktree list --porcelain) || { mp_die "could not inspect worktrees" 3; return; }
-  while IFS= read -r line; do
-    key=${line%% *}
-    value=${line#* }
-    case "$key" in
-      worktree)
-        path=$value
-        case "$path/" in "$tool_root/"*) mp_die "a tool-owned run worktree still exists" 4; return ;; esac
-        ;;
-      branch)
-        case "$value" in "refs/heads/mp/$run/"*) mp_die "a run branch is checked out in a worktree" 4; return ;; esac
-        ;;
-    esac
-  done <<<"$worktrees"
+
+  if mp_cleanup_worktrees_clear "$run"; then
+    :
+  else
+    worktree_status=$?
+    [ "$worktree_status" -eq 1 ] && {
+      mp_die "a run worktree still exists" 4
+      return
+    }
+    mp_die "could not inspect worktrees" 3
+    return
+  fi
 
   refs=$(
     {
@@ -2173,15 +2431,70 @@ cmd_cleanup() {
   commands="${commands}prepare
 commit
 "
-  if printf '%s' "$commands" | git update-ref --stdin >/dev/null 2>&1; then
+  mp_report_native_ref_locks "${ref_names[@]}" && return 4
+  if ! printf '%s' "$commands" | git update-ref --stdin >/dev/null 2>&1; then
+    mp_report_native_ref_locks "${ref_names[@]}" && return 4
+    [ "$(mp_ref_oid_or_zero "$closed_ref")" = "$expected" ] || {
+      mp_die "closed object changed before cleanup" 4
+      return
+    }
+    [ "$(mp_ref_oid_or_zero "$generation_ref")" = "$generation_oid" ] || {
+      mp_die "run generation changed before cleanup" 4
+      return
+    }
+    mp_die "run refs changed before cleanup" 4
+    return
+  fi
+
+  post_refs=$(
+    {
+      git for-each-ref --format='%(refname) %(objectname)' "refs/megapowers/runs/$run/"
+      git for-each-ref --format='%(refname) %(objectname)' "refs/heads/mp/$run/"
+    } | LC_ALL=C sort
+  )
+  if mp_cleanup_worktrees_clear "$run"; then
+    worktree_status=0
+  else
+    worktree_status=$?
+  fi
+  if [ "$worktree_status" -eq 0 ] && [ -z "$post_refs" ]; then
+    return
+  fi
+
+  restore_commands='start
+'
+  while IFS=' ' read -r ref oid; do
+    [ -n "$ref" ] || continue
+    current=$(mp_ref_oid_or_zero "$ref")
+    restore_commands="${restore_commands}update $ref $oid $current
+"
+  done <<<"$refs"
+  restore_commands="${restore_commands}prepare
+commit
+"
+  mp_report_native_ref_locks "${ref_names[@]}" && {
+    mp_die "cleanup detected a race but native locks prevent automatic restoration" 4
+    return
+  }
+  if printf '%s' "$restore_commands" | git update-ref --stdin >/dev/null 2>&1; then
+    while IFS=' ' read -r ref oid; do
+      [ -n "$ref" ] || continue
+      [ "$(mp_ref_oid_or_zero "$ref")" = "$oid" ] || restored=0
+    done <<<"$refs"
+    [ "$restored" -eq 1 ] || {
+      mp_die "cleanup restoration verification failed; manual recovery is required" 3
+      return
+    }
+    if [ "$worktree_status" -eq 1 ]; then
+      mp_die "a run worktree appeared during cleanup; exact refs were restored" 4
+    else
+      mp_die "run state changed during cleanup; exact refs were restored" 4
+    fi
     return
   fi
   mp_report_native_ref_locks "${ref_names[@]}" && return 4
-  [ "$(mp_ref_oid_or_zero "$closed_ref")" = "$expected" ] || { mp_die "closed object changed before cleanup" 4; return; }
-  [ "$(mp_ref_oid_or_zero "$generation_ref")" = "$generation_oid" ] || { mp_die "run generation changed before cleanup" 4; return; }
-  mp_die "run refs changed before cleanup" 4
+  mp_die "cleanup race restoration failed; manual recovery is required" 3
 }
-
 case "${1:-}" in
   init)
     shift

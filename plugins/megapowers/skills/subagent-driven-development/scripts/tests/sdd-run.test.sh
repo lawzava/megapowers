@@ -67,6 +67,22 @@ write_child_brief() {
       remaining_depth:$remaining,descendant_budget:$descendant,
       writer_budget:0,integration_budget:0}' > "$output"
 }
+make_result_tree() {
+  local run=$1 node=$2 result_head=$3 status=${4:-done}
+  local unresolved='[]' result_blob evidence_tree
+  [ "$status" = "done" ] || unresolved='["still blocked"]'
+  result_blob=$(jq -cn --arg status "$status" --arg run "$run" --arg node "$node" \
+    --arg base "$head" --arg result_head "$result_head" \
+    --arg branch "mp/$run/nodes/$node/head" --argjson unresolved "$unresolved" \
+    '{status:$status,run_id:$run,node:$node,base:$base,head:$result_head,branch:$branch,
+      verification:[{command:"test -f README.md",exit_code:0,evidence_path:"evidence/test.txt"}],
+      unresolved:$unresolved}' | git hash-object -w --stdin)
+  evidence_tree=$(git mktree </dev/null)
+  {
+    printf '100644 blob %s\tresult.json\n' "$result_blob"
+    printf '040000 tree %s\tevidence\n' "$evidence_tree"
+  } | git mktree
+}
 
 if grep -Eq '(^|[[:space:]])declare[[:space:]]+-A([[:space:]]|$)' "$RUN"; then
   bad "sdd-run requires Bash 4 associative arrays"
@@ -123,6 +139,23 @@ real_jq=$(command -v jq)
 mkdir -p "$TMP/git-wrapper" "$TMP/jq-wrapper" "$TMP/date-wrapper"
 cat > "$TMP/git-wrapper/git" <<'WRAPPER'
 #!/bin/sh
+if [ "${1:-}" = show ] && [ "${2:-}" = "${MP_STATUS_MUTATE_ON:-__no_status_ref__}" ] &&
+   [ ! -e "${MP_STATUS_MUTATE_MARKER:-__no_status_marker__}" ]; then
+  "$MP_REAL_GIT" "$@"
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    "$MP_REAL_GIT" update-ref --stdin >/dev/null <<EOF
+start
+delete $MP_STATUS_DELETE_REF $MP_STATUS_DELETE_OID
+create $MP_STATUS_CREATE_REF $MP_STATUS_CREATE_OID
+update $MP_STATUS_GENERATION_REF $MP_STATUS_GENERATION_TO $MP_STATUS_GENERATION_FROM
+prepare
+commit
+EOF
+    : > "$MP_STATUS_MUTATE_MARKER"
+  fi
+  exit "$status"
+fi
 if [ "${1:-}" = hash-object ] && [ -n "${MP_MUTATE_BRIEF:-}" ]; then
   for argument in "$@"; do
     if [ "$argument" = "$MP_MUTATE_BRIEF" ]; then
@@ -142,6 +175,27 @@ if [ "${1:-}" = update-ref ] && [ "${2:-}" = --stdin ] &&
   "$MP_REAL_GIT" update-ref "$MP_MOVE_REF" "$MP_MOVE_TO" "$MP_MOVE_FROM" || exit 99
   "$MP_REAL_GIT" update-ref --stdin < "$transaction"
   exit $?
+fi
+if [ "${1:-}" = update-ref ] && [ "${2:-}" = --stdin ] &&
+   [ -n "${MP_FAIL_UPDATE_REF_MATCH:-}" ]; then
+  transaction=$(mktemp)
+  trap 'rm -f "$transaction"' EXIT HUP INT TERM
+  command cat > "$transaction"
+  if grep -qF "$MP_FAIL_UPDATE_REF_MATCH" "$transaction"; then
+    exit 1
+  fi
+  "$MP_REAL_GIT" update-ref --stdin < "$transaction"
+  exit $?
+fi
+if [ "${1:-}" = worktree ] && [ "${2:-}" = list ] &&
+   [ -n "${MP_WORKTREE_RACE_MARKER:-}" ] && [ ! -e "$MP_WORKTREE_RACE_MARKER" ]; then
+  "$MP_REAL_GIT" "$@"
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    "$MP_REAL_GIT" worktree add "$MP_WORKTREE_RACE_PATH" "$MP_WORKTREE_RACE_BRANCH" >/dev/null || exit $?
+    : > "$MP_WORKTREE_RACE_MARKER"
+  fi
+  exit "$status"
 fi
 exec "$MP_REAL_GIT" "$@"
 WRAPPER
@@ -198,6 +252,12 @@ expect_ok "$RUN" init lock-inaccessible --plan plan.md --root inaccessible-node 
 expect_ok "$RUN" init generation-crash --plan plan.md --root crash-node --root crash-peer --target feature/multi-writer --session crash-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
 expect_ok "$RUN" init result-race --plan plan.md --root race-result --target feature/multi-writer --session race-result-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init duplicate-blocked --plan plan.md --root duplicate-blocked-node --target feature/multi-writer --session duplicate-blocked-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init status-snapshot --plan plan.md --root status-a --root status-b --target feature/multi-writer --session status-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
+expect_ok "$RUN" init close-result-lock --plan plan.md --root lock-root --target feature/multi-writer --session lock-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init terminal-barrier --plan plan.md --root terminal-root --root terminal-peer --root terminal-third --target feature/multi-writer --session terminal-owner --harness codex --max-depth 2 --agent-budget 4 --writers 2 --allow-task-commits
+expect_ok "$RUN" init close-descendant --plan plan.md --root parent --target feature/multi-writer --session descendant-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
+expect_ok "$RUN" init close-worktree-race --plan plan.md --root race-root --target feature/multi-writer --session close-race-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init cleanup-worktree-race --plan plan.md --root cleanup-root --target feature/multi-writer --session cleanup-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 defaults_base=refs/megapowers/runs/defaults
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.writer_limit')" 3
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.integration_limit')" 1
@@ -825,6 +885,160 @@ rm -rf .megapowers
 git reflog expire --expire=now --all
 git gc --prune=now --quiet
 git show "refs/megapowers/runs/demo/nodes/root-a/result:evidence/test.txt" >/dev/null && ok || bad "result evidence did not survive gc"
+
+# Status must retry when generation changes while result objects are being read.
+write_root_brief status-snapshot status-a status-a/ 0 0 0 0 status-a.json
+write_root_brief status-snapshot status-b status-b/ 0 0 0 0 status-b.json
+expect_ok "$RUN" brief-put status-snapshot status-a status-a.json --session status-owner
+expect_ok "$RUN" brief-put status-snapshot status-b status-b.json --session status-owner
+status_a_ref=refs/megapowers/runs/status-snapshot/nodes/status-a/result
+status_b_ref=refs/megapowers/runs/status-snapshot/nodes/status-b/result
+status_a_oid=$(make_result_tree status-snapshot status-a "$head" blocked)
+status_b_oid=$(make_result_tree status-snapshot status-b "$head")
+git update-ref "$status_a_ref" "$status_a_oid"
+status_generation_ref=refs/megapowers/runs/status-snapshot/generation
+status_generation_before=$(git rev-parse "$status_generation_ref")
+status_generation_after=$(jq -cn --arg previous "$status_generation_before" \
+  '{version:1,run_id:"status-snapshot",previous:$previous,operation:"test-swap",data:{}}' |
+  git hash-object -w --stdin)
+status_marker="$TMP/status-snapshot-mutated"
+status_json=$(env PATH="$TMP/git-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+  MP_STATUS_MUTATE_ON="$status_a_oid:result.json" MP_STATUS_MUTATE_MARKER="$status_marker" \
+  MP_STATUS_DELETE_REF="$status_a_ref" MP_STATUS_DELETE_OID="$status_a_oid" \
+  MP_STATUS_CREATE_REF="$status_b_ref" MP_STATUS_CREATE_OID="$status_b_oid" \
+  MP_STATUS_GENERATION_REF="$status_generation_ref" \
+  MP_STATUS_GENERATION_FROM="$status_generation_before" MP_STATUS_GENERATION_TO="$status_generation_after" \
+  "$RUN" status status-snapshot)
+[ -e "$status_marker" ] && ok || bad "status snapshot race did not mutate the generation"
+printf '%s\n' "$status_json" | jq -e --arg result "$status_b_oid" \
+  '([.nodes[] | select(.result != null)] | length) == 1 and
+   (.nodes[] | select(.node == "status-b") | .result.object_id) == $result' \
+  >/dev/null && ok || bad "status combined results from mutually exclusive generations"
+
+# Closing must preflight native locks for every result ref it verifies.
+close_lock_result_ref=refs/megapowers/runs/close-result-lock/nodes/lock-root/result
+close_lock_result_oid=$(make_result_tree close-result-lock lock-root "$head")
+git update-ref "$close_lock_result_ref" "$close_lock_result_oid"
+close_lock_owner=$(git rev-parse refs/megapowers/runs/close-result-lock/owner)
+close_result_native_lock=$(git rev-parse --git-path "$close_lock_result_ref.lock")
+mkdir -p "${close_result_native_lock%/*}"
+printf 'stale native Git lock\n' > "$close_result_native_lock"
+if close_lock_output=$(env PATH="$TMP/git-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+  MP_FAIL_UPDATE_REF_MATCH="$close_lock_result_ref" \
+  "$RUN" close close-result-lock --owner-session lock-owner --expected "$close_lock_owner" 2>&1); then
+  bad "close ignored a native result lock"
+elif printf '%s\n' "$close_lock_output" | grep -qF 'remove it manually'; then
+  ok
+else
+  bad "close result lock did not report immediate manual recovery"
+fi
+[ -e "$close_result_native_lock" ] && ok || bad "close deleted an ambiguous result lock"
+rm -f "$close_result_native_lock"
+
+# Every pre-close mutation class must refuse a closing or closed run.
+write_root_brief terminal-barrier terminal-root terminal-root/ 1 1 1 0 terminal-root.json
+write_root_brief terminal-barrier terminal-peer terminal-peer/ 0 0 1 0 terminal-peer.json
+write_root_brief terminal-barrier terminal-third terminal-third/ 0 0 0 0 terminal-third.json
+expect_ok "$RUN" brief-put terminal-barrier terminal-root terminal-root.json --session terminal-owner
+expect_ok "$RUN" brief-put terminal-barrier terminal-peer terminal-peer.json --session terminal-owner
+expect_ok "$RUN" brief-put terminal-barrier terminal-third terminal-third.json --session terminal-owner
+expect_ok "$RUN" claim terminal-barrier terminal-root --session terminal-root-session --harness codex
+terminal_peer_claim=$("$RUN" claim terminal-barrier terminal-peer --session terminal-peer-session --harness claude)
+terminal_peer_claim_oid=${terminal_peer_claim%% *}
+git update-ref refs/heads/mp/terminal-barrier/nodes/terminal-root/head "$head"
+write_child_brief terminal-barrier terminal-root/child terminal-root terminal-root/child/ 0 0 terminal-child.json
+mkdir terminal-evidence
+printf 'verification passed\n' > terminal-evidence/test.txt
+jq -n --arg base "$head" \
+  '{status:"done",run_id:"terminal-barrier",node:"terminal-root",base:$base,head:$base,
+    branch:"mp/terminal-barrier/nodes/terminal-root/head",
+    verification:[{command:"test -f README.md",exit_code:0,evidence_path:"evidence/test.txt"}],
+    unresolved:[]}' > terminal-result.json
+terminal_closed_oid=$(jq -cn '{closed_by:"test",target_branch:"feature/multi-writer",target_head:"test",closed_at:"2026-07-16T12:00:00Z"}' |
+  git hash-object -w --stdin)
+git update-ref refs/megapowers/runs/terminal-barrier/closed "$terminal_closed_oid"
+terminal_generation=$(git rev-parse refs/megapowers/runs/terminal-barrier/generation)
+expect_fail "$RUN" brief-put terminal-barrier terminal-root/child terminal-child.json --session terminal-root-session
+expect_fail "$RUN" claim terminal-barrier terminal-third --session terminal-third-session --harness codex
+expect_fail "$RUN" slot-acquire terminal-barrier writer terminal-peer --session terminal-peer-session --harness claude
+expect_fail "$RUN" result-put terminal-barrier terminal-root terminal-result.json terminal-evidence --session terminal-root-session
+expect_fail "$RUN" recover-claim terminal-barrier terminal-peer --owner-session terminal-owner \
+  --expected "$terminal_peer_claim_oid" --confirmed-inactive
+expect_eq "$(git rev-parse refs/megapowers/runs/terminal-barrier/generation)" "$terminal_generation"
+git show-ref --verify --quiet refs/megapowers/runs/terminal-barrier/nodes/terminal-root/child/brief &&
+  bad "closed run gained a child brief" || ok
+git show-ref --verify --quiet refs/megapowers/runs/terminal-barrier/nodes/terminal-third/claim &&
+  bad "closed run gained a claim" || ok
+git show-ref --verify --quiet refs/megapowers/runs/terminal-barrier/slots/writer/1 &&
+  bad "closed run gained a slot" || ok
+git show-ref --verify --quiet refs/megapowers/runs/terminal-barrier/nodes/terminal-root/result &&
+  bad "closed run gained a result" || ok
+expect_eq "$(git rev-parse --verify refs/megapowers/runs/terminal-barrier/nodes/terminal-peer/claim 2>/dev/null || true)" "$terminal_peer_claim_oid"
+
+# Closure validates every result head, including descendant results.
+descendant_root_result=$(make_result_tree close-descendant parent "$head")
+unintegrated_head=$(printf 'unintegrated\n' | git commit-tree "$(git rev-parse "$head^{tree}")")
+descendant_child_result=$(make_result_tree close-descendant parent/child "$unintegrated_head")
+git update-ref refs/megapowers/runs/close-descendant/nodes/parent/result "$descendant_root_result"
+git update-ref refs/megapowers/runs/close-descendant/nodes/parent/child/result "$descendant_child_result"
+descendant_owner=$(git rev-parse refs/megapowers/runs/close-descendant/owner)
+expect_fail "$RUN" close close-descendant --owner-session descendant-owner --expected "$descendant_owner"
+
+# A run worktree appearing after close preflight leaves a resumable closing barrier.
+close_race_result=$(make_result_tree close-worktree-race race-root "$head")
+git update-ref refs/megapowers/runs/close-worktree-race/nodes/race-root/result "$close_race_result"
+git update-ref refs/heads/mp/close-worktree-race/nodes/race-root/head "$head"
+close_race_owner=$(git rev-parse refs/megapowers/runs/close-worktree-race/owner)
+close_race_marker="$TMP/close-worktree-race-created"
+set +e
+PATH="$TMP/git-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+  MP_WORKTREE_RACE_MARKER="$close_race_marker" MP_WORKTREE_RACE_PATH="$TMP/close-race-worktree" \
+  MP_WORKTREE_RACE_BRANCH=mp/close-worktree-race/nodes/race-root/head \
+  "$RUN" close close-worktree-race --owner-session close-race-owner --expected "$close_race_owner" \
+  > "$TMP/close-worktree-race.out" 2>&1
+close_race_status=$?
+set -e
+[ -e "$close_race_marker" ] && ok || bad "close worktree race did not mutate after preflight"
+[ "$close_race_status" -ne 0 ] && ok || bad "close reported success after a run worktree appeared"
+git show-ref --verify --quiet refs/megapowers/runs/close-worktree-race/closed &&
+  bad "close created closed while a detected run worktree existed" || ok
+if git show-ref --verify --quiet refs/megapowers/runs/close-worktree-race/closing; then
+  ok
+else
+  bad "close worktree race did not retain its closing barrier"
+  command cat "$TMP/close-worktree-race.out" >&2
+fi
+git worktree remove "$TMP/close-race-worktree"
+expect_ok "$RUN" close close-worktree-race --owner-session close-race-owner --expected "$close_race_owner"
+
+# Cleanup restores every exact ref when a raw Git worktree appears after preflight.
+cleanup_result=$(make_result_tree cleanup-worktree-race cleanup-root "$head")
+cleanup_result_ref=refs/megapowers/runs/cleanup-worktree-race/nodes/cleanup-root/result
+cleanup_branch_ref=refs/heads/mp/cleanup-worktree-race/nodes/cleanup-root/head
+git update-ref "$cleanup_result_ref" "$cleanup_result"
+git update-ref "$cleanup_branch_ref" "$head"
+cleanup_owner=$(git rev-parse refs/megapowers/runs/cleanup-worktree-race/owner)
+expect_ok "$RUN" close cleanup-worktree-race --owner-session cleanup-owner --expected "$cleanup_owner"
+cleanup_closed=$(git rev-parse refs/megapowers/runs/cleanup-worktree-race/closed)
+cleanup_generation=$(git rev-parse refs/megapowers/runs/cleanup-worktree-race/generation)
+cleanup_race_marker="$TMP/cleanup-worktree-race-created"
+set +e
+PATH="$TMP/git-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+  MP_WORKTREE_RACE_MARKER="$cleanup_race_marker" MP_WORKTREE_RACE_PATH="$TMP/cleanup-race-worktree" \
+  MP_WORKTREE_RACE_BRANCH=mp/cleanup-worktree-race/nodes/cleanup-root/head \
+  "$RUN" cleanup cleanup-worktree-race --expected-closed "$cleanup_closed" --confirmed \
+  > "$TMP/cleanup-worktree-race.out" 2>&1
+cleanup_race_status=$?
+set -e
+[ -e "$cleanup_race_marker" ] && ok || bad "cleanup worktree race did not mutate after preflight"
+[ "$cleanup_race_status" -ne 0 ] && ok || bad "cleanup reported success after a run worktree appeared"
+expect_eq "$(git rev-parse refs/megapowers/runs/cleanup-worktree-race/closed 2>/dev/null || true)" "$cleanup_closed"
+expect_eq "$(git rev-parse refs/megapowers/runs/cleanup-worktree-race/generation 2>/dev/null || true)" "$cleanup_generation"
+expect_eq "$(git rev-parse "$cleanup_result_ref" 2>/dev/null || true)" "$cleanup_result"
+expect_eq "$(git rev-parse "$cleanup_branch_ref" 2>/dev/null || true)" "$head"
+expect_eq "$(git -C "$TMP/cleanup-race-worktree" symbolic-ref HEAD)" "$cleanup_branch_ref"
+git worktree remove --force "$TMP/cleanup-race-worktree"
+expect_ok "$RUN" cleanup cleanup-worktree-race --expected-closed "$cleanup_closed" --confirmed
 
 owner_oid=$(git rev-parse refs/megapowers/runs/demo/owner)
 native_lock=$(git rev-parse --git-path refs/megapowers/runs/demo/generation.lock)
