@@ -77,5 +77,117 @@ expect_ok "$RUN" join demo --plan plan.md --target feature/multi-writer --harnes
 printf '\nchanged\n' >> plan.md
 expect_fail "$RUN" join demo --plan plan.md --target feature/multi-writer --harness codex
 
+git checkout -- plan.md
+head=$(git rev-parse HEAD)
+cat > brief.json <<EOF
+{
+  "version": 1,
+  "run_id": "demo",
+  "node": "root-a",
+  "parent": null,
+  "base": "$head",
+  "branch": "mp/demo/nodes/root-a/head",
+  "task": "Implement root A",
+  "acceptance": ["test -f README.md"],
+  "blocked_by": [],
+  "parallel_safety": "Safe",
+  "ownership": ["a/"],
+  "may_decompose": true,
+  "remaining_depth": 2,
+  "descendant_budget": 7,
+  "writer_budget": 3,
+  "integration_budget": 1
+}
+EOF
+expect_ok "$RUN" brief-put demo root-a brief.json --session codex-1
+expect_fail "$RUN" brief-put demo root-a brief.json --session codex-1
+expect_fail "$RUN" brief-put demo ../escape brief.json --session codex-1
+
+set +e
+"$RUN" claim demo root-a --session codex-a --harness codex > claim-a.out 2>&1 & p1=$!
+"$RUN" claim demo root-a --session claude-b --harness claude > claim-b.out 2>&1 & p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+set -e
+[ $((r1 == 0 ? 1 : 0)) -eq $((r2 == 0 ? 0 : 1)) ] && ok || bad "claim race did not produce one winner"
+claim_line=$(cat claim-a.out claim-b.out | grep -E '^[0-9a-f]+ ' | head -1)
+claim_oid=${claim_line%% *}
+claim_session=$(git cat-file blob "$claim_oid" | jq -r '.session')
+new_oid=$("$RUN" heartbeat demo root-a --session "$claim_session" --expected "$claim_oid")
+expect_fail "$RUN" release-claim demo root-a --session "$claim_session" --expected "$claim_oid"
+expect_ok "$RUN" release-claim demo root-a --session "$claim_session" --expected "$new_oid"
+
+jq '.node="root-b" | .branch="mp/demo/nodes/root-b/head" | .task="Implement root B" |
+    .ownership=["b/"] | .may_decompose=false | .remaining_depth=0 |
+    .descendant_budget=0 | .writer_budget=0 | .integration_budget=0' \
+  brief.json > brief-b.json
+expect_fail "$RUN" brief-put demo root-b brief-b.json --session intruder
+expect_ok "$RUN" brief-put demo root-b brief-b.json --session codex-1
+# shellcheck disable=SC2034
+root_a_claim=$("$RUN" claim demo root-a --session codex-session --harness codex)
+expect_fail "$RUN" claim demo root-b --session codex-session --harness codex
+# shellcheck disable=SC2034
+root_b_claim=$("$RUN" claim demo root-b --session claude-session --harness claude)
+expect_fail "$RUN" claim demo root-a --session third-session --harness claude
+
+git update-ref refs/heads/mp/demo/nodes/root-a/head "$head"
+
+jq '.node="root-a/claim" | .parent="root-a" |
+    .branch="mp/demo/nodes/root-a/claim/head" | .task="Reject reserved node" |
+    .ownership=["a/reserved/"] | .may_decompose=false | .remaining_depth=0 |
+    .descendant_budget=0 | .writer_budget=0 | .integration_budget=0' \
+  brief.json > reserved.json
+expect_fail "$RUN" brief-put demo root-a/claim reserved.json --session codex-session
+
+jq '.node="root-a/conflict" | .parent="root-a" |
+    .branch="mp/demo/nodes/root-a/conflict/head" | .task="Reject overlapping ownership" |
+    .ownership=["b/"] | .may_decompose=false | .remaining_depth=0 |
+    .descendant_budget=0 | .writer_budget=0 | .integration_budget=0' \
+  brief.json > conflict.json
+expect_ok "$RUN" brief-put demo root-a/conflict conflict.json --session codex-session
+expect_fail "$RUN" claim demo root-a/conflict --session conflict-session --harness codex
+
+jq '.node="root-a/sequential" | .parent="root-a" |
+    .branch="mp/demo/nodes/root-a/sequential/head" | .task="Reject sequential peer" |
+    .parallel_safety="Sequential" | .ownership=["a/sequential/"] |
+    .may_decompose=false | .remaining_depth=0 | .descendant_budget=0 |
+    .writer_budget=0 | .integration_budget=0' brief.json > sequential.json
+expect_ok "$RUN" brief-put demo root-a/sequential sequential.json --session codex-session
+expect_fail "$RUN" claim demo root-a/sequential --session sequential-session --harness codex
+
+jq '.node="root-a/blocked" | .parent="root-a" |
+    .branch="mp/demo/nodes/root-a/blocked/head" | .task="Reject unmet dependency" |
+    .blocked_by=["root-b"] | .ownership=["a/blocked/"] | .may_decompose=false |
+    .remaining_depth=0 | .descendant_budget=0 | .writer_budget=0 |
+    .integration_budget=0' brief.json > blocked-brief.json
+expect_ok "$RUN" brief-put demo root-a/blocked blocked-brief.json --session codex-session
+expect_fail "$RUN" claim demo root-a/blocked --session blocked-session --harness codex
+
+for name in a b c d; do
+  node="root-a/slot-$name"
+  jq --arg node "$node" --arg branch "mp/demo/nodes/$node/head" --arg task "Exercise slot $name" --arg owner "a/slot-$name/" \
+    '.node=$node | .parent="root-a" | .branch=$branch | .task=$task | .ownership=[$owner] |
+     .may_decompose=false | .remaining_depth=0 | .descendant_budget=0 |
+     .writer_budget=1 | .integration_budget=0' brief.json > "slot-$name.json"
+  expect_ok "$RUN" brief-put demo "$node" "slot-$name.json" --session codex-session
+  "$RUN" claim demo "$node" --session "slot-$name-session" --harness codex >/dev/null || bad "claim $node"
+done
+for name in a b c; do
+  "$RUN" slot-acquire demo writer "root-a/slot-$name" --session "slot-$name-session" --harness codex > "slot-$name.out" || bad "writer slot $name"
+done
+expect_fail "$RUN" slot-acquire demo writer root-a/slot-d --session slot-d-session --harness codex
+slot_line=$(cat slot-a.out)
+slot_n=${slot_line%% *}
+slot_oid=${slot_line#* }
+expect_fail "$RUN" slot-release demo writer "$slot_n" --session wrong --expected "$slot_oid"
+expect_ok "$RUN" slot-release demo writer "$slot_n" --session slot-a-session --expected "$slot_oid"
+expect_ok "$RUN" release-claim demo root-a/slot-a --session slot-a-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-a/claim)"
+owner_oid=$(git rev-parse refs/megapowers/runs/demo/owner)
+expect_fail "$RUN" slot-acquire demo integration @target --session intruder --harness claude --expected-owner "$owner_oid"
+target_slot_line=$("$RUN" slot-acquire demo integration @target --session codex-1 --harness codex --expected-owner "$owner_oid")
+target_slot_n=${target_slot_line%% *}
+target_slot_oid=${target_slot_line#* }
+expect_ok "$RUN" slot-release demo integration "$target_slot_n" --session codex-1 --expected "$target_slot_oid"
+
 printf '== sdd-run tests: %d passed, %d failed ==\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

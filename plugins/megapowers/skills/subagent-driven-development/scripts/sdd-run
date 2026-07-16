@@ -29,6 +29,184 @@ mp_harness() {
   esac
 }
 
+mp_object_id() {
+  case "$(git rev-parse --show-object-format)" in
+    sha1) [[ "$1" =~ ^[0-9a-f]{40}$ ]] ;;
+    sha256) [[ "$1" =~ ^[0-9a-f]{64}$ ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+mp_nodes_related() {
+  case "$1/" in
+    "$2/"*) return 0 ;;
+  esac
+  case "$2/" in
+    "$1/"*) return 0 ;;
+  esac
+  return 1
+}
+
+mp_ownership_overlap() {
+  local left=$1 right=$2
+  case "$left:$right" in
+    interface:*:interface:*) [ "$left" = "$right" ]; return ;;
+    interface:*|*:interface:*) return 1 ;;
+  esac
+  while [ "${left%/}" != "$left" ]; do left=${left%/}; done
+  while [ "${right%/}" != "$right" ]; do right=${right%/}; done
+  [ "$left" = "$right" ] && return 0
+  case "$left/" in
+    "$right/"*) return 0 ;;
+  esac
+  case "$right/" in
+    "$left/"*) return 0 ;;
+  esac
+  return 1
+}
+
+mp_brief_contract() {
+  local brief=$1
+  jq -e \
+    '(.version == 1) and
+     (.run_id | type == "string") and
+     (.node | type == "string") and
+     ((.parent == null) or (.parent | type == "string")) and
+     (.base | type == "string") and
+     (.branch | type == "string") and
+     (.task | type == "string" and length > 0) and
+     (.acceptance | type == "array" and length > 0 and all(.[]; type == "string")) and
+     (.blocked_by | type == "array" and all(.[]; type == "string")) and
+     (.parallel_safety == "Safe" or .parallel_safety == "Sequential") and
+     (.ownership | type == "array" and length > 0 and all(.[]; type == "string")) and
+     (.may_decompose | type == "boolean") and
+     ((.remaining_depth | type) == "number" and .remaining_depth >= 0 and
+       (.remaining_depth | floor) == .remaining_depth) and
+     ((.descendant_budget | type) == "number" and .descendant_budget >= 0 and
+       (.descendant_budget | floor) == .descendant_budget) and
+     ((.writer_budget | type) == "number" and .writer_budget >= 0 and
+       (.writer_budget | floor) == .writer_budget) and
+     ((.integration_budget | type) == "number" and .integration_budget >= 0 and
+       (.integration_budget | floor) == .integration_budget)' \
+    "$brief" >/dev/null
+}
+
+mp_validate_ownership() {
+  local brief=$1 ownership
+  jq -e '
+    all(.ownership[];
+      length > 0 and
+      (explode | all(.[]; . >= 32 and . != 127)) and
+      (contains("..") | not) and
+      (test("[*?\\[\\]]") | not) and
+      ((test("^interface:[A-Za-z0-9][A-Za-z0-9._-]*$")) or
+       ((startswith("interface:") | not) and (startswith("/") | not))))' \
+    "$brief" >/dev/null || {
+      mp_die "ownership must contain safe relative paths or interface names" 2
+      return
+    }
+  while IFS= read -r ownership; do
+    [ -n "$ownership" ] || {
+      mp_die "ownership must not be empty" 2
+      return
+    }
+  done < <(jq -r '.ownership[]' "$brief")
+}
+
+mp_scope_head() {
+  local run=$1 brief=$2 parent target parent_brief
+  if jq -e '.parent == null' >/dev/null <<<"$brief"; then
+    target=$(mp_manifest_json "$run" | jq -r '.target_branch') || return
+    git rev-parse --verify "refs/heads/$target" 2>/dev/null
+    return
+  fi
+  parent=$(jq -r '.parent' <<<"$brief")
+  parent_brief=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$parent/brief")") || return
+  target=$(jq -r '.branch' <<<"$parent_brief")
+  git rev-parse --verify "refs/heads/$target" 2>/dev/null
+}
+
+mp_validate_dependencies() {
+  local run=$1 brief=$2 scope_head dependency result result_head
+  scope_head=$(mp_scope_head "$run" "$brief") || {
+    mp_die "claim scope branch does not exist" 3
+    return
+  }
+  while IFS= read -r dependency; do
+    result=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$dependency/result")") || {
+      mp_die "blocked dependency is not done: $dependency" 4
+      return
+    }
+    jq -e '.status == "done" and (.head | type == "string")' >/dev/null \
+      <<<"$result" || {
+        mp_die "blocked dependency is not done: $dependency" 4
+        return
+      }
+    result_head=$(jq -r '.head' <<<"$result")
+    git merge-base --is-ancestor "$result_head" "$scope_head" 2>/dev/null || {
+      mp_die "blocked dependency is not integrated: $dependency" 4
+      return
+    }
+  done < <(jq -r '.blocked_by[]' <<<"$brief")
+}
+
+mp_validate_claim_peers() {
+  local run=$1 node=$2 session=$3 brief=$4 ref claim other_node other_brief
+  local safety other_safety ours theirs
+  safety=$(jq -r '.parallel_safety' <<<"$brief")
+  while IFS= read -r ref; do
+    case "$ref" in
+      */claim) ;;
+      *) continue ;;
+    esac
+    claim=$(mp_read_json_ref "$ref") || {
+      mp_die "active claim is malformed: $ref" 3
+      return
+    }
+    other_node=$(jq -r '.node' <<<"$claim")
+    if [ "$other_node" != "$node" ] &&
+       [ "$(jq -r '.session' <<<"$claim")" = "$session" ]; then
+      mp_die "session already claims another node: $other_node" 4
+      return
+    fi
+    mp_nodes_related "$node" "$other_node" && continue
+    other_brief=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$other_node/brief")") || {
+      mp_die "active claim brief is missing: $other_node" 3
+      return
+    }
+    other_safety=$(jq -r '.parallel_safety' <<<"$other_brief")
+    if [ "$safety" = Sequential ] || [ "$other_safety" = Sequential ]; then
+      mp_die "sequential node cannot run beside an active peer" 4
+      return
+    fi
+    while IFS= read -r ours; do
+      while IFS= read -r theirs; do
+        if mp_ownership_overlap "$ours" "$theirs"; then
+          mp_die "ownership overlaps active node: $other_node" 4
+          return
+        fi
+      done < <(jq -r '.ownership[]' <<<"$other_brief")
+    done < <(jq -r '.ownership[]' <<<"$brief")
+  done < <(git for-each-ref --format='%(refname)' "$(mp_run_ref "$run" nodes)/")
+}
+
+mp_create_node_claim() {
+  local run=$1 node=$2 session=$3 harness=$4 brief=$5 at claim_oid
+  at=$(mp_now)
+  claim_oid=$(
+    printf '%s\n' "$brief" |
+      jq -c --arg session "$session" --arg harness "$harness" --arg at "$at" \
+        '{session:$session,harness:$harness,node:.node,branch:.branch,base:.base,
+          claimed_at:$at,last_activity:$at}' |
+      git hash-object -w --stdin
+  )
+  mp_create_ref "$(mp_run_ref "$run" "nodes/$node/claim")" "$claim_oid" 2>/dev/null || {
+    mp_die "node already claimed" 4
+    return
+  }
+  printf '%s %s\n' "$claim_oid" "$(printf '%s\n' "$brief" | jq -r '.branch')"
+}
+
 cmd_init() {
   if [ "$#" -lt 1 ]; then
     mp_die "usage: sdd-run init RUN_ID [options]" 2
@@ -305,6 +483,471 @@ cmd_join() {
     }
 }
 
+cmd_brief_put() {
+  if [ "$#" -lt 3 ]; then
+    mp_die "usage: sdd-run brief-put RUN_ID NODE BRIEF.json --session ID" 2
+    return
+  fi
+
+  local run=$1 node=$2 brief=$3 session='' seen_session=0
+  shift 3
+  mp_validate_run_id "$run" || return
+  mp_validate_node_path "$node" || return
+  [ -f "$brief" ] || { mp_die "no such brief file: $brief" 2; return; }
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --session)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_session" -eq 0 ] || { mp_die "duplicate --session" 2; return; }
+        session=$2
+        seen_session=1
+        shift 2
+        ;;
+      *) mp_die "unknown brief-put option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_session" -eq 1 ] || { mp_die "missing --session" 2; return; }
+  mp_validate_session_id "$session" || return
+
+  local manifest document_run document_node expected_branch base
+  local remaining descendant writers integrations may_decompose
+  manifest=$(mp_manifest_json "$run") || {
+    mp_die "run does not exist: $run" 3
+    return
+  }
+  mp_brief_contract "$brief" || {
+    mp_die "brief does not match the version 1 contract" 2
+    return
+  }
+  document_run=$(jq -r '.run_id' "$brief")
+  document_node=$(jq -r '.node' "$brief")
+  [ "$document_run" = "$run" ] || { mp_die "brief run_id does not match command" 2; return; }
+  [ "$document_node" = "$node" ] || { mp_die "brief node does not match command" 2; return; }
+  expected_branch="mp/$run/nodes/$node/head"
+  [ "$(jq -r '.branch' "$brief")" = "$expected_branch" ] || {
+    mp_die "brief branch must be $expected_branch" 2
+    return
+  }
+  base=$(jq -r '.base' "$brief")
+  [ "$(git cat-file -t "$base" 2>/dev/null || true)" = commit ] || {
+    mp_die "brief base must name a commit object" 2
+    return
+  }
+  jq -e 'all(.blocked_by[]; (explode | all(.[]; . >= 32 and . != 127)))' \
+    "$brief" >/dev/null || { mp_die "blocked_by contains control characters" 2; return; }
+  local dependency
+  while IFS= read -r dependency; do
+    mp_validate_node_path "$dependency" || return
+  done < <(jq -r '.blocked_by[]' "$brief")
+  mp_validate_ownership "$brief" || return
+
+  remaining=$(jq -r '.remaining_depth' "$brief")
+  descendant=$(jq -r '.descendant_budget' "$brief")
+  writers=$(jq -r '.writer_budget' "$brief")
+  integrations=$(jq -r '.integration_budget' "$brief")
+  may_decompose=$(jq -r '.may_decompose' "$brief")
+  if [ "$may_decompose" = true ]; then
+    [ "$remaining" -gt 0 ] && [ "$descendant" -gt 0 ] || {
+      mp_die "decomposable briefs require positive depth and descendant budget" 2
+      return
+    }
+  else
+    [ "$remaining" -eq 0 ] && [ "$descendant" -eq 0 ] || {
+      mp_die "non-decomposable briefs require zero depth and descendant budget" 2
+      return
+    }
+  fi
+
+  local parent current_head owner owner_ref total=0 root root_brief parent_brief
+  local parent_remaining parent_descendant parent_writers parent_integrations candidate_ref
+  if jq -e '.parent == null' "$brief" >/dev/null; then
+    jq -e --arg node "$node" '.roots | index($node) != null' >/dev/null \
+      <<<"$manifest" || { mp_die "root node is not declared in the manifest" 2; return; }
+    owner_ref=$(mp_run_ref "$run" owner) || return
+    owner=$(mp_read_json_ref "$owner_ref") || { mp_die "run owner is missing" 3; return; }
+    [ "$(jq -r '.session' <<<"$owner")" = "$session" ] || {
+      mp_die "root brief requires the owner session" 4
+      return
+    }
+    current_head=$(git rev-parse --verify \
+      "refs/heads/$(jq -r '.target_branch' <<<"$manifest")" 2>/dev/null) || {
+        mp_die "target branch does not exist" 3
+        return
+      }
+    [ "$base" = "$current_head" ] || { mp_die "root brief base is not the current target head" 4; return; }
+    [ "$remaining" -le "$(jq -r '.max_depth' <<<"$manifest")" ] || {
+      mp_die "root remaining depth exceeds the manifest limit" 2
+      return
+    }
+    while IFS= read -r root; do
+      [ "$root" = "$node" ] && continue
+      if root_brief=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$root/brief")"); then
+        total=$((total + 1 + $(jq -r '.descendant_budget' <<<"$root_brief")))
+      fi
+    done < <(jq -r '.roots[]' <<<"$manifest")
+    total=$((total + 1 + descendant))
+    [ "$total" -le "$(jq -r '.agent_budget' <<<"$manifest")" ] || {
+      mp_die "root briefs exceed the run agent budget" 4
+      return
+    }
+  else
+    parent=$(jq -r '.parent' "$brief")
+    case "$node" in
+      */*) ;;
+      *) mp_die "child node must be below its parent" 2; return ;;
+    esac
+    [ "${node%/*}" = "$parent" ] || {
+      mp_die "child node must be exactly one segment below its parent" 2
+      return
+    }
+    mp_validate_node_path "$parent" || return
+    parent_brief=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$parent/brief")") || {
+      mp_die "parent brief does not exist" 3
+      return
+    }
+    owner=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$parent/claim")") || {
+      mp_die "parent node is not actively claimed" 4
+      return
+    }
+    [ "$(jq -r '.session' <<<"$owner")" = "$session" ] || {
+      mp_die "child brief requires the parent claimant session" 4
+      return
+    }
+    current_head=$(git rev-parse --verify \
+      "refs/heads/$(jq -r '.branch' <<<"$parent_brief")" 2>/dev/null) || {
+        mp_die "parent branch does not exist" 3
+        return
+      }
+    [ "$base" = "$current_head" ] || { mp_die "child brief base is not the current parent head" 4; return; }
+    parent_remaining=$(jq -r '.remaining_depth' <<<"$parent_brief")
+    parent_descendant=$(jq -r '.descendant_budget' <<<"$parent_brief")
+    parent_writers=$(jq -r '.writer_budget' <<<"$parent_brief")
+    parent_integrations=$(jq -r '.integration_budget' <<<"$parent_brief")
+    [ "$remaining" -lt "$parent_remaining" ] || {
+      mp_die "child remaining depth must be smaller than its parent" 2
+      return
+    }
+    while IFS= read -r candidate_ref; do
+      case "$candidate_ref" in
+        */brief) ;;
+        *) continue ;;
+      esac
+      [ "$candidate_ref" = "$(mp_run_ref "$run" "nodes/$node/brief")" ] && continue
+      root_brief=$(mp_read_json_ref "$candidate_ref") || continue
+      [ "$(jq -r '.parent // ""' <<<"$root_brief")" = "$parent" ] || continue
+      total=$((total + 1 + $(jq -r '.descendant_budget' <<<"$root_brief")))
+    done < <(git for-each-ref --format='%(refname)' "$(mp_run_ref "$run" "nodes/$parent")/")
+    total=$((total + 1 + descendant))
+    [ "$total" -le "$parent_descendant" ] || {
+      mp_die "sibling briefs exceed the parent descendant budget" 4
+      return
+    }
+    [ "$writers" -le "$parent_writers" ] || {
+      mp_die "child writer budget exceeds its parent" 2
+      return
+    }
+    [ "$integrations" -le "$parent_integrations" ] || {
+      mp_die "child integration budget exceeds its parent" 2
+      return
+    }
+  fi
+  [ "$writers" -le "$(jq -r '.writer_limit' <<<"$manifest")" ] || {
+    mp_die "writer budget exceeds the manifest limit" 2
+    return
+  }
+  [ "$integrations" -le "$(jq -r '.integration_limit' <<<"$manifest")" ] || {
+    mp_die "integration budget exceeds the manifest limit" 2
+    return
+  }
+
+  local brief_oid brief_ref
+  brief_oid=$(mp_hash_json_file "$brief") || { mp_die "could not hash brief" 2; return; }
+  brief_ref=$(mp_run_ref "$run" "nodes/$node/brief") || return
+  mp_create_ref "$brief_ref" "$brief_oid" 2>/dev/null || {
+    mp_die "node brief already exists" 4
+    return
+  }
+}
+
+cmd_claim() {
+  if [ "$#" -lt 2 ]; then
+    mp_die "usage: sdd-run claim RUN_ID NODE --session ID --harness codex|claude" 2
+    return
+  fi
+  local run=$1 node=$2 session='' harness='' seen_session=0 seen_harness=0
+  shift 2
+  mp_validate_run_id "$run" || return
+  mp_validate_node_path "$node" || return
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --session)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_session" -eq 0 ] || { mp_die "duplicate --session" 2; return; }
+        session=$2; seen_session=1; shift 2 ;;
+      --harness)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_harness" -eq 0 ] || { mp_die "duplicate --harness" 2; return; }
+        harness=$2; seen_harness=1; shift 2 ;;
+      *) mp_die "unknown claim option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_session" -eq 1 ] || { mp_die "missing --session" 2; return; }
+  [ "$seen_harness" -eq 1 ] || { mp_die "missing --harness" 2; return; }
+  mp_validate_session_id "$session" || return
+  mp_harness "$harness" || return
+
+  local brief_ref brief result
+  brief_ref=$(mp_run_ref "$run" "nodes/$node/brief") || return
+  brief=$(mp_read_json_ref "$brief_ref") || { mp_die "node brief does not exist" 3; return; }
+  if result=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$node/result")") &&
+     jq -e '.status == "done"' >/dev/null <<<"$result"; then
+    mp_die "node already has a terminal done result" 4
+    return
+  fi
+  mp_validate_dependencies "$run" "$brief" || return
+  mp_validate_claim_peers "$run" "$node" "$session" "$brief" || return
+  mp_create_node_claim "$run" "$node" "$session" "$harness" "$brief"
+}
+
+cmd_heartbeat() {
+  if [ "$#" -lt 2 ]; then
+    mp_die "usage: sdd-run heartbeat RUN_ID NODE --session ID --expected OBJECT_ID" 2
+    return
+  fi
+  local run=$1 node=$2 session='' expected='' seen_session=0 seen_expected=0
+  shift 2
+  mp_validate_run_id "$run" || return
+  mp_validate_node_path "$node" || return
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --session)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_session" -eq 0 ] || { mp_die "duplicate --session" 2; return; }
+        session=$2; seen_session=1; shift 2 ;;
+      --expected)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_expected" -eq 0 ] || { mp_die "duplicate --expected" 2; return; }
+        expected=$2; seen_expected=1; shift 2 ;;
+      *) mp_die "unknown heartbeat option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_session" -eq 1 ] || { mp_die "missing --session" 2; return; }
+  [ "$seen_expected" -eq 1 ] || { mp_die "missing --expected" 2; return; }
+  mp_validate_session_id "$session" || return
+  mp_object_id "$expected" || { mp_die "expected must be an object ID" 2; return; }
+
+  local claim at old_activity new_oid claim_ref
+  claim=$(mp_read_json_ref "$expected") || { mp_die "expected claim object is missing" 3; return; }
+  [ "$(jq -r '.session' <<<"$claim")" = "$session" ] || {
+    mp_die "claim belongs to another session" 4
+    return
+  }
+  old_activity=$(jq -r '.last_activity' <<<"$claim")
+  at=$(mp_now)
+  while [ "$at" = "$old_activity" ]; do
+    sleep 1
+    at=$(mp_now)
+  done
+  new_oid=$(printf '%s\n' "$claim" | jq -c --arg at "$at" '.last_activity=$at' | git hash-object -w --stdin)
+  claim_ref=$(mp_run_ref "$run" "nodes/$node/claim") || return
+  mp_cas_ref "$claim_ref" "$new_oid" "$expected" 2>/dev/null || {
+    mp_die "claim changed before heartbeat" 4
+    return
+  }
+  printf '%s\n' "$new_oid"
+}
+
+cmd_release_claim() {
+  if [ "$#" -lt 2 ]; then
+    mp_die "usage: sdd-run release-claim RUN_ID NODE --session ID --expected OBJECT_ID" 2
+    return
+  fi
+  local run=$1 node=$2 session='' expected='' seen_session=0 seen_expected=0
+  shift 2
+  mp_validate_run_id "$run" || return
+  mp_validate_node_path "$node" || return
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --session)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_session" -eq 0 ] || { mp_die "duplicate --session" 2; return; }
+        session=$2; seen_session=1; shift 2 ;;
+      --expected)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_expected" -eq 0 ] || { mp_die "duplicate --expected" 2; return; }
+        expected=$2; seen_expected=1; shift 2 ;;
+      *) mp_die "unknown release-claim option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_session" -eq 1 ] || { mp_die "missing --session" 2; return; }
+  [ "$seen_expected" -eq 1 ] || { mp_die "missing --expected" 2; return; }
+  mp_validate_session_id "$session" || return
+  mp_object_id "$expected" || { mp_die "expected must be an object ID" 2; return; }
+  local claim
+  claim=$(mp_read_json_ref "$expected") || { mp_die "expected claim object is missing" 3; return; }
+  [ "$(jq -r '.session' <<<"$claim")" = "$session" ] || {
+    mp_die "claim belongs to another session" 4
+    return
+  }
+  mp_delete_ref "$(mp_run_ref "$run" "nodes/$node/claim")" "$expected" 2>/dev/null || {
+    mp_die "claim changed before release" 4
+    return
+  }
+}
+
+cmd_slot_acquire() {
+  if [ "$#" -lt 3 ]; then
+    mp_die "usage: sdd-run slot-acquire RUN_ID writer|integration NODE|@target --session ID --harness codex|claude [--expected-owner OBJECT_ID]" 2
+    return
+  fi
+  local run=$1 kind=$2 node=$3 session='' harness='' expected_owner=''
+  local seen_session=0 seen_harness=0 seen_expected_owner=0
+  shift 3
+  mp_validate_run_id "$run" || return
+  case "$kind" in writer|integration) ;; *) mp_die "slot kind must be writer or integration" 2; return ;; esac
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --session)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_session" -eq 0 ] || { mp_die "duplicate --session" 2; return; }
+        session=$2; seen_session=1; shift 2 ;;
+      --harness)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_harness" -eq 0 ] || { mp_die "duplicate --harness" 2; return; }
+        harness=$2; seen_harness=1; shift 2 ;;
+      --expected-owner)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_expected_owner" -eq 0 ] || { mp_die "duplicate --expected-owner" 2; return; }
+        expected_owner=$2; seen_expected_owner=1; shift 2 ;;
+      *) mp_die "unknown slot-acquire option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_session" -eq 1 ] || { mp_die "missing --session" 2; return; }
+  [ "$seen_harness" -eq 1 ] || { mp_die "missing --harness" 2; return; }
+  mp_validate_session_id "$session" || return
+  mp_harness "$harness" || return
+
+  local manifest limit scope owner_oid='' identity claim ref slot_json slot_oid at slot
+  manifest=$(mp_manifest_json "$run") || { mp_die "run does not exist: $run" 3; return; }
+  if [ "$kind" = writer ]; then limit=$(jq -r '.writer_limit' <<<"$manifest")
+  else limit=$(jq -r '.integration_limit' <<<"$manifest")
+  fi
+  if [ "$node" = @target ]; then
+    [ "$kind" = integration ] || { mp_die "writer @target is not allowed" 2; return; }
+    [ "$seen_expected_owner" -eq 1 ] || { mp_die "@target requires --expected-owner" 2; return; }
+    mp_object_id "$expected_owner" || { mp_die "expected owner must be an object ID" 2; return; }
+    owner_oid=$(mp_read_ref "$(mp_run_ref "$run" owner)") || { mp_die "run owner is missing" 3; return; }
+    [ "$owner_oid" = "$expected_owner" ] || { mp_die "run owner changed" 4; return; }
+    identity=$(mp_read_json_ref "$expected_owner") || { mp_die "owner object is malformed" 3; return; }
+    [ "$(jq -r '.session' <<<"$identity")" = "$session" ] &&
+      [ "$(jq -r '.harness' <<<"$identity")" = "$harness" ] || {
+        mp_die "integration slot requires the elected owner" 4
+        return
+      }
+    scope=target
+  else
+    [ "$seen_expected_owner" -eq 0 ] || { mp_die "--expected-owner is only valid for @target" 2; return; }
+    mp_validate_node_path "$node" || return
+    mp_read_json_ref "$(mp_run_ref "$run" "nodes/$node/brief")" >/dev/null || {
+      mp_die "node brief does not exist" 3
+      return
+    }
+    claim=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$node/claim")") || {
+      mp_die "node is not actively claimed" 4
+      return
+    }
+    [ "$(jq -r '.session' <<<"$claim")" = "$session" ] &&
+      [ "$(jq -r '.harness' <<<"$claim")" = "$harness" ] || {
+        mp_die "slot requires the active node claimant" 4
+        return
+      }
+    scope=node
+  fi
+
+  local existing
+  while IFS= read -r ref; do
+    existing=$(mp_read_json_ref "$ref") || { mp_die "active slot is malformed: $ref" 3; return; }
+    if [ "$scope" = node ] && [ "$(jq -r '.scope' <<<"$existing")" = node ] &&
+       [ "$(jq -r '.node' <<<"$existing")" = "$node" ]; then
+      mp_die "node already holds a $kind slot" 4
+      return
+    fi
+    if [ "$scope" = target ] && [ "$(jq -r '.scope' <<<"$existing")" = target ]; then
+      mp_die "target already holds an integration slot" 4
+      return
+    fi
+  done < <(git for-each-ref --format='%(refname)' "$(mp_run_ref "$run" "slots/$kind")/")
+
+  slot=1
+  while [ "$slot" -le "$limit" ]; do
+    at=$(mp_now)
+    if [ "$scope" = node ]; then
+      slot_json=$(jq -cn --arg session "$session" --arg harness "$harness" \
+        --arg node "$node" --arg kind "$kind" --argjson slot "$slot" --arg at "$at" \
+        '{session:$session,harness:$harness,scope:"node",node:$node,kind:$kind,
+          slot:$slot,claimed_at:$at}')
+    else
+      slot_json=$(jq -cn --arg session "$session" --arg harness "$harness" \
+        --arg kind "$kind" --argjson slot "$slot" --arg at "$at" --arg owner_oid "$owner_oid" \
+        '{session:$session,harness:$harness,scope:"target",node:null,kind:$kind,
+          slot:$slot,claimed_at:$at,owner_oid:$owner_oid}')
+    fi
+    slot_oid=$(printf '%s\n' "$slot_json" | git hash-object -w --stdin)
+    if mp_create_ref "$(mp_run_ref "$run" "slots/$kind/$slot")" "$slot_oid" 2>/dev/null; then
+      printf '%s %s\n' "$slot" "$slot_oid"
+      return
+    fi
+    slot=$((slot + 1))
+  done
+  mp_die "no $kind slot available" 4
+}
+
+cmd_slot_release() {
+  if [ "$#" -lt 3 ]; then
+    mp_die "usage: sdd-run slot-release RUN_ID writer|integration SLOT --session ID --expected OBJECT_ID" 2
+    return
+  fi
+  local run=$1 kind=$2 slot=$3 session='' expected='' seen_session=0 seen_expected=0
+  shift 3
+  mp_validate_run_id "$run" || return
+  case "$kind" in writer|integration) ;; *) mp_die "slot kind must be writer or integration" 2; return ;; esac
+  mp_positive_integer "slot" "$slot" || return
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --session)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_session" -eq 0 ] || { mp_die "duplicate --session" 2; return; }
+        session=$2; seen_session=1; shift 2 ;;
+      --expected)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_expected" -eq 0 ] || { mp_die "duplicate --expected" 2; return; }
+        expected=$2; seen_expected=1; shift 2 ;;
+      *) mp_die "unknown slot-release option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_session" -eq 1 ] || { mp_die "missing --session" 2; return; }
+  [ "$seen_expected" -eq 1 ] || { mp_die "missing --expected" 2; return; }
+  mp_validate_session_id "$session" || return
+  mp_object_id "$expected" || { mp_die "expected must be an object ID" 2; return; }
+  local manifest limit slot_json
+  manifest=$(mp_manifest_json "$run") || { mp_die "run does not exist: $run" 3; return; }
+  if [ "$kind" = writer ]; then limit=$(jq -r '.writer_limit' <<<"$manifest")
+  else limit=$(jq -r '.integration_limit' <<<"$manifest")
+  fi
+  [ "$slot" -le "$limit" ] || { mp_die "slot number exceeds the manifest limit" 2; return; }
+  slot_json=$(mp_read_json_ref "$expected") || { mp_die "expected slot object is missing" 3; return; }
+  [ "$(jq -r '.session' <<<"$slot_json")" = "$session" ] &&
+    [ "$(jq -r '.kind' <<<"$slot_json")" = "$kind" ] &&
+    [ "$(jq -r '.slot' <<<"$slot_json")" = "$slot" ] || {
+      mp_die "slot object does not match the release request" 4
+      return
+    }
+  mp_delete_ref "$(mp_run_ref "$run" "slots/$kind/$slot")" "$expected" 2>/dev/null || {
+    mp_die "slot changed before release" 4
+    return
+  }
+}
+
 case "${1:-}" in
   init)
     shift
@@ -314,7 +957,31 @@ case "${1:-}" in
     shift
     cmd_join "$@"
     ;;
+  brief-put)
+    shift
+    cmd_brief_put "$@"
+    ;;
+  claim)
+    shift
+    cmd_claim "$@"
+    ;;
+  heartbeat)
+    shift
+    cmd_heartbeat "$@"
+    ;;
+  release-claim)
+    shift
+    cmd_release_claim "$@"
+    ;;
+  slot-acquire)
+    shift
+    cmd_slot_acquire "$@"
+    ;;
+  slot-release)
+    shift
+    cmd_slot_release "$@"
+    ;;
   *)
-    mp_die "usage: sdd-run init|join ..." 2
+    mp_die "usage: sdd-run init|join|brief-put|claim|heartbeat|release-claim|slot-acquire|slot-release ..." 2
     ;;
 esac
