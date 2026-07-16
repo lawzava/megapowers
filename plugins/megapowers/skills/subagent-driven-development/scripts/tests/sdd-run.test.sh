@@ -42,6 +42,10 @@ git switch -q release
 expect_fail "$RUN" init protected --plan plan.md --root root-a --target release --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits
 git switch -q feature/multi-writer
 expect_ok "$RUN" init demo --plan plan.md --root root-a --root root-b --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 9 --writers 3 --integrations 1 --allow-task-commits
+expect_ok "$RUN" init defaults --plan plan.md --root default-root --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits
+defaults_base=refs/megapowers/runs/defaults
+expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.writer_limit')" 3
+expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.integration_limit')" 1
 
 set +e
 "$RUN" init race --plan plan.md --root race-a --target feature/multi-writer --session session-a --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits > "$TMP/race-a.out" 2>&1 & rp1=$!

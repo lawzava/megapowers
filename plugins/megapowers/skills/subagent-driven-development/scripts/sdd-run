@@ -40,7 +40,7 @@ cmd_init() {
   mp_validate_run_id "$run" || return
 
   local plan='' target='' session='' harness='' max_depth='' agent_budget=''
-  local writers=1 integrations=1
+  local writers=3 integrations=1
   local seen_plan=0 seen_target=0 seen_session=0 seen_harness=0
   local seen_max_depth=0 seen_agent_budget=0 seen_writers=0 seen_integrations=0
   local allow_task_commits=0 allow_protected_target=0
