@@ -92,13 +92,18 @@ mp_nodes_related() {
 }
 
 mp_ownership_overlap() {
-  local left=$1 right=$2
+  local left=$1 right=$2 left_interface=0 right_interface=0
   left=$(mp_canonical_ownership_path "$left") || return
   right=$(mp_canonical_ownership_path "$right") || return
-  case "$left:$right" in
-    interface:*:interface:*) [ "$left" = "$right" ]; return ;;
-    interface:*|*:interface:*) return 1 ;;
-  esac
+  case "$left" in interface:*) left_interface=1 ;; esac
+  case "$right" in interface:*) right_interface=1 ;; esac
+  if [ "$left_interface" -eq 1 ] && [ "$right_interface" -eq 1 ]; then
+    [ "$left" = "$right" ]
+    return
+  fi
+  if [ "$left_interface" -eq 1 ] || [ "$right_interface" -eq 1 ]; then
+    return 1
+  fi
   [ "$left" = . ] || [ "$right" = . ] && return 0
   [ "$left" = "$right" ] && return 0
   case "$left/" in
@@ -412,6 +417,10 @@ cmd_init() {
         mp_die "duplicate root: $root" 2
         return
       fi
+      if mp_nodes_related "$seen_root" "$root"; then
+        mp_die "manifest roots must not be ancestors of one another: $seen_root and $root" 2
+        return
+      fi
     done
     seen_roots+=("$root")
   done
@@ -614,6 +623,10 @@ cmd_brief_put() {
   }
   mp_brief_contract "$brief" || {
     mp_die "brief does not match the version 1 contract" 2
+    return
+  }
+  jq -e '.blocked_by | length == (unique | length)' >/dev/null <<<"$brief" || {
+    mp_die "blocked_by must not contain duplicate nodes" 2
     return
   }
   document_run=$(jq -r '.run_id' <<<"$brief")

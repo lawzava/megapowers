@@ -161,6 +161,7 @@ cd "$repo" || exit 2
 expect_fail "$RUN" init Bad_ID --plan plan.md --root root-a --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits
 expect_fail "$RUN" init no-commits --plan plan.md --root root-a --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8
 expect_fail "$RUN" init duplicate-roots --plan plan.md --root root-a --root root-a --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits
+expect_fail "$RUN" init ancestor-roots --plan plan.md --root root --root root/child --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits
 git branch release
 git switch -q release
 expect_fail "$RUN" init protected --plan plan.md --root root-a --target release --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits
@@ -177,6 +178,7 @@ expect_ok "$RUN" init stale-parent --plan plan.md --root stale-parent --target f
 expect_ok "$RUN" init stale-slot-claim --plan plan.md --root stale-slot --target feature/multi-writer --session stale-slot-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init stale-slot-owner --plan plan.md --root unused-root --target feature/multi-writer --session target-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init ownership-alias --plan plan.md --root alias-a --root alias-b --target feature/multi-writer --session alias-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
+expect_ok "$RUN" init ownership-interface-segment --plan plan.md --root interface-path-a --root interface-path-b --target feature/multi-writer --session interface-path-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
 expect_ok "$RUN" init ownership-unsafe --plan plan.md --root unsafe-root --target feature/multi-writer --session unsafe-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init ownership-root --plan plan.md --root root-all --root root-part --target feature/multi-writer --session root-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
 expect_ok "$RUN" init snapshot-brief --plan plan.md --root snapshot-node --target feature/multi-writer --session snapshot-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
@@ -186,6 +188,7 @@ expect_ok "$RUN" init movement --plan plan.md --root branch-node --root dep-node
 expect_ok "$RUN" init lock-tz --plan plan.md --root tz-node --target feature/multi-writer --session tz-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init lock-inaccessible --plan plan.md --root inaccessible-node --target feature/multi-writer --session inaccessible-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init generation-crash --plan plan.md --root crash-node --root crash-peer --target feature/multi-writer --session crash-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
+expect_ok "$RUN" init duplicate-blocked --plan plan.md --root duplicate-blocked-node --target feature/multi-writer --session duplicate-blocked-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 defaults_base=refs/megapowers/runs/defaults
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.writer_limit')" 3
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.integration_limit')" 1
@@ -234,6 +237,30 @@ expect_eq "$(git cat-file blob refs/megapowers/runs/ownership-alias/nodes/alias-
 expect_eq "$(git cat-file blob refs/megapowers/runs/ownership-alias/nodes/alias-b/brief | jq -r '.ownership[0]')" src/lib
 expect_ok "$RUN" claim ownership-alias alias-a --session alias-a-session --harness codex
 expect_fail "$RUN" claim ownership-alias alias-b --session alias-b-session --harness claude
+
+# A normal relative path containing ':interface:' remains a path for overlap checks.
+write_root_brief ownership-interface-segment interface-path-a src:interface:api 0 0 0 0 interface-path-a.json
+write_root_brief ownership-interface-segment interface-path-b src:interface:api/lib 0 0 0 0 interface-path-b.json
+expect_ok "$RUN" brief-put ownership-interface-segment interface-path-a interface-path-a.json --session interface-path-owner
+expect_ok "$RUN" brief-put ownership-interface-segment interface-path-b interface-path-b.json --session interface-path-owner
+expect_ok "$RUN" claim ownership-interface-segment interface-path-a --session interface-path-a-session --harness codex
+expect_fail "$RUN" claim ownership-interface-segment interface-path-b --session interface-path-b-session --harness claude
+
+# Duplicate dependency entries are rejected before an immutable brief is created.
+write_root_brief duplicate-blocked duplicate-blocked-node duplicate-blocked/ 0 0 0 0 duplicate-blocked.json
+jq '.blocked_by=["dependency","dependency"]' duplicate-blocked.json > duplicate-blocked-with-deps.json
+mv duplicate-blocked-with-deps.json duplicate-blocked.json
+if duplicate_blocked_output=$("$RUN" brief-put duplicate-blocked duplicate-blocked-node duplicate-blocked.json --session duplicate-blocked-owner 2>&1); then
+  bad "duplicate blocked_by entries were accepted"
+else
+  duplicate_blocked_status=$?
+  if [ "$duplicate_blocked_status" -eq 2 ] &&
+     [ "$duplicate_blocked_output" = "sdd-run: blocked_by must not contain duplicate nodes" ]; then
+    ok
+  else
+    bad "duplicate blocked_by rejection did not return the documented validation error"
+  fi
+fi
 
 # Dot is the canonical whole-repository ownership root and overlaps every path.
 write_root_brief ownership-root root-all . 0 0 0 0 root-all.json
