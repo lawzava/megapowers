@@ -13,6 +13,7 @@ bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; }
 expect_ok() { "$@" >/dev/null 2>&1 && ok || bad "expected success: $*"; }
 expect_fail() { "$@" >/dev/null 2>&1 && bad "expected failure: $*" || ok; }
 expect_eq() { [ "$1" = "$2" ] && ok || bad "expected '$1' = '$2'"; }
+expect_ne() { [ "$1" != "$2" ] && ok || bad "expected '$1' != '$2'"; }
 wait_for_file() {
   local file=$1 attempts=${2:-200} count=0
   while [ ! -e "$file" ] && [ "$count" -lt "$attempts" ]; do
@@ -27,10 +28,6 @@ expect_not_before_release() {
   else
     ok
   fi
-}
-process_identity() {
-  LC_ALL=C ps -p "$1" -o lstart= 2>/dev/null |
-    sed 's/^[[:space:]]*//; s/[[:space:]][[:space:]]*/ /g; s/[[:space:]]*$//'
 }
 write_root_brief() {
   local run=$1 node=$2 ownership=$3 remaining=$4 descendant=$5 writers=$6 integrations=$7 output=$8
@@ -113,6 +110,53 @@ exit 0
 HOOK
 chmod +x "$repo/.git/hooks/reference-transaction"
 
+real_git=$(command -v git)
+real_jq=$(command -v jq)
+mkdir -p "$TMP/git-wrapper" "$TMP/jq-wrapper" "$TMP/date-wrapper"
+cat > "$TMP/git-wrapper/git" <<'WRAPPER'
+#!/bin/sh
+if [ "${1:-}" = hash-object ] && [ -n "${MP_MUTATE_BRIEF:-}" ]; then
+  for argument in "$@"; do
+    if [ "$argument" = "$MP_MUTATE_BRIEF" ]; then
+      "$MP_REAL_GIT" "$@"
+      status=$?
+      command cp "$MP_MUTATE_REPLACEMENT" "$MP_MUTATE_BRIEF"
+      : > "$MP_MUTATE_MARKER"
+      exit "$status"
+    fi
+  done
+fi
+if [ "${1:-}" = update-ref ] && [ "${2:-}" = --stdin ] &&
+   [ -n "${MP_MOVE_REF:-}" ]; then
+  transaction=$(mktemp)
+  trap 'rm -f "$transaction"' EXIT HUP INT TERM
+  command cat > "$transaction"
+  "$MP_REAL_GIT" update-ref "$MP_MOVE_REF" "$MP_MOVE_TO" "$MP_MOVE_FROM" || exit 99
+  "$MP_REAL_GIT" update-ref --stdin < "$transaction"
+  exit $?
+fi
+exec "$MP_REAL_GIT" "$@"
+WRAPPER
+cat > "$TMP/jq-wrapper/jq" <<'WRAPPER'
+#!/bin/sh
+"$MP_REAL_JQ" "$@"
+status=$?
+case " $* " in
+  *" ${MP_MUTATE_BRIEF:-__no_brief__} "*)
+    if [ ! -e "$MP_MUTATE_MARKER" ]; then
+      command cp "$MP_MUTATE_REPLACEMENT" "$MP_MUTATE_BRIEF"
+      : > "$MP_MUTATE_MARKER"
+    fi
+    ;;
+esac
+exit "$status"
+WRAPPER
+cat > "$TMP/date-wrapper/date" <<'WRAPPER'
+#!/bin/sh
+printf '%s\n' '2026-07-16T12:00:00Z'
+WRAPPER
+chmod +x "$TMP/git-wrapper/git" "$TMP/jq-wrapper/jq" "$TMP/date-wrapper/date"
+
 cd "$repo" || exit 2
 expect_fail "$RUN" init Bad_ID --plan plan.md --root root-a --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits
 expect_fail "$RUN" init no-commits --plan plan.md --root root-a --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8
@@ -132,14 +176,21 @@ expect_ok "$RUN" init stale-root --plan plan.md --root stale-root --target featu
 expect_ok "$RUN" init stale-parent --plan plan.md --root stale-parent --target feature/multi-writer --session stale-parent-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
 expect_ok "$RUN" init stale-slot-claim --plan plan.md --root stale-slot --target feature/multi-writer --session stale-slot-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init stale-slot-owner --plan plan.md --root unused-root --target feature/multi-writer --session target-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
-expect_ok "$RUN" init signal-cleanup --plan plan.md --root signal-node --target feature/multi-writer --session signal-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init ownership-alias --plan plan.md --root alias-a --root alias-b --target feature/multi-writer --session alias-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
 expect_ok "$RUN" init ownership-unsafe --plan plan.md --root unsafe-root --target feature/multi-writer --session unsafe-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init ownership-root --plan plan.md --root root-all --root root-part --target feature/multi-writer --session root-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
-expect_ok "$RUN" init lock-recovery --plan plan.md --root dead-node --root active-node --root crash-node --root crash-peer --target feature/multi-writer --session lock-owner --harness codex --max-depth 2 --agent-budget 4 --allow-task-commits
+expect_ok "$RUN" init snapshot-brief --plan plan.md --root snapshot-node --target feature/multi-writer --session snapshot-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init claim-aba --plan plan.md --root aba-node --target feature/multi-writer --session aba-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init slot-aba --plan plan.md --root aba-slot --target feature/multi-writer --session aba-slot-owner --harness codex --max-depth 2 --agent-budget 1 --writers 1 --allow-task-commits
+expect_ok "$RUN" init movement --plan plan.md --root branch-node --root dep-node --root done-node --target feature/multi-writer --session movement-owner --harness codex --max-depth 2 --agent-budget 3 --allow-task-commits
+expect_ok "$RUN" init lock-tz --plan plan.md --root tz-node --target feature/multi-writer --session tz-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init lock-inaccessible --plan plan.md --root inaccessible-node --target feature/multi-writer --session inaccessible-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init generation-crash --plan plan.md --root crash-node --root crash-peer --target feature/multi-writer --session crash-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
 defaults_base=refs/megapowers/runs/defaults
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.writer_limit')" 3
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.integration_limit')" 1
+expect_ok git show-ref --verify --quiet "$defaults_base/generation"
+expect_eq "$(git cat-file blob "$defaults_base/generation" 2>/dev/null | jq -r '.operation' 2>/dev/null || true)" init
 
 set +e
 "$RUN" init race --plan plan.md --root race-a --target feature/multi-writer --session session-a --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits > "$TMP/race-a.out" 2>&1 & rp1=$!
@@ -153,12 +204,13 @@ race_owner=$(git cat-file blob refs/megapowers/runs/race/owner | jq -r '.session
 case "$race_root:$race_owner" in race-a:session-a|race-b:session-b) ok ;; *) bad "run race mixed manifest and owner" ;; esac
 
 base=refs/megapowers/runs/demo
-expect_eq "$(git for-each-ref --format='%(refname)' "$base" | wc -l | tr -d ' ')" 3
+expect_eq "$(git for-each-ref --format='%(refname)' "$base" | wc -l | tr -d ' ')" 4
 expect_eq "$(git cat-file blob "$base/manifest" | jq -r '.target_branch')" feature/multi-writer
 expect_eq "$(git cat-file blob "$base/manifest" | jq -r '.roots | join(",")')" root-a,root-b
 expect_eq "$(git cat-file blob "$base/manifest" | jq -r '.writer_limit')" 3
 expect_eq "$(git cat-file blob "$base/manifest" | jq -r '.integration_limit')" 1
 expect_eq "$(git cat-file blob "$base/owner" | jq -r '.session')" codex-1
+expect_ok git show-ref --verify --quiet "$base/generation"
 git config --get-regexp '^remote\..*\.push$' 2>/dev/null | grep -q 'refs/megapowers' && bad "private refs entered a push refspec" || ok
 expect_ok "$RUN" join demo --plan plan.md --target feature/multi-writer --harness claude
 printf '\nchanged\n' >> plan.md
@@ -193,6 +245,38 @@ expect_eq "$(git cat-file blob refs/megapowers/runs/ownership-root/nodes/root-pa
 expect_ok "$RUN" claim ownership-root root-all --session root-all-session --harness codex
 expect_fail "$RUN" claim ownership-root root-part --session root-part-session --harness claude
 
+# The caller's brief file is snapshotted before validation and never read again.
+write_root_brief snapshot-brief snapshot-node snapshot/ 0 0 0 0 snapshot.json
+jq '.task="Validated snapshot"' snapshot.json > snapshot-valid.json
+mv snapshot-valid.json snapshot.json
+jq '.task="Mutable replacement" | .ownership=["replacement/"]' \
+  snapshot.json > snapshot-replacement.json
+snapshot_marker="$TMP/snapshot-mutated"
+expect_ok env PATH="$TMP/git-wrapper:$TMP/jq-wrapper:$PATH" MP_REAL_GIT="$real_git" MP_REAL_JQ="$real_jq" \
+  MP_MUTATE_BRIEF=snapshot.json MP_MUTATE_REPLACEMENT=snapshot-replacement.json \
+  MP_MUTATE_MARKER="$snapshot_marker" \
+  "$RUN" brief-put snapshot-brief snapshot-node snapshot.json --session snapshot-owner
+expect_ok test -e "$snapshot_marker"
+expect_eq "$(git cat-file blob refs/megapowers/runs/snapshot-brief/nodes/snapshot-node/brief | jq -r '.task')" "Validated snapshot"
+expect_eq "$(git cat-file blob refs/megapowers/runs/snapshot-brief/nodes/snapshot-node/brief | jq -r '.ownership[0]')" snapshot
+
+# Foreign, malformed, and timezone-skewed legacy lock refs are inert data.
+foreign_lock_ref=refs/megapowers/runs/lock-tz/locks/registry
+foreign_lock_oid=$(jq -cn \
+  '{pid:1,host:"foreign.example",process_started:"unknown",token:"foreign",acquired_at:"1900-01-01T00:00:00+14:00"}' |
+  git hash-object -w --stdin)
+git update-ref "$foreign_lock_ref" "$foreign_lock_oid"
+write_root_brief lock-tz tz-node tz/ 0 0 0 0 tz-node.json
+expect_ok env TZ=Pacific/Honolulu "$RUN" brief-put lock-tz tz-node tz-node.json --session tz-owner
+expect_eq "$(git rev-parse "$foreign_lock_ref")" "$foreign_lock_oid"
+
+inaccessible_lock_ref=refs/megapowers/runs/lock-inaccessible/locks/registry
+inaccessible_lock_oid=$(printf 'not-json\n' | git hash-object -w --stdin)
+git update-ref "$inaccessible_lock_ref" "$inaccessible_lock_oid"
+write_root_brief lock-inaccessible inaccessible-node inaccessible/ 0 0 0 0 inaccessible-node.json
+expect_ok "$RUN" brief-put lock-inaccessible inaccessible-node inaccessible-node.json --session inaccessible-owner
+expect_eq "$(git rev-parse "$inaccessible_lock_ref")" "$inaccessible_lock_oid"
+
 cat > brief.json <<EOF
 {
   "version": 1,
@@ -213,7 +297,12 @@ cat > brief.json <<EOF
   "integration_budget": 1
 }
 EOF
+demo_generation_before_brief=$(git rev-parse refs/megapowers/runs/demo/generation)
 expect_ok "$RUN" brief-put demo root-a brief.json --session codex-1
+demo_generation_after_brief=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ne "$demo_generation_before_brief" "$demo_generation_after_brief"
+expect_eq "$(git cat-file blob "$demo_generation_after_brief" | jq -r '.previous')" "$demo_generation_before_brief"
+expect_eq "$(git cat-file blob "$demo_generation_after_brief" | jq -r '.operation')" brief-put
 expect_fail "$RUN" brief-put demo root-a brief.json --session codex-1
 expect_fail "$RUN" brief-put demo ../escape brief.json --session codex-1
 
@@ -227,9 +316,17 @@ set -e
 claim_line=$(cat claim-a.out claim-b.out | grep -E '^[0-9a-f]+ ' | head -1)
 claim_oid=${claim_line%% *}
 claim_session=$(git cat-file blob "$claim_oid" | jq -r '.session')
+demo_generation_after_claim=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ne "$demo_generation_after_brief" "$demo_generation_after_claim"
+expect_eq "$(git cat-file blob "$claim_oid" | jq -r '.generation')" "$demo_generation_after_claim"
 new_oid=$("$RUN" heartbeat demo root-a --session "$claim_session" --expected "$claim_oid")
+demo_generation_after_heartbeat=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ne "$demo_generation_after_claim" "$demo_generation_after_heartbeat"
+expect_eq "$(git cat-file blob "$new_oid" | jq -r '.generation')" "$demo_generation_after_heartbeat"
 expect_fail "$RUN" release-claim demo root-a --session "$claim_session" --expected "$claim_oid"
 expect_ok "$RUN" release-claim demo root-a --session "$claim_session" --expected "$new_oid"
+demo_generation_after_release=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ne "$demo_generation_after_heartbeat" "$demo_generation_after_release"
 
 jq '.node="root-b" | .branch="mp/demo/nodes/root-b/head" | .task="Implement root B" |
     .ownership=["b/"] | .may_decompose=false | .remaining_depth=0 |
@@ -293,8 +390,11 @@ expect_fail "$RUN" slot-acquire demo writer root-a/slot-d --session slot-d-sessi
 slot_line=$(cat slot-a.out)
 slot_n=${slot_line%% *}
 slot_oid=${slot_line#* }
+demo_generation_before_slot_release=$(git rev-parse refs/megapowers/runs/demo/generation)
 expect_fail "$RUN" slot-release demo writer "$slot_n" --session wrong --expected "$slot_oid"
 expect_ok "$RUN" slot-release demo writer "$slot_n" --session slot-a-session --expected "$slot_oid"
+demo_generation_after_slot_release=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ne "$demo_generation_before_slot_release" "$demo_generation_after_slot_release"
 expect_ok "$RUN" release-claim demo root-a/slot-a --session slot-a-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-a/claim)"
 owner_oid=$(git rev-parse refs/megapowers/runs/demo/owner)
 expect_fail "$RUN" slot-acquire demo integration @target --session intruder --harness claude --expected-owner "$owner_oid"
@@ -302,6 +402,75 @@ target_slot_line=$("$RUN" slot-acquire demo integration @target --session codex-
 target_slot_n=${target_slot_line%% *}
 target_slot_oid=${target_slot_line#* }
 expect_ok "$RUN" slot-release demo integration "$target_slot_n" --session codex-1 --expected "$target_slot_oid"
+
+# A release and reacquire in one second must not recreate an ownership object ID.
+write_root_brief claim-aba aba-node aba/ 0 0 0 0 aba-node.json
+expect_ok "$RUN" brief-put claim-aba aba-node aba-node.json --session aba-owner
+aba_claim_one=$(env PATH="$TMP/date-wrapper:$PATH" "$RUN" claim claim-aba aba-node --session aba-session --harness codex)
+aba_claim_one_oid=${aba_claim_one%% *}
+aba_claim_one_generation=$(git rev-parse refs/megapowers/runs/claim-aba/generation 2>/dev/null || true)
+expect_eq "$(git cat-file blob "$aba_claim_one_oid" | jq -r '.generation')" "$aba_claim_one_generation"
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" release-claim claim-aba aba-node --session aba-session --expected "$aba_claim_one_oid"
+aba_claim_two=$(env PATH="$TMP/date-wrapper:$PATH" "$RUN" claim claim-aba aba-node --session aba-session --harness codex)
+aba_claim_two_oid=${aba_claim_two%% *}
+expect_ne "$aba_claim_one_oid" "$aba_claim_two_oid"
+if env PATH="$TMP/date-wrapper:$PATH" "$RUN" release-claim claim-aba aba-node --session aba-session --expected "$aba_claim_one_oid" >/dev/null 2>&1; then
+  bad "stale claim object released its same-second successor"
+else
+  ok
+fi
+if git show-ref --verify --quiet refs/megapowers/runs/claim-aba/nodes/aba-node/claim; then
+  expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" release-claim claim-aba aba-node --session aba-session --expected "$aba_claim_two_oid"
+fi
+
+write_root_brief slot-aba aba-slot aba-slot/ 0 0 1 0 aba-slot.json
+expect_ok "$RUN" brief-put slot-aba aba-slot aba-slot.json --session aba-slot-owner
+aba_slot_claim=$(env PATH="$TMP/date-wrapper:$PATH" "$RUN" claim slot-aba aba-slot --session aba-slot-session --harness codex)
+aba_slot_claim_oid=${aba_slot_claim%% *}
+aba_slot_one=$(env PATH="$TMP/date-wrapper:$PATH" "$RUN" slot-acquire slot-aba writer aba-slot --session aba-slot-session --harness codex)
+aba_slot_one_oid=${aba_slot_one#* }
+aba_slot_one_generation=$(git rev-parse refs/megapowers/runs/slot-aba/generation 2>/dev/null || true)
+expect_eq "$(git cat-file blob "$aba_slot_one_oid" | jq -r '.generation')" "$aba_slot_one_generation"
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" slot-release slot-aba writer 1 --session aba-slot-session --expected "$aba_slot_one_oid"
+aba_slot_two=$(env PATH="$TMP/date-wrapper:$PATH" "$RUN" slot-acquire slot-aba writer aba-slot --session aba-slot-session --harness codex)
+aba_slot_two_oid=${aba_slot_two#* }
+expect_ne "$aba_slot_one_oid" "$aba_slot_two_oid"
+if env PATH="$TMP/date-wrapper:$PATH" "$RUN" slot-release slot-aba writer 1 --session aba-slot-session --expected "$aba_slot_one_oid" >/dev/null 2>&1; then
+  bad "stale slot object released its same-second successor"
+else
+  ok
+fi
+if git show-ref --verify --quiet refs/megapowers/runs/slot-aba/slots/writer/1; then
+  expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" slot-release slot-aba writer 1 --session aba-slot-session --expected "$aba_slot_two_oid"
+fi
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" release-claim slot-aba aba-slot --session aba-slot-session --expected "$aba_slot_claim_oid"
+
+# Claim authorization includes the exact scope branch and dependency result refs.
+write_root_brief movement branch-node branch/ 0 0 0 0 branch-node.json
+expect_ok "$RUN" brief-put movement branch-node branch-node.json --session movement-owner
+replacement_head=$(printf 'replacement\n' | git commit-tree "$(git rev-parse "$head^{tree}")" -p "$head")
+expect_fail env PATH="$TMP/git-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+  MP_MOVE_REF=refs/heads/feature/multi-writer MP_MOVE_FROM="$head" MP_MOVE_TO="$replacement_head" \
+  "$RUN" claim movement branch-node --session branch-session --harness codex
+git update-ref refs/heads/feature/multi-writer "$head"
+if branch_claim_oid=$(git rev-parse --verify refs/megapowers/runs/movement/nodes/branch-node/claim 2>/dev/null); then
+  expect_ok "$RUN" release-claim movement branch-node --session branch-session --expected "$branch_claim_oid"
+fi
+
+write_root_brief movement dep-node dep/ 0 0 0 0 dep-node.json
+jq '.blocked_by=["done-node"]' dep-node.json > dep-node-blocked.json
+mv dep-node-blocked.json dep-node.json
+expect_ok "$RUN" brief-put movement dep-node dep-node.json --session movement-owner
+done_ref=refs/megapowers/runs/movement/nodes/done-node/result
+done_oid_one=$(jq -cn --arg head "$head" '{status:"done",head:$head,attempt:1}' | git hash-object -w --stdin)
+done_oid_two=$(jq -cn --arg head "$head" '{status:"done",head:$head,attempt:2}' | git hash-object -w --stdin)
+git update-ref "$done_ref" "$done_oid_one"
+expect_fail env PATH="$TMP/git-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+  MP_MOVE_REF="$done_ref" MP_MOVE_FROM="$done_oid_one" MP_MOVE_TO="$done_oid_two" \
+  "$RUN" claim movement dep-node --session dep-session --harness codex
+if dep_claim_oid=$(git rev-parse --verify refs/megapowers/runs/movement/nodes/dep-node/claim 2>/dev/null); then
+  expect_ok "$RUN" release-claim movement dep-node --session dep-session --expected "$dep_claim_oid"
+fi
 
 set +e
 
@@ -396,6 +565,10 @@ stale_owner_ref=refs/megapowers/runs/stale-root/owner
 stale_owner_oid=$(git rev-parse "$stale_owner_ref")
 replacement_owner_oid=$(jq -cn '{session:"replacement",harness:"claude",claimed_at:"now",last_activity:"now"}' | git hash-object -w --stdin)
 replacement_head=$(printf 'replacement\n' | git commit-tree "$(git rev-parse "$head^{tree}")" -p "$head")
+expect_fail env PATH="$TMP/git-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+  MP_MOVE_REF=refs/heads/feature/multi-writer MP_MOVE_FROM="$head" MP_MOVE_TO="$replacement_head" \
+  "$RUN" brief-put stale-root stale-root stale-root.json --session stale-owner
+git update-ref refs/heads/feature/multi-writer "$head"
 gate="$TMP/stale-root"
 MP_RACE_GATE="$gate" MP_RACE_ID=1 MP_RACE_REF_MATCH=/brief \
   "$RUN" brief-put stale-root stale-root stale-root.json --session stale-owner > "$gate.1.out" 2>&1 & srp=$!
@@ -460,55 +633,27 @@ wait "$soa"; soar=$?
 wait "$soo" || true
 expect_eq "$soar" 0
 
-# A dead lock owner in this clone must be reclaimed by exact object ID.
-lock_ref=refs/megapowers/runs/lock-recovery/locks/registry
-lock_host=$(uname -n)
-dead_lock_oid=$(jq -cn --arg host "$lock_host" \
-  '{pid:2147483647,host:$host,process_started:"not-running",token:"dead",acquired_at:"2026-07-16T00:00:00Z"}' |
-  git hash-object -w --stdin)
-git update-ref "$lock_ref" "$dead_lock_oid"
-write_root_brief lock-recovery dead-node dead-node/ 0 0 0 0 dead-node.json
-expect_ok "$RUN" brief-put lock-recovery dead-node dead-node.json --session lock-owner
-expect_fail git show-ref --verify --quiet "$lock_ref"
-
-# A live owner with the same host, PID, and process start must not be stolen.
-sleep 60 & active_lock_pid=$!
-active_lock_started=$(process_identity "$active_lock_pid")
-active_lock_oid=$(jq -cn --argjson pid "$active_lock_pid" --arg host "$lock_host" \
-  --arg process_started "$active_lock_started" \
-  '{pid:$pid,host:$host,process_started:$process_started,token:"active",acquired_at:"2026-07-16T00:00:00Z"}' |
-  git hash-object -w --stdin)
-git update-ref "$lock_ref" "$active_lock_oid"
-write_root_brief lock-recovery active-node active-node/ 0 0 0 0 active-node.json
-"$RUN" brief-put lock-recovery active-node active-node.json --session lock-owner > "$TMP/active-lock.out" 2>&1
-active_lock_result=$?
-[ "$active_lock_result" -ne 0 ] && ok || bad "active registry lock was stolen"
-expect_eq "$(git rev-parse "$lock_ref")" "$active_lock_oid"
-expect_fail git show-ref --verify --quiet refs/megapowers/runs/lock-recovery/nodes/active-node/brief
-kill "$active_lock_pid"
-wait "$active_lock_pid" 2>/dev/null
-expect_ok "$RUN" brief-put lock-recovery active-node active-node.json --session lock-owner
-
-# SIGKILL leaves the exact lock behind; a live orphan transaction still owns it.
-write_root_brief lock-recovery crash-node crash/shared/ 0 0 0 0 crash-node.json
-write_root_brief lock-recovery crash-peer crash/shared/peer/ 0 0 0 0 crash-peer.json
-expect_ok "$RUN" brief-put lock-recovery crash-node crash-node.json --session lock-owner
-expect_ok "$RUN" brief-put lock-recovery crash-peer crash-peer.json --session lock-owner
-crash_gate="$TMP/crash-lock"
+# SIGKILL cannot split a generation update from its registry mutation.
+write_root_brief generation-crash crash-node crash/shared/ 0 0 0 0 crash-node.json
+write_root_brief generation-crash crash-peer crash/shared/peer/ 0 0 0 0 crash-peer.json
+expect_ok "$RUN" brief-put generation-crash crash-node crash-node.json --session crash-owner
+expect_ok "$RUN" brief-put generation-crash crash-peer crash-peer.json --session crash-owner
+crash_generation_before=$(git rev-parse refs/megapowers/runs/generation-crash/generation 2>/dev/null || true)
+crash_gate="$TMP/generation-crash"
 MP_RACE_GATE="$crash_gate" MP_RACE_ID=1 MP_RACE_REF_MATCH=/claim \
-  "$RUN" claim lock-recovery crash-node --session crash-session --harness codex > "$crash_gate.out" 2>&1 & crash_pid=$!
-wait_for_file "$crash_gate.ready.1" || bad "crash recovery test did not reach claim mutation"
+  "$RUN" claim generation-crash crash-node --session crash-session --harness codex > "$crash_gate.out" 2>&1 & crash_pid=$!
+wait_for_file "$crash_gate.ready.1" || bad "generation crash test did not reach claim mutation"
 kill -KILL "$crash_pid"
 wait "$crash_pid" 2>/dev/null
 (
-  "$RUN" claim lock-recovery crash-peer --session crash-peer-session --harness claude \
+  "$RUN" claim generation-crash crash-peer --session crash-peer-session --harness claude \
     > "$crash_gate.peer.out" 2>&1
   printf '%s\n' "$?" > "$crash_gate.peer.result"
 ) & crash_peer_pid=$!
-expect_not_before_release "$crash_gate.peer.result" "orphaned registry transaction lost its live lock"
+expect_not_before_release "$crash_gate.peer.result" "contender bypassed a prepared generation transaction"
 : > "$crash_gate.release"
 crash_wait=0
-while ! crash_claim_oid=$(git rev-parse --verify refs/megapowers/runs/lock-recovery/nodes/crash-node/claim 2>/dev/null) &&
+while ! crash_claim_oid=$(git rev-parse --verify refs/megapowers/runs/generation-crash/nodes/crash-node/claim 2>/dev/null) &&
       [ "$crash_wait" -lt 200 ]; do
   sleep 0.01
   crash_wait=$((crash_wait + 1))
@@ -516,22 +661,10 @@ done
 [ -n "${crash_claim_oid:-}" ] && ok || bad "orphaned claim transaction did not finish"
 wait "$crash_peer_pid" 2>/dev/null
 expect_eq "$(cat "$crash_gate.peer.result")" 4
-expect_ok "$RUN" release-claim lock-recovery crash-node --session crash-session --expected "$crash_claim_oid"
-expect_fail git show-ref --verify --quiet "$lock_ref"
-
-# Signal handling must release the command's per-run registry lock.
-write_root_brief signal-cleanup signal-node signal-node/ 0 0 0 0 signal-node.json
-expect_ok "$RUN" brief-put signal-cleanup signal-node signal-node.json --session signal-owner
-gate="$TMP/signal-cleanup"
-MP_RACE_GATE="$gate" MP_RACE_ID=1 MP_RACE_REF_MATCH=/claim \
-  "$RUN" claim signal-cleanup signal-node --session signal-session --harness codex > "$gate.1.out" 2>&1 & scp=$!
-wait_for_file "$gate.ready.1" || bad "signal cleanup test did not reach claim mutation"
-kill -TERM "$scp"
-: > "$gate.release"
-wait "$scp"; scr=$?
-[ "$scr" -ne 0 ] && ok || bad "signaled registry command unexpectedly succeeded"
-expect_fail git show-ref --verify --quiet refs/megapowers/runs/signal-cleanup/locks/registry
-expect_eq "$(git for-each-ref --format='%(refname)' refs/megapowers/runs/ | grep -c /locks/ || true)" 0
+crash_generation_after=$(git rev-parse refs/megapowers/runs/generation-crash/generation 2>/dev/null || true)
+expect_ne "$crash_generation_before" "$crash_generation_after"
+expect_eq "$(git cat-file blob "$crash_claim_oid" | jq -r '.generation')" "$crash_generation_after"
+expect_ok "$RUN" release-claim generation-crash crash-node --session crash-session --expected "$crash_claim_oid"
 
 printf '== sdd-run tests: %d passed, %d failed ==\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
