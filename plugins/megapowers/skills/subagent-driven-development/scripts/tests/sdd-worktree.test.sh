@@ -61,6 +61,19 @@ cat > "$TMP/git-race-wrapper/git" <<'GIT_WRAPPER'
 set -euo pipefail
 
 command_line=" $* "
+if [ "${MP_RACE_ACTION:-}" = brief-existing ] &&
+   [ "$command_line" = " rev-parse --verify $MP_RACE_BRIEF_REF " ]; then
+  if [ ! -e "$MP_RACE_MARKER.brief-read" ]; then
+    : > "$MP_RACE_MARKER.brief-read"
+    exec "$MP_REAL_GIT" "$@"
+  fi
+  brief_value=$("$MP_REAL_GIT" "$@")
+  "$MP_REAL_GIT" -C "$MP_REPO" update-ref "$MP_RACE_BRIEF_REF" \
+    "$MP_RACE_BRIEF_TO" "$MP_RACE_BRIEF_FROM"
+  : > "$MP_RACE_MARKER"
+  printf '%s\n' "$brief_value"
+  exit 0
+fi
 if [ -e "$MP_RACE_MARKER" ]; then
   case "$command_line" in
     *" read-tree -u -m "*)
@@ -108,9 +121,15 @@ if [ "$intercept" -eq 1 ] && [ ! -e "$MP_RACE_MARKER" ]; then
         --expected-closed "$closed" --confirmed >/dev/null
       ;;
     release-slot)
+      # Public slot-release must reject this live candidate worktree. Delete the
+      # raw ref so this fixture isolates authorization loss inside promotion.
       "$MP_REAL_GIT" -C "$MP_REPO" update-ref -d \
         "refs/megapowers/runs/$MP_RACE_RUN/slots/integration/$MP_RACE_SLOT" \
         "$MP_RACE_SLOT_OID"
+      ;;
+    brief)
+      "$MP_REAL_GIT" -C "$MP_REPO" update-ref "$MP_RACE_BRIEF_REF" \
+        "$MP_RACE_BRIEF_TO" "$MP_RACE_BRIEF_FROM"
       ;;
     advance-head)
       "$MP_REAL_GIT" -C "$MP_REPO" reset --hard "$MP_RACE_HEAD" >/dev/null
@@ -137,10 +156,25 @@ unrelated=$(printf 'test: unrelated history\n' |
   git commit-tree "$(git rev-parse "$base^{tree}")")
 owner_oid=$(git rev-parse refs/megapowers/runs/wt/owner)
 
+publish_root_brief() {
+  brief_run=$1 brief_node=$2 brief_session=$3 brief_file=$4
+  jq -n --arg run "$brief_run" --arg node "$brief_node" --arg base "$base" \
+    --arg branch "mp/$brief_run/nodes/$brief_node/head" \
+    '{version:1,run_id:$run,node:$node,parent:null,base:$base,branch:$branch,
+      task:("Implement " + $node),acceptance:["test -f README.md"],blocked_by:[],
+      parallel_safety:"Safe",ownership:[($node + "/")],may_decompose:false,
+      remaining_depth:0,descendant_budget:0,writer_budget:1,integration_budget:1}' \
+    > "$brief_file"
+  expect_ok "$RUN" brief-put "$brief_run" "$brief_node" "$brief_file" \
+    --session "$brief_session"
+}
+
 # Branch creation must be bound to the exact generation it read.
 expect_ok "$RUN" init generation-race --plan plan.md --root generation-root \
   --target feature/worktree --session generation-owner --harness codex \
   --max-depth 1 --agent-budget 1 --writers 1 --integrations 1 --allow-task-commits
+publish_root_brief generation-race generation-root generation-owner \
+  "$TMP/generation-root.json"
 generation_owner=$(git rev-parse refs/megapowers/runs/generation-race/owner)
 generation_marker="$TMP/generation-race"
 expect_fail env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" MP_BASE_PATH="$base_path" \
@@ -157,6 +191,7 @@ git update-ref -d refs/heads/mp/generation-race/nodes/generation-root/head 2>/de
 expect_ok "$RUN" init cleanup-race --plan plan.md --root cleanup-root \
   --target feature/worktree --session cleanup-owner --harness codex \
   --max-depth 1 --agent-budget 1 --writers 1 --integrations 1 --allow-task-commits
+publish_root_brief cleanup-race cleanup-root cleanup-owner "$TMP/cleanup-root.json"
 cleanup_owner=$(git rev-parse refs/megapowers/runs/cleanup-race/owner)
 cleanup_result=$(make_minimal_result cleanup-race cleanup-root "$base")
 git update-ref refs/megapowers/runs/cleanup-race/nodes/cleanup-root/result "$cleanup_result"
@@ -172,6 +207,54 @@ git show-ref --verify --quiet refs/heads/mp/cleanup-race/nodes/cleanup-root/head
 git show-ref --verify --quiet refs/megapowers/runs/cleanup-race/manifest &&
   bad "cleanup race left the run manifest" || ok
 git update-ref -d refs/heads/mp/cleanup-race/nodes/cleanup-root/head 2>/dev/null || true
+
+# Branch creation must include the exact immutable brief ref in its transaction.
+expect_ok "$RUN" init brief-race --plan plan.md --root brief-root \
+  --target feature/worktree --session brief-owner --harness codex \
+  --max-depth 1 --agent-budget 1 --writers 1 --integrations 1 --allow-task-commits
+publish_root_brief brief-race brief-root brief-owner "$TMP/brief-root.json"
+brief_race_ref=refs/megapowers/runs/brief-race/nodes/brief-root/brief
+brief_race_from=$(git rev-parse "$brief_race_ref")
+brief_race_to=$(jq -c '.task="Replacement brief"' "$TMP/brief-root.json" |
+  git hash-object -w --stdin)
+brief_race_marker="$TMP/brief-race"
+expect_fail env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+  MP_BASE_PATH="$base_path" MP_RUN="$RUN" MP_REPO="$repo" MP_RACE_KIND=branch \
+  MP_RACE_ACTION=brief MP_RACE_MARKER="$brief_race_marker" MP_RACE_RUN=brief-race \
+  MP_RACE_NODE=brief-root MP_RACE_BRIEF_REF="$brief_race_ref" \
+  MP_RACE_BRIEF_FROM="$brief_race_from" MP_RACE_BRIEF_TO="$brief_race_to" \
+  "$WT" branch-init brief-race brief-root "$base"
+[ -e "$brief_race_marker" ] && ok || bad "brief race did not run"
+git show-ref --verify --quiet refs/heads/mp/brief-race/nodes/brief-root/head &&
+  bad "stale branch-init ignored an immutable brief change" || ok
+git update-ref -d refs/heads/mp/brief-race/nodes/brief-root/head 2>/dev/null || true
+
+# Missing and malformed immutable briefs fail before creating a branch.
+expect_ok "$RUN" init missing-brief --plan plan.md --root missing-root \
+  --target feature/worktree --session missing-owner --harness codex \
+  --max-depth 1 --agent-budget 1 --allow-task-commits
+expect_status() {
+  expected_status=$1
+  shift
+  if "$@" >/dev/null 2>&1; then actual_status=0; else actual_status=$?; fi
+  [ "$actual_status" -eq "$expected_status" ] && ok ||
+    bad "expected status $expected_status, got $actual_status: $*"
+}
+expect_status 3 "$WT" branch-init missing-brief missing-root "$base"
+git show-ref --verify --quiet refs/heads/mp/missing-brief/nodes/missing-root/head &&
+  bad "missing brief branch-init created a branch" || ok
+git update-ref -d refs/heads/mp/missing-brief/nodes/missing-root/head 2>/dev/null || true
+
+expect_ok "$RUN" init malformed-brief --plan plan.md --root malformed-root \
+  --target feature/worktree --session malformed-owner --harness codex \
+  --max-depth 1 --agent-budget 1 --allow-task-commits
+malformed_brief_oid=$(printf 'not json\n' | git hash-object -w --stdin)
+git update-ref refs/megapowers/runs/malformed-brief/nodes/malformed-root/brief \
+  "$malformed_brief_oid"
+expect_status 3 "$WT" branch-init malformed-brief malformed-root "$base"
+git show-ref --verify --quiet refs/heads/mp/malformed-brief/nodes/malformed-root/head &&
+  bad "malformed brief branch-init created a branch" || ok
+git update-ref -d refs/heads/mp/malformed-brief/nodes/malformed-root/head 2>/dev/null || true
 
 make_brief() {
   key=$1
@@ -196,7 +279,32 @@ cat > "$TMP/coordinator.json" <<EOF
 EOF
 expect_ok "$RUN" brief-put wt coordinator "$TMP/coordinator.json" --session owner
 expect_ok "$RUN" claim wt coordinator --session coordinator-session --harness codex
+# The caller cannot substitute an unrelated commit for the published brief base.
+expect_fail "$WT" branch-init wt coordinator "$unrelated"
+git show-ref --verify --quiet refs/heads/mp/wt/nodes/coordinator/head &&
+  bad "mismatched brief base created the coordinator branch" || ok
+# The unfixed RED path creates the branch, so remove it before proving exact A.
+git update-ref -d refs/heads/mp/wt/nodes/coordinator/head 2>/dev/null || true
 expect_ok "$WT" branch-init wt coordinator "$base"
+
+# Existing-branch recovery must retain the exact brief through validation.
+coordinator_brief_ref=refs/megapowers/runs/wt/nodes/coordinator/brief
+coordinator_brief_oid=$(git rev-parse "$coordinator_brief_ref")
+coordinator_replacement_oid=$(jq -c '.task="Raced coordinator brief"' \
+  "$TMP/coordinator.json" | git hash-object -w --stdin)
+coordinator_brief_marker="$TMP/coordinator-brief-race"
+expect_fail env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+  MP_BASE_PATH="$base_path" MP_REPO="$repo" MP_RACE_ACTION=brief-existing \
+  MP_RACE_MARKER="$coordinator_brief_marker" \
+  MP_RACE_BRIEF_REF="$coordinator_brief_ref" \
+  MP_RACE_BRIEF_FROM="$coordinator_brief_oid" \
+  MP_RACE_BRIEF_TO="$coordinator_replacement_oid" \
+  "$WT" branch-init wt coordinator "$base"
+[ -e "$coordinator_brief_marker" ] && ok || bad "existing brief race did not run"
+[ "$(git rev-parse refs/heads/mp/wt/nodes/coordinator/head)" = "$base" ] && ok ||
+  bad "existing brief race changed the coordinator branch"
+git update-ref "$coordinator_brief_ref" "$coordinator_brief_oid" \
+  "$coordinator_replacement_oid"
 
 cat > "$TMP/second-root.json" <<EOF
 {"version":1,"run_id":"wt","node":"second-root","parent":null,"base":"$base",

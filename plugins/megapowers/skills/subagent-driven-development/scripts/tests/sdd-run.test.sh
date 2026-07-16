@@ -263,6 +263,7 @@ expect_ok "$RUN" init close-descendant --plan plan.md --root parent --target fea
 expect_ok "$RUN" init close-worktree-race --plan plan.md --root race-root --target feature/multi-writer --session close-race-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init cleanup-worktree-race --plan plan.md --root cleanup-root --target feature/multi-writer --session cleanup-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init cleanup-primary-root --plan plan.md --root cleanup-primary-root --target feature/multi-writer --session cleanup-primary-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init slot-worktree-matrix --plan plan.md --root matrix-node --root matrix-peer --target feature/multi-writer --session matrix-owner --harness codex --max-depth 2 --agent-budget 2 --writers 1 --integrations 1 --allow-task-commits
 defaults_base=refs/megapowers/runs/defaults
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.writer_limit')" 3
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.integration_limit')" 1
@@ -539,6 +540,202 @@ expect_eq "$target_slot_after" "$target_slot_oid"
 [ -n "$target_slot_after" ] || git update-ref "$target_slot_ref" "$target_slot_oid"
 git worktree remove "$TMP/live-target-candidate"
 expect_ok "$RUN" slot-release demo integration "$target_slot_n" --session codex-1 --expected "$target_slot_oid"
+
+# Slot capacity follows every associated attached or detached worktree. Keep
+# unrelated attached and detached controls at the same commit throughout, so
+# association cannot accidentally depend on HEAD equality.
+write_root_brief slot-worktree-matrix matrix-node matrix-node/ 0 0 1 1 \
+  matrix-node.json
+write_root_brief slot-worktree-matrix matrix-peer matrix-peer/ 0 0 1 1 \
+  matrix-peer.json
+expect_ok "$RUN" brief-put slot-worktree-matrix matrix-node matrix-node.json \
+  --session matrix-owner
+expect_ok "$RUN" brief-put slot-worktree-matrix matrix-peer matrix-peer.json \
+  --session matrix-owner
+matrix_claim=$("$RUN" claim slot-worktree-matrix matrix-node \
+  --session matrix-session --harness codex)
+matrix_peer_claim=$("$RUN" claim slot-worktree-matrix matrix-peer \
+  --session matrix-peer-session --harness codex)
+matrix_owner_oid=$(git rev-parse refs/megapowers/runs/slot-worktree-matrix/owner)
+matrix_root="$TMP/slot-matrix"
+mkdir -p "$matrix_root"
+matrix_unrelated_attached="$matrix_root/unrelated-attached"
+matrix_unrelated_detached="$matrix_root/unrelated-detached"
+git update-ref refs/heads/mp/unrelated/matrix-attached/head "$head"
+git worktree add -q "$matrix_unrelated_attached" mp/unrelated/matrix-attached/head
+git worktree add -q --detach "$matrix_unrelated_detached" "$head"
+
+matrix_add_worktree() {
+  matrix_path=$1 matrix_branch=$2
+  mkdir -p "$(dirname "$matrix_path")"
+  git update-ref "refs/heads/$matrix_branch" "$head"
+  git worktree add -q "$matrix_path" "$matrix_branch"
+}
+
+matrix_expect_guarded() {
+  matrix_ref=$1 matrix_oid=$2
+  shift 2
+  expect_status 4 "$@"
+  matrix_actual=$(git rev-parse --verify "$matrix_ref" 2>/dev/null || true)
+  expect_eq "$matrix_actual" "$matrix_oid"
+  # Restore the ref after the RED run, where detached worktrees are ignored.
+  [ -n "$matrix_actual" ] || git update-ref "$matrix_ref" "$matrix_oid"
+}
+
+# Normal release, writer scope: attached, detached, capacity, then removal.
+matrix_writer=$("$RUN" slot-acquire slot-worktree-matrix writer matrix-node \
+  --session matrix-session --harness codex)
+matrix_writer_n=${matrix_writer%% *}
+matrix_writer_oid=${matrix_writer#* }
+matrix_writer_ref="refs/megapowers/runs/slot-worktree-matrix/slots/writer/$matrix_writer_n"
+matrix_writer_path="$matrix_root/slot-worktree-matrix/nodes/matrix-node"
+matrix_add_worktree "$matrix_writer_path" \
+  mp/slot-worktree-matrix/nodes/matrix-node/head
+matrix_expect_guarded "$matrix_writer_ref" "$matrix_writer_oid" \
+  "$RUN" slot-release slot-worktree-matrix writer "$matrix_writer_n" \
+  --session matrix-session --expected "$matrix_writer_oid"
+git -C "$matrix_writer_path" switch --detach -q
+matrix_expect_guarded "$matrix_writer_ref" "$matrix_writer_oid" \
+  "$RUN" slot-release slot-worktree-matrix writer "$matrix_writer_n" \
+  --session matrix-session --expected "$matrix_writer_oid"
+expect_status 4 "$RUN" slot-acquire slot-worktree-matrix writer matrix-peer \
+  --session matrix-peer-session --harness codex
+git worktree remove "$matrix_writer_path"
+expect_ok "$RUN" slot-release slot-worktree-matrix writer "$matrix_writer_n" \
+  --session matrix-session --expected "$matrix_writer_oid"
+
+# Normal release, node-candidate scope: attached, detached, then removal.
+matrix_node_release=$("$RUN" slot-acquire slot-worktree-matrix integration matrix-node \
+  --session matrix-session --harness codex)
+matrix_node_release_n=${matrix_node_release%% *}
+matrix_node_release_oid=${matrix_node_release#* }
+matrix_node_release_ref="refs/megapowers/runs/slot-worktree-matrix/slots/integration/$matrix_node_release_n"
+matrix_node_release_path="$matrix_root/slot-worktree-matrix/integration/nodes/matrix-node/release"
+matrix_add_worktree "$matrix_node_release_path" \
+  mp/slot-worktree-matrix/candidates/nodes/matrix-node/release/head
+matrix_expect_guarded "$matrix_node_release_ref" "$matrix_node_release_oid" \
+  "$RUN" slot-release slot-worktree-matrix integration "$matrix_node_release_n" \
+  --session matrix-session --expected "$matrix_node_release_oid"
+git -C "$matrix_node_release_path" switch --detach -q
+matrix_expect_guarded "$matrix_node_release_ref" "$matrix_node_release_oid" \
+  "$RUN" slot-release slot-worktree-matrix integration "$matrix_node_release_n" \
+  --session matrix-session --expected "$matrix_node_release_oid"
+git worktree remove "$matrix_node_release_path"
+expect_ok "$RUN" slot-release slot-worktree-matrix integration \
+  "$matrix_node_release_n" --session matrix-session \
+  --expected "$matrix_node_release_oid"
+
+# Normal release, target-candidate scope: attached, detached, then removal.
+matrix_target_release=$("$RUN" slot-acquire slot-worktree-matrix integration @target \
+  --session matrix-owner --harness codex --expected-owner "$matrix_owner_oid")
+matrix_target_release_n=${matrix_target_release%% *}
+matrix_target_release_oid=${matrix_target_release#* }
+matrix_target_release_ref="refs/megapowers/runs/slot-worktree-matrix/slots/integration/$matrix_target_release_n"
+matrix_target_release_path="$matrix_root/slot-worktree-matrix/integration/target/matrix-node/release"
+matrix_add_worktree "$matrix_target_release_path" \
+  mp/slot-worktree-matrix/candidates/target/matrix-node/release/head
+matrix_expect_guarded "$matrix_target_release_ref" "$matrix_target_release_oid" \
+  "$RUN" slot-release slot-worktree-matrix integration "$matrix_target_release_n" \
+  --session matrix-owner --expected "$matrix_target_release_oid"
+git -C "$matrix_target_release_path" switch --detach -q
+matrix_expect_guarded "$matrix_target_release_ref" "$matrix_target_release_oid" \
+  "$RUN" slot-release slot-worktree-matrix integration "$matrix_target_release_n" \
+  --session matrix-owner --expected "$matrix_target_release_oid"
+git worktree remove "$matrix_target_release_path"
+expect_ok "$RUN" slot-release slot-worktree-matrix integration \
+  "$matrix_target_release_n" --session matrix-owner \
+  --expected "$matrix_target_release_oid"
+
+# Stale recovery, writer scope: attached, detached, then removal.
+matrix_writer_recover=$("$RUN" slot-acquire slot-worktree-matrix writer matrix-node \
+  --session matrix-session --harness codex)
+matrix_writer_recover_n=${matrix_writer_recover%% *}
+matrix_writer_recover_oid=${matrix_writer_recover#* }
+matrix_writer_recover_ref="refs/megapowers/runs/slot-worktree-matrix/slots/writer/$matrix_writer_recover_n"
+matrix_writer_stale=$(git cat-file blob "$matrix_writer_recover_oid" |
+  jq -c '.claimed_at="2026-07-16T11:44:59Z"' | git hash-object -w --stdin)
+git update-ref "$matrix_writer_recover_ref" "$matrix_writer_stale" \
+  "$matrix_writer_recover_oid"
+matrix_writer_recover_path="$matrix_root/slot-worktree-matrix/nodes/matrix-node"
+matrix_add_worktree "$matrix_writer_recover_path" \
+  mp/slot-worktree-matrix/nodes/matrix-node/head
+matrix_expect_guarded "$matrix_writer_recover_ref" "$matrix_writer_stale" \
+  env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot slot-worktree-matrix \
+  writer "$matrix_writer_recover_n" --owner-session matrix-owner \
+  --expected "$matrix_writer_stale" --confirmed-inactive
+git -C "$matrix_writer_recover_path" switch --detach -q
+matrix_expect_guarded "$matrix_writer_recover_ref" "$matrix_writer_stale" \
+  env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot slot-worktree-matrix \
+  writer "$matrix_writer_recover_n" --owner-session matrix-owner \
+  --expected "$matrix_writer_stale" --confirmed-inactive
+git worktree remove "$matrix_writer_recover_path"
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot \
+  slot-worktree-matrix writer "$matrix_writer_recover_n" \
+  --owner-session matrix-owner --expected "$matrix_writer_stale" \
+  --confirmed-inactive
+
+# Stale recovery, node-candidate scope: attached, detached, then removal.
+matrix_node_recover=$("$RUN" slot-acquire slot-worktree-matrix integration matrix-node \
+  --session matrix-session --harness codex)
+matrix_node_recover_n=${matrix_node_recover%% *}
+matrix_node_recover_oid=${matrix_node_recover#* }
+matrix_node_recover_ref="refs/megapowers/runs/slot-worktree-matrix/slots/integration/$matrix_node_recover_n"
+matrix_node_stale=$(git cat-file blob "$matrix_node_recover_oid" |
+  jq -c '.claimed_at="2026-07-16T11:44:59Z"' | git hash-object -w --stdin)
+git update-ref "$matrix_node_recover_ref" "$matrix_node_stale" \
+  "$matrix_node_recover_oid"
+matrix_node_recover_path="$matrix_root/slot-worktree-matrix/integration/nodes/matrix-node/recover"
+matrix_add_worktree "$matrix_node_recover_path" \
+  mp/slot-worktree-matrix/candidates/nodes/matrix-node/recover/head
+matrix_expect_guarded "$matrix_node_recover_ref" "$matrix_node_stale" \
+  env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot slot-worktree-matrix \
+  integration "$matrix_node_recover_n" --owner-session matrix-owner \
+  --expected "$matrix_node_stale" --confirmed-inactive
+git -C "$matrix_node_recover_path" switch --detach -q
+matrix_expect_guarded "$matrix_node_recover_ref" "$matrix_node_stale" \
+  env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot slot-worktree-matrix \
+  integration "$matrix_node_recover_n" --owner-session matrix-owner \
+  --expected "$matrix_node_stale" --confirmed-inactive
+git worktree remove "$matrix_node_recover_path"
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot \
+  slot-worktree-matrix integration "$matrix_node_recover_n" \
+  --owner-session matrix-owner --expected "$matrix_node_stale" \
+  --confirmed-inactive
+
+# Stale recovery, target-candidate scope: attached, detached, then removal.
+matrix_target_recover=$("$RUN" slot-acquire slot-worktree-matrix integration @target \
+  --session matrix-owner --harness codex --expected-owner "$matrix_owner_oid")
+matrix_target_recover_n=${matrix_target_recover%% *}
+matrix_target_recover_oid=${matrix_target_recover#* }
+matrix_target_recover_ref="refs/megapowers/runs/slot-worktree-matrix/slots/integration/$matrix_target_recover_n"
+matrix_target_stale=$(git cat-file blob "$matrix_target_recover_oid" |
+  jq -c '.claimed_at="2026-07-16T11:44:59Z"' | git hash-object -w --stdin)
+git update-ref "$matrix_target_recover_ref" "$matrix_target_stale" \
+  "$matrix_target_recover_oid"
+matrix_target_recover_path="$matrix_root/slot-worktree-matrix/integration/target/matrix-node/recover"
+matrix_add_worktree "$matrix_target_recover_path" \
+  mp/slot-worktree-matrix/candidates/target/matrix-node/recover/head
+matrix_expect_guarded "$matrix_target_recover_ref" "$matrix_target_stale" \
+  env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot slot-worktree-matrix \
+  integration "$matrix_target_recover_n" --owner-session matrix-owner \
+  --expected "$matrix_target_stale" --confirmed-inactive
+git -C "$matrix_target_recover_path" switch --detach -q
+matrix_expect_guarded "$matrix_target_recover_ref" "$matrix_target_stale" \
+  env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot slot-worktree-matrix \
+  integration "$matrix_target_recover_n" --owner-session matrix-owner \
+  --expected "$matrix_target_stale" --confirmed-inactive
+git worktree remove "$matrix_target_recover_path"
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot \
+  slot-worktree-matrix integration "$matrix_target_recover_n" \
+  --owner-session matrix-owner --expected "$matrix_target_stale" \
+  --confirmed-inactive
+
+git worktree remove "$matrix_unrelated_attached"
+git worktree remove "$matrix_unrelated_detached"
+expect_ok "$RUN" release-claim slot-worktree-matrix matrix-node \
+  --session matrix-session --expected "${matrix_claim%% *}"
+expect_ok "$RUN" release-claim slot-worktree-matrix matrix-peer \
+  --session matrix-peer-session --expected "${matrix_peer_claim%% *}"
 
 # A release and reacquire in one second must not recreate an ownership object ID.
 write_root_brief claim-aba aba-node aba/ 0 0 0 0 aba-node.json

@@ -395,6 +395,18 @@ ensure_node_branch() {
       return
     }
     run_snapshot_current "$run" || return
+    [ -z "$verify_ref" ] || [ "$(mp_read_ref "$verify_ref" || true)" = "$verify_oid" ] || {
+      mp_die "node branch authorization changed during validation" 4
+      return
+    }
+    [ -z "$extra_ref" ] || [ "$(mp_read_ref "$extra_ref" || true)" = "$extra_oid" ] || {
+      mp_die "node branch authorization changed during validation" 4
+      return
+    }
+    [ -z "$third_ref" ] || [ "$(mp_read_ref "$third_ref" || true)" = "$third_oid" ] || {
+      mp_die "node branch authorization changed during validation" 4
+      return
+    }
     [ "$(mp_read_ref "$branch_ref" || true)" = "$current" ] || {
       mp_die "node branch changed during validation" 4
       return
@@ -483,10 +495,16 @@ node_add_authorization_current() {
 
 cmd_branch_init() {
   [ "$#" -eq 3 ] || { mp_die "usage: sdd-worktree branch-init RUN_ID NODE BASE" 2; return; }
-  local run=$1 node=$2 base=$3
+  local run=$1 node=$2 base=$3 brief_base
   load_run "$run" || return
   mp_validate_node_path "$node" || return
-  ensure_node_branch "$run" "$node" "$base"
+  read_node_brief "$run" "$node" || return
+  brief_base=$(jq -r '.base' <<<"$brief")
+  [ "$base" = "$brief_base" ] || {
+    mp_die "base does not match the immutable node brief" 4
+    return
+  }
+  ensure_node_branch "$run" "$node" "$base" "$brief_ref" "$brief_oid"
 }
 
 cmd_node_add() {

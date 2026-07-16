@@ -233,7 +233,8 @@ mp_cleanup_worktrees_clear() {
 }
 
 mp_require_slot_worktrees_clear() {
-  local run=$1 kind=$2 slot_json=$3 scope node='' wanted match_mode worktrees line branch
+  local run=$1 kind=$2 slot_json=$3 scope node='' wanted match_mode worktrees line
+  local path='' branch='' state='' associated=0 detached_prefix='' remainder subject
   scope=$(jq -er '.scope | select(. == "node" or . == "target")' <<<"$slot_json") || {
     mp_die "slot object has an invalid worktree scope" 3
     return
@@ -246,6 +247,7 @@ mp_require_slot_worktrees_clear() {
     }
     wanted="refs/heads/mp/$run/nodes/$node/head"
     match_mode=exact
+    detached_prefix="/$run/nodes/$node"
   elif [ "$scope" = node ]; then
     node=$(jq -er '.node | select(type == "string" and length > 0)' <<<"$slot_json") || {
       mp_die "node integration slot does not name a node" 3
@@ -253,9 +255,11 @@ mp_require_slot_worktrees_clear() {
     }
     wanted="refs/heads/mp/$run/candidates/nodes/$node/"
     match_mode=prefix
+    detached_prefix="/$run/integration/nodes/$node/"
   else
     wanted="refs/heads/mp/$run/candidates/target/"
     match_mode=prefix
+    detached_prefix="/$run/integration/target/"
   fi
   if ! worktrees=$(git -c core.quotePath=false worktree list --porcelain); then
     mp_die "could not inspect shared-clone worktrees" 3
@@ -263,17 +267,85 @@ mp_require_slot_worktrees_clear() {
   fi
   while IFS= read -r line; do
     case "$line" in
-      branch\ *) branch=${line#branch } ;;
-      *) continue ;;
+      worktree\ *)
+        [ -z "$path" ] || {
+          mp_die "malformed shared-clone worktree inspection" 3
+          return
+        }
+        path=${line#worktree }
+        [ -n "$path" ] || {
+          mp_die "malformed shared-clone worktree inspection" 3
+          return
+        }
+        ;;
+      HEAD\ *|locked|locked\ *|prunable|prunable\ *) ;;
+      branch\ *)
+        [ -n "$path" ] && [ -z "$state" ] || {
+          mp_die "malformed shared-clone worktree inspection" 3
+          return
+        }
+        branch=${line#branch }
+        [ -n "$branch" ] || {
+          mp_die "malformed shared-clone worktree inspection" 3
+          return
+        }
+        state=attached
+        ;;
+      detached)
+        [ -n "$path" ] && [ -z "$state" ] || {
+          mp_die "malformed shared-clone worktree inspection" 3
+          return
+        }
+        state=detached
+        ;;
+      ''|__MP_WORKTREE_END__)
+        [ -n "$path" ] && [ -n "$state" ] || {
+          mp_die "malformed shared-clone worktree inspection" 3
+          return
+        }
+        associated=0
+        if [ "$state" = attached ]; then
+          if [ "$match_mode" = exact ]; then
+            [ "$branch" = "$wanted" ] && associated=1
+          else
+            case "$branch" in "$wanted"*) associated=1 ;; esac
+          fi
+        elif [ "$kind" = writer ]; then
+          case "$path" in *"$detached_prefix") associated=1 ;; esac
+        elif [ "$scope" = node ]; then
+          case "$path" in
+            *"$detached_prefix"*)
+              remainder=${path##*"$detached_prefix"}
+              [ -n "$remainder" ] && case "$remainder" in */*) ;; *) associated=1 ;; esac
+              ;;
+          esac
+        else
+          case "$path" in
+            *"$detached_prefix"*)
+              remainder=${path##*"$detached_prefix"}
+              case "$remainder" in */?*) associated=1 ;; esac
+              ;;
+          esac
+        fi
+        if [ "$associated" -eq 1 ]; then
+          subject=$branch
+          [ "$state" = attached ] || subject=$path
+          mp_die "slot-associated worktree is still registered: $subject" 4
+          return
+        fi
+        path=''
+        branch=''
+        state=''
+        [ "$line" != __MP_WORKTREE_END__ ] || break
+        ;;
+      *)
+        mp_die "malformed shared-clone worktree inspection" 3
+        return
+        ;;
     esac
-    if [ "$match_mode" = exact ]; then
-      [ "$branch" = "$wanted" ] || continue
-    else
-      case "$branch" in "$wanted"*) ;; *) continue ;; esac
-    fi
-    mp_die "slot-associated worktree is still registered: $branch" 4
-    return
-  done <<<"$worktrees"
+  done <<<"$worktrees
+__MP_WORKTREE_END__"
+  return 0
 }
 
 MP_CLOSE_RESULT_VERIFICATIONS=''
