@@ -19,6 +19,10 @@ Use this template only for recursive SDD nodes.
 Read the immutable brief from the ref before acting. The brief is the complete
 task requirement. Do not broaden it from conversation history.
 
+On first entry, initialize your exact node branch at the immutable brief base
+with `sdd-worktree branch-init RUN NODE BASE`. This consumes no writer slot or worktree and
+must succeed before any child `brief-put` or dispatch and before candidate integration.
+
 ## Ownership
 
 You own integration only for `[NODE_PATH]`. Children own their branches and
@@ -42,6 +46,13 @@ depth and descendant budget, claim it under its unique child session, then
 dispatch it with this coordinator prompt and no writer slot or worktree. Pass
 the reduced depth and budget plus the global limits. Join only its final result.
 Any child not selected as a nested coordinator follows the writing lifecycle.
+
+## Recovery
+
+After interruption, inspect `sdd-run status RUN_ID`, verify any in-progress
+branch, and resume from the first blocked or missing result. A blocked result is replaceable
+through `result-put --expected`; never treat it as done or infer completion from
+branch existence. Do not auto-release a stale claim.
 
 ## Child lifecycle
 

@@ -91,7 +91,11 @@ After all tasks: dispatch the final whole-branch review using megapowers:request
    Other sessions join the same run and atomically claim disjoint roots. When a
    blocked root's dependencies are integrated, the owner publishes its brief
    from the current target head.
-5. A coordinator publishes child briefs only when its node says
+5. On first entry, every root or nested coordinator initializes its exact node
+   branch at the immutable brief base with
+   `sdd-worktree branch-init RUN NODE BASE`. This consumes no writer slot or worktree and
+   must succeed before any child `brief-put` or dispatch and before candidate integration.
+   A coordinator publishes child briefs only when its node says
    `May decompose: Yes`, remaining depth is positive, ownership is disjoint,
    and each child has an independent acceptance check.
 6. The coordinator acquires a writer slot and creates the linked worktree
@@ -217,7 +221,9 @@ Recursive mode treats its private run refs under `refs/megapowers/runs/`, node
 branches, commits, immutable briefs, and result trees as authoritative. The
 generation ref is the snapshot boundary for registry mutations. After
 compaction or `git clean`, run `sdd-run status RUN_ID`, verify any in-progress
-branch, and resume from the first missing terminal result. Never infer `done` from branch existence and never auto-release a stale claim.
+branch, and resume from the first blocked or missing result. A blocked result is replaceable
+with `result-put --expected`; it is not completion, and the run cannot close until every root result is `done`.
+Never infer `done` from branch existence and never auto-release a stale claim.
 
 ## Prompt Templates
 
