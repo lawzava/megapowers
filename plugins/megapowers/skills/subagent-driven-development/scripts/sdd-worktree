@@ -1,0 +1,708 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Covered by scripts/tests/sdd-worktree.test.sh.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export MP_PROGRAM=sdd-worktree
+# shellcheck disable=SC1091
+source "$HERE/run-lib.sh"
+
+need_value() {
+  [ "$1" -ge 2 ] || mp_die "missing value for $2" 2
+}
+
+positive_integer() {
+  [[ "$2" =~ ^[1-9][0-9]*$ ]] || mp_die "$1 must be a positive integer" 2
+}
+
+object_id() {
+  case "$(git -C "$repo" rev-parse --show-object-format)" in
+    sha1) [[ "$1" =~ ^[0-9a-f]{40}$ ]] ;;
+    sha256) [[ "$1" =~ ^[0-9a-f]{64}$ ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+mp_ref_oid_or_zero() {
+  mp_read_ref "$1" || mp_zero_oid
+}
+
+mp_read_result_json() {
+  git -C "$repo" show "$1:result.json" 2>/dev/null | jq -ce .
+}
+
+node_branch() { printf 'mp/%s/nodes/%s/head\n' "$1" "$2"; }
+candidate_branch() { printf 'mp/%s/candidates/%s/%s/%s/head\n' "$1" "$2" "$3" "$4"; }
+node_path() { printf '%s/%s/nodes/%s\n' "$root" "$1" "$2"; }
+candidate_path() { printf '%s/%s/integration/%s/%s/%s\n' "$root" "$1" "$2" "$3" "$4"; }
+
+validate_branch_ref() {
+  git -C "$repo" check-ref-format "$1" >/dev/null 2>&1 ||
+    mp_die "invalid generated ref: $1" 2
+}
+
+invocation_repo=$(git rev-parse --show-toplevel 2>/dev/null) ||
+  mp_die "current directory is not in a Git working tree" 2
+invocation_repo=$(cd "$invocation_repo" && pwd -P)
+[ -z "$(git rev-parse --show-superproject-working-tree 2>/dev/null)" ] ||
+  mp_die "submodules are not supported" 2
+common_dir=$(git rev-parse --git-common-dir 2>/dev/null) ||
+  mp_die "could not resolve the common Git directory" 2
+case "$common_dir" in
+  /*) ;;
+  *) common_dir="$invocation_repo/$common_dir" ;;
+esac
+common_dir=$(cd "$common_dir" && pwd -P) ||
+  mp_die "could not resolve the common Git directory" 2
+repo=$(git -c core.quotePath=false worktree list --porcelain | sed -n '1s/^worktree //p')
+[ -n "$repo" ] || mp_die "could not resolve the primary working tree" 2
+repo=$(cd "$repo" && pwd -P) || mp_die "could not resolve the primary working tree" 2
+[ "$(git -C "$repo" rev-parse --is-bare-repository 2>/dev/null)" = false ] ||
+  mp_die "bare repositories are not supported" 2
+primary_repo=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null) ||
+  mp_die "the common Git directory has no primary working tree" 2
+primary_repo=$(cd "$primary_repo" && pwd -P)
+[ "$primary_repo" = "$repo" ] || mp_die "could not resolve the primary working tree" 2
+
+manifest=''
+target_branch=''
+load_run() {
+  local run=$1 primary_branch
+  mp_validate_run_id "$run" || return
+  manifest=$(mp_manifest_json "$run") || {
+    mp_die "run does not exist or its manifest is malformed: $run" 3
+    return
+  }
+  target_branch=$(jq -r '.target_branch' <<<"$manifest")
+  git -C "$repo" check-ref-format --branch "$target_branch" >/dev/null 2>&1 || {
+    mp_die "run target branch is invalid" 3
+    return
+  }
+  primary_branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD) || {
+    mp_die "primary target checkout is detached" 2
+    return
+  }
+  [ "$primary_branch" = "$target_branch" ] || {
+    mp_die "primary checkout is not on the run target branch: $target_branch" 4
+    return
+  }
+}
+
+closing_ref=''
+closed_ref=''
+zero=''
+open_snapshot() {
+  local run=$1
+  closing_ref=$(mp_run_ref "$run" closing) || return
+  closed_ref=$(mp_run_ref "$run" closed) || return
+  zero=$(mp_zero_oid) || return
+  [ "$(mp_ref_oid_or_zero "$closing_ref")" = "$zero" ] &&
+    [ "$(mp_ref_oid_or_zero "$closed_ref")" = "$zero" ] || {
+      mp_die "run is closing or closed" 4
+      return
+    }
+}
+
+root=''
+root_mode='tool'
+configure_root() {
+  local requested=$1 harness_requested=$2 parent base
+  [ -z "$requested" ] || [ -z "$harness_requested" ] || {
+    mp_die "--root and --harness-owned-root are mutually exclusive" 2
+    return
+  }
+  if [ -n "$harness_requested" ]; then
+    root_mode=harness
+    requested=$harness_requested
+  else
+    root_mode=tool
+    requested=${requested:-$repo/.worktrees}
+  fi
+  case "$requested" in
+    /*) ;;
+    *) requested="$repo/$requested" ;;
+  esac
+  parent=$(dirname "$requested")
+  base=$(basename "$requested")
+  [ -d "$parent" ] || { mp_die "worktree root parent does not exist" 2; return; }
+  root="$(cd "$parent" && pwd -P)/$base"
+  if [ "$root_mode" = tool ]; then
+    case "$root" in
+      "$repo"/.worktrees|"$repo"/.worktrees/*) ;;
+      *) mp_die "worktree root is outside the tool-owned directory" 2; return ;;
+    esac
+    walk_no_symlinks "$root" || return
+    git -C "$repo" check-ignore -q --no-index "$root/.probe" || {
+      mp_die "worktree root is not ignored" 3
+      return
+    }
+  else
+    if [ -e "$root" ]; then
+      [ -d "$root" ] || { mp_die "harness-owned root is not a directory" 2; return; }
+      root=$(cd "$root" && pwd -P) || { mp_die "could not resolve harness-owned root" 2; return; }
+    fi
+    [ "$root" != "$repo" ] && [ "$root" != "$invocation_repo" ] || {
+      mp_die "harness-owned root cannot be a checkout root" 2
+      return
+    }
+    registered_path_ref "$root" && {
+      mp_die "harness-owned root is already a registered worktree" 4
+      return
+    }
+  fi
+}
+
+walk_no_symlinks() {
+  local path=$1 relative component current=$repo
+  case "$path" in
+    "$repo") [ ! -L "$repo" ] || { mp_die "worktree path contains a symlink" 3; return; }; return ;;
+    "$repo"/*) relative=${path#"$repo"/} ;;
+    *)
+      [ "$root_mode" = harness ] && return
+      mp_die "worktree path is outside the repository" 2
+      return
+      ;;
+  esac
+  while [ -n "$relative" ]; do
+    case "$relative" in
+      */*) component=${relative%%/*}; relative=${relative#*/} ;;
+      *) component=$relative; relative='' ;;
+    esac
+    current="$current/$component"
+    if [ -L "$current" ]; then
+      mp_die "worktree path contains a symlink: $current" 3
+      return
+    fi
+  done
+}
+
+registered_ref=''
+registered_path_ref() {
+  local wanted=$1 line worktree=''
+  registered_ref=''
+  while IFS= read -r line; do
+    case "$line" in
+      worktree\ *) worktree=${line#worktree } ;;
+      branch\ *)
+        if [ "$worktree" = "$wanted" ]; then
+          registered_ref=${line#branch }
+          return 0
+        fi
+        ;;
+      '') worktree='' ;;
+    esac
+  done < <(git -C "$repo" -c core.quotePath=false worktree list --porcelain)
+  return 1
+}
+
+prepare_new_path() {
+  local path=$1 parent canonical_parent
+  walk_no_symlinks "$path" || return
+  [ ! -e "$path" ] && [ ! -L "$path" ] || {
+    mp_die "worktree path already exists: $path" 4
+    return
+  }
+  registered_path_ref "$path" && {
+    mp_die "worktree path is already registered: $path" 4
+    return
+  }
+  parent=$(dirname "$path")
+  mkdir -p "$parent" || { mp_die "could not create worktree parent: $parent" 3; return; }
+  walk_no_symlinks "$parent" || return
+  canonical_parent=$(cd "$parent" && pwd -P) || {
+    mp_die "could not resolve worktree parent" 3
+    return
+  }
+  if [ "$root_mode" = tool ]; then
+    case "$canonical_parent/" in
+      "$repo"/.worktrees/*) ;;
+      *) mp_die "worktree parent escaped the tool-owned directory" 3; return ;;
+    esac
+  fi
+  [ "$path" != "$repo" ] && [ "$path" != "$invocation_repo" ] || {
+    mp_die "worktree path cannot replace a checkout root" 2
+    return
+  }
+}
+
+add_worktree() {
+  local path=$1 branch=$2
+  prepare_new_path "$path" || return
+  if ! git -C "$repo" worktree add "$path" "$branch" >/dev/null; then
+    printf '%s\n' "$path" >&2
+    mp_die "could not create worktree" 3
+    return
+  fi
+}
+
+remove_registered_worktree() {
+  local path=$1 expected_ref=$2
+  registered_path_ref "$path" || {
+    mp_die "worktree is not registered: $path" 4
+    return
+  }
+  [ "$registered_ref" = "$expected_ref" ] || {
+    mp_die "worktree is registered to another branch: $path" 4
+    return
+  }
+  [ -d "$path" ] || { mp_die "registered worktree is missing: $path" 4; return; }
+  [ -z "$(git -C "$path" status --porcelain=v1)" ] || {
+    mp_die "worktree is dirty and remains for inspection: $path" 4
+    return
+  }
+  git -C "$repo" worktree remove "$path" || {
+    mp_die "could not remove worktree: $path" 3
+    return
+  }
+}
+
+brief=''
+brief_oid=''
+brief_ref=''
+read_node_brief() {
+  local run=$1 node=$2 expected_branch
+  brief_ref=$(mp_run_ref "$run" "nodes/$node/brief") || return
+  brief_oid=$(mp_read_ref "$brief_ref") || { mp_die "node brief does not exist" 3; return; }
+  brief=$(mp_read_json_ref "$brief_oid") || { mp_die "node brief is malformed" 3; return; }
+  expected_branch=$(node_branch "$run" "$node")
+  jq -e --arg run "$run" --arg node "$node" --arg branch "$expected_branch" \
+    '.version == 1 and .run_id == $run and .node == $node and .branch == $branch and
+     (.base | type == "string")' >/dev/null <<<"$brief" || {
+      mp_die "node brief does not match the worktree request" 3
+      return
+    }
+  [ "$(git -C "$repo" cat-file -t "$(jq -r '.base' <<<"$brief")" 2>/dev/null || true)" = commit ] || {
+    mp_die "node brief base is not a commit" 3
+    return
+  }
+}
+
+slot_ref=''
+slot_json=''
+validate_slot() {
+  local run=$1 kind=$2 slot=$3 expected=$4 scope=$5 node=$6 owner_oid=${7:-}
+  positive_integer slot "$slot" || return
+  object_id "$expected" || { mp_die "expected slot must be an object ID" 2; return; }
+  slot_ref=$(mp_run_ref "$run" "slots/$kind/$slot") || return
+  [ "$(mp_read_ref "$slot_ref" || true)" = "$expected" ] || {
+    mp_die "slot is not the exact active slot" 4
+    return
+  }
+  slot_json=$(mp_read_json_ref "$expected") || { mp_die "slot object is malformed" 3; return; }
+  jq -e --arg kind "$kind" --arg scope "$scope" --arg node "$node" \
+    --argjson slot "$slot" \
+    '.kind == $kind and .scope == $scope and .slot == $slot and
+     (if $scope == "node" then .node == $node else .node == null end)' \
+    >/dev/null <<<"$slot_json" || { mp_die "slot object does not match the request" 4; return; }
+  if [ "$scope" = target ]; then
+    [ "$(jq -r '.owner_oid' <<<"$slot_json")" = "$owner_oid" ] || {
+      mp_die "target slot belongs to another owner object" 4
+      return
+    }
+  fi
+}
+
+ensure_node_branch() {
+  local run=$1 node=$2 base=$3 branch branch_ref current
+  local verify_ref=${4:-} verify_oid=${5:-}
+  branch=$(node_branch "$run" "$node")
+  branch_ref="refs/heads/$branch"
+  validate_branch_ref "$branch_ref" || return
+  [ "$(git -C "$repo" cat-file -t "$base" 2>/dev/null || true)" = commit ] || {
+    mp_die "base must name a commit" 2
+    return
+  }
+  open_snapshot "$run" || return
+  current=$(mp_read_ref "$branch_ref" || true)
+  if [ -n "$current" ]; then
+    [ "$current" = "$base" ] || { mp_die "node branch exists at another base" 4; return; }
+    [ -z "$verify_ref" ] || [ "$(mp_read_ref "$verify_ref" || true)" = "$verify_oid" ] || {
+      mp_die "node branch authorization changed" 4
+      return
+    }
+    open_snapshot "$run" || return
+    return
+  fi
+  if ! git -C "$repo" update-ref --stdin >/dev/null 2>&1 <<EOF
+start
+verify $closing_ref $zero
+verify $closed_ref $zero
+${verify_ref:+verify $verify_ref $verify_oid
+}create $branch_ref $base
+prepare
+commit
+EOF
+  then
+    open_snapshot "$run" || return
+    current=$(mp_read_ref "$branch_ref" || true)
+    [ "$current" = "$base" ] || { mp_die "node branch creation race was lost" 4; return; }
+  fi
+}
+
+cleanup_added_worktree() {
+  local path=$1 expected_ref=$2
+  if registered_path_ref "$path" && [ "$registered_ref" = "$expected_ref" ] &&
+     [ -d "$path" ] && [ -z "$(git -C "$path" status --porcelain=v1 2>/dev/null)" ]; then
+    git -C "$repo" worktree remove "$path" >/dev/null 2>&1 || true
+  fi
+}
+
+parse_root_args() {
+  requested_root=''
+  harness_root=''
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --root)
+        need_value "$#" "$1" || return
+        [ -z "$requested_root" ] || { mp_die "duplicate --root" 2; return; }
+        requested_root=$2; shift 2 ;;
+      --harness-owned-root)
+        need_value "$#" "$1" || return
+        [ -z "$harness_root" ] || { mp_die "duplicate --harness-owned-root" 2; return; }
+        harness_root=$2; shift 2 ;;
+      *) mp_die "unknown worktree-root option: $1" 2; return ;;
+    esac
+  done
+}
+
+cmd_branch_init() {
+  [ "$#" -eq 3 ] || { mp_die "usage: sdd-worktree branch-init RUN_ID NODE BASE" 2; return; }
+  local run=$1 node=$2 base=$3
+  load_run "$run" || return
+  mp_validate_node_path "$node" || return
+  ensure_node_branch "$run" "$node" "$base"
+}
+
+cmd_node_add() {
+  [ "$#" -ge 2 ] || { mp_die "usage: sdd-worktree node-add RUN_ID NODE --slot N --expected-slot OBJECT_ID [--root DIR]" 2; return; }
+  local run=$1 node=$2 slot='' expected='' seen_slot=0 seen_expected=0 path branch branch_ref base
+  local requested_root='' harness_root=''
+  shift 2
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --slot) need_value "$#" "$1" || return; [ "$seen_slot" -eq 0 ] || { mp_die "duplicate --slot" 2; return; }; slot=$2; seen_slot=1; shift 2 ;;
+      --expected-slot) need_value "$#" "$1" || return; [ "$seen_expected" -eq 0 ] || { mp_die "duplicate --expected-slot" 2; return; }; expected=$2; seen_expected=1; shift 2 ;;
+      --root) need_value "$#" "$1" || return; [ -z "$requested_root" ] || { mp_die "duplicate --root" 2; return; }; requested_root=$2; shift 2 ;;
+      --harness-owned-root) need_value "$#" "$1" || return; [ -z "$harness_root" ] || { mp_die "duplicate --harness-owned-root" 2; return; }; harness_root=$2; shift 2 ;;
+      *) mp_die "unknown node-add option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_slot" -eq 1 ] && [ "$seen_expected" -eq 1 ] || { mp_die "node-add requires --slot and --expected-slot" 2; return; }
+  load_run "$run" || return
+  mp_validate_node_path "$node" || return
+  configure_root "$requested_root" "$harness_root" || return
+  read_node_brief "$run" "$node" || return
+  validate_slot "$run" writer "$slot" "$expected" node "$node" || return
+  base=$(jq -r '.base' <<<"$brief")
+  branch=$(node_branch "$run" "$node")
+  branch_ref="refs/heads/$branch"
+  ensure_node_branch "$run" "$node" "$base" "$slot_ref" "$expected" || return
+  path=$(node_path "$run" "$node")
+  open_snapshot "$run" || return
+  [ "$(mp_read_ref "$brief_ref" || true)" = "$brief_oid" ] &&
+    [ "$(mp_read_ref "$slot_ref" || true)" = "$expected" ] || {
+      mp_die "node worktree authorization changed" 4
+      return
+    }
+  add_worktree "$path" "$branch" || return
+  if ! open_snapshot "$run" ||
+     [ "$(mp_read_ref "$brief_ref" || true)" != "$brief_oid" ] ||
+     [ "$(mp_read_ref "$slot_ref" || true)" != "$expected" ]; then
+    cleanup_added_worktree "$path" "$branch_ref"
+    mp_die "node worktree authorization changed during creation" 4
+    return
+  fi
+  printf '%s\n' "$path"
+}
+
+candidate_purpose=''
+candidate_base_oid=''
+owner_ref=''
+owner_oid=''
+validate_candidate_base() {
+  local run=$1 node=$2 base_ref=$3 slot=$4 expected=$5 target_ref node_ref
+  target_ref="refs/heads/$target_branch"
+  node_ref="refs/heads/$(node_branch "$run" "$node")"
+  validate_branch_ref "$node_ref" || return
+  owner_ref=''
+  owner_oid=''
+  if [ "$base_ref" = "$node_ref" ]; then
+    candidate_purpose=nodes
+    validate_slot "$run" integration "$slot" "$expected" node "$node" || return
+  elif [ "$base_ref" = "$target_ref" ]; then
+    candidate_purpose=target
+    owner_ref=$(mp_run_ref "$run" owner) || return
+    owner_oid=$(mp_read_ref "$owner_ref") || { mp_die "run owner is missing" 3; return; }
+    validate_slot "$run" integration "$slot" "$expected" target '' "$owner_oid" || return
+  else
+    mp_die "base ref is not the target or named node branch" 2
+    return
+  fi
+  candidate_base_oid=$(mp_read_ref "$base_ref") || { mp_die "candidate base ref does not exist" 3; return; }
+  [ "$(git -C "$repo" cat-file -t "$candidate_base_oid" 2>/dev/null || true)" = commit ] || {
+    mp_die "candidate base ref does not name a commit" 3
+    return
+  }
+}
+
+cmd_candidate_add() {
+  [ "$#" -ge 3 ] || { mp_die "usage: sdd-worktree candidate-add RUN_ID NODE ATTEMPT --base-ref REF --slot N --expected-slot OBJECT_ID [--root DIR]" 2; return; }
+  local run=$1 node=$2 attempt=$3 base_ref='' slot='' expected=''
+  local seen_base=0 seen_slot=0 seen_expected=0 requested_root='' harness_root=''
+  local branch ref path extra_verify=''
+  shift 3
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --base-ref) need_value "$#" "$1" || return; [ "$seen_base" -eq 0 ] || { mp_die "duplicate --base-ref" 2; return; }; base_ref=$2; seen_base=1; shift 2 ;;
+      --slot) need_value "$#" "$1" || return; [ "$seen_slot" -eq 0 ] || { mp_die "duplicate --slot" 2; return; }; slot=$2; seen_slot=1; shift 2 ;;
+      --expected-slot) need_value "$#" "$1" || return; [ "$seen_expected" -eq 0 ] || { mp_die "duplicate --expected-slot" 2; return; }; expected=$2; seen_expected=1; shift 2 ;;
+      --root) need_value "$#" "$1" || return; [ -z "$requested_root" ] || { mp_die "duplicate --root" 2; return; }; requested_root=$2; shift 2 ;;
+      --harness-owned-root) need_value "$#" "$1" || return; [ -z "$harness_root" ] || { mp_die "duplicate --harness-owned-root" 2; return; }; harness_root=$2; shift 2 ;;
+      *) mp_die "unknown candidate-add option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_base" -eq 1 ] && [ "$seen_slot" -eq 1 ] && [ "$seen_expected" -eq 1 ] || {
+    mp_die "candidate-add requires --base-ref, --slot, and --expected-slot" 2
+    return
+  }
+  load_run "$run" || return
+  mp_validate_node_path "$node" || return
+  mp_validate_run_id "$attempt" || return
+  configure_root "$requested_root" "$harness_root" || return
+  read_node_brief "$run" "$node" || return
+  validate_candidate_base "$run" "$node" "$base_ref" "$slot" "$expected" || return
+  branch=$(candidate_branch "$run" "$candidate_purpose" "$node" "$attempt")
+  ref="refs/heads/$branch"
+  validate_branch_ref "$ref" || return
+  path=$(candidate_path "$run" "$candidate_purpose" "$node" "$attempt")
+  prepare_new_path "$path" || return
+  open_snapshot "$run" || return
+  if [ -n "$owner_ref" ]; then
+    extra_verify="verify $owner_ref $owner_oid"
+  else
+    extra_verify="verify $brief_ref $brief_oid"
+  fi
+  if ! git -C "$repo" update-ref --stdin >/dev/null 2>&1 <<EOF
+start
+verify $closing_ref $zero
+verify $closed_ref $zero
+verify $slot_ref $expected
+verify $base_ref $candidate_base_oid
+${extra_verify}
+create $ref $candidate_base_oid
+prepare
+commit
+EOF
+  then
+    open_snapshot "$run" || return
+    mp_die "candidate branch creation race was lost" 4
+    return
+  fi
+  if ! git -C "$repo" worktree add "$path" "$branch" >/dev/null; then
+    printf '%s\n' "$path" >&2
+    git -C "$repo" update-ref -d "$ref" "$candidate_base_oid" >/dev/null 2>&1 || true
+    mp_die "could not create candidate worktree" 3
+    return
+  fi
+  if ! open_snapshot "$run" || [ "$(mp_read_ref "$slot_ref" || true)" != "$expected" ] ||
+     { [ -n "$owner_ref" ] && [ "$(mp_read_ref "$owner_ref" || true)" != "$owner_oid" ]; }; then
+    cleanup_added_worktree "$path" "$ref"
+    git -C "$repo" update-ref -d "$ref" "$(mp_read_ref "$ref" || mp_zero_oid)" >/dev/null 2>&1 || true
+    mp_die "candidate authorization changed during creation" 4
+    return
+  fi
+  printf '%s\n' "$path"
+}
+
+cmd_candidate_promote() {
+  [ "$#" -ge 3 ] || { mp_die "usage: sdd-worktree candidate-promote RUN_ID NODE ATTEMPT --slot N --expected-slot OBJECT_ID --expected-head COMMIT" 2; return; }
+  local run=$1 node=$2 attempt=$3 slot='' expected='' expected_head=''
+  local seen_slot=0 seen_expected=0 seen_head=0 candidate_ref node_ref candidate_head
+  shift 3
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --slot) need_value "$#" "$1" || return; [ "$seen_slot" -eq 0 ] || { mp_die "duplicate --slot" 2; return; }; slot=$2; seen_slot=1; shift 2 ;;
+      --expected-slot) need_value "$#" "$1" || return; [ "$seen_expected" -eq 0 ] || { mp_die "duplicate --expected-slot" 2; return; }; expected=$2; seen_expected=1; shift 2 ;;
+      --expected-head) need_value "$#" "$1" || return; [ "$seen_head" -eq 0 ] || { mp_die "duplicate --expected-head" 2; return; }; expected_head=$2; seen_head=1; shift 2 ;;
+      *) mp_die "unknown candidate-promote option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_slot" -eq 1 ] && [ "$seen_expected" -eq 1 ] && [ "$seen_head" -eq 1 ] || {
+    mp_die "candidate-promote requires --slot, --expected-slot, and --expected-head" 2
+    return
+  }
+  load_run "$run" || return
+  mp_validate_node_path "$node" || return
+  mp_validate_run_id "$attempt" || return
+  object_id "$expected_head" || { mp_die "expected head must be an object ID" 2; return; }
+  validate_slot "$run" integration "$slot" "$expected" node "$node" || return
+  candidate_ref="refs/heads/$(candidate_branch "$run" nodes "$node" "$attempt")"
+  node_ref="refs/heads/$(node_branch "$run" "$node")"
+  validate_branch_ref "$candidate_ref" || return
+  validate_branch_ref "$node_ref" || return
+  candidate_head=$(mp_read_ref "$candidate_ref") || { mp_die "candidate branch does not exist" 3; return; }
+  open_snapshot "$run" || return
+  if ! git -C "$repo" update-ref --stdin >/dev/null 2>&1 <<EOF
+start
+verify $closing_ref $zero
+verify $closed_ref $zero
+verify $slot_ref $expected
+verify $candidate_ref $candidate_head
+update $node_ref $candidate_head $expected_head
+prepare
+commit
+EOF
+  then
+    open_snapshot "$run" || return
+    [ "$(mp_read_ref "$slot_ref" || true)" = "$expected" ] || { mp_die "integration slot changed" 4; return; }
+    mp_die "node branch changed before promotion" 4
+    return
+  fi
+}
+
+cmd_candidate_remove() {
+  [ "$#" -ge 3 ] || { mp_die "usage: sdd-worktree candidate-remove RUN_ID NODE ATTEMPT --purpose node|target [--root DIR]" 2; return; }
+  local run=$1 node=$2 attempt=$3 purpose='' seen_purpose=0 requested_root='' harness_root=''
+  local namespace branch ref path head
+  shift 3
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --purpose) need_value "$#" "$1" || return; [ "$seen_purpose" -eq 0 ] || { mp_die "duplicate --purpose" 2; return; }; purpose=$2; seen_purpose=1; shift 2 ;;
+      --root) need_value "$#" "$1" || return; [ -z "$requested_root" ] || { mp_die "duplicate --root" 2; return; }; requested_root=$2; shift 2 ;;
+      --harness-owned-root) need_value "$#" "$1" || return; [ -z "$harness_root" ] || { mp_die "duplicate --harness-owned-root" 2; return; }; harness_root=$2; shift 2 ;;
+      *) mp_die "unknown candidate-remove option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_purpose" -eq 1 ] || { mp_die "missing --purpose" 2; return; }
+  case "$purpose" in node) namespace=nodes ;; target) namespace=target ;; *) mp_die "purpose must be node or target" 2; return ;; esac
+  load_run "$run" || return
+  mp_validate_node_path "$node" || return
+  mp_validate_run_id "$attempt" || return
+  configure_root "$requested_root" "$harness_root" || return
+  branch=$(candidate_branch "$run" "$namespace" "$node" "$attempt")
+  ref="refs/heads/$branch"
+  validate_branch_ref "$ref" || return
+  head=$(mp_read_ref "$ref") || { mp_die "candidate branch does not exist" 3; return; }
+  path=$(candidate_path "$run" "$namespace" "$node" "$attempt")
+  remove_registered_worktree "$path" "$ref" || return
+  git -C "$repo" update-ref -d "$ref" "$head" || {
+    mp_die "candidate branch changed during removal" 4
+    return
+  }
+}
+
+cmd_node_remove() {
+  [ "$#" -ge 2 ] || { mp_die "usage: sdd-worktree node-remove RUN_ID NODE [--root DIR]" 2; return; }
+  local run=$1 node=$2 requested_root='' harness_root='' branch ref path
+  shift 2
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --root) need_value "$#" "$1" || return; [ -z "$requested_root" ] || { mp_die "duplicate --root" 2; return; }; requested_root=$2; shift 2 ;;
+      --harness-owned-root) need_value "$#" "$1" || return; [ -z "$harness_root" ] || { mp_die "duplicate --harness-owned-root" 2; return; }; harness_root=$2; shift 2 ;;
+      *) mp_die "unknown node-remove option: $1" 2; return ;;
+    esac
+  done
+  load_run "$run" || return
+  mp_validate_node_path "$node" || return
+  configure_root "$requested_root" "$harness_root" || return
+  branch=$(node_branch "$run" "$node")
+  ref="refs/heads/$branch"
+  validate_branch_ref "$ref" || return
+  mp_read_ref "$ref" >/dev/null || { mp_die "node branch does not exist" 3; return; }
+  path=$(node_path "$run" "$node")
+  remove_registered_worktree "$path" "$ref"
+}
+
+cmd_target_promote() {
+  [ "$#" -ge 3 ] || { mp_die "usage: sdd-worktree target-promote RUN_ID NODE ATTEMPT --slot N --expected-slot OBJECT_ID --owner-session ID --expected-owner OBJECT_ID --expected-head COMMIT" 2; return; }
+  local run=$1 node=$2 attempt=$3 slot='' expected='' owner_session='' expected_owner='' expected_head=''
+  local seen_slot=0 seen_expected=0 seen_session=0 seen_owner=0 seen_head=0
+  local candidate candidate_ref candidate_head target_ref current_owner owner result_ref result_oid result result_head current_branch
+  shift 3
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --slot) need_value "$#" "$1" || return; [ "$seen_slot" -eq 0 ] || { mp_die "duplicate --slot" 2; return; }; slot=$2; seen_slot=1; shift 2 ;;
+      --expected-slot) need_value "$#" "$1" || return; [ "$seen_expected" -eq 0 ] || { mp_die "duplicate --expected-slot" 2; return; }; expected=$2; seen_expected=1; shift 2 ;;
+      --owner-session) need_value "$#" "$1" || return; [ "$seen_session" -eq 0 ] || { mp_die "duplicate --owner-session" 2; return; }; owner_session=$2; seen_session=1; shift 2 ;;
+      --expected-owner) need_value "$#" "$1" || return; [ "$seen_owner" -eq 0 ] || { mp_die "duplicate --expected-owner" 2; return; }; expected_owner=$2; seen_owner=1; shift 2 ;;
+      --expected-head) need_value "$#" "$1" || return; [ "$seen_head" -eq 0 ] || { mp_die "duplicate --expected-head" 2; return; }; expected_head=$2; seen_head=1; shift 2 ;;
+      *) mp_die "unknown target-promote option: $1" 2; return ;;
+    esac
+  done
+  [ "$seen_slot" -eq 1 ] && [ "$seen_expected" -eq 1 ] && [ "$seen_session" -eq 1 ] &&
+    [ "$seen_owner" -eq 1 ] && [ "$seen_head" -eq 1 ] || {
+      mp_die "target-promote requires slot, owner, and expected-head arguments" 2
+      return
+    }
+  load_run "$run" || return
+  mp_validate_node_path "$node" || return
+  mp_validate_run_id "$attempt" || return
+  mp_validate_session_id "$owner_session" || return
+  object_id "$expected_owner" || { mp_die "expected owner must be an object ID" 2; return; }
+  object_id "$expected_head" || { mp_die "expected head must be an object ID" 2; return; }
+  jq -e --arg node "$node" '.roots | index($node) != null' >/dev/null <<<"$manifest" || {
+    mp_die "target promotion requires a manifest root" 4
+    return
+  }
+  owner_ref=$(mp_run_ref "$run" owner) || return
+  current_owner=$(mp_read_ref "$owner_ref") || { mp_die "run owner is missing" 3; return; }
+  [ "$current_owner" = "$expected_owner" ] || { mp_die "run owner changed" 4; return; }
+  owner=$(mp_read_json_ref "$expected_owner") || { mp_die "run owner is malformed" 3; return; }
+  [ "$(jq -r '.session' <<<"$owner")" = "$owner_session" ] || {
+    mp_die "target promotion requires the exact owner session" 4
+    return
+  }
+  validate_slot "$run" integration "$slot" "$expected" target '' "$expected_owner" || return
+  result_ref=$(mp_run_ref "$run" "nodes/$node/result") || return
+  result_oid=$(mp_read_ref "$result_ref") || { mp_die "root does not have a result" 4; return; }
+  result=$(mp_read_result_json "$result_oid") || { mp_die "root result is malformed" 3; return; }
+  jq -e '.status == "done" and (.head | type == "string")' >/dev/null <<<"$result" || {
+    mp_die "root result is not terminal done" 4
+    return
+  }
+  result_head=$(jq -r '.head' <<<"$result")
+  candidate=$(candidate_branch "$run" target "$node" "$attempt")
+  candidate_ref="refs/heads/$candidate"
+  validate_branch_ref "$candidate_ref" || return
+  candidate_head=$(mp_read_ref "$candidate_ref") || { mp_die "target candidate does not exist" 3; return; }
+  git -C "$repo" merge-base --is-ancestor "$result_head" "$candidate_head" 2>/dev/null || {
+    mp_die "root result is not integrated into the target candidate" 4
+    return
+  }
+  target_ref="refs/heads/$target_branch"
+  current_branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD) || {
+    mp_die "target checkout is detached" 2
+    return
+  }
+  [ "$current_branch" = "$target_branch" ] || { mp_die "target branch is not checked out" 4; return; }
+  [ -z "$(git -C "$repo" status --porcelain=v1)" ] || { mp_die "target checkout is dirty" 4; return; }
+  [ "$(mp_read_ref "$target_ref" || true)" = "$expected_head" ] &&
+    [ "$(git -C "$repo" rev-parse HEAD)" = "$expected_head" ] || {
+      mp_die "target head changed before promotion" 4
+      return
+    }
+  git -C "$repo" merge-base --is-ancestor "$expected_head" "$candidate_head" 2>/dev/null || {
+    mp_die "target candidate is not a fast-forward" 4
+    return
+  }
+  open_snapshot "$run" || return
+  [ "$(mp_read_ref "$slot_ref" || true)" = "$expected" ] &&
+    [ "$(mp_read_ref "$owner_ref" || true)" = "$expected_owner" ] &&
+    [ "$(mp_read_ref "$result_ref" || true)" = "$result_oid" ] &&
+    [ "$(mp_read_ref "$candidate_ref" || true)" = "$candidate_head" ] || {
+      mp_die "target promotion authorization changed" 4
+      return
+    }
+  git -C "$repo" merge --ff-only "$candidate"
+}
+
+case "${1:-}" in
+  branch-init) shift; cmd_branch_init "$@" ;;
+  node-add) shift; cmd_node_add "$@" ;;
+  node-remove) shift; cmd_node_remove "$@" ;;
+  candidate-add) shift; cmd_candidate_add "$@" ;;
+  candidate-promote) shift; cmd_candidate_promote "$@" ;;
+  candidate-remove) shift; cmd_candidate_remove "$@" ;;
+  target-promote) shift; cmd_target_promote "$@" ;;
+  *) mp_die "usage: sdd-worktree branch-init|node-add|node-remove|candidate-add|candidate-promote|candidate-remove|target-promote ..." 2 ;;
+esac

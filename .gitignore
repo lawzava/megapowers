@@ -16,6 +16,7 @@ docs/specs/
 # Runtime state written by skills (sdd ledgers, autonomous-run dirs, evidence,
 # brainstorm servers) — never part of the published repo.
 .megapowers/
+.worktrees/
 
 # Local agent state and per-machine MCP config — never part of the published repo.
 .claude/
