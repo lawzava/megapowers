@@ -565,12 +565,9 @@ if grep -qF 'Recursive coordinator mode' plugins/megapowers/skills/subagent-driv
    grep -qF 'release the exact writer slot token recorded earlier' plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md &&
    grep -qF 'Recursive SDD is the only multi-writer exception' templates/CODEX-LEAD.md &&
    grep -qF 'Recursive SDD uses nested Agent calls, not agent teams' templates/CLAUDE.md &&
-   awk -v policy=writer \
-     -f evals/scenarios/recursive-multi-writer-contract/guidance-policy.awk \
+   awk -f evals/scenarios/recursive-multi-writer-contract/guidance-policy.awk \
      plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md &&
-   awk -v policy=teams \
-     -f evals/scenarios/recursive-multi-writer-contract/guidance-policy.awk \
-     plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md; then
+   bash evals/scenarios/recursive-multi-writer-contract/guidance-policy.test.sh; then
   ok "recursive SDD guidance preserves coordinator ownership across Codex and Claude Code"
 else
   bad "recursive SDD guidance must preserve coordinator ownership across Codex and Claude Code"

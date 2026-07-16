@@ -7,6 +7,7 @@ writing="$ROOT/plugins/megapowers/skills/writing-plans/SKILL.md"
 codex="$ROOT/templates/CODEX-LEAD.md"
 claude="$ROOT/templates/CLAUDE.md"
 guidance_policy="$ROOT/evals/scenarios/recursive-multi-writer-contract/guidance-policy.awk"
+guidance_policy_test="$ROOT/evals/scenarios/recursive-multi-writer-contract/guidance-policy.test.sh"
 
 mark() {
   name=$1; shift
@@ -19,9 +20,9 @@ contains() {
   grep -Eiq "$pattern" <<< "$flattened"
 }
 
-allows_policy() {
-  file=$1 policy=$2
-  awk -v policy="$policy" -f "$guidance_policy" "$file"
+validates_policy() {
+  file=$1
+  awk -f "$guidance_policy" "$file"
 }
 
 {
@@ -32,14 +33,16 @@ allows_policy() {
   mark branch-ownership contains "$skill" 'one writer.{0,100}(branch|worktree)|(branch|worktree).{0,100}one writer'
   mark coordinator-result contains "$prompt" 'Return one final result to the parent'
   mark release-lifecycle contains "$prompt" 'release the integration slot.{0,240}release the writer slot.{0,120}release the exact writer slot token.{0,120}release.*node claim'
-  mark no-inexact-writer-release allows_policy "$prompt" writer
+  mark no-inexact-writer-release contains "$prompt" 'release the exact writer slot token recorded earlier'
   mark owner-target contains "$skill" 'run owner.{0,120}(alone|only).{0,100}(target|feature)'
   mark no-stale-takeover contains "$skill" '(never|do not).{0,100}(steal|release).{0,100}stale'
   mark fail-closed contains "$prompt" '(fail closed|Do not fall back to the parent checkout)'
   mark codex-fresh contains "$prompt" 'fork_turns = "none"'
   mark codex-depth-five contains "$prompt" 'If it already has five task-name components beneath /root, do not spawn another subagent; continue locally or report the limit\.'
   mark claude-no-teams contains "$prompt" 'Do not use agent teams because teams do not nest'
-  mark no-recursive-agent-teams allows_policy "$prompt" teams
+  mark no-recursive-agent-teams contains "$prompt" 'Do not use agent teams because teams do not nest'
+  mark formal-policy validates_policy "$prompt"
+  mark policy-fixtures bash "$guidance_policy_test"
   mark codex-lead-rule contains "$codex" 'Recursive SDD is the only multi-writer exception'
   mark claude-lead-rule contains "$claude" 'Recursive SDD uses nested Agent calls, not agent teams'
   mark registry-tests bash "$ROOT/plugins/megapowers/skills/subagent-driven-development/scripts/tests/sdd-run.test.sh"

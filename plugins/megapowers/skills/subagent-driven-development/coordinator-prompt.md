@@ -2,6 +2,15 @@
 
 Use this template only for recursive SDD nodes.
 
+The following versioned policy block is authoritative. The human-readable
+prose in this prompt implements it.
+
+<!-- megapowers-recursive-sdd-policy:v1
+writer_slot_release=exact-token-required
+agent_teams=forbidden
+max_task_components_beneath_root=5
+-->
+
 ## Required inputs
 
 - Run ID: `[RUN_ID]`

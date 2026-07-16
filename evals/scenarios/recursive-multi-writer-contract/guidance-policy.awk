@@ -1,77 +1,38 @@
-function has_phrase(sentence, phrase) {
-  return index(" " sentence " ", " " phrase " ") != 0
+BEGIN {
+  start_marker = "<!-- megapowers-recursive-sdd-policy:v1"
+  end_marker = "-->"
 }
 
-function normalize(sentence) {
-  sentence = tolower(sentence)
-  gsub(/[^[:alnum:]_]+/, " ", sentence)
-  gsub(/[[:space:]]+/, " ", sentence)
-  sub(/^ /, "", sentence)
-  sub(/ $/, "", sentence)
-  return sentence
+$0 == start_marker {
+  start_count++
+  if (in_block)
+    invalid = 1
+  in_block = 1
+  next
 }
 
-function grants_permission(sentence, padded) {
-  padded = " " sentence " "
-  if (index(padded, " may ") || index(padded, " can "))
-    return 1
-
-  if (sentence ~ /(^| )(allows|permits|supports)( |$)/)
-    return 1
-
-  if (sentence ~ /(^| )(allowed|permitted|supported)( |$)/) {
-    if (sentence ~ /(^| )(not|never) (explicitly )?(allowed|permitted|supported)( |$)/)
-      return 0
-    return 1
-  }
-
-  return 0
+$0 == end_marker {
+  end_count++
+  if (!in_block)
+    invalid = 1
+  in_block = 0
+  next
 }
 
-function safe_release_prohibition(sentence) {
-  return has_phrase(sentence, "never release") ||
-         has_phrase(sentence, "do not release") ||
-         has_phrase(sentence, "must not release") ||
-         has_phrase(sentence, "cannot release") ||
-         has_phrase(sentence, "may not release")
-}
-
-function unsafe_writer_slot_policy(sentence, unsafe_method) {
-  if (!has_phrase(sentence, "writer slot") ||
-      (!has_phrase(sentence, "release") && !has_phrase(sentence, "released")))
-    return 0
-
-  if (sentence ~ /(^| )exact (writer slot )?token (is|are|was|were) not required( |$)/)
-    return 1
-
-  unsafe_method = sentence ~ /(^| )without ((its|the|an) )?exact (writer slot )?token( |$)/ ||
-                  sentence ~ /(^| )using only ((its|the) )?slot (name|id|number)( |$)/ ||
-                  sentence ~ /(^| )by ((its|the) )?slot (name|id|number)( |$)/
-
-  return unsafe_method && !safe_release_prohibition(sentence)
-}
-
-function unsafe_agent_team_policy(sentence) {
-  if (!has_phrase(sentence, "agent teams"))
-    return 0
-  if (!has_phrase(sentence, "recursive sdd") &&
-      !has_phrase(sentence, "recursive coordinator"))
-    return 0
-  return grants_permission(sentence)
-}
-
-{
-  document = document " " $0
+in_block {
+  if ($0 == "writer_slot_release=exact-token-required")
+    writer_slot_release++
+  else if ($0 == "agent_teams=forbidden")
+    agent_teams++
+  else if ($0 == "max_task_components_beneath_root=5")
+    max_task_components++
+  else
+    invalid = 1
 }
 
 END {
-  sentence_count = split(document, sentences, /[.!?]+/)
-  for (i = 1; i <= sentence_count; i++) {
-    sentence = normalize(sentences[i])
-    if (policy == "writer" && unsafe_writer_slot_policy(sentence))
-      unsafe = 1
-    if (policy == "teams" && unsafe_agent_team_policy(sentence))
-      unsafe = 1
-  }
-  exit unsafe
+  valid = start_count == 1 && end_count == 1 && !in_block && !invalid &&
+          writer_slot_release == 1 && agent_teams == 1 &&
+          max_task_components == 1
+  exit !valid
 }

@@ -5,74 +5,34 @@ worktrees, lifecycle cleanup, and the Claude Code and Codex coordinator rules.
 `solve.sh` also runs both shipped SDD registry and worktree script suites before
 `check.sh` accepts the marker set.
 
-## Baseline, 2026-07-16
+## Formal guidance policy
 
-```json
-{"scenario":"recursive-multi-writer-contract","skill":"subagent-driven-development","kind":"artifact","agent":"mock","mode":"skill","verdict":"pass","ms":77219}
+The coordinator prompt contains one visible, versioned
+`megapowers-recursive-sdd-policy:v1` block. That block is the machine-readable
+oracle for exact writer-token release, forbidden agent teams, and the maximum
+five task-name components beneath `/root`. The adjacent prose implements the
+formal policy and remains covered by exact positive assertions.
+
+Earlier versions attempted to infer contradictory policy from arbitrary
+English. Sentence parsing produced both false positives and false negatives,
+so it was abandoned. `guidance-policy.awk` now validates only the formal block:
+one start and end marker, exactly the three known fields once, and their exact
+version-one values. Text outside the block does not change parsed values.
+
+The tracked `guidance-policy.test.sh` fixture covers the valid block, every
+wrong value, every missing or duplicate required field, unknown fields,
+duplicate blocks, missing markers, nesting, unterminated input, and ignored
+outside content. Both `solve.sh` and `scripts/validate.sh` run that same fixture
+test and validate the prompt with the same POSIX `awk` parser.
+
+Run the focused fixture directly:
+
+```bash
+bash evals/scenarios/recursive-multi-writer-contract/guidance-policy.test.sh
 ```
 
-The solve output included:
+Run the full artifact scenario:
 
-```text
-== sdd-run tests: 281 passed, 0 failed ==
-== sdd-worktree tests: 99 passed, 0 failed ==
+```bash
+evals/run.sh recursive-multi-writer-contract
 ```
-
-## Mutation record, 2026-07-16
-
-A temporary `CODEX-LEAD.md` copy removed `Recursive SDD is the only
-multi-writer exception`. A temporary solve script referenced that copy while
-the repository artifact stayed unchanged. The checker exited 1 with:
-
-```text
-missing marker: codex-lead-rule
-```
-
-A separate temporary coordinator-prompt copy changed the no-teams rule to
-permit agent teams. A temporary solve script referenced that copy while the
-repository artifact stayed unchanged. The checker exited 1 with:
-
-```text
-missing marker: claude-no-teams
-```
-
-## Acceptance-fix rerun, 2026-07-16
-
-The strengthened oracle materializes each file before extended,
-case-insensitive matching. It requires the exact depth-five policy and rejects
-contradictory permissions even when every required positive sentence remains.
-The fixed artifact eval passed:
-
-```json
-{"scenario":"recursive-multi-writer-contract","skill":"subagent-driven-development","kind":"artifact","agent":"mock","mode":"skill","verdict":"pass","ms":85855}
-```
-
-All four temporary-copy mutations reran both shipped SDD script suites. The two
-approved replacement mutations remain covered, followed by two additive
-contradictions that retain the required lifecycle or no-teams sentence:
-
-```text
-remove-codex-rule -> missing marker: codex-lead-rule
-replace-no-teams -> missing marker: claude-no-teams
-add-inexact-writer-release -> missing marker: no-inexact-writer-release
-add-recursive-agent-teams -> missing marker: no-recursive-agent-teams
-== Task 7 mutations: 4 rejected, 0 escaped ==
-```
-
-## Precision-fixture rerun, 2026-07-16
-
-The original flattened negative regexes mishandled 8 of 13 sentence fixtures:
-truthful `Never` and `Do not` release prohibitions, `cannot`, passive and
-reverse-order permissions, slot-number release, and a negated token
-requirement. The shared POSIX `awk` policy in `guidance-policy.awk` now checks
-one sentence at a time with explicit word tokens. Both the artifact solve and
-repository validator call that same policy.
-
-The complete ignored fixture and mutation runner then passed:
-
-```text
-== Task 7 fixtures and mutations: 17 accepted/rejected, 0 escaped ==
-```
-
-Fresh final-state artifact verification passed in 77,391 ms, including both shipped SDD
-script suites.
