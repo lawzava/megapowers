@@ -106,8 +106,37 @@ Use `Blocked by: None` when it has no dependency. For every material unresolved
 input, add `Blocker:`, `Owner:`, and `Unblocks when:` fields and mark the
 affected task not execution-ready until that condition is met.
 
+Every task also declares these execution fields:
+
+````markdown
+**Blocked by:** None | Task N, Task M
+**Parallel safety:** Safe | Sequential
+**Ownership:** [exact files, directories, generated artifacts, or interfaces]
+**May decompose:** Yes | No
+````
+
+`Parallel safety: Safe` is an explicit, reviewable claim. It never overrides a
+dependency or ownership conflict. A task remains sequential when any of these
+conditions holds:
+
+1. `Parallel safety` is `Sequential`.
+2. A `Blocked by` dependency is incomplete.
+3. `Ownership` overlaps an active task.
+4. The task changes an interface another active task consumes.
+5. Its acceptance check needs another active task's result.
+6. The planner cannot explain why the tasks are independent.
+
+`May decompose: Yes` authorizes a coordinator to split that task into child
+tasks that carry the same four fields. It does not authorize extra scope,
+additional depth, or concurrent writers on one branch or worktree.
+
 **Files:** exact paths, grouped as Create, Modify (with line ranges), and
 Test.
+
+**Ownership:** exact files, directories, generated artifacts, or interfaces,
+never broad labels such as `backend`. When two tasks touch different files on
+opposite sides of one changing contract, both tasks name that shared interface
+in `Ownership`; separate file paths do not make the tasks independent.
 
 **Interfaces:** what the task consumes from earlier tasks and produces for
 later ones, with exact function names, parameter and return types. A task's

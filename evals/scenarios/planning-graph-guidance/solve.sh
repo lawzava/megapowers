@@ -16,11 +16,16 @@ marker() {
   name="$1"
   text="$2"
   pattern="$3"
-  if has "$text" "$pattern"; then
-    echo "OK $name"
-  else
+  if ! has "$text" "$pattern"; then
     echo "MISSING $name"
+    return
   fi
+  if [ "$name" = overlap-forces-sequential ] &&
+     has "$text" 'overlap.{0,40}(allow|permit|safe)'; then
+    echo "MISSING $name"
+    return
+  fi
+  echo "OK $name"
 }
 
 source_roles() {
@@ -87,6 +92,10 @@ fi
 
 {
   marker blocked-by "$plan" 'Blocked by'
+  marker parallel-safety "$plan" 'Parallel safety'
+  marker ownership "$plan" 'Ownership'
+  marker may-decompose "$plan" 'May decompose'
+  marker overlap-forces-sequential "$plan" 'overlap.{0,100}sequential|sequential.{0,100}overlap'
   marker blocker-owner "$plan" 'Owner:|owner.{0,80}(unresolved|blocker|input)'
   marker unblock-condition "$plan" 'Unblocks when:|unblock condition'
   marker expand-migrate-contract "$plan" 'expand.{0,180}migrate.{0,180}contract'
