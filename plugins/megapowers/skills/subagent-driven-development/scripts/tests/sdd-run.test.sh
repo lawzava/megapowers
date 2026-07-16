@@ -12,6 +12,14 @@ ok() { pass=$((pass + 1)); }
 bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; }
 expect_ok() { "$@" >/dev/null 2>&1 && ok || bad "expected success: $*"; }
 expect_fail() { "$@" >/dev/null 2>&1 && bad "expected failure: $*" || ok; }
+expect_status() {
+  expected_status=$1
+  shift
+  "$@" >/dev/null 2>&1
+  actual_status=$?
+  [ "$actual_status" -eq "$expected_status" ] && ok ||
+    bad "expected status $expected_status, got $actual_status: $*"
+}
 expect_eq() { [ "$1" = "$2" ] && ok || bad "expected '$1' = '$2'"; }
 expect_ne() { [ "$1" != "$2" ] && ok || bad "expected '$1' != '$2'"; }
 wait_for_file() {
@@ -188,6 +196,7 @@ expect_ok "$RUN" init movement --plan plan.md --root branch-node --root dep-node
 expect_ok "$RUN" init lock-tz --plan plan.md --root tz-node --target feature/multi-writer --session tz-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init lock-inaccessible --plan plan.md --root inaccessible-node --target feature/multi-writer --session inaccessible-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init generation-crash --plan plan.md --root crash-node --root crash-peer --target feature/multi-writer --session crash-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
+expect_ok "$RUN" init result-race --plan plan.md --root race-result --target feature/multi-writer --session race-result-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init duplicate-blocked --plan plan.md --root duplicate-blocked-node --target feature/multi-writer --session duplicate-blocked-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 defaults_base=refs/megapowers/runs/defaults
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.writer_limit')" 3
@@ -424,6 +433,7 @@ demo_generation_after_slot_release=$(git rev-parse refs/megapowers/runs/demo/gen
 expect_ne "$demo_generation_before_slot_release" "$demo_generation_after_slot_release"
 expect_ok "$RUN" release-claim demo root-a/slot-a --session slot-a-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-a/claim)"
 owner_oid=$(git rev-parse refs/megapowers/runs/demo/owner)
+owner_claimed_at=$(git cat-file blob "$owner_oid" | jq -r '.claimed_at')
 expect_fail "$RUN" slot-acquire demo integration @target --session intruder --harness claude --expected-owner "$owner_oid"
 target_slot_line=$("$RUN" slot-acquire demo integration @target --session codex-1 --harness codex --expected-owner "$owner_oid")
 target_slot_n=${target_slot_line%% *}
@@ -692,6 +702,172 @@ crash_generation_after=$(git rev-parse refs/megapowers/runs/generation-crash/gen
 expect_ne "$crash_generation_before" "$crash_generation_after"
 expect_eq "$(git cat-file blob "$crash_claim_oid" | jq -r '.generation')" "$crash_generation_after"
 expect_ok "$RUN" release-claim generation-crash crash-node --session crash-session --expected "$crash_claim_oid"
+
+# Concurrent terminal results for one node produce exactly one immutable winner.
+write_root_brief result-race race-result race-result/ 0 0 0 0 race-result-brief.json
+expect_ok "$RUN" brief-put result-race race-result race-result-brief.json --session race-result-owner
+expect_ok "$RUN" claim result-race race-result --session race-result-session --harness codex
+git update-ref refs/heads/mp/result-race/nodes/race-result/head "$head"
+mkdir race-evidence
+printf 'verification passed\n' > race-evidence/test.txt
+jq -n --arg base "$head" \
+  '{status:"done",run_id:"result-race",node:"race-result",base:$base,head:$base,
+    branch:"mp/result-race/nodes/race-result/head",
+    verification:[{command:"test -f README.md",exit_code:0,evidence_path:"evidence/test.txt"}],
+    unresolved:[]}' > race-result.json
+gate="$TMP/result-race"
+MP_RACE_GATE="$gate" MP_RACE_ID=1 MP_RACE_REF_MATCH=/result \
+  "$RUN" result-put result-race race-result race-result.json race-evidence --session race-result-session > "$gate.1.out" 2>&1 & rp1=$!
+wait_for_file "$gate.ready.1" || bad "result race did not reach the first result mutation"
+MP_RACE_GATE="$gate" MP_RACE_ID=2 MP_RACE_REF_MATCH=/result \
+  "$RUN" result-put result-race race-result race-result.json race-evidence --session race-result-session > "$gate.2.out" 2>&1 & rp2=$!
+expect_not_before_release "$gate.ready.2" "result contender bypassed the prepared generation transaction"
+: > "$gate.release"
+wait "$rp1"; rr1=$?
+wait "$rp2"; rr2=$?
+expect_eq "$(( (rr1 == 0 ? 1 : 0) + (rr2 == 0 ? 1 : 0) ))" 1
+expect_eq "$(git show refs/megapowers/runs/result-race/nodes/race-result/result:result.json | jq -r '.status')" "done"
+
+git update-ref refs/heads/mp/demo/nodes/root-a/head "$head"
+mkdir evidence
+printf 'api_key=supersecret\nverification passed\n' > evidence/test.txt
+printf 'supersecret\nRED\n' > redactions.txt
+cat > result-a.json <<EOF
+{
+  "status": "done",
+  "run_id": "demo",
+  "node": "root-a",
+  "base": "$head",
+  "head": "$head",
+  "branch": "mp/demo/nodes/root-a/head",
+  "verification": [
+    {"command":"test -f README.md","exit_code":0,"evidence_path":"evidence/test.txt"}
+  ],
+  "unresolved": []
+}
+EOF
+expect_fail "$RUN" result-put demo root-a result-a.json evidence --session codex-session
+jq '.verification += [.verification[0]]' result-a.json > duplicate-evidence.json
+expect_fail "$RUN" result-put demo root-a duplicate-evidence.json evidence --session codex-session --redactions redactions.txt
+jq '.verification[0].command="api_key=embedded-secret"' result-a.json > credential-result.json
+expect_fail "$RUN" result-put demo root-a credential-result.json evidence --session codex-session --redactions redactions.txt
+mkdir evidence-extra
+printf 'verification passed\n' > evidence-extra/test.txt
+printf 'unreferenced\n' > evidence-extra/extra.txt
+expect_fail "$RUN" result-put demo root-a result-a.json evidence-extra --session codex-session --redactions redactions.txt
+mkdir evidence-large
+awk 'BEGIN { for (i = 0; i < 70000; i++) printf "x"; print "" }' > evidence-large/test.txt
+expect_status 3 "$RUN" result-put demo root-a result-a.json evidence-large --session codex-session --redactions redactions.txt
+demo_generation_before_result=$(git rev-parse refs/megapowers/runs/demo/generation)
+result_a_oid=$("$RUN" result-put demo root-a result-a.json evidence --session codex-session --redactions redactions.txt)
+demo_generation_after_result=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ne "$demo_generation_before_result" "$demo_generation_after_result"
+expect_eq "$(git cat-file -t "$result_a_oid")" tree
+git show "$result_a_oid:evidence/test.txt" | grep -qF '[REDACTED]' && ok || bad "evidence was not redacted"
+git show "$result_a_oid:evidence/test.txt" | grep -qF supersecret && bad "secret persisted" || ok
+expect_fail "$RUN" result-put demo root-a result-a.json evidence --session codex-session --redactions redactions.txt
+
+jq '.status="blocked" | .unresolved=["dependency unavailable"]' result-a.json > blocked.json
+git update-ref refs/heads/mp/demo/nodes/root-b/head "$head"
+jq '.node="root-b" | .branch="mp/demo/nodes/root-b/head"' blocked.json > result-b-blocked.json
+raw_evidence_oid=$(git hash-object --no-filters evidence/test.txt)
+demo_generation_before_blocked_result=$(git rev-parse refs/megapowers/runs/demo/generation)
+blocked_oid=$("$RUN" result-put demo root-b result-b-blocked.json evidence --session claude-session --digest-only --summary 'verification output withheld')
+demo_generation_after_blocked_result=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ne "$demo_generation_before_blocked_result" "$demo_generation_after_blocked_result"
+git show "$blocked_oid:evidence/test.txt" | grep -qF 'verification output withheld' && ok || bad "digest-only summary missing"
+git show "$blocked_oid:evidence/test.txt" | grep -qF supersecret && bad "digest-only evidence persisted raw secret" || ok
+git cat-file -e "$raw_evidence_oid" 2>/dev/null && bad "digest-only evidence wrote the raw blob" || ok
+jq '.status="done" | .unresolved=[]' result-b-blocked.json > result-b-done.json
+mkdir evidence-safe
+printf 'verification passed\n' > evidence-safe/test.txt
+: > empty-redactions.txt
+demo_generation_before_result_replace=$(git rev-parse refs/megapowers/runs/demo/generation)
+result_b_oid=$("$RUN" result-put demo root-b result-b-done.json evidence-safe --session claude-session --expected "$blocked_oid" --redactions empty-redactions.txt)
+expect_eq "$(git rev-parse refs/megapowers/runs/demo/nodes/root-b/result)" "$result_b_oid"
+expect_ne "$demo_generation_before_result_replace" "$(git rev-parse refs/megapowers/runs/demo/generation)"
+git show "$result_b_oid:evidence/test.txt" | grep -qF 'verification passed' && ok || bad "empty redactions swallowed evidence"
+expect_ok "$RUN" release-claim demo root-b --session claude-session --expected "${root_b_claim%% *}"
+expect_fail "$RUN" claim demo root-b --session replacement-session --harness codex
+
+dead_claim=${root_a_claim%% *}
+stale_claim=$(git cat-file blob "$dead_claim" | jq -c '.last_activity="2000-01-01T00:00:00Z"' | git hash-object -w --stdin)
+git update-ref refs/megapowers/runs/demo/nodes/root-a/claim "$stale_claim" "$dead_claim"
+stale_status=$("$RUN" status demo --stale-after 900)
+printf '%s\n' "$stale_status" | jq -e '.nodes[] | select(.node == "root-a") | .claim.stale == true' >/dev/null && ok || bad "stale claim not reported"
+expect_fail "$RUN" recover-claim demo root-a --owner-session codex-1 --expected "$stale_claim"
+demo_generation_before_recover_claim=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ok "$RUN" recover-claim demo root-a --owner-session codex-1 --expected "$stale_claim" --confirmed-inactive
+expect_ne "$demo_generation_before_recover_claim" "$(git rev-parse refs/megapowers/runs/demo/generation)"
+
+line=$(cat slot-b.out); n=${line%% *}; oid=${line#* }
+slot_ref="refs/megapowers/runs/demo/slots/writer/$n"
+stale_slot=$(git cat-file blob "$oid" | jq -c '.claimed_at="2000-01-01T00:00:00Z"' | git hash-object -w --stdin)
+git update-ref "$slot_ref" "$stale_slot" "$oid"
+expect_fail "$RUN" recover-slot demo writer "$n" --owner-session codex-1 --expected "$stale_slot"
+demo_generation_before_recover_slot=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ok "$RUN" recover-slot demo writer "$n" --owner-session codex-1 --expected "$stale_slot" --confirmed-inactive
+expect_ne "$demo_generation_before_recover_slot" "$(git rev-parse refs/megapowers/runs/demo/generation)"
+expect_ok "$RUN" release-claim demo root-a/slot-b --session slot-b-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-b/claim)"
+line=$(cat slot-c.out); n=${line%% *}; oid=${line#* }
+expect_ok "$RUN" slot-release demo writer "$n" --session slot-c-session --expected "$oid"
+expect_ok "$RUN" release-claim demo root-a/slot-c --session slot-c-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-c/claim)"
+expect_ok "$RUN" release-claim demo root-a/slot-d --session slot-d-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-d/claim)"
+
+status_json=$("$RUN" status demo --stale-after 900)
+printf '%s\n' "$status_json" | jq -e '.run_id == "demo" and (.nodes | length) == 9 and (.slots | length) == 0' >/dev/null && ok || bad "status shape"
+expect_ok "$RUN" status demo --stale-after 0
+mkdir -p .megapowers/sdd
+printf 'scratch\n' > .megapowers/sdd/progress.md
+rm -rf .megapowers
+"$RUN" status demo >/dev/null && ok || bad "status did not survive scratch cleanup"
+
+git reflog expire --expire=now --all
+git gc --prune=now --quiet
+git show "refs/megapowers/runs/demo/nodes/root-a/result:evidence/test.txt" >/dev/null && ok || bad "result evidence did not survive gc"
+
+owner_oid=$(git rev-parse refs/megapowers/runs/demo/owner)
+native_lock=$(git rev-parse --git-path refs/megapowers/runs/demo/generation.lock)
+mkdir -p "${native_lock%/*}"
+printf 'stale native Git lock\n' > "$native_lock"
+if native_lock_output=$("$RUN" owner-heartbeat demo --session codex-1 --expected "$owner_oid" 2>&1); then
+  bad "owner heartbeat ignored a native Git ref lock"
+elif printf '%s\n' "$native_lock_output" | grep -qF 'remove it manually'; then
+  ok
+else
+  bad "native Git ref lock did not report manual recovery"
+fi
+[ -e "$native_lock" ] && ok || bad "sdd-run deleted an ambiguous native Git ref lock"
+rm -f "$native_lock"
+demo_generation_before_owner_heartbeat=$(git rev-parse refs/megapowers/runs/demo/generation)
+owner_live_oid=$("$RUN" owner-heartbeat demo --session codex-1 --expected "$owner_oid")
+expect_ne "$demo_generation_before_owner_heartbeat" "$(git rev-parse refs/megapowers/runs/demo/generation)"
+expect_eq "$(git cat-file blob "$owner_live_oid" | jq -r '.claimed_at')" "$owner_claimed_at"
+expect_fail "$RUN" owner-heartbeat demo --session codex-1 --expected "$owner_oid"
+expect_fail "$RUN" recover-owner demo --session owner-2 --harness claude --expected "$owner_live_oid"
+demo_generation_before_recover_owner=$(git rev-parse refs/megapowers/runs/demo/generation)
+owner_2_oid=$("$RUN" recover-owner demo --session owner-2 --harness claude --expected "$owner_live_oid" --confirmed-inactive)
+expect_ne "$demo_generation_before_recover_owner" "$(git rev-parse refs/megapowers/runs/demo/generation)"
+expect_eq "$(git cat-file blob "$owner_2_oid" | jq -r '.previous_claimed_at')" "$owner_claimed_at"
+git worktree add "$TMP/harness-owned" mp/demo/nodes/root-a/head >/dev/null
+expect_fail "$RUN" close demo --owner-session owner-2 --expected "$owner_2_oid"
+git worktree remove "$TMP/harness-owned"
+demo_generation_before_close=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_ok "$RUN" close demo --owner-session owner-2 --expected "$owner_2_oid"
+expect_ne "$demo_generation_before_close" "$(git rev-parse refs/megapowers/runs/demo/generation)"
+closed_oid=$(git rev-parse refs/megapowers/runs/demo/closed)
+closed_status=$("$RUN" status demo)
+printf '%s\n' "$closed_status" | jq -e --arg closed "$closed_oid" \
+  '.owner == null and .closed.object_id == $closed' >/dev/null && ok || bad "closed status shape"
+unrelated_blob=$(printf 'keep\n' | git hash-object -w --stdin)
+git update-ref refs/megapowers/runs/unrelated/marker "$unrelated_blob"
+git update-ref refs/heads/mp/unrelated/keep "$head"
+expect_fail "$RUN" cleanup demo --expected-closed "$closed_oid"
+expect_ok "$RUN" cleanup demo --expected-closed "$closed_oid" --confirmed
+git rev-parse --verify refs/megapowers/runs/demo/generation >/dev/null 2>&1 && bad "cleanup left the run generation ref" || ok
+expect_eq "$(git for-each-ref --format='%(refname)' refs/megapowers/runs/demo refs/heads/mp/demo | wc -l | tr -d ' ')" 0
+git rev-parse --verify refs/megapowers/runs/unrelated/marker >/dev/null && ok || bad "cleanup removed unrelated run ref"
+git rev-parse --verify refs/heads/mp/unrelated/keep >/dev/null && ok || bad "cleanup removed unrelated branch"
 
 printf '== sdd-run tests: %d passed, %d failed ==\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
