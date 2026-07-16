@@ -98,26 +98,61 @@ After all tasks: dispatch the final whole-branch review using megapowers:request
    A coordinator publishes child briefs only when its node says
    `May decompose: Yes`, remaining depth is positive, ownership is disjoint,
    and each child has an independent acceptance check.
-6. The coordinator acquires a writer slot and creates the linked worktree
-   before dispatching a writer. The dispatch includes the absolute path.
-7. The existing implement, fresh review, fix, and fresh re-review loop runs on
+6. Before a child worktree exists, resolve the primary checkout from the shared
+   Git common directory and write the child brief JSON to a temporary known
+   tool-owned ignored input under the primary checkout's
+   `.worktrees/$run/inputs/` root. Use it only for `brief-put`; remove that exact
+   input immediately after `brief-put` succeeds and before
+   `sdd-worktree node-add`,
+   then remove any empty known input directories. Never remove or leave an
+   unknown ignored artifact.
+7. For a writing child, publish the brief and claim the child with its unique
+   session. The coordinator acquires a writer slot and creates the linked worktree
+   with that same session before dispatch. For a direct current-node writer, use the
+   coordinator's existing node session for both claim-bound operations. Record
+   the exact slot number and object ID. After `node-add`, materialize the
+   immutable brief and ref-derived inputs inside the new child worktree; do not
+   copy the deleted temporary input. The dispatch includes the absolute path and
+   all registry bindings.
+8. The existing implement, fresh review, fix, and fresh re-review loop runs on
    the child branch. Reviewers stay read-only. A fixer gets exclusive access to
    the existing node worktree.
-8. The coordinator acquires the single integration slot, merges one clean
-   child into a disposable candidate, runs integrated verification, and uses compare-and-swap to advance its branch.
-   A failed candidate never advances
-   the branch. After candidate removal it releases the integration slot.
-9. After verified child integration, remove that child's clean writer
-   worktree, release its writer slot, and release its exact node claim. Retain
-   its branch and terminal result. After every required child is integrated,
-   the coordinator records its own terminal result, releases its exact node
-   claim, and returns only that result to its parent.
-10. For each completed root, the run owner acquires the `@target` integration
+9. The final writer for a writing node, not its coordinator, publishes a
+   `done` result after clean review, or a `blocked` result when it cannot
+   proceed. If a fixer supersedes the implementer, terminal publication
+   responsibility transfers to that fixer. It calls `sdd-run result-put` with
+   the exact session that owns both the active node claim and writer slot, then
+   returns the printed result OID and its immutable evidence paths. The
+   coordinator verifies that OID against the exact node result ref before
+   cleanup and verifies the stored status, branch head, result JSON, and evidence.
+10. For a verified `done` child, the coordinator acquires the single integration
+   slot, merges the child into a disposable candidate, runs integrated
+   verification, and uses compare-and-swap to advance its branch. A failed
+   candidate never advances the branch. After candidate removal it releases
+   the integration slot.
+11. After verified child integration, or immediately after verifying a
+   `blocked` writer result, remove known handoffs, remove the clean node
+   worktree, release the exact writer slot, then release the exact node claim.
+   Use the result-owning session and compare against the recorded slot and claim
+   object IDs. Retain the branch and terminal result. Unknown ignored artifacts
+   or a dirty worktree block teardown and therefore block closure. After every
+   required child is integrated, the coordinator records its own terminal
+   result, releases its exact node claim, and returns only that result to its
+   parent.
+12. For each completed root, the run owner acquires the `@target` integration
     slot, creates and verifies one target candidate, promotes it, removes the
     candidate, and releases the target slot. Only then does it heartbeat the
     owner ref and start the next root. After all roots, it performs final
-    review and serial full validation, then closes the run. Publish and cleanup
-    remain separate human decisions.
+    review and serial full validation, then closes the run. Before close it
+    confirms no writer or integration slots and no run worktrees remain.
+    Publish and cleanup remain separate human decisions.
+
+If this coordinator executes its current node through a writer, it acquires the
+slot for `[NODE_PATH]` with its own coordinator session and creates that node's
+worktree. The writer publishes the node's only terminal result with that same
+registry session. After result verification, the coordinator follows the exact
+handoff, worktree, slot, and claim teardown above, performs no child candidate
+integration, and returns the verified result OID to its parent.
 
 The coordinator dispatch is [coordinator-prompt.md](coordinator-prompt.md).
 Coordinators are read-only over child-owned source paths and Git state. They
@@ -197,8 +232,12 @@ Everything you paste into a dispatch, and everything a subagent prints back,
 stays resident in your context for the rest of the session. Hand artifacts over
 as files: senior-engineer register (see using-megapowers, Communication),
 conclusion first, self-contained. Sequential mode resolves these paths through
-`scripts/sdd-workspace`. Recursive mode writes each handoff to an explicit ignored path in the assigned child node worktree and never calls `sdd-workspace`.
-To make clean worktree removal possible, remove only that generated handoff after its reader and `result-put` no longer need it; preserve every unknown file.
+`scripts/sdd-workspace`. Recursive mode writes each handoff to an explicit ignored path in the assigned child node worktree once that worktree exists and never calls `sdd-workspace`.
+The sole pre-worktree exception is the temporary child brief input under the
+primary checkout's `.worktrees/$run/inputs/` root described above. Remove it
+immediately after immutable publication. Derive the later worktree copy from
+the immutable brief ref, not from that deleted input. To make clean worktree
+removal possible, remove only that generated handoff after its reader and `result-put` no longer need it; preserve every unknown file.
 
 - **Task brief:** `scripts/task-brief PLAN_FILE N` extracts the task's full text to a file and prints the path. The brief is the single source of requirements; exact values (numbers, magic strings, signatures, test cases) appear only there. The dispatch adds where the task fits in the project, the brief path introduced as the requirements to follow verbatim, interfaces and decisions from earlier tasks the brief cannot know, your resolution of any ambiguity you noticed in it, and the report path with its contract. Never hand a subagent the whole plan file.
 - **Report file:** named after the brief (task-N-brief.md pairs with task-N-report.md). The implementer writes the full report there and returns only status, commits, a one-line test summary, and concerns. Fix dispatches append their fix report to the same file; re-reviews read the updated file.
