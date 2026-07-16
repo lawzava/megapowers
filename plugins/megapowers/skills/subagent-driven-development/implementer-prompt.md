@@ -2,7 +2,7 @@
 
 Use this template when dispatching an implementer subagent.
 
-```
+````
 Subagent (general-purpose):
   description: "Implement Task N: [task name]"
   model: [MODEL — include only when the dispatch surface supports per-worker
@@ -40,6 +40,18 @@ Subagent (general-purpose):
     6. Report back
 
     Work from: [directory]
+
+    Before editing, verify that `[directory]` is the assigned linked worktree:
+
+    ```bash
+    cd "[directory]" || exit 1
+    git_dir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
+    git_common=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
+    [ "$git_dir" != "$git_common" ]
+    ```
+
+    If the check fails, report `BLOCKED`. Do not edit, create a replacement
+    worktree, or fall back to the controller's checkout.
 
     While you work: if you encounter something unexpected or unclear, ask
     questions. It's always OK to pause and clarify. Don't guess or make
@@ -137,4 +149,4 @@ Subagent (general-purpose):
     Use DONE_WITH_CONCERNS if you completed the work but have doubts about correctness.
     Use BLOCKED if you cannot complete the task. Use NEEDS_CONTEXT if you need
     information that wasn't provided. Don't silently produce work you're unsure about.
-```
+````

@@ -1,27 +1,73 @@
 ---
 name: subagent-driven-development
-description: Use when a written plan has independent tasks for per-task subagent implementation and review. Triggers on "subagent per task", "subagent-driven", or "fan out plan tasks". Use executing-plans for inline work.
+description: Use when a written plan has independent tasks for per-task subagent implementation and review, including recursive coordinators with isolated branches. Triggers on "subagent per task", "fan out plan tasks", or "multi-writer execution". Use executing-plans for inline work.
 license: MIT
 ---
 
 # Subagent-Driven Development
 
-Execute a written plan by dispatching a fresh implementer subagent per task, reviewing each task in two stages (spec compliance, then code quality) with a fresh reviewer, and running one broad whole-branch review at the end. Plan tasks execute sequentially on a single branch: one writer at a time, never parallel implementers, because concurrent writers conflict.
+Execute a written plan with fresh implementers, two-stage task review (spec
+compliance, then code quality), and one broad whole-branch review at the end.
+
+## Execution modes
+
+**Sequential mode:** one writer at a time on one feature branch. Use it when
+plan tasks overlap, dependencies form one critical path, task-local commits are
+not authorized, or the harness cannot provide nested subagents.
+
+**Recursive coordinator mode:** independent plan roots run concurrently on
+owned branches and ephemeral worktrees. Each coordinator may decompose an
+authorized node, review and integrate its children, and return one verified
+branch to its parent. One elected run owner alone advances the feature target.
+
+Recursive mode is explicit. It starts only when the accepted plan supplies
+`Blocked by`, `Parallel safety`, `Ownership`, and `May decompose`, the human has
+authorized task-local commits, every participant uses the same Git clone, and
+the selected harness supports the requested depth. Otherwise use sequential
+mode without weakening review or worktree isolation.
 
 **Why subagents:** each task gets deliberately fresh context that you construct.
 Some harnesses can inherit or fork parent history, so request a fresh context
 explicitly for implementers and reviewers. Hand each one exactly what its task
 needs, which keeps it focused and preserves your own context for coordination.
 
-**Commit cadence:** this workflow commits once per task, and that commit stream is its recovery mechanism: the ledger records commit ranges, and git history survives the compactions that erase conversation memory. Choosing this skill is how the human opts into per-task commits; it is not a hidden side effect. Commits land on the feature branch or worktree; do not start implementation on a main or master branch without explicit consent. If per-task commits do not fit, use megapowers:executing-plans instead.
+**Commit cadence:** this workflow commits once per task. The sequential ledger
+records commit ranges; recursive run refs record node branches and results. Git
+history survives the compactions that erase conversation memory. Choosing this
+skill is how the human opts into per-task commits; it is not a hidden side
+effect. Commits land on the feature branch or assigned worktree; do not start
+implementation on a main or master branch without explicit consent. If
+per-task commits do not fit, use megapowers:executing-plans instead.
 
-**Continuous execution:** do not check in with your human partner between tasks. Stop only for a BLOCKED status you cannot resolve, ambiguity that prevents progress, or completion of all tasks. Narrate at most one short line between tool calls; the ledger and tool results carry the record.
+**Continuous execution:** do not check in with your human partner between tasks. Stop only for a BLOCKED status you cannot resolve, ambiguity that prevents progress, or completion of all tasks. Narrate at most one short line between tool calls; the ledger or run refs and tool results carry the record.
 
 ## When to Use
 
-Use this skill when a written plan exists, its tasks are mostly independent, subagents are available, and per-task commits are acceptable. With no plan, or tightly coupled tasks, execute manually or brainstorm first. When subagents are unavailable, or the human wants inline single-writer execution with their own commit cadence, use megapowers:executing-plans (the same criterion, stated the same way, appears in writing-plans and executing-plans).
+Use this skill when a written plan exists, subagents are available, and the
+human authorizes per-task commits. Select sequential mode for overlapping or
+tightly coupled tasks. Select recursive coordinator mode only for explicitly
+safe, disjoint roots under the execution gate above. With no plan, brainstorm
+first. When subagents are unavailable or the human wants inline execution with
+their own commit cadence, use megapowers:executing-plans (the same criterion
+appears in writing-plans and executing-plans).
 
-## The Process
+## Workspace boundary
+
+Both modes maintain one active writer per branch and worktree. Sequential mode
+keeps the existing `sdd-workspace` and `megapowers:using-git-worktrees` flow.
+Recursive mode uses `sdd-run` plus `sdd-worktree` exclusively and never layers the two workspace managers.
+`sdd-worktree` resolves linked worktrees through
+the same Git clone, including calls from an assigned node worktree. Never write
+in the parent checkout.
+
+Recursive coordinators call `review-package BASE HEAD OUTFILE` with an explicit
+ignored path inside the assigned node worktree. They never let
+`review-package` fall back to `sdd-workspace`. The coordinator owns only this
+ignored handoff path, not the child's source paths or Git state. After the
+reviewer and `result-put` no longer need the package, remove that exact generated
+file. Unknown ignored files keep the worktree dirty and block removal.
+
+## Sequential process
 
 Setup, once: read the plan file once, create todos for every task, and check for an existing progress ledger (see Durable Progress). Then scan the plan for conflicts before dispatching Task 1: tasks that contradict each other or the Global Constraints, and anything the plan explicitly mandates that the review rubric treats as a defect. Present everything you find to your human partner as one batched question, each finding beside the plan text that mandates it, asking which governs, rather than one interrupt per discovery mid-plan. Under an active autonomous-run charter at level `autonomous` or `on-the-loop`, do not stop for the batch: resolve each conflict with the least-surprise reading and journal it with a confidence, though a conflict that makes a task's acceptance criteria contradictory is still a real blocker. A clean scan needs no comment; the review loop remains the net for conflicts that only emerge from implementation.
 
@@ -33,6 +79,69 @@ Per task, in order:
 4. Mark the task complete in the todo list and append the ledger line.
 
 After all tasks: dispatch the final whole-branch review using megapowers:requesting-code-review's [code-reviewer.md](../requesting-code-review/code-reviewer.md) on the most capable available model. For a branch touching billing, auth, concurrency, or security, add an independent different-vendor pass via mega-orchestration:cross-model-verification if installed; a same-model review shares the author's blind spots. Then use megapowers:finishing-a-development-branch.
+
+## Recursive setup
+
+1. Confirm the current target is a clean non-protected feature branch.
+2. Read the accepted plan once. Reject missing execution fields or overlapping
+   tasks marked safe.
+3. Create or join the run through `scripts/sdd-run`. Record the run ID, session
+   ID, owner object ID, target base, worktree limits, and agent budget.
+4. The run owner publishes immutable briefs for currently unblocked roots.
+   Other sessions join the same run and atomically claim disjoint roots. When a
+   blocked root's dependencies are integrated, the owner publishes its brief
+   from the current target head.
+5. A coordinator publishes child briefs only when its node says
+   `May decompose: Yes`, remaining depth is positive, ownership is disjoint,
+   and each child has an independent acceptance check.
+6. The coordinator acquires a writer slot and creates the linked worktree
+   before dispatching a writer. The dispatch includes the absolute path.
+7. The existing implement, fresh review, fix, and fresh re-review loop runs on
+   the child branch. Reviewers stay read-only. A fixer gets exclusive access to
+   the existing node worktree.
+8. The coordinator acquires the single integration slot, merges one clean
+   child into a disposable candidate, runs integrated verification, and uses compare-and-swap to advance its branch.
+   A failed candidate never advances
+   the branch. After candidate removal it releases the integration slot.
+9. After verified child integration, remove that child's clean writer
+   worktree, release its writer slot, and release its exact node claim. Retain
+   its branch and terminal result. After every required child is integrated,
+   the coordinator records its own terminal result, releases its exact node
+   claim, and returns only that result to its parent.
+10. For each completed root, the run owner acquires the `@target` integration
+    slot, creates and verifies one target candidate, promotes it, removes the
+    candidate, and releases the target slot. Only then does it heartbeat the
+    owner ref and start the next root. After all roots, it performs final
+    review and serial full validation, then closes the run. Publish and cleanup
+    remain separate human decisions.
+
+The coordinator dispatch is [coordinator-prompt.md](coordinator-prompt.md).
+Coordinators are read-only over child-owned source paths and Git state. They
+integrate child commits only through their own disposable candidate. Their sole
+child-worktree write is the explicit ignored handoff artifact described above.
+
+## Resource limits
+
+For a coordinator with descendant budget `B`, every child allocation costs one
+agent for the child plus the descendant budget passed to that child:
+`sum(1 + child_budget) <= B`. Keep one agent unallocated while a write awaits
+review or repair. Do not reallocate a completed Codex worker's slot until the
+runtime's idle-thread accounting has been measured in the current version.
+
+Agent capacity and worktree capacity are separate. The run defaults to three writer worktrees and one integration worktree.
+Read-only coordinators and
+reviewers consume no worktree. When a slot is unavailable, wait or execute the
+node sequentially after a slot is released. Never write in the parent checkout.
+
+Dispatch an authorized child coordinator with
+[coordinator-prompt.md](coordinator-prompt.md) and no writer slot or worktree.
+It owns integration for that child node and returns one final result. A leaf or
+a coordinator that cannot safely decompose executes through one writer slot and
+assigned worktree.
+
+Run focused tests concurrently only when their caches are concurrency-safe.
+Run repository-wide validation serially with one bounded shared cache or one
+bounded per-run cache.
 
 ## Model Selection
 
@@ -80,7 +189,12 @@ For fixes:
 
 ## File Handoffs
 
-Everything you paste into a dispatch, and everything a subagent prints back, stays resident in your context for the rest of the session. Hand artifacts over as files: senior-engineer register (see using-megapowers, Communication), conclusion first, self-contained. `scripts/sdd-workspace` resolves the working-tree directory all of these artifacts live in.
+Everything you paste into a dispatch, and everything a subagent prints back,
+stays resident in your context for the rest of the session. Hand artifacts over
+as files: senior-engineer register (see using-megapowers, Communication),
+conclusion first, self-contained. Sequential mode resolves these paths through
+`scripts/sdd-workspace`. Recursive mode writes each handoff to an explicit ignored path in the assigned child node worktree and never calls `sdd-workspace`.
+To make clean worktree removal possible, remove only that generated handoff after its reader and `result-put` no longer need it; preserve every unknown file.
 
 - **Task brief:** `scripts/task-brief PLAN_FILE N` extracts the task's full text to a file and prints the path. The brief is the single source of requirements; exact values (numbers, magic strings, signatures, test cases) appear only there. The dispatch adds where the task fits in the project, the brief path introduced as the requirements to follow verbatim, interfaces and decisions from earlier tasks the brief cannot know, your resolution of any ambiguity you noticed in it, and the report path with its contract. Never hand a subagent the whole plan file.
 - **Report file:** named after the brief (task-N-brief.md pairs with task-N-report.md). The implementer writes the full report there and returns only status, commits, a one-line test summary, and concerns. Fix dispatches append their fix report to the same file; re-reviews read the updated file.
@@ -88,20 +202,33 @@ Everything you paste into a dispatch, and everything a subagent prints back, sta
 
 ## Durable Progress
 
-Conversation memory does not survive compaction; controllers that lost their place have re-dispatched entire completed task sequences, the single most expensive failure observed. The ledger at `.megapowers/sdd/progress.md` under the repo root is the recovery map.
+Conversation memory does not survive compaction; controllers that lost their
+place have re-dispatched entire completed task sequences, the single most
+expensive failure observed. Use the mode-specific recovery map below.
+
+Sequential mode keeps `.megapowers/sdd/progress.md`:
 
 - At skill start, read the ledger. Tasks marked complete there are done; never re-dispatch them. Resume at the first task not marked complete.
 - Before each dispatch, append `Task N: base <sha7> (in progress)` with the current short HEAD. The review step needs this exact BASE, and it otherwise lives only in volatile conversation memory.
 - On a clean review, append `Task N: complete (commits <base7>..<head7>, review clean)`, superseding the in-progress line.
 - On resume, an in-progress line with no matching complete line marks the task to re-check against `git log`. After compaction, trust the ledger and git history over your own recollection. `git clean -fdx` destroys the ledger (it is git-ignored scratch); if that happens, recover from `git log`.
 
+Recursive mode treats its private run refs under `refs/megapowers/runs/`, node
+branches, commits, immutable briefs, and result trees as authoritative. The
+generation ref is the snapshot boundary for registry mutations. After
+compaction or `git clean`, run `sdd-run status RUN_ID`, verify any in-progress
+branch, and resume from the first missing terminal result. Never infer `done` from branch existence and never auto-release a stale claim.
+
 ## Prompt Templates
 
 - [implementer-prompt.md](implementer-prompt.md) for the implementer subagent
 - [task-reviewer-prompt.md](task-reviewer-prompt.md) for the task reviewer (spec compliance + code quality)
+- [coordinator-prompt.md](coordinator-prompt.md) for a recursive coordinator
 - Final whole-branch review: megapowers:requesting-code-review's [code-reviewer.md](../requesting-code-review/code-reviewer.md)
 
 ## Example Workflow
+
+### Sequential example
 
 One task's full loop, compressed:
 
@@ -117,9 +244,27 @@ Fixer: Removed the flag, added progress reporting, extracted constant.
 Reviewer: Spec compliant. Quality: Approved. Mark Task 2 complete, ledger line.
 ```
 
+### Recursive coordinator example
+
+Root coordinators A and B atomically claim disjoint roots. A publishes a child
+brief for nested coordinator A1. A1 joins its writing descendants, uses the
+single integration slot to verify and advance only A1's branch, records one
+terminal result, and returns it to A. A then joins A1's result with its other
+children through the same single integration slot and returns one terminal
+result to the run owner. B does the same for its own root without touching A's
+branch or worktrees. The run owner receives one final result from each root coordinator,
+serially promotes A and B through the `@target` integration slot,
+and sends the final joined output to the lead for whole-branch review and
+validation.
+
 ## Integration
 
-**Required workflow skills:** megapowers:using-git-worktrees ensures an isolated workspace; megapowers:writing-plans creates the plan this skill executes; megapowers:requesting-code-review supplies the final whole-branch review template; megapowers:finishing-a-development-branch completes the branch after all tasks.
+**Required workflow skills:** megapowers:writing-plans creates the plan this
+skill executes; megapowers:requesting-code-review supplies the final
+whole-branch review template; megapowers:finishing-a-development-branch
+completes the branch after all tasks. Sequential mode also uses
+megapowers:using-git-worktrees. Recursive mode uses only its same-clone
+`sdd-run` and `sdd-worktree` lifecycle.
 
 **Subagents should use** megapowers:test-driven-development for each task.
 
