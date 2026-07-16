@@ -58,3 +58,21 @@ add-inexact-writer-release -> missing marker: no-inexact-writer-release
 add-recursive-agent-teams -> missing marker: no-recursive-agent-teams
 == Task 7 mutations: 4 rejected, 0 escaped ==
 ```
+
+## Precision-fixture rerun, 2026-07-16
+
+The original flattened negative regexes mishandled 8 of 13 sentence fixtures:
+truthful `Never` and `Do not` release prohibitions, `cannot`, passive and
+reverse-order permissions, slot-number release, and a negated token
+requirement. The shared POSIX `awk` policy in `guidance-policy.awk` now checks
+one sentence at a time with explicit word tokens. Both the artifact solve and
+repository validator call that same policy.
+
+The complete ignored fixture and mutation runner then passed:
+
+```text
+== Task 7 fixtures and mutations: 17 accepted/rejected, 0 escaped ==
+```
+
+Fresh final-state artifact verification passed in 77,391 ms, including both shipped SDD
+script suites.
