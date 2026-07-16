@@ -13,6 +13,14 @@ bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; }
 expect_ok() { "$@" >/dev/null 2>&1 && ok || bad "expected success: $*"; }
 expect_fail() { "$@" >/dev/null 2>&1 && bad "expected failure: $*" || ok; }
 
+make_minimal_result() {
+  result_run=$1 result_node=$2 result_head=$3
+  result_blob=$(printf '{"status":"done","run_id":"%s","node":"%s","head":"%s"}\n' \
+    "$result_run" "$result_node" "$result_head" | git hash-object -w --stdin)
+  result_tree=$(printf '100644 blob %s\tresult.json\n' "$result_blob" | git mktree)
+  printf 'test result\n' | git commit-tree "$result_tree"
+}
+
 repo="$TMP/repo"
 git init -q "$repo"
 git -C "$repo" config user.name Test
@@ -32,9 +40,124 @@ git -C "$repo" add .gitignore README.md plan.md
 git -C "$repo" commit -qm 'test: seed worktree fixture'
 git -C "$repo" switch -qc feature/worktree
 cd "$repo" || exit 2
+printf '*.local-artifact\n' >> "$(git rev-parse --git-path info/exclude)"
+
+real_git=$(command -v git)
+base_path=$PATH
+mkdir -p "$TMP/git-race-wrapper"
+cat > "$TMP/git-race-wrapper/git" <<'GIT_WRAPPER'
+#!/usr/bin/env bash
+set -euo pipefail
+
+command_line=" $* "
+if [ -e "$MP_RACE_MARKER" ]; then
+  case "$command_line" in
+    *" read-tree -u -m "*)
+      if [ "${MP_RACE_ACTION:-}" = sync-fail ] && [ ! -e "$MP_RACE_MARKER.sync" ]; then
+        : > "$MP_RACE_MARKER.sync"
+        exit 98
+      fi
+      ;;
+  esac
+  exec "$MP_REAL_GIT" "$@"
+fi
+
+transaction=''
+intercept=0
+case "$command_line" in
+  *" update-ref --stdin "*)
+    transaction="$MP_RACE_MARKER.transaction"
+    command cat > "$transaction"
+    case "${MP_RACE_KIND:-}" in
+      branch) grep -qF "create refs/heads/mp/$MP_RACE_RUN/nodes/$MP_RACE_NODE/head" "$transaction" && intercept=1 ;;
+      target) grep -qF "update refs/heads/$MP_RACE_TARGET " "$transaction" && intercept=1 ;;
+    esac
+    ;;
+  *" merge --ff-only "*)
+    [ "${MP_RACE_KIND:-}" = target ] && intercept=1
+    ;;
+  *" worktree add "*)
+    [ "${MP_RACE_KIND:-}" = worktree ] && intercept=1
+    ;;
+esac
+
+if [ "$intercept" -eq 1 ] && [ ! -e "$MP_RACE_MARKER" ]; then
+  : > "$MP_RACE_MARKER"
+  case "$MP_RACE_ACTION" in
+    generation)
+      PATH="$MP_BASE_PATH" "$MP_RUN" owner-heartbeat "$MP_RACE_RUN" \
+        --session "$MP_RACE_SESSION" --expected "$MP_RACE_OWNER" >/dev/null
+      ;;
+    cleanup)
+      PATH="$MP_BASE_PATH" "$MP_RUN" close "$MP_RACE_RUN" \
+        --owner-session "$MP_RACE_SESSION" --expected "$MP_RACE_OWNER" >/dev/null
+      closed=$(PATH="$MP_BASE_PATH" "$MP_REAL_GIT" -C "$MP_REPO" rev-parse \
+        "refs/megapowers/runs/$MP_RACE_RUN/closed")
+      PATH="$MP_BASE_PATH" "$MP_RUN" cleanup "$MP_RACE_RUN" \
+        --expected-closed "$closed" --confirmed >/dev/null
+      ;;
+    release-slot)
+      PATH="$MP_BASE_PATH" "$MP_RUN" slot-release "$MP_RACE_RUN" integration \
+        "$MP_RACE_SLOT" --session "$MP_RACE_SESSION" --expected "$MP_RACE_SLOT_OID" >/dev/null
+      ;;
+    advance-head)
+      "$MP_REAL_GIT" -C "$MP_REPO" reset --hard "$MP_RACE_HEAD" >/dev/null
+      ;;
+    sync-fail)
+      case "$command_line" in
+        *" merge --ff-only "*) "$MP_REAL_GIT" "$@" >/dev/null; exit 98 ;;
+      esac
+      ;;
+    *) exit 97 ;;
+  esac
+fi
+
+if [ -n "$transaction" ]; then
+  exec "$MP_REAL_GIT" "$@" < "$transaction"
+fi
+exec "$MP_REAL_GIT" "$@"
+GIT_WRAPPER
+chmod +x "$TMP/git-race-wrapper/git"
+
 expect_ok "$RUN" init wt --plan plan.md --root coordinator --root second-root --target feature/worktree --session owner --harness codex --max-depth 2 --agent-budget 8 --writers 3 --integrations 1 --allow-task-commits
 base=$(git rev-parse HEAD)
 owner_oid=$(git rev-parse refs/megapowers/runs/wt/owner)
+
+# Branch creation must be bound to the exact generation it read.
+expect_ok "$RUN" init generation-race --plan plan.md --root generation-root \
+  --target feature/worktree --session generation-owner --harness codex \
+  --max-depth 1 --agent-budget 1 --writers 1 --integrations 1 --allow-task-commits
+generation_owner=$(git rev-parse refs/megapowers/runs/generation-race/owner)
+generation_marker="$TMP/generation-race"
+expect_fail env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" MP_BASE_PATH="$base_path" \
+  MP_RUN="$RUN" MP_REPO="$repo" MP_RACE_KIND=branch MP_RACE_ACTION=generation \
+  MP_RACE_MARKER="$generation_marker" MP_RACE_RUN=generation-race \
+  MP_RACE_NODE=generation-root MP_RACE_SESSION=generation-owner MP_RACE_OWNER="$generation_owner" \
+  "$WT" branch-init generation-race generation-root "$base"
+[ -e "$generation_marker" ] && ok || bad "generation race did not run"
+git show-ref --verify --quiet refs/heads/mp/generation-race/nodes/generation-root/head &&
+  bad "stale branch-init ignored a generation change" || ok
+git update-ref -d refs/heads/mp/generation-race/nodes/generation-root/head 2>/dev/null || true
+
+# A branch-init paused across close and cleanup must not resurrect run refs.
+expect_ok "$RUN" init cleanup-race --plan plan.md --root cleanup-root \
+  --target feature/worktree --session cleanup-owner --harness codex \
+  --max-depth 1 --agent-budget 1 --writers 1 --integrations 1 --allow-task-commits
+cleanup_owner=$(git rev-parse refs/megapowers/runs/cleanup-race/owner)
+cleanup_result=$(make_minimal_result cleanup-race cleanup-root "$base")
+git update-ref refs/megapowers/runs/cleanup-race/nodes/cleanup-root/result "$cleanup_result"
+cleanup_marker="$TMP/cleanup-race"
+expect_fail env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" MP_BASE_PATH="$base_path" \
+  MP_RUN="$RUN" MP_REPO="$repo" MP_RACE_KIND=branch MP_RACE_ACTION=cleanup \
+  MP_RACE_MARKER="$cleanup_marker" MP_RACE_RUN=cleanup-race MP_RACE_NODE=cleanup-root \
+  MP_RACE_SESSION=cleanup-owner MP_RACE_OWNER="$cleanup_owner" \
+  "$WT" branch-init cleanup-race cleanup-root "$base"
+[ -e "$cleanup_marker" ] && ok || bad "cleanup race did not run"
+git show-ref --verify --quiet refs/heads/mp/cleanup-race/nodes/cleanup-root/head &&
+  bad "stale branch-init resurrected a cleaned run branch" || ok
+git show-ref --verify --quiet refs/megapowers/runs/cleanup-race/manifest &&
+  bad "cleanup race left the run manifest" || ok
+git update-ref -d refs/heads/mp/cleanup-race/nodes/cleanup-root/head 2>/dev/null || true
 
 make_brief() {
   key=$1
@@ -127,7 +250,13 @@ expect_ok "$WT" candidate-remove wt coordinator first --purpose node
 failed_candidate=$("$WT" candidate-add wt coordinator failed-check --base-ref refs/heads/mp/wt/nodes/coordinator/head --slot "$integration_slot" --expected-slot "$integration_oid")
 git -C "$failed_candidate" merge --no-edit mp/wt/nodes/coordinator/child-b/head >/dev/null
 [ "$(git rev-parse refs/heads/mp/wt/nodes/coordinator/head)" = "$coordinator_head" ] && ok || bad "unpromoted candidate advanced coordinator"
-expect_ok "$WT" candidate-remove wt coordinator failed-check --purpose node
+printf 'keep candidate artifact\n' > "$failed_candidate/keep.local-artifact"
+expect_fail "$WT" candidate-remove wt coordinator failed-check --purpose node
+[ -f "$failed_candidate/keep.local-artifact" ] && ok || bad "candidate removal deleted an ignored artifact"
+if [ -d "$failed_candidate" ]; then
+  rm "$failed_candidate/keep.local-artifact"
+  expect_ok "$WT" candidate-remove wt coordinator failed-check --purpose node
+fi
 
 resumed_candidate=$("$WT" candidate-add wt coordinator resumed --base-ref refs/heads/mp/wt/nodes/coordinator/head --slot "$integration_slot" --expected-slot "$integration_oid")
 git -C "$resumed_candidate" merge --no-edit mp/wt/nodes/coordinator/child-b/head >/dev/null
@@ -158,8 +287,76 @@ target_integration_slot=${target_integration%% *}; target_integration_oid=${targ
 
 target_candidate=$("$WT" candidate-add wt coordinator final --base-ref refs/heads/feature/worktree --slot "$target_integration_slot" --expected-slot "$target_integration_oid")
 git -C "$target_candidate" merge --no-edit mp/wt/nodes/coordinator/head >/dev/null
+printf 'candidate intermediate\n' > "$target_candidate/target-local.txt"
+git -C "$target_candidate" add target-local.txt
+git -C "$target_candidate" commit -qm 'test: add target intermediate'
+target_intermediate=$(git -C "$target_candidate" rev-parse HEAD)
+printf 'candidate final\n' > "$target_candidate/target-final.txt"
+git -C "$target_candidate" add target-final.txt
+git -C "$target_candidate" commit -qm 'test: add target final'
 [ "$(git rev-parse refs/heads/feature/worktree)" = "$base" ] && ok || bad "candidate changed checked-out target"
 expect_fail "$WT" target-promote wt coordinator final --slot "$target_integration_slot" --expected-slot "$target_integration_oid" --owner-session intruder --expected-owner "$owner_oid" --expected-head "$base"
+
+# A checked-out target sync failure must restore the exact ref and worktree.
+target_sync_marker="$TMP/target-sync-race"
+env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" MP_BASE_PATH="$base_path" \
+  MP_RUN="$RUN" MP_REPO="$repo" MP_RACE_KIND=target MP_RACE_ACTION=sync-fail \
+  MP_RACE_MARKER="$target_sync_marker" MP_RACE_RUN=wt MP_RACE_TARGET=feature/worktree \
+  "$WT" target-promote wt coordinator final --slot "$target_integration_slot" \
+  --expected-slot "$target_integration_oid" --owner-session owner \
+  --expected-owner "$owner_oid" --expected-head "$base" >/dev/null 2>&1
+target_sync_status=$?
+[ -e "$target_sync_marker.sync" ] && ok || bad "target sync failure did not run"
+[ "$target_sync_status" -ne 0 ] && ok || bad "target sync failure reported success"
+[ "$(git rev-parse refs/heads/feature/worktree)" = "$base" ] && ok ||
+  bad "target sync failure did not restore the target ref"
+[ ! -e target-local.txt ] && [ ! -e target-final.txt ] && ok ||
+  bad "target sync failure did not restore the target worktree"
+git reset --hard "$base" >/dev/null
+
+# Authorization released immediately before the ref advance must block promotion.
+target_slot_marker="$TMP/target-slot-race"
+env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" MP_BASE_PATH="$base_path" \
+  MP_RUN="$RUN" MP_REPO="$repo" MP_RACE_KIND=target MP_RACE_ACTION=release-slot \
+  MP_RACE_MARKER="$target_slot_marker" MP_RACE_RUN=wt MP_RACE_TARGET=feature/worktree \
+  MP_RACE_SLOT="$target_integration_slot" MP_RACE_SLOT_OID="$target_integration_oid" \
+  MP_RACE_SESSION=owner \
+  "$WT" target-promote wt coordinator final --slot "$target_integration_slot" \
+  --expected-slot "$target_integration_oid" --owner-session owner \
+  --expected-owner "$owner_oid" --expected-head "$base" >/dev/null 2>&1
+target_slot_status=$?
+[ -e "$target_slot_marker" ] && ok || bad "target slot race did not run"
+[ "$target_slot_status" -ne 0 ] && ok || bad "target promotion ignored released authorization"
+[ "$(git rev-parse refs/heads/feature/worktree)" = "$base" ] && ok ||
+  bad "stale authorization advanced the target"
+git reset --hard "$base" >/dev/null
+target_integration=$("$RUN" slot-acquire wt integration @target --session owner --harness codex --expected-owner "$owner_oid")
+target_integration_slot=${target_integration%% *}; target_integration_oid=${target_integration#* }
+
+# An expected-head advance immediately before the ref transaction must win.
+target_head_marker="$TMP/target-head-race"
+env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" MP_BASE_PATH="$base_path" \
+  MP_RUN="$RUN" MP_REPO="$repo" MP_RACE_KIND=target MP_RACE_ACTION=advance-head \
+  MP_RACE_MARKER="$target_head_marker" MP_RACE_RUN=wt MP_RACE_TARGET=feature/worktree \
+  MP_RACE_HEAD="$target_intermediate" \
+  "$WT" target-promote wt coordinator final --slot "$target_integration_slot" \
+  --expected-slot "$target_integration_oid" --owner-session owner \
+  --expected-owner "$owner_oid" --expected-head "$base" >/dev/null 2>&1
+target_head_status=$?
+[ -e "$target_head_marker" ] && ok || bad "target head race did not run"
+[ "$target_head_status" -ne 0 ] && ok || bad "target promotion ignored the stale expected head"
+[ "$(git rev-parse refs/heads/feature/worktree)" = "$target_intermediate" ] && ok ||
+  bad "stale-head promotion overwrote the competing target head"
+git reset --hard "$base" >/dev/null
+
+# An ignored target file must never be overwritten by the candidate tree.
+printf 'target-local.txt\n' >> "$(git rev-parse --git-path info/exclude)"
+printf 'user target data\n' > target-local.txt
+expect_fail "$WT" target-promote wt coordinator final --slot "$target_integration_slot" --expected-slot "$target_integration_oid" --owner-session owner --expected-owner "$owner_oid" --expected-head "$base"
+[ "$(cat target-local.txt)" = 'user target data' ] && ok || bad "target promotion overwrote ignored user data"
+[ "$(git rev-parse refs/heads/feature/worktree)" = "$base" ] && ok || bad "ignored target data did not block the ref advance"
+rm -f target-local.txt
+git reset --hard "$base" >/dev/null
 expect_ok "$WT" target-promote wt coordinator final --slot "$target_integration_slot" --expected-slot "$target_integration_oid" --owner-session owner --expected-owner "$owner_oid" --expected-head "$base"
 expect_ok "$WT" candidate-remove wt coordinator final --purpose target
 expect_ok "$RUN" slot-release wt integration "$target_integration_slot" --session owner --expected "$target_integration_oid"
@@ -168,7 +365,13 @@ owner_oid=$("$RUN" owner-heartbeat wt --session owner --expected "$owner_oid")
 parent_status=$(git status --porcelain=v1)
 [ -z "$parent_status" ] && ok || bad "parent checkout changed"
 
-expect_ok "$WT" node-remove wt coordinator/child-a
+printf 'keep node artifact\n' > "$first_path/keep.local-artifact"
+expect_fail "$WT" node-remove wt coordinator/child-a
+[ -f "$first_path/keep.local-artifact" ] && ok || bad "node removal deleted an ignored artifact"
+if [ -d "$first_path" ]; then
+  rm "$first_path/keep.local-artifact"
+  expect_ok "$WT" node-remove wt coordinator/child-a
+fi
 line=$(cat "$TMP/child-a.slot"); slot=${line%% *}; oid=${line#* }
 expect_ok "$RUN" slot-release wt writer "$slot" --session child-a-session --expected "$oid"
 replacement=$("$RUN" slot-acquire wt writer coordinator/child-a --session child-a-session --harness codex)
@@ -194,6 +397,19 @@ expect_ok "$RUN" release-claim wt coordinator/child-d --session child-d-session 
 
 second_writer=$("$RUN" slot-acquire wt writer second-root --session second-root-session --harness claude)
 second_writer_slot=${second_writer%% *}; second_writer_oid=${second_writer#* }
+post_add_marker="$TMP/post-add-generation-race"
+expect_fail env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" MP_BASE_PATH="$base_path" \
+  MP_RUN="$RUN" MP_REPO="$repo" MP_RACE_KIND=worktree MP_RACE_ACTION=generation \
+  MP_RACE_MARKER="$post_add_marker" MP_RACE_RUN=wt MP_RACE_SESSION=owner \
+  MP_RACE_OWNER="$owner_oid" \
+  "$WT" node-add wt second-root --slot "$second_writer_slot" \
+  --expected-slot "$second_writer_oid"
+[ -e "$post_add_marker" ] && ok || bad "post-add generation race did not run"
+[ ! -e "$repo/.worktrees/wt/nodes/second-root" ] && ok ||
+  bad "stale node-add left a worktree after generation change"
+git worktree list --porcelain | grep -qF "$repo/.worktrees/wt/nodes/second-root" &&
+  bad "stale node-add left a registered worktree" || ok
+owner_oid=$(git rev-parse refs/megapowers/runs/wt/owner)
 second_path=$("$WT" node-add wt second-root --slot "$second_writer_slot" --expected-slot "$second_writer_oid")
 mkdir -p "$second_path/second-root"
 printf 'second root\n' > "$second_path/second-root/result.txt"

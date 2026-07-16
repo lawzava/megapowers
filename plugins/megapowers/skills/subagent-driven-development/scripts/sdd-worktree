@@ -65,12 +65,26 @@ primary_repo=$(cd "$primary_repo" && pwd -P)
 [ "$primary_repo" = "$repo" ] || mp_die "could not resolve the primary working tree" 2
 
 manifest=''
+manifest_ref=''
+manifest_oid=''
+generation_ref=''
+generation_oid=''
 target_branch=''
 load_run() {
   local run=$1 primary_branch
   mp_validate_run_id "$run" || return
-  manifest=$(mp_manifest_json "$run") || {
+  manifest_ref=$(mp_run_ref "$run" manifest) || return
+  manifest_oid=$(mp_read_ref "$manifest_ref") || {
     mp_die "run does not exist or its manifest is malformed: $run" 3
+    return
+  }
+  manifest=$(mp_read_json_ref "$manifest_oid") || {
+    mp_die "run does not exist or its manifest is malformed: $run" 3
+    return
+  }
+  generation_ref=$(mp_run_ref "$run" generation) || return
+  generation_oid=$(mp_read_ref "$generation_ref") || {
+    mp_die "run generation is missing: $run" 3
     return
   }
   target_branch=$(jq -r '.target_branch' <<<"$manifest")
@@ -99,6 +113,16 @@ open_snapshot() {
   [ "$(mp_ref_oid_or_zero "$closing_ref")" = "$zero" ] &&
     [ "$(mp_ref_oid_or_zero "$closed_ref")" = "$zero" ] || {
       mp_die "run is closing or closed" 4
+      return
+    }
+}
+
+run_snapshot_current() {
+  local run=$1
+  open_snapshot "$run" || return
+  [ "$(mp_read_ref "$manifest_ref" || true)" = "$manifest_oid" ] &&
+    [ "$(mp_read_ref "$generation_ref" || true)" = "$generation_oid" ] || {
+      mp_die "run manifest or generation changed" 4
       return
     }
 }
@@ -246,7 +270,7 @@ remove_registered_worktree() {
     return
   }
   [ -d "$path" ] || { mp_die "registered worktree is missing: $path" 4; return; }
-  [ -z "$(git -C "$path" status --porcelain=v1)" ] || {
+  worktree_is_pristine "$path" || {
     mp_die "worktree is dirty and remains for inspection: $path" 4
     return
   }
@@ -254,6 +278,29 @@ remove_registered_worktree() {
     mp_die "could not remove worktree: $path" 3
     return
   }
+}
+
+worktree_is_pristine() {
+  local status
+  status=$(git -C "$1" status --porcelain=v1 --ignored=matching --untracked-files=all) || return
+  [ -z "$status" ]
+}
+
+target_ignored_state_clear() {
+  local status line
+  status=$(git -C "$repo" ls-files --others --ignored --exclude-standard --directory) || return
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    # Active tool-owned worktrees necessarily appear through this ignored root.
+    [ "$line" = '.worktrees/' ] && continue
+    return 1
+  done <<<"$status"
+}
+
+target_is_pristine() {
+  local status
+  status=$(git -C "$repo" status --porcelain=v1 --untracked-files=all) || return
+  [ -z "$status" ] && target_ignored_state_clear
 }
 
 brief=''
@@ -302,9 +349,12 @@ validate_slot() {
   fi
 }
 
+node_branch_created=0
 ensure_node_branch() {
   local run=$1 node=$2 base=$3 branch branch_ref current
   local verify_ref=${4:-} verify_oid=${5:-}
+  local extra_ref=${6:-} extra_oid=${7:-}
+  node_branch_created=0
   branch=$(node_branch "$run" "$node")
   branch_ref="refs/heads/$branch"
   validate_branch_ref "$branch_ref" || return
@@ -312,7 +362,7 @@ ensure_node_branch() {
     mp_die "base must name a commit" 2
     return
   }
-  open_snapshot "$run" || return
+  run_snapshot_current "$run" || return
   current=$(mp_read_ref "$branch_ref" || true)
   if [ -n "$current" ]; then
     [ "$current" = "$base" ] || { mp_die "node branch exists at another base" 4; return; }
@@ -320,31 +370,55 @@ ensure_node_branch() {
       mp_die "node branch authorization changed" 4
       return
     }
-    open_snapshot "$run" || return
+    [ -z "$extra_ref" ] || [ "$(mp_read_ref "$extra_ref" || true)" = "$extra_oid" ] || {
+      mp_die "node branch authorization changed" 4
+      return
+    }
+    run_snapshot_current "$run" || return
     return
   fi
   if ! git -C "$repo" update-ref --stdin >/dev/null 2>&1 <<EOF
 start
 verify $closing_ref $zero
 verify $closed_ref $zero
+verify $manifest_ref $manifest_oid
+verify $generation_ref $generation_oid
 ${verify_ref:+verify $verify_ref $verify_oid
+}${extra_ref:+verify $extra_ref $extra_oid
 }create $branch_ref $base
 prepare
 commit
 EOF
   then
-    open_snapshot "$run" || return
+    run_snapshot_current "$run" || return
     current=$(mp_read_ref "$branch_ref" || true)
     [ "$current" = "$base" ] || { mp_die "node branch creation race was lost" 4; return; }
+    [ -z "$verify_ref" ] || [ "$(mp_read_ref "$verify_ref" || true)" = "$verify_oid" ] || {
+      mp_die "node branch authorization changed" 4
+      return
+    }
+    [ -z "$extra_ref" ] || [ "$(mp_read_ref "$extra_ref" || true)" = "$extra_oid" ] || {
+      mp_die "node branch authorization changed" 4
+      return
+    }
+    return
+  fi
+  node_branch_created=1
+  if ! run_snapshot_current "$run" ||
+     { [ -n "$verify_ref" ] && [ "$(mp_read_ref "$verify_ref" || true)" != "$verify_oid" ]; } ||
+     { [ -n "$extra_ref" ] && [ "$(mp_read_ref "$extra_ref" || true)" != "$extra_oid" ]; }; then
+    git -C "$repo" update-ref -d "$branch_ref" "$base" >/dev/null 2>&1 || true
+    node_branch_created=0
+    mp_die "node branch authorization changed during creation" 4
+    return
   fi
 }
 
 cleanup_added_worktree() {
   local path=$1 expected_ref=$2
-  if registered_path_ref "$path" && [ "$registered_ref" = "$expected_ref" ] &&
-     [ -d "$path" ] && [ -z "$(git -C "$path" status --porcelain=v1 2>/dev/null)" ]; then
-    git -C "$repo" worktree remove "$path" >/dev/null 2>&1 || true
-  fi
+  registered_path_ref "$path" && [ "$registered_ref" = "$expected_ref" ] &&
+    [ -d "$path" ] && worktree_is_pristine "$path" || return 1
+  git -C "$repo" worktree remove "$path" >/dev/null 2>&1
 }
 
 parse_root_args() {
@@ -376,7 +450,7 @@ cmd_branch_init() {
 cmd_node_add() {
   [ "$#" -ge 2 ] || { mp_die "usage: sdd-worktree node-add RUN_ID NODE --slot N --expected-slot OBJECT_ID [--root DIR]" 2; return; }
   local run=$1 node=$2 slot='' expected='' seen_slot=0 seen_expected=0 path branch branch_ref base
-  local requested_root='' harness_root=''
+  local requested_root='' harness_root='' created=0
   shift 2
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -396,19 +470,26 @@ cmd_node_add() {
   base=$(jq -r '.base' <<<"$brief")
   branch=$(node_branch "$run" "$node")
   branch_ref="refs/heads/$branch"
-  ensure_node_branch "$run" "$node" "$base" "$slot_ref" "$expected" || return
+  ensure_node_branch "$run" "$node" "$base" "$slot_ref" "$expected" "$brief_ref" "$brief_oid" || return
+  created=$node_branch_created
   path=$(node_path "$run" "$node")
-  open_snapshot "$run" || return
+  if ! run_snapshot_current "$run"; then
+    [ "$created" -eq 0 ] || git -C "$repo" update-ref -d "$branch_ref" "$base" >/dev/null 2>&1 || true
+    return 4
+  fi
   [ "$(mp_read_ref "$brief_ref" || true)" = "$brief_oid" ] &&
     [ "$(mp_read_ref "$slot_ref" || true)" = "$expected" ] || {
+      [ "$created" -eq 0 ] || git -C "$repo" update-ref -d "$branch_ref" "$base" >/dev/null 2>&1 || true
       mp_die "node worktree authorization changed" 4
       return
     }
   add_worktree "$path" "$branch" || return
-  if ! open_snapshot "$run" ||
+  if ! run_snapshot_current "$run" ||
      [ "$(mp_read_ref "$brief_ref" || true)" != "$brief_oid" ] ||
      [ "$(mp_read_ref "$slot_ref" || true)" != "$expected" ]; then
-    cleanup_added_worktree "$path" "$branch_ref"
+    if cleanup_added_worktree "$path" "$branch_ref"; then
+      [ "$created" -eq 0 ] || git -C "$repo" update-ref -d "$branch_ref" "$base" >/dev/null 2>&1 || true
+    fi
     mp_die "node worktree authorization changed during creation" 4
     return
   fi
@@ -476,7 +557,7 @@ cmd_candidate_add() {
   validate_branch_ref "$ref" || return
   path=$(candidate_path "$run" "$candidate_purpose" "$node" "$attempt")
   prepare_new_path "$path" || return
-  open_snapshot "$run" || return
+  run_snapshot_current "$run" || return
   if [ -n "$owner_ref" ]; then
     extra_verify="verify $owner_ref $owner_oid"
   else
@@ -486,6 +567,8 @@ cmd_candidate_add() {
 start
 verify $closing_ref $zero
 verify $closed_ref $zero
+verify $manifest_ref $manifest_oid
+verify $generation_ref $generation_oid
 verify $slot_ref $expected
 verify $base_ref $candidate_base_oid
 ${extra_verify}
@@ -494,8 +577,16 @@ prepare
 commit
 EOF
   then
-    open_snapshot "$run" || return
+    run_snapshot_current "$run" || return
     mp_die "candidate branch creation race was lost" 4
+    return
+  fi
+  if ! run_snapshot_current "$run" ||
+     [ "$(mp_read_ref "$slot_ref" || true)" != "$expected" ] ||
+     { [ -n "$owner_ref" ] && [ "$(mp_read_ref "$owner_ref" || true)" != "$owner_oid" ]; } ||
+     { [ -z "$owner_ref" ] && [ "$(mp_read_ref "$brief_ref" || true)" != "$brief_oid" ]; }; then
+    git -C "$repo" update-ref -d "$ref" "$candidate_base_oid" >/dev/null 2>&1 || true
+    mp_die "candidate authorization changed during branch creation" 4
     return
   fi
   if ! git -C "$repo" worktree add "$path" "$branch" >/dev/null; then
@@ -504,10 +595,12 @@ EOF
     mp_die "could not create candidate worktree" 3
     return
   fi
-  if ! open_snapshot "$run" || [ "$(mp_read_ref "$slot_ref" || true)" != "$expected" ] ||
-     { [ -n "$owner_ref" ] && [ "$(mp_read_ref "$owner_ref" || true)" != "$owner_oid" ]; }; then
-    cleanup_added_worktree "$path" "$ref"
-    git -C "$repo" update-ref -d "$ref" "$(mp_read_ref "$ref" || mp_zero_oid)" >/dev/null 2>&1 || true
+  if ! run_snapshot_current "$run" || [ "$(mp_read_ref "$slot_ref" || true)" != "$expected" ] ||
+     { [ -n "$owner_ref" ] && [ "$(mp_read_ref "$owner_ref" || true)" != "$owner_oid" ]; } ||
+     { [ -z "$owner_ref" ] && [ "$(mp_read_ref "$brief_ref" || true)" != "$brief_oid" ]; }; then
+    if cleanup_added_worktree "$path" "$ref"; then
+      git -C "$repo" update-ref -d "$ref" "$candidate_base_oid" >/dev/null 2>&1 || true
+    fi
     mp_die "candidate authorization changed during creation" 4
     return
   fi
@@ -541,11 +634,13 @@ cmd_candidate_promote() {
   validate_branch_ref "$candidate_ref" || return
   validate_branch_ref "$node_ref" || return
   candidate_head=$(mp_read_ref "$candidate_ref") || { mp_die "candidate branch does not exist" 3; return; }
-  open_snapshot "$run" || return
+  run_snapshot_current "$run" || return
   if ! git -C "$repo" update-ref --stdin >/dev/null 2>&1 <<EOF
 start
 verify $closing_ref $zero
 verify $closed_ref $zero
+verify $manifest_ref $manifest_oid
+verify $generation_ref $generation_oid
 verify $slot_ref $expected
 verify $candidate_ref $candidate_head
 update $node_ref $candidate_head $expected_head
@@ -553,7 +648,7 @@ prepare
 commit
 EOF
   then
-    open_snapshot "$run" || return
+    run_snapshot_current "$run" || return
     [ "$(mp_read_ref "$slot_ref" || true)" = "$expected" ] || { mp_die "integration slot changed" 4; return; }
     mp_die "node branch changed before promotion" 4
     return
@@ -611,6 +706,30 @@ cmd_node_remove() {
   mp_read_ref "$ref" >/dev/null || { mp_die "node branch does not exist" 3; return; }
   path=$(node_path "$run" "$node")
   remove_registered_worktree "$path" "$ref"
+}
+
+target_index_matches() {
+  local commit=$1 expected_tree index_tree
+  expected_tree=$(git -C "$repo" rev-parse "$commit^{tree}") || return
+  index_tree=$(git -C "$repo" write-tree) || return
+  [ "$index_tree" = "$expected_tree" ] && git -C "$repo" diff-files --quiet
+}
+
+restore_target_after_sync_failure() {
+  local target_ref=$1 expected_head=$2 candidate_head=$3
+  git -C "$repo" update-ref "$target_ref" "$expected_head" "$candidate_head" >/dev/null 2>&1 || {
+    mp_die "target sync failed and the exact target ref could not be restored" 3
+    return
+  }
+  if target_index_matches "$expected_head"; then
+    return
+  fi
+  if target_index_matches "$candidate_head" &&
+     git -C "$repo" read-tree -u -m "$candidate_head" "$expected_head" >/dev/null 2>&1 &&
+     target_index_matches "$expected_head"; then
+    return
+  fi
+  mp_die "target ref was restored but target worktree recovery requires manual inspection" 3
 }
 
 cmd_target_promote() {
@@ -675,7 +794,7 @@ cmd_target_promote() {
     return
   }
   [ "$current_branch" = "$target_branch" ] || { mp_die "target branch is not checked out" 4; return; }
-  [ -z "$(git -C "$repo" status --porcelain=v1)" ] || { mp_die "target checkout is dirty" 4; return; }
+  target_is_pristine || { mp_die "target checkout contains local or ignored data" 4; return; }
   [ "$(mp_read_ref "$target_ref" || true)" = "$expected_head" ] &&
     [ "$(git -C "$repo" rev-parse HEAD)" = "$expected_head" ] || {
       mp_die "target head changed before promotion" 4
@@ -685,15 +804,50 @@ cmd_target_promote() {
     mp_die "target candidate is not a fast-forward" 4
     return
   }
-  open_snapshot "$run" || return
-  [ "$(mp_read_ref "$slot_ref" || true)" = "$expected" ] &&
-    [ "$(mp_read_ref "$owner_ref" || true)" = "$expected_owner" ] &&
-    [ "$(mp_read_ref "$result_ref" || true)" = "$result_oid" ] &&
-    [ "$(mp_read_ref "$candidate_ref" || true)" = "$candidate_head" ] || {
-      mp_die "target promotion authorization changed" 4
+  run_snapshot_current "$run" || return
+  if ! git -C "$repo" update-ref --stdin >/dev/null 2>&1 <<EOF
+start
+verify $closing_ref $zero
+verify $closed_ref $zero
+verify $manifest_ref $manifest_oid
+verify $generation_ref $generation_oid
+verify $owner_ref $expected_owner
+verify $slot_ref $expected
+verify $result_ref $result_oid
+verify $candidate_ref $candidate_head
+update $target_ref $candidate_head $expected_head
+prepare
+commit
+EOF
+  then
+    mp_die "target promotion snapshot changed before the ref transaction" 4
+    return
+  fi
+  current_branch=$(git -C "$repo" symbolic-ref --quiet --short HEAD || true)
+  if [ "$current_branch" != "$target_branch" ] ||
+     [ "$(git -C "$repo" rev-parse HEAD 2>/dev/null || true)" != "$candidate_head" ]; then
+    git -C "$repo" update-ref "$target_ref" "$expected_head" "$candidate_head" >/dev/null 2>&1 || {
+      mp_die "target checkout changed and the exact target ref could not be restored" 3
       return
     }
-  git -C "$repo" merge --ff-only "$candidate"
+    mp_die "target checkout changed during promotion; target ref was restored" 4
+    return
+  fi
+  if ! target_ignored_state_clear; then
+    restore_target_after_sync_failure "$target_ref" "$expected_head" "$candidate_head" || return
+    mp_die "ignored target data appeared during promotion; target was restored" 4
+    return
+  fi
+  if ! git -C "$repo" read-tree -u -m "$expected_head" "$candidate_head" >/dev/null 2>&1; then
+    restore_target_after_sync_failure "$target_ref" "$expected_head" "$candidate_head" || return
+    mp_die "target worktree sync failed; target was restored" 3
+    return
+  fi
+  if ! target_index_matches "$candidate_head" || ! target_is_pristine; then
+    restore_target_after_sync_failure "$target_ref" "$expected_head" "$candidate_head" || return
+    mp_die "target worktree sync was not clean; target was restored" 3
+    return
+  fi
 }
 
 case "${1:-}" in
