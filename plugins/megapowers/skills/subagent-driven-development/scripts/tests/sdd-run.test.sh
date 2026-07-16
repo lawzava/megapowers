@@ -258,6 +258,7 @@ expect_ok "$RUN" init terminal-barrier --plan plan.md --root terminal-root --roo
 expect_ok "$RUN" init close-descendant --plan plan.md --root parent --target feature/multi-writer --session descendant-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
 expect_ok "$RUN" init close-worktree-race --plan plan.md --root race-root --target feature/multi-writer --session close-race-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init cleanup-worktree-race --plan plan.md --root cleanup-root --target feature/multi-writer --session cleanup-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init cleanup-primary-root --plan plan.md --root cleanup-primary-root --target feature/multi-writer --session cleanup-primary-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 defaults_base=refs/megapowers/runs/defaults
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.writer_limit')" 3
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.integration_limit')" 1
@@ -806,6 +807,31 @@ cat > result-a.json <<EOF
   "unresolved": []
 }
 EOF
+# An evidence path is one JSON string. Embedded controls must not turn it into
+# multiple line-oriented filenames or mutate the run generation.
+mkdir evidence-split
+printf 'verification passed\n' > evidence-split/test.txt
+printf 'second verification passed\n' > evidence-split/second.txt
+jq '.verification[0].evidence_path="evidence/test.txt\nevidence/second.txt"' \
+  result-a.json > split-evidence-path.json
+split_generation_before=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_status 2 "$RUN" result-put demo root-a split-evidence-path.json evidence-split \
+  --session codex-session --redactions redactions.txt
+expect_eq "$(git rev-parse refs/megapowers/runs/demo/generation)" "$split_generation_before"
+split_result_ref=refs/megapowers/runs/demo/nodes/root-a/result
+split_result_oid=$(git rev-parse --verify "$split_result_ref" 2>/dev/null || true)
+[ -z "$split_result_oid" ] && ok || bad "embedded newline evidence path created a result"
+git update-ref -d "$split_result_ref"
+
+jq '.verification[0].evidence_path="evidence/test.txt\u0000"' \
+  result-a.json > nul-evidence-path.json
+nul_generation_before=$(git rev-parse refs/megapowers/runs/demo/generation)
+expect_status 2 "$RUN" result-put demo root-a nul-evidence-path.json evidence \
+  --session codex-session --redactions redactions.txt
+expect_eq "$(git rev-parse refs/megapowers/runs/demo/generation)" "$nul_generation_before"
+nul_result_oid=$(git rev-parse --verify "$split_result_ref" 2>/dev/null || true)
+[ -z "$nul_result_oid" ] && ok || bad "embedded NUL evidence path created a result"
+git update-ref -d "$split_result_ref"
 expect_fail "$RUN" result-put demo root-a result-a.json evidence --session codex-session
 jq '.verification += [.verification[0]]' result-a.json > duplicate-evidence.json
 expect_fail "$RUN" result-put demo root-a duplicate-evidence.json evidence --session codex-session --redactions redactions.txt
@@ -851,22 +877,51 @@ expect_ok "$RUN" release-claim demo root-b --session claude-session --expected "
 expect_fail "$RUN" claim demo root-b --session replacement-session --harness codex
 
 dead_claim=${root_a_claim%% *}
-stale_claim=$(git cat-file blob "$dead_claim" | jq -c '.last_activity="2000-01-01T00:00:00Z"' | git hash-object -w --stdin)
-git update-ref refs/megapowers/runs/demo/nodes/root-a/claim "$stale_claim" "$dead_claim"
-stale_status=$("$RUN" status demo --stale-after 900)
+claim_ref=refs/megapowers/runs/demo/nodes/root-a/claim
+boundary_claim=$(git cat-file blob "$dead_claim" |
+  jq -c '.last_activity="2026-07-16T11:45:00Z"' | git hash-object -w --stdin)
+git update-ref "$claim_ref" "$boundary_claim" "$dead_claim"
+boundary_status=$(env PATH="$TMP/date-wrapper:$PATH" "$RUN" status demo)
+printf '%s\n' "$boundary_status" | jq -e \
+  '.nodes[] | select(.node == "root-a") | .claim.stale == false' >/dev/null &&
+  ok || bad "claim at the 900-second boundary was reported stale"
+expect_status 4 env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-claim demo root-a \
+  --owner-session codex-1 --expected "$boundary_claim" --confirmed-inactive
+boundary_claim_after=$(git rev-parse --verify "$claim_ref" 2>/dev/null || true)
+expect_eq "$boundary_claim_after" "$boundary_claim"
+# Restore after the RED run, where the unfixed command deletes the live claim.
+git update-ref "$claim_ref" "$boundary_claim"
+stale_claim=$(git cat-file blob "$boundary_claim" |
+  jq -c '.last_activity="2026-07-16T11:44:59Z"' | git hash-object -w --stdin)
+git update-ref "$claim_ref" "$stale_claim" "$boundary_claim"
+stale_status=$(env PATH="$TMP/date-wrapper:$PATH" "$RUN" status demo --stale-after 900)
 printf '%s\n' "$stale_status" | jq -e '.nodes[] | select(.node == "root-a") | .claim.stale == true' >/dev/null && ok || bad "stale claim not reported"
 expect_fail "$RUN" recover-claim demo root-a --owner-session codex-1 --expected "$stale_claim"
 demo_generation_before_recover_claim=$(git rev-parse refs/megapowers/runs/demo/generation)
-expect_ok "$RUN" recover-claim demo root-a --owner-session codex-1 --expected "$stale_claim" --confirmed-inactive
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-claim demo root-a --owner-session codex-1 --expected "$stale_claim" --confirmed-inactive
 expect_ne "$demo_generation_before_recover_claim" "$(git rev-parse refs/megapowers/runs/demo/generation)"
 
 line=$(cat slot-b.out); n=${line%% *}; oid=${line#* }
 slot_ref="refs/megapowers/runs/demo/slots/writer/$n"
-stale_slot=$(git cat-file blob "$oid" | jq -c '.claimed_at="2000-01-01T00:00:00Z"' | git hash-object -w --stdin)
-git update-ref "$slot_ref" "$stale_slot" "$oid"
+boundary_slot=$(git cat-file blob "$oid" |
+  jq -c '.claimed_at="2026-07-16T11:45:00Z"' | git hash-object -w --stdin)
+git update-ref "$slot_ref" "$boundary_slot" "$oid"
+boundary_status=$(env PATH="$TMP/date-wrapper:$PATH" "$RUN" status demo)
+printf '%s\n' "$boundary_status" | jq -e --argjson slot "$n" \
+  '.slots[] | select(.slot == $slot) | .stale == false' >/dev/null &&
+  ok || bad "slot at the 900-second boundary was reported stale"
+expect_status 4 env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot demo writer "$n" \
+  --owner-session codex-1 --expected "$boundary_slot" --confirmed-inactive
+boundary_slot_after=$(git rev-parse --verify "$slot_ref" 2>/dev/null || true)
+expect_eq "$boundary_slot_after" "$boundary_slot"
+# Restore after the RED run, where the unfixed command deletes the live slot.
+git update-ref "$slot_ref" "$boundary_slot"
+stale_slot=$(git cat-file blob "$boundary_slot" |
+  jq -c '.claimed_at="2026-07-16T11:44:59Z"' | git hash-object -w --stdin)
+git update-ref "$slot_ref" "$stale_slot" "$boundary_slot"
 expect_fail "$RUN" recover-slot demo writer "$n" --owner-session codex-1 --expected "$stale_slot"
 demo_generation_before_recover_slot=$(git rev-parse refs/megapowers/runs/demo/generation)
-expect_ok "$RUN" recover-slot demo writer "$n" --owner-session codex-1 --expected "$stale_slot" --confirmed-inactive
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot demo writer "$n" --owner-session codex-1 --expected "$stale_slot" --confirmed-inactive
 expect_ne "$demo_generation_before_recover_slot" "$(git rev-parse refs/megapowers/runs/demo/generation)"
 expect_ok "$RUN" release-claim demo root-a/slot-b --session slot-b-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-b/claim)"
 line=$(cat slot-c.out); n=${line%% *}; oid=${line#* }
@@ -1010,6 +1065,35 @@ else
 fi
 git worktree remove "$TMP/close-race-worktree"
 expect_ok "$RUN" close close-worktree-race --owner-session close-race-owner --expected "$close_race_owner"
+
+# Cleanup invoked from a linked worktree must still see tool-owned worktrees
+# under the primary checkout's .worktrees directory, regardless of branch.
+cleanup_primary_result=$(make_result_tree cleanup-primary-root cleanup-primary-root "$head")
+git update-ref refs/megapowers/runs/cleanup-primary-root/nodes/cleanup-primary-root/result \
+  "$cleanup_primary_result"
+cleanup_primary_owner=$(git rev-parse refs/megapowers/runs/cleanup-primary-root/owner)
+expect_ok "$RUN" close cleanup-primary-root --owner-session cleanup-primary-owner \
+  --expected "$cleanup_primary_owner"
+cleanup_primary_closed=$(git rev-parse refs/megapowers/runs/cleanup-primary-root/closed)
+git branch cleanup-primary-tool "$head"
+git branch cleanup-primary-caller "$head"
+cleanup_primary_tool="$repo/.worktrees/cleanup-primary-root/worker"
+cleanup_primary_caller="$TMP/cleanup-primary-caller"
+mkdir -p "${cleanup_primary_tool%/*}"
+git worktree add -q "$cleanup_primary_tool" cleanup-primary-tool
+git worktree add -q "$cleanup_primary_caller" cleanup-primary-caller
+set +e
+(
+  cd "$cleanup_primary_caller" || exit 99
+  "$RUN" cleanup cleanup-primary-root --expected-closed "$cleanup_primary_closed" --confirmed
+) > "$TMP/cleanup-primary-root.out" 2>&1
+cleanup_primary_status=$?
+set -e
+expect_eq "$cleanup_primary_status" 4
+expect_eq "$(git rev-parse --verify refs/megapowers/runs/cleanup-primary-root/closed 2>/dev/null || true)" \
+  "$cleanup_primary_closed"
+git worktree remove "$cleanup_primary_tool"
+git worktree remove "$cleanup_primary_caller"
 
 # Cleanup restores every exact ref when a raw Git worktree appears after preflight.
 cleanup_result=$(make_result_tree cleanup-worktree-race cleanup-root "$head")

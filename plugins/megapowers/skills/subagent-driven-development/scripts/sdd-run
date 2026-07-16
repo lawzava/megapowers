@@ -85,13 +85,29 @@ mp_read_result_json() {
   git show "$1:result.json" 2>/dev/null | jq -ce .
 }
 
+MP_DEFAULT_STALE_AFTER=900
+
 mp_json_is_stale() {
-  local document=$1 seconds=${2:-900}
+  local document=$1 seconds=${2:-$MP_DEFAULT_STALE_AFTER}
   jq -e --arg now "$(mp_now)" --argjson seconds "$seconds" '
     def stale($now; $seconds):
       (($now | fromdateiso8601) - (.last_activity | fromdateiso8601)) > $seconds;
     (. + {last_activity: (.last_activity // .claimed_at)}) |
     stale($now; $seconds)' >/dev/null <<<"$document"
+}
+
+mp_require_stale_json() {
+  local document=$1 subject=$2 seconds=${3:-$MP_DEFAULT_STALE_AFTER} stale_status
+  if mp_json_is_stale "$document" "$seconds"; then
+    return
+  else
+    stale_status=$?
+  fi
+  if [ "$stale_status" -eq 1 ]; then
+    mp_die "$subject is not stale" 4
+  else
+    mp_die "$subject has an invalid activity timestamp" 3
+  fi
 }
 
 mp_redact_file() {
@@ -194,9 +210,11 @@ mp_run_branch_worktrees_clear() {
 }
 
 mp_cleanup_worktrees_clear() {
-  local run=$1 top tool_root worktrees line key value path
-  top=$(git rev-parse --show-toplevel) || return 3
-  tool_root="$top/.worktrees/$run"
+  local run=$1 common_dir primary_root tool_root worktrees line key value path
+  common_dir=$(git rev-parse --git-common-dir) || return 3
+  common_dir=$(cd "$common_dir" 2>/dev/null && pwd -P) || return 3
+  primary_root=$(cd "$common_dir/.." 2>/dev/null && pwd -P) || return 3
+  tool_root="$primary_root/.worktrees/$run"
   worktrees=$(git worktree list --porcelain) || return 3
   while IFS= read -r line; do
     key=${line%% *}
@@ -1528,7 +1546,9 @@ cmd_result_put() {
         ((.exit_code | type) == "number" and
          (.exit_code | floor) == .exit_code) and
         ((.evidence_path | type) == "string" and
-         (.evidence_path | startswith("evidence/"))))) and
+         (.evidence_path as $path |
+          ($path | explode | all(.[]; . > 31 and . != 127)) and
+          (($path | match("^evidence/[A-Za-z0-9][A-Za-z0-9._-]*").string) == $path))))) and
      (.unresolved | type == "array" and all(.[]; type == "string")) and
      (if .status == "done"
         then ((.verification | length) > 0 and
@@ -1756,7 +1776,7 @@ cmd_status() {
     mp_die "usage: sdd-run status RUN_ID [--stale-after SECONDS]" 2
     return
   fi
-  local run=$1 stale_after=900 seen_stale=0
+  local run=$1 stale_after=$MP_DEFAULT_STALE_AFTER seen_stale=0
   shift
   mp_validate_run_id "$run" || return
   while [ "$#" -gt 0 ]; do
@@ -1977,6 +1997,7 @@ cmd_recover_claim() {
     owner_oid=$(mp_read_ref "$owner_ref") || { mp_die "run owner is missing" 3; return; }
     owner=$(mp_read_json_ref "$owner_oid") || { mp_die "run owner is malformed" 3; return; }
     [ "$(jq -r '.session' <<<"$owner")" = "$owner_session" ] || { mp_die "recovery requires the current owner session" 4; return; }
+    mp_require_stale_json "$claim" "claim" || return
     data=$(jq -cn --arg node "$node" --arg owner "$owner_oid" --arg expected "$expected" \
       '{node:$node,owner:$owner,expected:$expected}')
     new_generation=$(mp_generation_oid "$run" "$generation_oid" recover-claim "$data") || return
@@ -2048,6 +2069,7 @@ cmd_recover_slot() {
     owner_oid=$(mp_read_ref "$owner_ref") || { mp_die "run owner is missing" 3; return; }
     owner=$(mp_read_json_ref "$owner_oid") || { mp_die "run owner is malformed" 3; return; }
     [ "$(jq -r '.session' <<<"$owner")" = "$owner_session" ] || { mp_die "recovery requires the current owner session" 4; return; }
+    mp_require_stale_json "$slot_json" "slot" || return
     data=$(jq -cn --arg kind "$kind" --argjson slot "$slot" --arg owner "$owner_oid" \
       --arg expected "$expected" '{kind:$kind,slot:$slot,owner:$owner,expected:$expected}')
     new_generation=$(mp_generation_oid "$run" "$generation_oid" recover-slot "$data") || return
