@@ -14,6 +14,12 @@ expect_ok() { "$@" >/dev/null 2>&1 && ok || bad "expected success: $*"; }
 expect_fail() { "$@" >/dev/null 2>&1 && bad "expected failure: $*" || ok; }
 expect_eq() { [ "$1" = "$2" ] && ok || bad "expected '$1' = '$2'"; }
 
+if grep -Eq '(^|[[:space:]])declare[[:space:]]+-A([[:space:]]|$)' "$RUN"; then
+  bad "sdd-run requires Bash 4 associative arrays"
+else
+  ok
+fi
+
 repo="$TMP/repo"
 git init -q "$repo"
 git -C "$repo" config user.name Test
@@ -37,6 +43,7 @@ git -C "$repo" commit -qm 'test: add plan fixture'
 cd "$repo" || exit 2
 expect_fail "$RUN" init Bad_ID --plan plan.md --root root-a --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits
 expect_fail "$RUN" init no-commits --plan plan.md --root root-a --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8
+expect_fail "$RUN" init duplicate-roots --plan plan.md --root root-a --root root-a --target feature/multi-writer --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits
 git branch release
 git switch -q release
 expect_fail "$RUN" init protected --plan plan.md --root root-a --target release --session codex-1 --harness codex --max-depth 2 --agent-budget 8 --allow-task-commits

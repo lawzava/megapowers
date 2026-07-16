@@ -145,15 +145,17 @@ cmd_init() {
   mp_validate_session_id "$session" || return
   mp_harness "$harness" || return
 
-  local root
-  declare -A seen_roots=()
+  local root seen_root
+  local -a seen_roots=()
   for root in "${roots[@]}"; do
     mp_validate_node_path "$root" || return
-    if [[ -n "${seen_roots[$root]+present}" ]]; then
-      mp_die "duplicate root: $root" 2
-      return
-    fi
-    seen_roots[$root]=1
+    for seen_root in "${seen_roots[@]}"; do
+      if [ "$seen_root" = "$root" ]; then
+        mp_die "duplicate root: $root" 2
+        return
+      fi
+    done
+    seen_roots+=("$root")
   done
 
   git check-ref-format --branch "$target" >/dev/null 2>&1 || {
