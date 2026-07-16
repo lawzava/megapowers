@@ -37,6 +37,43 @@ mp_object_id() {
   esac
 }
 
+MP_REGISTRY_LOCK_REF=''
+MP_REGISTRY_LOCK_OID=''
+
+mp_release_registry_lock() {
+  local status=$?
+  trap '' HUP INT TERM
+  if [ -n "$MP_REGISTRY_LOCK_REF" ] && [ -n "$MP_REGISTRY_LOCK_OID" ]; then
+    mp_delete_ref "$MP_REGISTRY_LOCK_REF" "$MP_REGISTRY_LOCK_OID" >/dev/null 2>&1 || true
+    MP_REGISTRY_LOCK_REF=''
+    MP_REGISTRY_LOCK_OID=''
+  fi
+  return "$status"
+}
+
+mp_acquire_registry_lock() {
+  local run=$1 attempt=0 at token
+  at=$(mp_now)
+  token="$$-$PPID-$RANDOM-$RANDOM"
+  MP_REGISTRY_LOCK_REF=$(mp_run_ref "$run" locks/registry) || return
+  MP_REGISTRY_LOCK_OID=$(
+    jq -cn --argjson pid "$$" --arg at "$at" --arg token "$token" \
+      '{pid:$pid,token:$token,acquired_at:$at}' | git hash-object -w --stdin
+  )
+  trap 'mp_release_registry_lock' EXIT
+  trap 'exit 130' HUP INT TERM
+  while ! mp_create_ref "$MP_REGISTRY_LOCK_REF" "$MP_REGISTRY_LOCK_OID" 2>/dev/null; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 100 ]; then
+      MP_REGISTRY_LOCK_REF=''
+      MP_REGISTRY_LOCK_OID=''
+      mp_die "run registry is busy" 4
+      return
+    fi
+    sleep 0.05
+  done
+}
+
 mp_nodes_related() {
   case "$1/" in
     "$2/"*) return 0 ;;
@@ -508,6 +545,7 @@ cmd_brief_put() {
   done
   [ "$seen_session" -eq 1 ] || { mp_die "missing --session" 2; return; }
   mp_validate_session_id "$session" || return
+  mp_acquire_registry_lock "$run" || return
 
   local manifest document_run document_node expected_branch base
   local remaining descendant writers integrations may_decompose
@@ -560,17 +598,20 @@ cmd_brief_put() {
 
   local parent current_head owner owner_ref total=0 root root_brief parent_brief
   local parent_remaining parent_descendant parent_writers parent_integrations candidate_ref
+  local authorization_ref authorization_oid head_ref
   if jq -e '.parent == null' "$brief" >/dev/null; then
     jq -e --arg node "$node" '.roots | index($node) != null' >/dev/null \
       <<<"$manifest" || { mp_die "root node is not declared in the manifest" 2; return; }
     owner_ref=$(mp_run_ref "$run" owner) || return
-    owner=$(mp_read_json_ref "$owner_ref") || { mp_die "run owner is missing" 3; return; }
+    authorization_ref=$owner_ref
+    authorization_oid=$(mp_read_ref "$authorization_ref") || { mp_die "run owner is missing" 3; return; }
+    owner=$(mp_read_json_ref "$authorization_oid") || { mp_die "run owner is malformed" 3; return; }
     [ "$(jq -r '.session' <<<"$owner")" = "$session" ] || {
       mp_die "root brief requires the owner session" 4
       return
     }
-    current_head=$(git rev-parse --verify \
-      "refs/heads/$(jq -r '.target_branch' <<<"$manifest")" 2>/dev/null) || {
+    head_ref="refs/heads/$(jq -r '.target_branch' <<<"$manifest")"
+    current_head=$(git rev-parse --verify "$head_ref" 2>/dev/null) || {
         mp_die "target branch does not exist" 3
         return
       }
@@ -605,16 +646,21 @@ cmd_brief_put() {
       mp_die "parent brief does not exist" 3
       return
     }
-    owner=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$parent/claim")") || {
+    authorization_ref=$(mp_run_ref "$run" "nodes/$parent/claim") || return
+    authorization_oid=$(mp_read_ref "$authorization_ref") || {
       mp_die "parent node is not actively claimed" 4
+      return
+    }
+    owner=$(mp_read_json_ref "$authorization_oid") || {
+      mp_die "parent claim is malformed" 3
       return
     }
     [ "$(jq -r '.session' <<<"$owner")" = "$session" ] || {
       mp_die "child brief requires the parent claimant session" 4
       return
     }
-    current_head=$(git rev-parse --verify \
-      "refs/heads/$(jq -r '.branch' <<<"$parent_brief")" 2>/dev/null) || {
+    head_ref="refs/heads/$(jq -r '.branch' <<<"$parent_brief")"
+    current_head=$(git rev-parse --verify "$head_ref" 2>/dev/null) || {
         mp_die "parent branch does not exist" 3
         return
       }
@@ -663,8 +709,15 @@ cmd_brief_put() {
   local brief_oid brief_ref
   brief_oid=$(mp_hash_json_file "$brief") || { mp_die "could not hash brief" 2; return; }
   brief_ref=$(mp_run_ref "$run" "nodes/$node/brief") || return
-  mp_create_ref "$brief_ref" "$brief_oid" 2>/dev/null || {
-    mp_die "node brief already exists" 4
+  git update-ref --stdin >/dev/null 2>&1 <<EOF || {
+start
+verify $authorization_ref $authorization_oid
+verify $head_ref $current_head
+create $brief_ref $brief_oid
+prepare
+commit
+EOF
+    mp_die "node brief already exists or authorization changed" 4
     return
   }
 }
@@ -695,6 +748,7 @@ cmd_claim() {
   [ "$seen_harness" -eq 1 ] || { mp_die "missing --harness" 2; return; }
   mp_validate_session_id "$session" || return
   mp_harness "$harness" || return
+  mp_acquire_registry_lock "$run" || return
 
   local brief_ref brief result
   brief_ref=$(mp_run_ref "$run" "nodes/$node/brief") || return
@@ -735,6 +789,7 @@ cmd_heartbeat() {
   [ "$seen_expected" -eq 1 ] || { mp_die "missing --expected" 2; return; }
   mp_validate_session_id "$session" || return
   mp_object_id "$expected" || { mp_die "expected must be an object ID" 2; return; }
+  mp_acquire_registry_lock "$run" || return
 
   local claim at old_activity new_oid claim_ref
   claim=$(mp_read_json_ref "$expected") || { mp_die "expected claim object is missing" 3; return; }
@@ -783,6 +838,7 @@ cmd_release_claim() {
   [ "$seen_expected" -eq 1 ] || { mp_die "missing --expected" 2; return; }
   mp_validate_session_id "$session" || return
   mp_object_id "$expected" || { mp_die "expected must be an object ID" 2; return; }
+  mp_acquire_registry_lock "$run" || return
   local claim
   claim=$(mp_read_json_ref "$expected") || { mp_die "expected claim object is missing" 3; return; }
   [ "$(jq -r '.session' <<<"$claim")" = "$session" ] || {
@@ -826,8 +882,10 @@ cmd_slot_acquire() {
   [ "$seen_harness" -eq 1 ] || { mp_die "missing --harness" 2; return; }
   mp_validate_session_id "$session" || return
   mp_harness "$harness" || return
+  mp_acquire_registry_lock "$run" || return
 
   local manifest limit scope owner_oid='' identity claim ref slot_json slot_oid at slot
+  local identity_ref identity_oid slot_ref current_identity
   manifest=$(mp_manifest_json "$run") || { mp_die "run does not exist: $run" 3; return; }
   if [ "$kind" = writer ]; then limit=$(jq -r '.writer_limit' <<<"$manifest")
   else limit=$(jq -r '.integration_limit' <<<"$manifest")
@@ -836,8 +894,10 @@ cmd_slot_acquire() {
     [ "$kind" = integration ] || { mp_die "writer @target is not allowed" 2; return; }
     [ "$seen_expected_owner" -eq 1 ] || { mp_die "@target requires --expected-owner" 2; return; }
     mp_object_id "$expected_owner" || { mp_die "expected owner must be an object ID" 2; return; }
-    owner_oid=$(mp_read_ref "$(mp_run_ref "$run" owner)") || { mp_die "run owner is missing" 3; return; }
+    identity_ref=$(mp_run_ref "$run" owner) || return
+    owner_oid=$(mp_read_ref "$identity_ref") || { mp_die "run owner is missing" 3; return; }
     [ "$owner_oid" = "$expected_owner" ] || { mp_die "run owner changed" 4; return; }
+    identity_oid=$owner_oid
     identity=$(mp_read_json_ref "$expected_owner") || { mp_die "owner object is malformed" 3; return; }
     [ "$(jq -r '.session' <<<"$identity")" = "$session" ] &&
       [ "$(jq -r '.harness' <<<"$identity")" = "$harness" ] || {
@@ -852,8 +912,13 @@ cmd_slot_acquire() {
       mp_die "node brief does not exist" 3
       return
     }
-    claim=$(mp_read_json_ref "$(mp_run_ref "$run" "nodes/$node/claim")") || {
+    identity_ref=$(mp_run_ref "$run" "nodes/$node/claim") || return
+    identity_oid=$(mp_read_ref "$identity_ref") || {
       mp_die "node is not actively claimed" 4
+      return
+    }
+    claim=$(mp_read_json_ref "$identity_oid") || {
+      mp_die "active node claim is malformed" 3
       return
     }
     [ "$(jq -r '.session' <<<"$claim")" = "$session" ] &&
@@ -893,11 +958,29 @@ cmd_slot_acquire() {
           slot:$slot,claimed_at:$at,owner_oid:$owner_oid}')
     fi
     slot_oid=$(printf '%s\n' "$slot_json" | git hash-object -w --stdin)
-    if mp_create_ref "$(mp_run_ref "$run" "slots/$kind/$slot")" "$slot_oid" 2>/dev/null; then
+    slot_ref=$(mp_run_ref "$run" "slots/$kind/$slot") || return
+    if git update-ref --stdin >/dev/null 2>&1 <<EOF
+start
+verify $identity_ref $identity_oid
+create $slot_ref $slot_oid
+prepare
+commit
+EOF
+    then
       printf '%s %s\n' "$slot" "$slot_oid"
       return
     fi
-    slot=$((slot + 1))
+    current_identity=$(mp_read_ref "$identity_ref" || true)
+    [ "$current_identity" = "$identity_oid" ] || {
+      mp_die "slot authorization changed before creation" 4
+      return
+    }
+    if mp_read_ref "$slot_ref" >/dev/null; then
+      slot=$((slot + 1))
+    else
+      mp_die "could not acquire $kind slot" 4
+      return
+    fi
   done
   mp_die "no $kind slot available" 4
 }
@@ -929,6 +1012,7 @@ cmd_slot_release() {
   [ "$seen_expected" -eq 1 ] || { mp_die "missing --expected" 2; return; }
   mp_validate_session_id "$session" || return
   mp_object_id "$expected" || { mp_die "expected must be an object ID" 2; return; }
+  mp_acquire_registry_lock "$run" || return
   local manifest limit slot_json
   manifest=$(mp_manifest_json "$run") || { mp_die "run does not exist: $run" 3; return; }
   if [ "$kind" = writer ]; then limit=$(jq -r '.writer_limit' <<<"$manifest")
