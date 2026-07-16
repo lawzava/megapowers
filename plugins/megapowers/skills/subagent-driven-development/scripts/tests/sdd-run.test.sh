@@ -508,7 +508,19 @@ slot_n=${slot_line%% *}
 slot_oid=${slot_line#* }
 demo_generation_before_slot_release=$(git rev-parse refs/megapowers/runs/demo/generation)
 expect_fail "$RUN" slot-release demo writer "$slot_n" --session wrong --expected "$slot_oid"
+git branch mp/demo/nodes/root-a/slot-a/head "$head"
+git branch mp/unrelated/nodes/slot-control/head "$head"
+git worktree add -q "$TMP/live-writer-slot" mp/demo/nodes/root-a/slot-a/head
+git worktree add -q "$TMP/unrelated-slot-control" mp/unrelated/nodes/slot-control/head
+expect_status 4 "$RUN" slot-release demo writer "$slot_n" --session slot-a-session --expected "$slot_oid"
+writer_slot_ref="refs/megapowers/runs/demo/slots/writer/$slot_n"
+writer_slot_after=$(git rev-parse --verify "$writer_slot_ref" 2>/dev/null || true)
+expect_eq "$writer_slot_after" "$slot_oid"
+[ -n "$writer_slot_after" ] || git update-ref "$writer_slot_ref" "$slot_oid"
+expect_fail "$RUN" slot-acquire demo writer root-a/slot-d --session slot-d-session --harness codex
+git worktree remove "$TMP/live-writer-slot"
 expect_ok "$RUN" slot-release demo writer "$slot_n" --session slot-a-session --expected "$slot_oid"
+git worktree remove "$TMP/unrelated-slot-control"
 demo_generation_after_slot_release=$(git rev-parse refs/megapowers/runs/demo/generation)
 expect_ne "$demo_generation_before_slot_release" "$demo_generation_after_slot_release"
 expect_ok "$RUN" release-claim demo root-a/slot-a --session slot-a-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-a/claim)"
@@ -518,6 +530,14 @@ expect_fail "$RUN" slot-acquire demo integration @target --session intruder --ha
 target_slot_line=$("$RUN" slot-acquire demo integration @target --session codex-1 --harness codex --expected-owner "$owner_oid")
 target_slot_n=${target_slot_line%% *}
 target_slot_oid=${target_slot_line#* }
+git branch mp/demo/candidates/target/root-a/release-live/head "$head"
+git worktree add -q "$TMP/live-target-candidate" mp/demo/candidates/target/root-a/release-live/head
+expect_status 4 "$RUN" slot-release demo integration "$target_slot_n" --session codex-1 --expected "$target_slot_oid"
+target_slot_ref="refs/megapowers/runs/demo/slots/integration/$target_slot_n"
+target_slot_after=$(git rev-parse --verify "$target_slot_ref" 2>/dev/null || true)
+expect_eq "$target_slot_after" "$target_slot_oid"
+[ -n "$target_slot_after" ] || git update-ref "$target_slot_ref" "$target_slot_oid"
+git worktree remove "$TMP/live-target-candidate"
 expect_ok "$RUN" slot-release demo integration "$target_slot_n" --session codex-1 --expected "$target_slot_oid"
 
 # A release and reacquire in one second must not recreate an ownership object ID.
@@ -941,9 +961,41 @@ stale_slot=$(git cat-file blob "$boundary_slot" |
 git update-ref "$slot_ref" "$stale_slot" "$boundary_slot"
 expect_fail "$RUN" recover-slot demo writer "$n" --owner-session codex-1 --expected "$stale_slot"
 demo_generation_before_recover_slot=$(git rev-parse refs/megapowers/runs/demo/generation)
+git branch mp/demo/nodes/root-a/slot-b/head "$head"
+git worktree add -q "$TMP/live-stale-writer" mp/demo/nodes/root-a/slot-b/head
+expect_status 4 env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot demo writer "$n" \
+  --owner-session codex-1 --expected "$stale_slot" --confirmed-inactive
+stale_writer_after=$(git rev-parse --verify "$slot_ref" 2>/dev/null || true)
+expect_eq "$stale_writer_after" "$stale_slot"
+[ -n "$stale_writer_after" ] || git update-ref "$slot_ref" "$stale_slot"
+git worktree remove "$TMP/live-stale-writer"
 expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot demo writer "$n" --owner-session codex-1 --expected "$stale_slot" --confirmed-inactive
 expect_ne "$demo_generation_before_recover_slot" "$(git rev-parse refs/megapowers/runs/demo/generation)"
 expect_ok "$RUN" release-claim demo root-a/slot-b --session slot-b-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-b/claim)"
+
+node_integration_line=$("$RUN" slot-acquire demo integration root-a/slot-c \
+  --session slot-c-session --harness codex)
+node_integration_n=${node_integration_line%% *}
+node_integration_oid=${node_integration_line#* }
+node_integration_ref="refs/megapowers/runs/demo/slots/integration/$node_integration_n"
+stale_node_integration=$(git cat-file blob "$node_integration_oid" |
+  jq -c '.claimed_at="2026-07-16T11:44:59Z"' | git hash-object -w --stdin)
+git update-ref "$node_integration_ref" "$stale_node_integration" "$node_integration_oid"
+git branch mp/demo/candidates/nodes/root-a/slot-c/recover-live/head "$head"
+git worktree add -q "$TMP/live-stale-node-candidate" \
+  mp/demo/candidates/nodes/root-a/slot-c/recover-live/head
+expect_status 4 env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot demo integration \
+  "$node_integration_n" --owner-session codex-1 --expected "$stale_node_integration" \
+  --confirmed-inactive
+stale_integration_after=$(git rev-parse --verify "$node_integration_ref" 2>/dev/null || true)
+expect_eq "$stale_integration_after" "$stale_node_integration"
+[ -n "$stale_integration_after" ] ||
+  git update-ref "$node_integration_ref" "$stale_node_integration"
+git worktree remove "$TMP/live-stale-node-candidate"
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot demo integration \
+  "$node_integration_n" --owner-session codex-1 --expected "$stale_node_integration" \
+  --confirmed-inactive
+
 line=$(cat slot-c.out); n=${line%% *}; oid=${line#* }
 expect_ok "$RUN" slot-release demo writer "$n" --session slot-c-session --expected "$oid"
 expect_ok "$RUN" release-claim demo root-a/slot-c --session slot-c-session --expected "$(git rev-parse refs/megapowers/runs/demo/nodes/root-a/slot-c/claim)"

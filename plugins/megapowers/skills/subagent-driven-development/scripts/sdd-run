@@ -232,6 +232,50 @@ mp_cleanup_worktrees_clear() {
   return 0
 }
 
+mp_require_slot_worktrees_clear() {
+  local run=$1 kind=$2 slot_json=$3 scope node='' wanted match_mode worktrees line branch
+  scope=$(jq -er '.scope | select(. == "node" or . == "target")' <<<"$slot_json") || {
+    mp_die "slot object has an invalid worktree scope" 3
+    return
+  }
+  if [ "$kind" = writer ]; then
+    [ "$scope" = node ] || { mp_die "writer slot does not name a node scope" 3; return; }
+    node=$(jq -er '.node | select(type == "string" and length > 0)' <<<"$slot_json") || {
+      mp_die "writer slot does not name a node" 3
+      return
+    }
+    wanted="refs/heads/mp/$run/nodes/$node/head"
+    match_mode=exact
+  elif [ "$scope" = node ]; then
+    node=$(jq -er '.node | select(type == "string" and length > 0)' <<<"$slot_json") || {
+      mp_die "node integration slot does not name a node" 3
+      return
+    }
+    wanted="refs/heads/mp/$run/candidates/nodes/$node/"
+    match_mode=prefix
+  else
+    wanted="refs/heads/mp/$run/candidates/target/"
+    match_mode=prefix
+  fi
+  if ! worktrees=$(git -c core.quotePath=false worktree list --porcelain); then
+    mp_die "could not inspect shared-clone worktrees" 3
+    return
+  fi
+  while IFS= read -r line; do
+    case "$line" in
+      branch\ *) branch=${line#branch } ;;
+      *) continue ;;
+    esac
+    if [ "$match_mode" = exact ]; then
+      [ "$branch" = "$wanted" ] || continue
+    else
+      case "$branch" in "$wanted"*) ;; *) continue ;; esac
+    fi
+    mp_die "slot-associated worktree is still registered: $branch" 4
+    return
+  done <<<"$worktrees"
+}
+
 MP_CLOSE_RESULT_VERIFICATIONS=''
 MP_CLOSE_RESULT_REFS=()
 
@@ -1440,6 +1484,7 @@ cmd_slot_release() {
   while :; do
     generation_oid=$(mp_read_ref "$generation_ref") || { mp_die "run generation is missing" 3; return; }
     mp_require_run_open "$run" || return
+    mp_require_slot_worktrees_clear "$run" "$kind" "$slot_json" || return
     new_generation=$(mp_generation_oid "$run" "$generation_oid" slot-release "$generation_data") || return
     if git update-ref --stdin >/dev/null 2>&1 <<EOF
 start
@@ -2068,6 +2113,7 @@ cmd_recover_slot() {
     owner=$(mp_read_json_ref "$owner_oid") || { mp_die "run owner is malformed" 3; return; }
     [ "$(jq -r '.session' <<<"$owner")" = "$owner_session" ] || { mp_die "recovery requires the current owner session" 4; return; }
     mp_require_stale_json "$slot_json" "slot" || return
+    mp_require_slot_worktrees_clear "$run" "$kind" "$slot_json" || return
     data=$(jq -cn --arg kind "$kind" --argjson slot "$slot" --arg owner "$owner_oid" \
       --arg expected "$expected" '{kind:$kind,slot:$slot,owner:$owner,expected:$expected}')
     new_generation=$(mp_generation_oid "$run" "$generation_oid" recover-slot "$data") || return

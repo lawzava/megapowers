@@ -174,19 +174,26 @@ configure_root() {
       return
     }
   fi
+  return 0
 }
 
 walk_no_symlinks() {
-  local path=$1 relative component current=$repo
-  case "$path" in
-    "$repo") [ ! -L "$repo" ] || { mp_die "worktree path contains a symlink" 3; return; }; return ;;
-    "$repo"/*) relative=${path#"$repo"/} ;;
-    *)
-      [ "$root_mode" = harness ] && return
-      mp_die "worktree path is outside the repository" 2
-      return
-      ;;
-  esac
+  local path=$1 relative component current
+  if [ "$root_mode" = harness ]; then
+    current=$root
+    case "$path" in
+      "$root") relative='' ;;
+      "$root"/*) relative=${path#"$root"/} ;;
+      *) mp_die "worktree path is outside the harness-owned root" 2; return ;;
+    esac
+  else
+    current=$repo
+    case "$path" in
+      "$repo") [ ! -L "$repo" ] || { mp_die "worktree path contains a symlink" 3; return; }; return ;;
+      "$repo"/*) relative=${path#"$repo"/} ;;
+      *) mp_die "worktree path is outside the repository" 2; return ;;
+    esac
+  fi
   while [ -n "$relative" ]; do
     case "$relative" in
       */*) component=${relative%%/*}; relative=${relative#*/} ;;
@@ -241,6 +248,11 @@ prepare_new_path() {
     case "$canonical_parent/" in
       "$repo"/.worktrees/*) ;;
       *) mp_die "worktree parent escaped the tool-owned directory" 3; return ;;
+    esac
+  else
+    case "$canonical_parent" in
+      "$root"|"$root"/*) ;;
+      *) mp_die "worktree parent escaped the harness-owned root" 3; return ;;
     esac
   fi
   [ "$path" != "$repo" ] && [ "$path" != "$invocation_repo" ] || {

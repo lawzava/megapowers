@@ -108,8 +108,9 @@ if [ "$intercept" -eq 1 ] && [ ! -e "$MP_RACE_MARKER" ]; then
         --expected-closed "$closed" --confirmed >/dev/null
       ;;
     release-slot)
-      PATH="$MP_BASE_PATH" "$MP_RUN" slot-release "$MP_RACE_RUN" integration \
-        "$MP_RACE_SLOT" --session "$MP_RACE_SESSION" --expected "$MP_RACE_SLOT_OID" >/dev/null
+      "$MP_REAL_GIT" -C "$MP_REPO" update-ref -d \
+        "refs/megapowers/runs/$MP_RACE_RUN/slots/integration/$MP_RACE_SLOT" \
+        "$MP_RACE_SLOT_OID"
       ;;
     advance-head)
       "$MP_REAL_GIT" -C "$MP_REPO" reset --hard "$MP_RACE_HEAD" >/dev/null
@@ -425,6 +426,40 @@ expect_ok "$RUN" release-claim wt coordinator/child-d --session child-d-session 
 
 second_writer=$("$RUN" slot-acquire wt writer second-root --session second-root-session --harness claude)
 second_writer_slot=${second_writer%% *}; second_writer_oid=${second_writer#* }
+
+# A valid harness-owned root may live outside the repository. Generated paths
+# must remain beneath its canonical location and reject nested symlink escapes.
+harness_root="$TMP/harness-root"
+harness_path="$harness_root/wt/nodes/second-root"
+if harness_output=$("$WT" node-add wt second-root --slot "$second_writer_slot" \
+  --expected-slot "$second_writer_oid" --harness-owned-root "$harness_root" 2>&1); then
+  ok
+else
+  bad "valid harness-owned root was rejected: $harness_output"
+fi
+if git worktree list --porcelain | grep -qF "worktree $harness_path"; then
+  ok
+  expect_fail "$WT" node-add wt second-root --slot "$second_writer_slot" \
+    --expected-slot "$second_writer_oid" --harness-owned-root "$harness_path"
+  expect_ok "$WT" node-remove wt second-root --harness-owned-root "$harness_root"
+else
+  bad "valid harness-owned root did not register the node worktree"
+fi
+
+harness_escape_root="$TMP/harness-escape-root"
+harness_escape_outside="$TMP/harness-escape-outside"
+mkdir -p "$harness_escape_root" "$harness_escape_outside"
+ln -s "$harness_escape_outside" "$harness_escape_root/wt"
+harness_branch_before=$(git rev-parse refs/heads/mp/wt/nodes/second-root/head)
+expect_fail "$WT" node-add wt second-root --slot "$second_writer_slot" \
+  --expected-slot "$second_writer_oid" --harness-owned-root "$harness_escape_root"
+[ -z "$(find "$harness_escape_outside" -mindepth 1 -print -quit)" ] && ok ||
+  bad "nested harness-owned symlink redirected generated worktree data"
+git worktree list --porcelain | grep -qF "worktree $harness_escape_outside" &&
+  bad "nested harness-owned symlink registered an outside worktree" || ok
+[ "$(git rev-parse refs/heads/mp/wt/nodes/second-root/head)" = "$harness_branch_before" ] &&
+  ok || bad "nested harness-owned symlink changed the run branch"
+
 post_add_marker="$TMP/post-add-generation-race"
 expect_fail env PATH="$TMP/git-race-wrapper:$PATH" MP_REAL_GIT="$real_git" MP_BASE_PATH="$base_path" \
   MP_RUN="$RUN" MP_REPO="$repo" MP_RACE_KIND=worktree MP_RACE_ACTION=generation \
