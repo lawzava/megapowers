@@ -561,8 +561,12 @@ if grep -qF 'Recursive coordinator mode' plugins/megapowers/skills/subagent-driv
    grep -qF 'refs/megapowers/runs/' plugins/megapowers/skills/subagent-driven-development/SKILL.md &&
    grep -qF 'three writer worktrees and one integration worktree' plugins/megapowers/skills/subagent-driven-development/SKILL.md &&
    grep -qF 'Do not use agent teams because teams do not nest' plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md &&
+   grep -qF 'If it already has five task-name components beneath /root, do not spawn another subagent; continue locally or report the limit.' plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md &&
    grep -qF 'Recursive SDD is the only multi-writer exception' templates/CODEX-LEAD.md &&
-   grep -qF 'Recursive SDD uses nested Agent calls, not agent teams' templates/CLAUDE.md; then
+   grep -qF 'Recursive SDD uses nested Agent calls, not agent teams' templates/CLAUDE.md &&
+   prompt_guidance=$(tr '\n' ' ' < plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md) &&
+   ! grep -Eiq 'release (the )?writer slot[^.]{0,120}without (its|the) exact (writer slot )?token' <<< "$prompt_guidance" &&
+   ! grep -Eiq '(Recursive SDD|recursive coordinator)[^.]{0,100}(may|can|permits?|supports?)[^.]{0,80}(use )?agent teams' <<< "$prompt_guidance"; then
   ok "recursive SDD guidance preserves coordinator ownership across Codex and Claude Code"
 else
   bad "recursive SDD guidance must preserve coordinator ownership across Codex and Claude Code"

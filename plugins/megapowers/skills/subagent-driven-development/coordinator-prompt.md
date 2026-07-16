@@ -127,7 +127,8 @@ unresolved items, and the result ref.
 ## Harness dispatch
 
 Codex: use native subagents with `fork_turns = "none"` and self-contained
-briefs. Do not assume a per-spawn model or effort selector. Stop before the fifth task-name component beneath `/root`.
+briefs. Do not assume a per-spawn model or effort selector.
+If it already has five task-name components beneath /root, do not spawn another subagent; continue locally or report the limit.
 
 Claude Code: use fresh Agent calls for independent children and resume only the
 same assignment. Do not use agent teams because teams do not nest. Use Git

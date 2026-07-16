@@ -2,7 +2,7 @@
 set -uo pipefail
 out="$WORKDIR/out.txt"
 [ -f "$out" ] || { echo "missing out.txt"; exit 1; }
-markers='plan-fields private-refs bounded-worktrees bounded-cache branch-ownership coordinator-result release-lifecycle owner-target no-stale-takeover fail-closed codex-fresh claude-no-teams codex-lead-rule claude-lead-rule registry-tests worktree-tests'
+markers='plan-fields private-refs bounded-worktrees bounded-cache branch-ownership coordinator-result release-lifecycle no-inexact-writer-release owner-target no-stale-takeover fail-closed codex-fresh codex-depth-five claude-no-teams no-recursive-agent-teams codex-lead-rule claude-lead-rule registry-tests worktree-tests'
 for marker in $markers; do
   grep -q "^OK $marker$" "$out" || { echo "missing marker: $marker"; exit 1; }
 done
