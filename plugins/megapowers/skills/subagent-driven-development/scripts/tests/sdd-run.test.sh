@@ -28,6 +28,10 @@ expect_not_before_release() {
     ok
   fi
 }
+process_identity() {
+  LC_ALL=C ps -p "$1" -o lstart= 2>/dev/null |
+    sed 's/^[[:space:]]*//; s/[[:space:]][[:space:]]*/ /g; s/[[:space:]]*$//'
+}
 write_root_brief() {
   local run=$1 node=$2 ownership=$3 remaining=$4 descendant=$5 writers=$6 integrations=$7 output=$8
   local may_decompose=false
@@ -129,6 +133,10 @@ expect_ok "$RUN" init stale-parent --plan plan.md --root stale-parent --target f
 expect_ok "$RUN" init stale-slot-claim --plan plan.md --root stale-slot --target feature/multi-writer --session stale-slot-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init stale-slot-owner --plan plan.md --root unused-root --target feature/multi-writer --session target-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init signal-cleanup --plan plan.md --root signal-node --target feature/multi-writer --session signal-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init ownership-alias --plan plan.md --root alias-a --root alias-b --target feature/multi-writer --session alias-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
+expect_ok "$RUN" init ownership-unsafe --plan plan.md --root unsafe-root --target feature/multi-writer --session unsafe-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init ownership-root --plan plan.md --root root-all --root root-part --target feature/multi-writer --session root-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
+expect_ok "$RUN" init lock-recovery --plan plan.md --root dead-node --root active-node --root crash-node --root crash-peer --target feature/multi-writer --session lock-owner --harness codex --max-depth 2 --agent-budget 4 --allow-task-commits
 defaults_base=refs/megapowers/runs/defaults
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.writer_limit')" 3
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.integration_limit')" 1
@@ -158,6 +166,33 @@ expect_fail "$RUN" join demo --plan plan.md --target feature/multi-writer --harn
 
 git checkout -- plan.md
 head=$(git rev-parse HEAD)
+
+# Ownership aliases must be canonical before immutable storage and peer comparison.
+write_root_brief ownership-alias alias-a /src 0 0 0 0 alias-a.json
+expect_fail "$RUN" brief-put ownership-alias alias-a alias-a.json --session alias-owner
+write_root_brief ownership-alias alias-a src/../lib 0 0 0 0 alias-a.json
+expect_fail "$RUN" brief-put ownership-alias alias-a alias-a.json --session alias-owner
+write_root_brief ownership-unsafe unsafe-root C:/src 0 0 0 0 unsafe-root.json
+expect_fail "$RUN" brief-put ownership-unsafe unsafe-root unsafe-root.json --session unsafe-owner
+write_root_brief ownership-alias alias-a ./src/ 0 0 0 0 alias-a.json
+write_root_brief ownership-alias alias-b src//lib/ 0 0 0 0 alias-b.json
+expect_ok "$RUN" brief-put ownership-alias alias-a alias-a.json --session alias-owner
+expect_ok "$RUN" brief-put ownership-alias alias-b alias-b.json --session alias-owner
+expect_eq "$(git cat-file blob refs/megapowers/runs/ownership-alias/nodes/alias-a/brief | jq -r '.ownership[0]')" src
+expect_eq "$(git cat-file blob refs/megapowers/runs/ownership-alias/nodes/alias-b/brief | jq -r '.ownership[0]')" src/lib
+expect_ok "$RUN" claim ownership-alias alias-a --session alias-a-session --harness codex
+expect_fail "$RUN" claim ownership-alias alias-b --session alias-b-session --harness claude
+
+# Dot is the canonical whole-repository ownership root and overlaps every path.
+write_root_brief ownership-root root-all . 0 0 0 0 root-all.json
+write_root_brief ownership-root root-part ./other// 0 0 0 0 root-part.json
+expect_ok "$RUN" brief-put ownership-root root-all root-all.json --session root-owner
+expect_ok "$RUN" brief-put ownership-root root-part root-part.json --session root-owner
+expect_eq "$(git cat-file blob refs/megapowers/runs/ownership-root/nodes/root-all/brief | jq -r '.ownership[0]')" .
+expect_eq "$(git cat-file blob refs/megapowers/runs/ownership-root/nodes/root-part/brief | jq -r '.ownership[0]')" other
+expect_ok "$RUN" claim ownership-root root-all --session root-all-session --harness codex
+expect_fail "$RUN" claim ownership-root root-part --session root-part-session --harness claude
+
 cat > brief.json <<EOF
 {
   "version": 1,
@@ -424,6 +459,65 @@ expect_not_before_release "$gate.owner-done" "target owner changed before integr
 wait "$soa"; soar=$?
 wait "$soo" || true
 expect_eq "$soar" 0
+
+# A dead lock owner in this clone must be reclaimed by exact object ID.
+lock_ref=refs/megapowers/runs/lock-recovery/locks/registry
+lock_host=$(uname -n)
+dead_lock_oid=$(jq -cn --arg host "$lock_host" \
+  '{pid:2147483647,host:$host,process_started:"not-running",token:"dead",acquired_at:"2026-07-16T00:00:00Z"}' |
+  git hash-object -w --stdin)
+git update-ref "$lock_ref" "$dead_lock_oid"
+write_root_brief lock-recovery dead-node dead-node/ 0 0 0 0 dead-node.json
+expect_ok "$RUN" brief-put lock-recovery dead-node dead-node.json --session lock-owner
+expect_fail git show-ref --verify --quiet "$lock_ref"
+
+# A live owner with the same host, PID, and process start must not be stolen.
+sleep 60 & active_lock_pid=$!
+active_lock_started=$(process_identity "$active_lock_pid")
+active_lock_oid=$(jq -cn --argjson pid "$active_lock_pid" --arg host "$lock_host" \
+  --arg process_started "$active_lock_started" \
+  '{pid:$pid,host:$host,process_started:$process_started,token:"active",acquired_at:"2026-07-16T00:00:00Z"}' |
+  git hash-object -w --stdin)
+git update-ref "$lock_ref" "$active_lock_oid"
+write_root_brief lock-recovery active-node active-node/ 0 0 0 0 active-node.json
+"$RUN" brief-put lock-recovery active-node active-node.json --session lock-owner > "$TMP/active-lock.out" 2>&1
+active_lock_result=$?
+[ "$active_lock_result" -ne 0 ] && ok || bad "active registry lock was stolen"
+expect_eq "$(git rev-parse "$lock_ref")" "$active_lock_oid"
+expect_fail git show-ref --verify --quiet refs/megapowers/runs/lock-recovery/nodes/active-node/brief
+kill "$active_lock_pid"
+wait "$active_lock_pid" 2>/dev/null
+expect_ok "$RUN" brief-put lock-recovery active-node active-node.json --session lock-owner
+
+# SIGKILL leaves the exact lock behind; a live orphan transaction still owns it.
+write_root_brief lock-recovery crash-node crash/shared/ 0 0 0 0 crash-node.json
+write_root_brief lock-recovery crash-peer crash/shared/peer/ 0 0 0 0 crash-peer.json
+expect_ok "$RUN" brief-put lock-recovery crash-node crash-node.json --session lock-owner
+expect_ok "$RUN" brief-put lock-recovery crash-peer crash-peer.json --session lock-owner
+crash_gate="$TMP/crash-lock"
+MP_RACE_GATE="$crash_gate" MP_RACE_ID=1 MP_RACE_REF_MATCH=/claim \
+  "$RUN" claim lock-recovery crash-node --session crash-session --harness codex > "$crash_gate.out" 2>&1 & crash_pid=$!
+wait_for_file "$crash_gate.ready.1" || bad "crash recovery test did not reach claim mutation"
+kill -KILL "$crash_pid"
+wait "$crash_pid" 2>/dev/null
+(
+  "$RUN" claim lock-recovery crash-peer --session crash-peer-session --harness claude \
+    > "$crash_gate.peer.out" 2>&1
+  printf '%s\n' "$?" > "$crash_gate.peer.result"
+) & crash_peer_pid=$!
+expect_not_before_release "$crash_gate.peer.result" "orphaned registry transaction lost its live lock"
+: > "$crash_gate.release"
+crash_wait=0
+while ! crash_claim_oid=$(git rev-parse --verify refs/megapowers/runs/lock-recovery/nodes/crash-node/claim 2>/dev/null) &&
+      [ "$crash_wait" -lt 200 ]; do
+  sleep 0.01
+  crash_wait=$((crash_wait + 1))
+done
+[ -n "${crash_claim_oid:-}" ] && ok || bad "orphaned claim transaction did not finish"
+wait "$crash_peer_pid" 2>/dev/null
+expect_eq "$(cat "$crash_gate.peer.result")" 4
+expect_ok "$RUN" release-claim lock-recovery crash-node --session crash-session --expected "$crash_claim_oid"
+expect_fail git show-ref --verify --quiet "$lock_ref"
 
 # Signal handling must release the command's per-run registry lock.
 write_root_brief signal-cleanup signal-node signal-node/ 0 0 0 0 signal-node.json

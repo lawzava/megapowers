@@ -40,6 +40,30 @@ mp_object_id() {
 MP_REGISTRY_LOCK_REF=''
 MP_REGISTRY_LOCK_OID=''
 
+mp_process_identity() {
+  LC_ALL=C ps -p "$1" -o lstart= 2>/dev/null |
+    sed 's/^[[:space:]]*//; s/[[:space:]][[:space:]]*/ /g; s/[[:space:]]*$//'
+}
+
+mp_registry_lock_is_stale() {
+  local oid=$1 lock pid owner_host owner_started current_host current_started
+  lock=$(mp_read_json_ref "$oid") || return 1
+  pid=$(jq -r \
+    'if ((.pid | type) == "number" and .pid > 0 and (.pid | floor) == .pid)
+     then .pid else empty end' <<<"$lock")
+  [ -n "$pid" ] || return 1
+  owner_host=$(jq -r 'if ((.host | type) == "string") then .host else empty end' <<<"$lock")
+  current_host=$(uname -n 2>/dev/null) || return 1
+  [ -z "$owner_host" ] || [ "$owner_host" = "$current_host" ] || return 1
+  kill -0 "$pid" 2>/dev/null || return 0
+  owner_started=$(jq -r \
+    'if ((.process_started | type) == "string") then .process_started else empty end' \
+    <<<"$lock")
+  [ -n "$owner_started" ] || return 1
+  current_started=$(mp_process_identity "$pid") || return 1
+  [ "$current_started" != "$owner_started" ]
+}
+
 mp_release_registry_lock() {
   local status=$?
   trap '' HUP INT TERM
@@ -51,18 +75,72 @@ mp_release_registry_lock() {
   return "$status"
 }
 
+mp_registry_lock_committed() {
+  MP_REGISTRY_LOCK_REF=''
+  MP_REGISTRY_LOCK_OID=''
+}
+
+mp_locked_create_ref() {
+  local ref=$1 oid=$2
+  git update-ref --stdin >/dev/null 2>&1 <<EOF || return
+start
+create $ref $oid
+delete $MP_REGISTRY_LOCK_REF $MP_REGISTRY_LOCK_OID
+prepare
+commit
+EOF
+  mp_registry_lock_committed
+}
+
+mp_locked_update_ref() {
+  local ref=$1 oid=$2 expected=$3
+  git update-ref --stdin >/dev/null 2>&1 <<EOF || return
+start
+update $ref $oid $expected
+delete $MP_REGISTRY_LOCK_REF $MP_REGISTRY_LOCK_OID
+prepare
+commit
+EOF
+  mp_registry_lock_committed
+}
+
+mp_locked_delete_ref() {
+  local ref=$1 expected=$2
+  git update-ref --stdin >/dev/null 2>&1 <<EOF || return
+start
+delete $ref $expected
+delete $MP_REGISTRY_LOCK_REF $MP_REGISTRY_LOCK_OID
+prepare
+commit
+EOF
+  mp_registry_lock_committed
+}
+
 mp_acquire_registry_lock() {
-  local run=$1 attempt=0 at token
+  local run=$1 attempt=0 at token host process_started current_oid
   at=$(mp_now)
   token="$$-$PPID-$RANDOM-$RANDOM"
+  host=$(uname -n 2>/dev/null) || { mp_die "could not identify registry lock host" 3; return; }
+  process_started=$(mp_process_identity "$$") || {
+    mp_die "could not identify registry lock process" 3
+    return
+  }
+  [ -n "$process_started" ] || { mp_die "could not identify registry lock process" 3; return; }
   MP_REGISTRY_LOCK_REF=$(mp_run_ref "$run" locks/registry) || return
   MP_REGISTRY_LOCK_OID=$(
-    jq -cn --argjson pid "$$" --arg at "$at" --arg token "$token" \
-      '{pid:$pid,token:$token,acquired_at:$at}' | git hash-object -w --stdin
+    jq -cn --argjson pid "$$" --arg host "$host" --arg process_started "$process_started" \
+      --arg at "$at" --arg token "$token" \
+      '{pid:$pid,host:$host,process_started:$process_started,token:$token,acquired_at:$at}' |
+      git hash-object -w --stdin
   )
   trap 'mp_release_registry_lock' EXIT
   trap 'exit 130' HUP INT TERM
   while ! mp_create_ref "$MP_REGISTRY_LOCK_REF" "$MP_REGISTRY_LOCK_OID" 2>/dev/null; do
+    current_oid=$(mp_read_ref "$MP_REGISTRY_LOCK_REF" || true)
+    if [ -n "$current_oid" ] && mp_registry_lock_is_stale "$current_oid" &&
+       mp_delete_ref "$MP_REGISTRY_LOCK_REF" "$current_oid" >/dev/null 2>&1; then
+      continue
+    fi
     attempt=$((attempt + 1))
     if [ "$attempt" -ge 100 ]; then
       MP_REGISTRY_LOCK_REF=''
@@ -86,12 +164,13 @@ mp_nodes_related() {
 
 mp_ownership_overlap() {
   local left=$1 right=$2
+  left=$(mp_canonical_ownership_path "$left") || return
+  right=$(mp_canonical_ownership_path "$right") || return
   case "$left:$right" in
     interface:*:interface:*) [ "$left" = "$right" ]; return ;;
     interface:*|*:interface:*) return 1 ;;
   esac
-  while [ "${left%/}" != "$left" ]; do left=${left%/}; done
-  while [ "${right%/}" != "$right" ]; do right=${right%/}; done
+  [ "$left" = . ] || [ "$right" = . ] && return 0
   [ "$left" = "$right" ] && return 0
   case "$left/" in
     "$right/"*) return 0 ;;
@@ -100,6 +179,40 @@ mp_ownership_overlap() {
     "$left/"*) return 0 ;;
   esac
   return 1
+}
+
+mp_canonical_ownership_path() {
+  local path=$1 segment result='' more
+  case "$path" in
+    interface:*) printf '%s\n' "$path"; return ;;
+  esac
+  while :; do
+    case "$path" in
+      */*) segment=${path%%/*}; path=${path#*/}; more=1 ;;
+      *) segment=$path; path=''; more=0 ;;
+    esac
+    case "$segment" in
+      ''|.) ;;
+      *)
+        if [ -n "$result" ]; then result="$result/$segment"
+        else result=$segment
+        fi
+        ;;
+    esac
+    [ "$more" -eq 1 ] || break
+  done
+  [ -n "$result" ] || result=.
+  printf '%s\n' "$result"
+}
+
+mp_canonical_brief_json() {
+  jq -ce '
+    def canonical_ownership:
+      if startswith("interface:") then .
+      else (split("/") | map(select(length > 0 and . != "."))) as $segments |
+        if ($segments | length) == 0 then "." else ($segments | join("/")) end
+      end;
+    .ownership |= map(canonical_ownership)' "$1"
 }
 
 mp_brief_contract() {
@@ -136,6 +249,8 @@ mp_validate_ownership() {
       (explode | all(.[]; . >= 32 and . != 127)) and
       (contains("..") | not) and
       (test("[*?\\[\\]]") | not) and
+      (test("^[A-Za-z]:/") | not) and
+      (test("\\\\") | not) and
       ((test("^interface:[A-Za-z0-9][A-Za-z0-9._-]*$")) or
        ((startswith("interface:") | not) and (startswith("/") | not))))' \
     "$brief" >/dev/null || {
@@ -237,7 +352,7 @@ mp_create_node_claim() {
           claimed_at:$at,last_activity:$at}' |
       git hash-object -w --stdin
   )
-  mp_create_ref "$(mp_run_ref "$run" "nodes/$node/claim")" "$claim_oid" 2>/dev/null || {
+  mp_locked_create_ref "$(mp_run_ref "$run" "nodes/$node/claim")" "$claim_oid" || {
     mp_die "node already claimed" 4
     return
   }
@@ -706,20 +821,29 @@ cmd_brief_put() {
     return
   }
 
-  local brief_oid brief_ref
-  brief_oid=$(mp_hash_json_file "$brief") || { mp_die "could not hash brief" 2; return; }
+  local brief_json brief_oid brief_ref
+  brief_json=$(mp_canonical_brief_json "$brief") || {
+    mp_die "could not canonicalize brief ownership" 2
+    return
+  }
+  brief_oid=$(printf '%s\n' "$brief_json" | git hash-object -w --stdin) || {
+    mp_die "could not hash brief" 2
+    return
+  }
   brief_ref=$(mp_run_ref "$run" "nodes/$node/brief") || return
   git update-ref --stdin >/dev/null 2>&1 <<EOF || {
 start
 verify $authorization_ref $authorization_oid
 verify $head_ref $current_head
 create $brief_ref $brief_oid
+delete $MP_REGISTRY_LOCK_REF $MP_REGISTRY_LOCK_OID
 prepare
 commit
 EOF
     mp_die "node brief already exists or authorization changed" 4
     return
   }
+  mp_registry_lock_committed
 }
 
 cmd_claim() {
@@ -805,7 +929,7 @@ cmd_heartbeat() {
   done
   new_oid=$(printf '%s\n' "$claim" | jq -c --arg at "$at" '.last_activity=$at' | git hash-object -w --stdin)
   claim_ref=$(mp_run_ref "$run" "nodes/$node/claim") || return
-  mp_cas_ref "$claim_ref" "$new_oid" "$expected" 2>/dev/null || {
+  mp_locked_update_ref "$claim_ref" "$new_oid" "$expected" || {
     mp_die "claim changed before heartbeat" 4
     return
   }
@@ -845,7 +969,7 @@ cmd_release_claim() {
     mp_die "claim belongs to another session" 4
     return
   }
-  mp_delete_ref "$(mp_run_ref "$run" "nodes/$node/claim")" "$expected" 2>/dev/null || {
+  mp_locked_delete_ref "$(mp_run_ref "$run" "nodes/$node/claim")" "$expected" || {
     mp_die "claim changed before release" 4
     return
   }
@@ -963,10 +1087,12 @@ cmd_slot_acquire() {
 start
 verify $identity_ref $identity_oid
 create $slot_ref $slot_oid
+delete $MP_REGISTRY_LOCK_REF $MP_REGISTRY_LOCK_OID
 prepare
 commit
 EOF
     then
+      mp_registry_lock_committed
       printf '%s %s\n' "$slot" "$slot_oid"
       return
     fi
@@ -1026,7 +1152,7 @@ cmd_slot_release() {
       mp_die "slot object does not match the release request" 4
       return
     }
-  mp_delete_ref "$(mp_run_ref "$run" "slots/$kind/$slot")" "$expected" 2>/dev/null || {
+  mp_locked_delete_ref "$(mp_run_ref "$run" "slots/$kind/$slot")" "$expected" || {
     mp_die "slot changed before release" 4
     return
   }
