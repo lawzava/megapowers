@@ -1,0 +1,318 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Covered by scripts/tests/sdd-run.test.sh.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export MP_PROGRAM=sdd-run
+# The library path is resolved from this script's runtime location.
+# shellcheck disable=SC1091
+source "$HERE/run-lib.sh"
+
+mp_need_value() {
+  if [ "$1" -lt 2 ]; then
+    mp_die "missing value for $2" 2
+    return
+  fi
+}
+
+mp_positive_integer() {
+  if ! [[ "$2" =~ ^[1-9][0-9]*$ ]]; then
+    mp_die "$1 must be a positive integer" 2
+    return
+  fi
+}
+
+mp_harness() {
+  case "$1" in
+    codex|claude) ;;
+    *) mp_die "harness must be codex or claude" 2 || return ;;
+  esac
+}
+
+cmd_init() {
+  if [ "$#" -lt 1 ]; then
+    mp_die "usage: sdd-run init RUN_ID [options]" 2
+    return
+  fi
+
+  local run=$1
+  shift
+  mp_validate_run_id "$run" || return
+
+  local plan='' target='' session='' harness='' max_depth='' agent_budget=''
+  local writers=1 integrations=1
+  local seen_plan=0 seen_target=0 seen_session=0 seen_harness=0
+  local seen_max_depth=0 seen_agent_budget=0 seen_writers=0 seen_integrations=0
+  local allow_task_commits=0 allow_protected_target=0
+  local -a roots=()
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --plan)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_plan" -eq 0 ] || { mp_die "duplicate --plan" 2; return; }
+        plan=$2
+        seen_plan=1
+        shift 2
+        ;;
+      --root)
+        mp_need_value "$#" "$1" || return
+        roots+=("$2")
+        shift 2
+        ;;
+      --target)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_target" -eq 0 ] || { mp_die "duplicate --target" 2; return; }
+        target=$2
+        seen_target=1
+        shift 2
+        ;;
+      --session)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_session" -eq 0 ] || { mp_die "duplicate --session" 2; return; }
+        session=$2
+        seen_session=1
+        shift 2
+        ;;
+      --harness)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_harness" -eq 0 ] || { mp_die "duplicate --harness" 2; return; }
+        harness=$2
+        seen_harness=1
+        shift 2
+        ;;
+      --max-depth)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_max_depth" -eq 0 ] || { mp_die "duplicate --max-depth" 2; return; }
+        max_depth=$2
+        seen_max_depth=1
+        shift 2
+        ;;
+      --agent-budget)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_agent_budget" -eq 0 ] || { mp_die "duplicate --agent-budget" 2; return; }
+        agent_budget=$2
+        seen_agent_budget=1
+        shift 2
+        ;;
+      --writers)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_writers" -eq 0 ] || { mp_die "duplicate --writers" 2; return; }
+        writers=$2
+        seen_writers=1
+        shift 2
+        ;;
+      --integrations)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_integrations" -eq 0 ] || { mp_die "duplicate --integrations" 2; return; }
+        integrations=$2
+        seen_integrations=1
+        shift 2
+        ;;
+      --allow-task-commits)
+        [ "$allow_task_commits" -eq 0 ] || { mp_die "duplicate --allow-task-commits" 2; return; }
+        allow_task_commits=1
+        shift
+        ;;
+      --allow-protected-target)
+        [ "$allow_protected_target" -eq 0 ] || { mp_die "duplicate --allow-protected-target" 2; return; }
+        allow_protected_target=1
+        shift
+        ;;
+      *)
+        mp_die "unknown init option: $1" 2
+        return
+        ;;
+    esac
+  done
+
+  [ "$seen_plan" -eq 1 ] || { mp_die "missing --plan" 2; return; }
+  [ "${#roots[@]}" -gt 0 ] || { mp_die "at least one --root is required" 2; return; }
+  [ "$seen_target" -eq 1 ] || { mp_die "missing --target" 2; return; }
+  [ "$seen_session" -eq 1 ] || { mp_die "missing --session" 2; return; }
+  [ "$seen_harness" -eq 1 ] || { mp_die "missing --harness" 2; return; }
+  [ "$seen_max_depth" -eq 1 ] || { mp_die "missing --max-depth" 2; return; }
+  [ "$seen_agent_budget" -eq 1 ] || { mp_die "missing --agent-budget" 2; return; }
+  [ "$allow_task_commits" -eq 1 ] || { mp_die "--allow-task-commits is required" 2; return; }
+
+  [ -f "$plan" ] || { mp_die "no such plan file: $plan" 2; return; }
+  mp_positive_integer "max-depth" "$max_depth" || return
+  mp_positive_integer "agent-budget" "$agent_budget" || return
+  mp_positive_integer "writers" "$writers" || return
+  mp_positive_integer "integrations" "$integrations" || return
+  [ "$max_depth" -le 5 ] || { mp_die "max-depth must be no greater than 5" 2; return; }
+  [ "$agent_budget" -ge "${#roots[@]}" ] || { mp_die "agent-budget must cover every root" 2; return; }
+  mp_validate_session_id "$session" || return
+  mp_harness "$harness" || return
+
+  local root
+  declare -A seen_roots=()
+  for root in "${roots[@]}"; do
+    mp_validate_node_path "$root" || return
+    if [[ -n "${seen_roots[$root]+present}" ]]; then
+      mp_die "duplicate root: $root" 2
+      return
+    fi
+    seen_roots[$root]=1
+  done
+
+  git check-ref-format --branch "$target" >/dev/null 2>&1 || {
+    mp_die "invalid target branch: $target" 2
+    return
+  }
+  git show-ref --verify --quiet "refs/heads/$target" || {
+    mp_die "target branch does not exist: $target" 2
+    return
+  }
+  local current_branch
+  current_branch=$(git symbolic-ref --quiet --short HEAD) || {
+    mp_die "current checkout is detached" 2
+    return
+  }
+  [ "$current_branch" = "$target" ] || {
+    mp_die "current checkout is not on target branch: $target" 2
+    return
+  }
+  [ -z "$(git status --porcelain)" ] || {
+    mp_die "current checkout must be clean" 2
+    return
+  }
+  case "$target" in
+    main|master|release)
+      [ "$allow_protected_target" -eq 1 ] || {
+        mp_die "protected target requires --allow-protected-target: $target" 2
+        return
+      }
+      ;;
+  esac
+
+  local roots_json created_at manifest_oid plan_oid owner_oid
+  local manifest_ref plan_ref owner_ref
+  roots_json=$(printf '%s\n' "${roots[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+  created_at=$(mp_now)
+  manifest_oid=$(
+    jq -cn \
+      --arg run_id "$run" --arg target_branch "$target" \
+      --arg target_base "$(git rev-parse HEAD)" --arg created_at "$created_at" \
+      --argjson roots "$roots_json" --argjson max_depth "$max_depth" \
+      --argjson agent_budget "$agent_budget" --argjson writer_limit "$writers" \
+      --argjson integration_limit "$integrations" \
+      '{version:1,run_id:$run_id,target_branch:$target_branch,target_base:$target_base,
+        harnesses:["codex","claude"],roots:$roots,max_depth:$max_depth,
+        agent_budget:$agent_budget,writer_limit:$writer_limit,
+        integration_limit:$integration_limit,task_commits:true,created_at:$created_at}' |
+      git hash-object -w --stdin
+  )
+  plan_oid=$(git hash-object -w "$plan")
+  owner_oid=$(
+    jq -cn --arg session "$session" --arg harness "$harness" \
+      --arg at "$created_at" '{session:$session,harness:$harness,claimed_at:$at,last_activity:$at}' |
+      git hash-object -w --stdin
+  )
+  manifest_ref=$(mp_run_ref "$run" manifest) || return
+  plan_ref=$(mp_run_ref "$run" plan) || return
+  owner_ref=$(mp_run_ref "$run" owner) || return
+  if ! git update-ref --stdin <<EOF
+start
+create $manifest_ref $manifest_oid
+create $plan_ref $plan_oid
+create $owner_ref $owner_oid
+prepare
+commit
+EOF
+  then
+    mp_die "run already exists or creation race was lost" 4
+  fi
+}
+
+cmd_join() {
+  if [ "$#" -lt 1 ]; then
+    mp_die "usage: sdd-run join RUN_ID --plan FILE --target BRANCH --harness codex|claude" 2
+    return
+  fi
+
+  local run=$1
+  shift
+  mp_validate_run_id "$run" || return
+
+  local plan='' target='' harness=''
+  local seen_plan=0 seen_target=0 seen_harness=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --plan)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_plan" -eq 0 ] || { mp_die "duplicate --plan" 2; return; }
+        plan=$2
+        seen_plan=1
+        shift 2
+        ;;
+      --target)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_target" -eq 0 ] || { mp_die "duplicate --target" 2; return; }
+        target=$2
+        seen_target=1
+        shift 2
+        ;;
+      --harness)
+        mp_need_value "$#" "$1" || return
+        [ "$seen_harness" -eq 0 ] || { mp_die "duplicate --harness" 2; return; }
+        harness=$2
+        seen_harness=1
+        shift 2
+        ;;
+      *)
+        mp_die "unknown join option: $1" 2
+        return
+        ;;
+    esac
+  done
+
+  [ "$seen_plan" -eq 1 ] || { mp_die "missing --plan" 2; return; }
+  [ "$seen_target" -eq 1 ] || { mp_die "missing --target" 2; return; }
+  [ "$seen_harness" -eq 1 ] || { mp_die "missing --harness" 2; return; }
+  [ -f "$plan" ] || { mp_die "no such plan file: $plan" 2; return; }
+  git check-ref-format --branch "$target" >/dev/null 2>&1 || {
+    mp_die "invalid target branch: $target" 2
+    return
+  }
+  mp_harness "$harness" || return
+
+  local plan_ref expected_plan supplied_plan manifest
+  plan_ref=$(mp_run_ref "$run" plan) || return
+  expected_plan=$(mp_read_ref "$plan_ref") || {
+    mp_die "run does not exist: $run" 3
+    return
+  }
+  supplied_plan=$(git hash-object "$plan")
+  [ "$supplied_plan" = "$expected_plan" ] || {
+    mp_die "plan does not match immutable run state" 3
+    return
+  }
+  manifest=$(mp_manifest_json "$run") || {
+    mp_die "run manifest is missing or malformed" 3
+    return
+  }
+  [ "$(jq -r '.target_branch' <<<"$manifest")" = "$target" ] || {
+    mp_die "target branch does not match immutable run state" 3
+    return
+  }
+  jq -e --arg harness "$harness" '.harnesses | index($harness) != null' \
+    <<<"$manifest" >/dev/null || {
+      mp_die "harness does not match immutable run state" 3
+      return
+    }
+}
+
+case "${1:-}" in
+  init)
+    shift
+    cmd_init "$@"
+    ;;
+  join)
+    shift
+    cmd_join "$@"
+    ;;
+  *)
+    mp_die "usage: sdd-run init|join ..." 2
+    ;;
+esac
