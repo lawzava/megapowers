@@ -22,6 +22,10 @@ call to a primitive the runtime does not expose.
   an idle teammate resumes with full history when messaged. Since v2.1.198 a
   teammate message cannot count as user approval or change permissions or
   config. Limits: one team per session, no nested teams.
+- **Recursive SDD**: use nested Agent calls, never agent teams because teams do
+  not nest. A coordinator creates a linked worktree for every writing child,
+  integrates and verifies its subtree, then returns one final result to its
+  parent. The run owner alone advances the feature target.
 - **Workflows**: the trigger keyword is `ultracode` (also `/effort ultracode`);
   repeatable jobs can be saved as named workflows in `.claude/workflows/`. A
   deterministic script orchestrates via `agent()` / `parallel()` / `pipeline()`,
@@ -67,12 +71,16 @@ call to a primitive the runtime does not expose.
   effort selection; treat it as same-model context sharding and do not assume
   named profiles are selected. Independent workers use `fork_turns = "none"` with self-contained
   briefs; bounded inheritance is exceptional and `all` is only for a genuine
-  same-context continuation. The root owns spawning, joins every gating worker,
-  and validates integration. Completed workers remain idle; follow up only on
-  the same assignment and interrupt only running workers. In Codex 0.144.4, v2
-  does not hard-enforce `agents.max_depth`; the shipped
-  `multi_agent_mode_hint_text` stops nesting at depth five as a model-visible
-  policy instead.
+  same-context continuation. The root owns spawning and final-target
+  integration by default, joins every gating worker, and validates integration.
+  Completed workers remain idle; measure their accounting against the session
+  cap, follow up only on the same assignment, and interrupt only running
+  workers. In explicit recursive coordinator mode, each writing child uses its
+  assigned branch and linked worktree with fresh `fork_turns = "none"` context;
+  each coordinator alone integrates and validates its subtree and returns one
+  final result. In Codex 0.144.4, v2 does not hard-enforce `agents.max_depth`;
+  the shipped `multi_agent_mode_hint_text` stops nesting at depth five as a
+  model-visible policy instead.
 - **Channel from another runtime**: use the first-party channel selected in
   multi-agent-delegation's Codex provider reference. Claude Code prefers
   OpenAI's `codex-plugin-cc`; other harnesses can use `codex exec`, the SDK, or

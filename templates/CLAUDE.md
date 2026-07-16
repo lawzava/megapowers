@@ -39,9 +39,16 @@ provider's tier map, and the floor; delegates.toml maps roles to providers and
 defines how each delegate runs. Resolve routes with `scripts/delegate-resolve
 <role>`; the delegation skill and the delegate agents read the same tables.
 
-Single-writer rule: delegates write only inside worktrees or return patches. The lead
-owns integration and commits. Always run the tests yourself and confirm the output;
-never trust a self-reported pass.
+Single-writer rule: delegates write only inside worktrees or return patches. By
+default, the lead owns integration and commits. Always run the tests yourself and
+confirm the output; never trust a self-reported pass.
+
+Recursive SDD uses nested Agent calls, not agent teams. Teams do not nest.
+Every writing child receives a coordinator-created linked worktree. Each
+coordinator integrates and verifies its subtree, then returns one final result
+to its parent. Multiple Claude Code or Codex sessions may claim disjoint roots
+only when they share one clone and the elected run owner alone advances the
+feature target.
 
 For very large audits, migrations, or repeatable multi-agent research, prefer Claude
 Code dynamic workflows (its built-in multi-agent workflow runner, invoked with the

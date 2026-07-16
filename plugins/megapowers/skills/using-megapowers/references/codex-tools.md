@@ -23,13 +23,20 @@ same-context continuation. Named profiles do not automatically route v2 work;
 use a separate role-aware surface or bounded `codex exec` run when a different
 Codex model or effort is required.
 
-The root owns spawning and integration by default. Keep an ordinary batch to
-six workers even though the configured ceiling allows ten, wait for every
-gating worker, validate results yourself, and only then finish the task. A
-completed worker is idle: follow up only for the same assignment, create a
+The root owns spawning and final-target integration by default. Keep an ordinary
+batch to six workers even though the configured ceiling allows ten, wait for
+every gating worker, validate results yourself, and only then finish the task.
+A completed worker is idle: measure whether idle threads still count against
+the running session's cap, follow up only for the same assignment, create a
 fresh worker for a new problem, and interrupt only a worker that is still
-running. Nested spawning is for deliberately designed coordinator workflows
-with isolated artifact ownership, not routine fan-out.
+running.
+
+Recursive coordinator mode must be selected explicitly. Every writing child
+uses its assigned branch and linked worktree with a self-contained brief and
+fresh `fork_turns = "none"` context. Each coordinator alone integrates and
+validates its subtree, joins its descendants, and returns one final result to
+its parent; the root alone integrates the final target. The depth-five policy
+is model-visible rather than hard-enforced in Codex 0.144.4.
 
 Good fits:
 

@@ -67,9 +67,18 @@ work; keep planning, decomposition, and the final write with yourself.
 There is exactly one writer to shared branches: you.
 
 - Delegates write only inside dedicated worktrees or return patches.
-- You review, integrate, and commit; nothing lands without going through you.
+- Outside recursive SDD, you review, integrate, and commit; nothing lands
+  without going through you.
 - Re-run the tests yourself before believing a task is done. Never trust a
   self-reported pass.
+
+Recursive SDD is the only multi-writer exception. It still has one writer per
+branch and linked worktree. A coordinator alone integrates its subtree branch,
+and the lead alone integrates the feature target. The coordinator creates every
+writer worktree before dispatch, passes a self-contained brief with
+`fork_turns = "none"`, joins its descendants, runs review and integration
+verification, and returns one final result. Multiple sessions coordinate only
+through the same clone's private `refs/megapowers/runs/` state.
 
 ## Hook backstops
 

@@ -8,9 +8,10 @@ conditions, so the right practice is applied at the right moment.
 
 - Understand and design: `brainstorming`
 - Plan: `writing-plans`
-- Execute a plan: `executing-plans` (inline, yourself),
-  `subagent-driven-development` (a fresh subagent per task, with per-task
-  review), `dispatching-parallel-agents` (independent tasks in parallel)
+- Execute a plan: `executing-plans` (inline),
+  `subagent-driven-development` (sequential or recursive coordinators with
+  isolated branches and per-task review), `dispatching-parallel-agents`
+  (read-only or independently isolated fan-out)
 - Implement: `test-driven-development` (write the failing test first),
   `systematic-debugging` (root cause before any fix)
 - Verify and review: `verification-before-completion` (evidence before

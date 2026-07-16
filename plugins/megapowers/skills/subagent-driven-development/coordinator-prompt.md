@@ -94,7 +94,8 @@ and the integration slot. Run the declared combined verification before
 compare-and-swap promotion. Remove the integration candidate and release the integration slot
 after every attempt. After verified integration, or after a
 verified `blocked` result without integration, remove known handoffs, remove
-the clean node worktree, release the exact writer slot, then release the exact
+the clean node worktree, release the writer slot, specifically
+release the exact writer slot token recorded earlier, then release the exact
 node claim.
 Use the result-owning session and compare against the recorded slot and claim
 object IDs. Retain the child's branch and terminal result. Do not attempt close
