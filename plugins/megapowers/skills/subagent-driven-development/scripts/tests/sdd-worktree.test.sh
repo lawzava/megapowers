@@ -21,6 +21,17 @@ make_minimal_result() {
   printf 'test result\n' | git commit-tree "$result_tree"
 }
 
+make_blocked_result_tree() {
+  result_run=$1 result_node=$2 result_base=$3 result_head=$4 result_branch=$5
+  result_blob=$(jq -cn --arg run "$result_run" --arg node "$result_node" \
+    --arg base "$result_base" --arg head "$result_head" --arg branch "$result_branch" \
+    '{status:"blocked",run_id:$run,node:$node,base:$base,head:$head,branch:$branch,
+      verification:[{command:"test -f partial",exit_code:1,evidence_path:"evidence/test.txt"}],
+      unresolved:["still blocked"]}' | git hash-object -w --stdin)
+  result_tree=$(printf '100644 blob %s\tresult.json\n' "$result_blob" | git mktree)
+  printf '%s\n' "$result_tree"
+}
+
 repo="$TMP/repo"
 git init -q "$repo"
 git -C "$repo" config user.name Test
@@ -121,6 +132,8 @@ chmod +x "$TMP/git-race-wrapper/git"
 
 expect_ok "$RUN" init wt --plan plan.md --root coordinator --root second-root --target feature/worktree --session owner --harness codex --max-depth 2 --agent-budget 8 --writers 3 --integrations 1 --allow-task-commits
 base=$(git rev-parse HEAD)
+unrelated=$(printf 'test: unrelated history\n' |
+  git commit-tree "$(git rev-parse "$base^{tree}")")
 owner_oid=$(git rev-parse refs/megapowers/runs/wt/owner)
 
 # Branch creation must be bound to the exact generation it read.
@@ -195,6 +208,11 @@ EOF
 expect_ok "$RUN" brief-put wt second-root "$TMP/second-root.json" --session owner
 expect_ok "$RUN" claim wt second-root --session second-root-session --harness claude
 expect_ok "$WT" branch-init wt second-root "$base"
+git update-ref refs/heads/mp/wt/nodes/second-root/head "$unrelated" "$base"
+expect_fail "$WT" branch-init wt second-root "$base"
+[ "$(git rev-parse refs/heads/mp/wt/nodes/second-root/head)" = "$unrelated" ] && ok ||
+  bad "unrelated branch-init changed the node branch"
+git update-ref refs/heads/mp/wt/nodes/second-root/head "$base" "$unrelated"
 
 first_path=''
 for key in child-a child-b child-c; do
@@ -214,6 +232,13 @@ done
 
 integration=$("$RUN" slot-acquire wt integration coordinator --session coordinator-session --harness codex)
 integration_slot=${integration%% *}; integration_oid=${integration#* }
+divergent_candidate=$("$WT" candidate-add wt coordinator divergent --base-ref refs/heads/mp/wt/nodes/coordinator/head --slot "$integration_slot" --expected-slot "$integration_oid")
+git -C "$divergent_candidate" reset --hard "$unrelated" >/dev/null
+expect_fail "$WT" candidate-promote wt coordinator divergent --slot "$integration_slot" --expected-slot "$integration_oid" --expected-head "$base"
+[ "$(git rev-parse refs/heads/mp/wt/nodes/coordinator/head)" = "$base" ] && ok ||
+  bad "divergent candidate changed the coordinator branch"
+git update-ref refs/heads/mp/wt/nodes/coordinator/head "$base" "$unrelated" 2>/dev/null || true
+expect_ok "$WT" candidate-remove wt coordinator divergent --purpose node
 candidate=$("$WT" candidate-add wt coordinator first --base-ref refs/heads/mp/wt/nodes/coordinator/head --slot "$integration_slot" --expected-slot "$integration_oid")
 [ -d "$candidate" ] && ok || bad "missing candidate worktree"
 make_brief child-d
@@ -269,6 +294,9 @@ git -C "$child_c_candidate" merge --no-edit mp/wt/nodes/coordinator/child-c/head
 expect_ok "$WT" candidate-promote wt coordinator child-c --slot "$integration_slot" --expected-slot "$integration_oid" --expected-head "$coordinator_head"
 expect_ok "$WT" candidate-remove wt coordinator child-c --purpose node
 coordinator_head=$(git rev-parse refs/heads/mp/wt/nodes/coordinator/head)
+expect_ok "$WT" branch-init wt coordinator "$base"
+[ "$(git rev-parse refs/heads/mp/wt/nodes/coordinator/head)" = "$coordinator_head" ] && ok ||
+  bad "descendant branch-init changed the coordinator branch"
 
 mkdir -p "$TMP/evidence"
 printf 'coordinator verified\n' > "$TMP/evidence/coordinator.txt"
@@ -412,22 +440,66 @@ git worktree list --porcelain | grep -qF "$repo/.worktrees/wt/nodes/second-root"
 owner_oid=$(git rev-parse refs/megapowers/runs/wt/owner)
 second_path=$("$WT" node-add wt second-root --slot "$second_writer_slot" --expected-slot "$second_writer_oid")
 mkdir -p "$second_path/second-root"
-printf 'second root\n' > "$second_path/second-root/result.txt"
+printf 'partial second root\n' > "$second_path/second-root/result.txt"
 git -C "$second_path" add second-root/result.txt
-git -C "$second_path" commit -qm 'test: second root'
+git -C "$second_path" commit -qm 'test: partial second root'
 second_head=$(git rev-parse refs/heads/mp/wt/nodes/second-root/head)
 mkdir -p "$TMP/second-evidence"
+printf 'second root blocked\n' > "$TMP/second-evidence/second.txt"
+cat > "$TMP/second-result.json" <<EOF
+{"status":"blocked","run_id":"wt","node":"second-root","base":"$base",
+ "head":"$second_head","branch":"mp/wt/nodes/second-root/head",
+ "verification":[{"command":"test -f second-root/complete.txt","exit_code":1,
+ "evidence_path":"evidence/second.txt"}],"unresolved":["completion pending"]}
+EOF
+blocked_second_oid=$("$RUN" result-put wt second-root "$TMP/second-result.json" "$TMP/second-evidence" --session second-root-session)
+expect_ok "$WT" node-remove wt second-root
+expect_ok "$RUN" slot-release wt writer "$second_writer_slot" --session second-root-session --expected "$second_writer_oid"
+expect_ok "$RUN" release-claim wt second-root --session second-root-session --expected "$(git rev-parse refs/megapowers/runs/wt/nodes/second-root/claim)"
+expect_ok "$RUN" claim wt second-root --session recovered-session --harness codex
+recovered_writer=$("$RUN" slot-acquire wt writer second-root --session recovered-session --harness codex)
+recovered_writer_slot=${recovered_writer%% *}; recovered_writer_oid=${recovered_writer#* }
+
+alternative=$(printf 'test: alternate descendant\n' |
+  git commit-tree "$(git rev-parse "$base^{tree}")" -p "$base")
+git update-ref refs/heads/mp/wt/nodes/second-root/head "$alternative" "$second_head"
+expect_fail "$WT" node-add wt second-root --slot "$recovered_writer_slot" --expected-slot "$recovered_writer_oid"
+[ ! -e "$repo/.worktrees/wt/nodes/second-root" ] && ok ||
+  bad "mismatched blocked result created a worktree"
+
+unrelated_result=$(make_blocked_result_tree wt second-root "$base" "$unrelated" mp/wt/nodes/second-root/head)
+git update-ref refs/heads/mp/wt/nodes/second-root/head "$unrelated" "$alternative"
+git update-ref refs/megapowers/runs/wt/nodes/second-root/result "$unrelated_result" "$blocked_second_oid"
+expect_fail "$WT" node-add wt second-root --slot "$recovered_writer_slot" --expected-slot "$recovered_writer_oid"
+[ ! -e "$repo/.worktrees/wt/nodes/second-root" ] && ok ||
+  bad "unrelated blocked result created a worktree"
+git update-ref refs/heads/mp/wt/nodes/second-root/head "$second_head" "$unrelated"
+git update-ref refs/megapowers/runs/wt/nodes/second-root/result "$blocked_second_oid" "$unrelated_result"
+
+if second_path=$("$WT" node-add wt second-root --slot "$recovered_writer_slot" --expected-slot "$recovered_writer_oid"); then
+  ok
+else
+  bad "advanced blocked writer could not recreate its worktree"
+  second_path="$repo/.worktrees/wt/nodes/second-root"
+  git worktree add "$second_path" mp/wt/nodes/second-root/head >/dev/null
+fi
+[ "$(git -C "$second_path" rev-parse HEAD)" = "$second_head" ] && ok ||
+  bad "recreated writer did not resume at the blocked head"
+printf 'second root complete\n' > "$second_path/second-root/complete.txt"
+git -C "$second_path" add second-root/complete.txt
+git -C "$second_path" commit -qm 'test: complete second root'
+second_head=$(git rev-parse refs/heads/mp/wt/nodes/second-root/head)
 printf 'second root verified\n' > "$TMP/second-evidence/second.txt"
 cat > "$TMP/second-result.json" <<EOF
 {"status":"done","run_id":"wt","node":"second-root","base":"$base",
  "head":"$second_head","branch":"mp/wt/nodes/second-root/head",
- "verification":[{"command":"test -f second-root/result.txt","exit_code":0,
+ "verification":[{"command":"test -f second-root/complete.txt","exit_code":0,
  "evidence_path":"evidence/second.txt"}],"unresolved":[]}
 EOF
-expect_ok "$RUN" result-put wt second-root "$TMP/second-result.json" "$TMP/second-evidence" --session second-root-session
+expect_ok "$RUN" result-put wt second-root "$TMP/second-result.json" "$TMP/second-evidence" --session recovered-session --expected "$blocked_second_oid"
 expect_ok "$WT" node-remove wt second-root
-expect_ok "$RUN" slot-release wt writer "$second_writer_slot" --session second-root-session --expected "$second_writer_oid"
-expect_ok "$RUN" release-claim wt second-root --session second-root-session --expected "$(git rev-parse refs/megapowers/runs/wt/nodes/second-root/claim)"
+expect_ok "$RUN" slot-release wt writer "$recovered_writer_slot" --session recovered-session --expected "$recovered_writer_oid"
+expect_ok "$RUN" release-claim wt second-root --session recovered-session --expected "$(git rev-parse refs/megapowers/runs/wt/nodes/second-root/claim)"
 
 second_target_base=$(git rev-parse HEAD)
 target_integration=$("$RUN" slot-acquire wt integration @target --session owner --harness codex --expected-owner "$owner_oid")

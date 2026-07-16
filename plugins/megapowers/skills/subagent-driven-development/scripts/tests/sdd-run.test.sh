@@ -15,8 +15,11 @@ expect_fail() { "$@" >/dev/null 2>&1 && bad "expected failure: $*" || ok; }
 expect_status() {
   expected_status=$1
   shift
-  "$@" >/dev/null 2>&1
-  actual_status=$?
+  if "$@" >/dev/null 2>&1; then
+    actual_status=0
+  else
+    actual_status=$?
+  fi
   [ "$actual_status" -eq "$expected_status" ] && ok ||
     bad "expected status $expected_status, got $actual_status: $*"
 }
@@ -244,6 +247,7 @@ expect_ok "$RUN" init ownership-interface-segment --plan plan.md --root interfac
 expect_ok "$RUN" init ownership-unsafe --plan plan.md --root unsafe-root --target feature/multi-writer --session unsafe-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init ownership-root --plan plan.md --root root-all --root root-part --target feature/multi-writer --session root-owner --harness codex --max-depth 2 --agent-budget 2 --allow-task-commits
 expect_ok "$RUN" init snapshot-brief --plan plan.md --root snapshot-node --target feature/multi-writer --session snapshot-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
+expect_ok "$RUN" init credential-brief --plan plan.md --root credential-node --target feature/multi-writer --session credential-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init claim-aba --plan plan.md --root aba-node --target feature/multi-writer --session aba-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init slot-aba --plan plan.md --root aba-slot --target feature/multi-writer --session aba-slot-owner --harness codex --max-depth 2 --agent-budget 1 --writers 1 --allow-task-commits
 expect_ok "$RUN" init movement --plan plan.md --root branch-node --root dep-node --root done-node --target feature/multi-writer --session movement-owner --harness codex --max-depth 2 --agent-budget 3 --allow-task-commits
@@ -291,6 +295,21 @@ expect_fail "$RUN" join demo --plan plan.md --target feature/multi-writer --harn
 
 git checkout -- plan.md
 head=$(git rev-parse HEAD)
+
+# Rejected caller bytes must never enter the object database.
+printf '{"unique_final_fix_malformed":"brief-storage-regression"\n' > malformed-brief.json
+malformed_brief_oid=$(git hash-object --no-filters malformed-brief.json)
+expect_status 2 "$RUN" brief-put duplicate-blocked duplicate-blocked-node malformed-brief.json --session duplicate-blocked-owner
+git cat-file -e "$malformed_brief_oid" 2>/dev/null &&
+  bad "malformed brief was written to the object database" || ok
+
+write_root_brief credential-brief credential-node credential/ 0 0 0 0 credential-brief.json
+jq '.task="api_key=unique-final-fix-credential"' credential-brief.json > credential-brief.tmp
+mv credential-brief.tmp credential-brief.json
+credential_brief_oid=$(git hash-object --no-filters credential-brief.json)
+expect_status 3 "$RUN" brief-put credential-brief credential-node credential-brief.json --session credential-owner
+git cat-file -e "$credential_brief_oid" 2>/dev/null &&
+  bad "credential-bearing brief was written to the object database" || ok
 
 # Ownership aliases must be canonical before immutable storage and peer comparison.
 write_root_brief ownership-alias alias-a /src 0 0 0 0 alias-a.json
@@ -864,6 +883,7 @@ expect_ne "$demo_generation_before_blocked_result" "$demo_generation_after_block
 git show "$blocked_oid:evidence/test.txt" | grep -qF 'verification output withheld' && ok || bad "digest-only summary missing"
 git show "$blocked_oid:evidence/test.txt" | grep -qF supersecret && bad "digest-only evidence persisted raw secret" || ok
 git cat-file -e "$raw_evidence_oid" 2>/dev/null && bad "digest-only evidence wrote the raw blob" || ok
+grep -qF 'summary-source' "$RUN" && bad "digest-only mode still creates a raw summary source file" || ok
 jq '.status="done" | .unresolved=[]' result-b-blocked.json > result-b-done.json
 mkdir evidence-safe
 printf 'verification passed\n' > evidence-safe/test.txt

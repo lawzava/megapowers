@@ -354,6 +354,7 @@ ensure_node_branch() {
   local run=$1 node=$2 base=$3 branch branch_ref current
   local verify_ref=${4:-} verify_oid=${5:-}
   local extra_ref=${6:-} extra_oid=${7:-}
+  local third_ref=${8:-} third_oid=${9:-}
   node_branch_created=0
   branch=$(node_branch "$run" "$node")
   branch_ref="refs/heads/$branch"
@@ -365,7 +366,10 @@ ensure_node_branch() {
   run_snapshot_current "$run" || return
   current=$(mp_read_ref "$branch_ref" || true)
   if [ -n "$current" ]; then
-    [ "$current" = "$base" ] || { mp_die "node branch exists at another base" 4; return; }
+    git -C "$repo" merge-base --is-ancestor "$base" "$current" 2>/dev/null || {
+      mp_die "node branch does not descend from the immutable base" 4
+      return
+    }
     [ -z "$verify_ref" ] || [ "$(mp_read_ref "$verify_ref" || true)" = "$verify_oid" ] || {
       mp_die "node branch authorization changed" 4
       return
@@ -374,7 +378,15 @@ ensure_node_branch() {
       mp_die "node branch authorization changed" 4
       return
     }
+    [ -z "$third_ref" ] || [ "$(mp_read_ref "$third_ref" || true)" = "$third_oid" ] || {
+      mp_die "node branch authorization changed" 4
+      return
+    }
     run_snapshot_current "$run" || return
+    [ "$(mp_read_ref "$branch_ref" || true)" = "$current" ] || {
+      mp_die "node branch changed during validation" 4
+      return
+    }
     return
   fi
   if ! git -C "$repo" update-ref --stdin >/dev/null 2>&1 <<EOF
@@ -385,6 +397,7 @@ verify $manifest_ref $manifest_oid
 verify $generation_ref $generation_oid
 ${verify_ref:+verify $verify_ref $verify_oid
 }${extra_ref:+verify $extra_ref $extra_oid
+}${third_ref:+verify $third_ref $third_oid
 }create $branch_ref $base
 prepare
 commit
@@ -401,12 +414,17 @@ EOF
       mp_die "node branch authorization changed" 4
       return
     }
+    [ -z "$third_ref" ] || [ "$(mp_read_ref "$third_ref" || true)" = "$third_oid" ] || {
+      mp_die "node branch authorization changed" 4
+      return
+    }
     return
   fi
   node_branch_created=1
   if ! run_snapshot_current "$run" ||
      { [ -n "$verify_ref" ] && [ "$(mp_read_ref "$verify_ref" || true)" != "$verify_oid" ]; } ||
-     { [ -n "$extra_ref" ] && [ "$(mp_read_ref "$extra_ref" || true)" != "$extra_oid" ]; }; then
+     { [ -n "$extra_ref" ] && [ "$(mp_read_ref "$extra_ref" || true)" != "$extra_oid" ]; } ||
+     { [ -n "$third_ref" ] && [ "$(mp_read_ref "$third_ref" || true)" != "$third_oid" ]; }; then
     git -C "$repo" update-ref -d "$branch_ref" "$base" >/dev/null 2>&1 || true
     node_branch_created=0
     mp_die "node branch authorization changed during creation" 4
@@ -439,6 +457,18 @@ parse_root_args() {
   done
 }
 
+node_add_authorization_current() {
+  local run=$1 branch_ref=$2 branch_oid=$3 claim_ref=$4 claim_oid=$5
+  local current_brief_ref=$6 current_brief_oid=$7 current_slot_ref=$8 current_slot_oid=$9
+  local result_ref=${10:-} result_oid=${11:-}
+  run_snapshot_current "$run" &&
+    [ "$(mp_read_ref "$branch_ref" || true)" = "$branch_oid" ] &&
+    [ "$(mp_read_ref "$claim_ref" || true)" = "$claim_oid" ] &&
+    [ "$(mp_read_ref "$current_brief_ref" || true)" = "$current_brief_oid" ] &&
+    [ "$(mp_read_ref "$current_slot_ref" || true)" = "$current_slot_oid" ] &&
+    { [ -z "$result_ref" ] || [ "$(mp_read_ref "$result_ref" || true)" = "$result_oid" ]; }
+}
+
 cmd_branch_init() {
   [ "$#" -eq 3 ] || { mp_die "usage: sdd-worktree branch-init RUN_ID NODE BASE" 2; return; }
   local run=$1 node=$2 base=$3
@@ -449,7 +479,9 @@ cmd_branch_init() {
 
 cmd_node_add() {
   [ "$#" -ge 2 ] || { mp_die "usage: sdd-worktree node-add RUN_ID NODE --slot N --expected-slot OBJECT_ID [--root DIR]" 2; return; }
-  local run=$1 node=$2 slot='' expected='' seen_slot=0 seen_expected=0 path branch branch_ref base
+  local run=$1 node=$2 slot='' expected='' seen_slot=0 seen_expected=0
+  local path branch branch_ref base branch_oid current claim_ref claim_oid claim
+  local result_ref='' result_oid='' result=''
   local requested_root='' harness_root='' created=0
   shift 2
   while [ "$#" -gt 0 ]; do
@@ -470,25 +502,62 @@ cmd_node_add() {
   base=$(jq -r '.base' <<<"$brief")
   branch=$(node_branch "$run" "$node")
   branch_ref="refs/heads/$branch"
-  ensure_node_branch "$run" "$node" "$base" "$slot_ref" "$expected" "$brief_ref" "$brief_oid" || return
-  created=$node_branch_created
-  path=$(node_path "$run" "$node")
-  if ! run_snapshot_current "$run"; then
-    [ "$created" -eq 0 ] || git -C "$repo" update-ref -d "$branch_ref" "$base" >/dev/null 2>&1 || true
-    return 4
-  fi
-  [ "$(mp_read_ref "$brief_ref" || true)" = "$brief_oid" ] &&
-    [ "$(mp_read_ref "$slot_ref" || true)" = "$expected" ] || {
-      [ "$created" -eq 0 ] || git -C "$repo" update-ref -d "$branch_ref" "$base" >/dev/null 2>&1 || true
-      mp_die "node worktree authorization changed" 4
+  current=$(mp_read_ref "$branch_ref" || true)
+  branch_oid=${current:-$base}
+  if [ -n "$current" ] && [ "$current" != "$base" ]; then
+    result_ref=$(mp_run_ref "$run" "nodes/$node/result") || return
+    result_oid=$(mp_read_ref "$result_ref") || {
+      mp_die "advanced node branch requires an exact blocked result" 4
       return
     }
+    result=$(mp_read_result_json "$result_oid") || {
+      mp_die "advanced node branch result is malformed" 3
+      return
+    }
+    jq -e --arg run "$run" --arg node "$node" --arg base "$base" \
+      --arg branch "$branch" --arg head "$current" \
+      '.status == "blocked" and .run_id == $run and .node == $node and
+       .base == $base and .branch == $branch and .head == $head and
+       (.verification | type == "array") and
+       (.unresolved | type == "array" and length > 0)' >/dev/null <<<"$result" || {
+      mp_die "advanced node branch is not authorized by its exact blocked result" 4
+      return
+    }
+    git -C "$repo" merge-base --is-ancestor "$base" "$current" 2>/dev/null || {
+      mp_die "blocked result head does not descend from the immutable base" 4
+      return
+    }
+  fi
+  claim_ref=$(mp_run_ref "$run" "nodes/$node/claim") || return
+  claim_oid=$(mp_read_ref "$claim_ref") || { mp_die "node is not actively claimed" 4; return; }
+  claim=$(mp_read_json_ref "$claim_oid") || { mp_die "active node claim is malformed" 3; return; }
+  jq -e --arg node "$node" --arg base "$base" --arg branch "$branch" \
+    '.node == $node and .base == $base and .branch == $branch and
+     (.session | type == "string") and (.harness | type == "string")' \
+    >/dev/null <<<"$claim" || { mp_die "active node claim does not match the worktree request" 4; return; }
+  jq -e --arg session "$(jq -r '.session' <<<"$claim")" \
+    --arg harness "$(jq -r '.harness' <<<"$claim")" \
+    '.session == $session and .harness == $harness' >/dev/null <<<"$slot_json" || {
+      mp_die "writer slot does not belong to the active node claim" 4
+      return
+    }
+  ensure_node_branch "$run" "$node" "$base" "$slot_ref" "$expected" \
+    "$brief_ref" "$brief_oid" "$claim_ref" "$claim_oid" || return
+  created=$node_branch_created
+  path=$(node_path "$run" "$node")
+  if ! node_add_authorization_current "$run" "$branch_ref" "$branch_oid" \
+    "$claim_ref" "$claim_oid" "$brief_ref" "$brief_oid" "$slot_ref" "$expected" \
+    "$result_ref" "$result_oid"; then
+    [ "$created" -eq 0 ] || git -C "$repo" update-ref -d "$branch_ref" "$branch_oid" >/dev/null 2>&1 || true
+    mp_die "node worktree authorization changed" 4
+    return
+  fi
   add_worktree "$path" "$branch" || return
-  if ! run_snapshot_current "$run" ||
-     [ "$(mp_read_ref "$brief_ref" || true)" != "$brief_oid" ] ||
-     [ "$(mp_read_ref "$slot_ref" || true)" != "$expected" ]; then
+  if ! node_add_authorization_current "$run" "$branch_ref" "$branch_oid" \
+    "$claim_ref" "$claim_oid" "$brief_ref" "$brief_oid" "$slot_ref" "$expected" \
+    "$result_ref" "$result_oid"; then
     if cleanup_added_worktree "$path" "$branch_ref"; then
-      [ "$created" -eq 0 ] || git -C "$repo" update-ref -d "$branch_ref" "$base" >/dev/null 2>&1 || true
+      [ "$created" -eq 0 ] || git -C "$repo" update-ref -d "$branch_ref" "$branch_oid" >/dev/null 2>&1 || true
     fi
     mp_die "node worktree authorization changed during creation" 4
     return
@@ -634,6 +703,10 @@ cmd_candidate_promote() {
   validate_branch_ref "$candidate_ref" || return
   validate_branch_ref "$node_ref" || return
   candidate_head=$(mp_read_ref "$candidate_ref") || { mp_die "candidate branch does not exist" 3; return; }
+  git -C "$repo" merge-base --is-ancestor "$expected_head" "$candidate_head" 2>/dev/null || {
+    mp_die "candidate head does not descend from the expected node head" 4
+    return
+  }
   run_snapshot_current "$run" || return
   if ! git -C "$repo" update-ref --stdin >/dev/null 2>&1 <<EOF
 start

@@ -809,14 +809,14 @@ cmd_brief_put() {
   [ "$seen_session" -eq 1 ] || { mp_die "missing --session" 2; return; }
   mp_validate_session_id "$session" || return
 
-  local snapshot_oid brief manifest document_run document_node expected_branch base
+  local brief manifest document_run document_node expected_branch base
   local remaining descendant writers integrations may_decompose
-  snapshot_oid=$(git hash-object -w -- "$brief_file") || {
-    mp_die "could not snapshot brief" 2
+  brief=$(jq -ce . "$brief_file") || {
+    mp_die "brief is not valid JSON" 2
     return
   }
-  brief=$(git cat-file blob "$snapshot_oid") || {
-    mp_die "could not read brief snapshot" 2
+  mp_contains_credential <(printf '%s\n' "$brief") && {
+    mp_die "brief contains a credential-like value" 3
     return
   }
   manifest=$(mp_manifest_json "$run") || {
@@ -876,10 +876,6 @@ cmd_brief_put() {
   local authorization_ref authorization_oid head_ref
   brief_json=$(mp_canonical_brief_json "$brief") || {
     mp_die "could not canonicalize brief ownership" 2
-    return
-  }
-  brief_oid=$(printf '%s\n' "$brief_json" | git hash-object -w --stdin) || {
-    mp_die "could not hash brief" 2
     return
   }
   brief_ref=$(mp_run_ref "$run" "nodes/$node/brief") || return
@@ -979,7 +975,11 @@ cmd_brief_put() {
       [ "$integrations" -le "$parent_integrations" ] || { mp_die "child integration budget exceeds its parent" 2; return; }
     fi
 
-    generation_data=$(jq -cn --arg node "$node" --arg snapshot "$snapshot_oid" \
+    brief_oid=$(printf '%s\n' "$brief_json" | git hash-object -w --stdin) || {
+      mp_die "could not hash brief" 2
+      return
+    }
+    generation_data=$(jq -cn --arg node "$node" --arg snapshot "$brief_oid" \
       --arg brief "$brief_oid" --arg authorization "$authorization_oid" --arg head "$current_head" \
       '{node:$node,snapshot:$snapshot,brief:$brief,authorization:$authorization,head:$head}')
     new_generation=$(mp_generation_oid "$run" "$generation_oid" brief-put "$generation_data") || return
@@ -1527,7 +1527,7 @@ cmd_result_put() {
 
   local temp canonical result brief_ref brief_oid brief base head branch branch_ref
   local claim_ref claim_oid claim result_ref generation_ref result_blob evidence_tree result_tree
-  local names_file entries_file redactions_file summary_source summary_sanitized summary_text
+  local names_file entries_file redactions_file summary_sanitized summary_text
   temp=$(mktemp -d) || { mp_die "could not create result workspace" 3; return; }
   MP_RESULT_TEMP=$temp
   trap 'rm -rf "$MP_RESULT_TEMP"' EXIT HUP INT TERM
@@ -1622,10 +1622,8 @@ cmd_result_put() {
       mp_die "digest summary exceeds 1 KiB" 3
       return
     }
-    summary_source="$temp/summary-source"
     summary_sanitized="$temp/summary-sanitized"
-    printf '%s\n' "$summary" > "$summary_source"
-    mp_redact_file "$redactions_file" "$summary_source" "$summary_sanitized" || {
+    mp_redact_file "$redactions_file" <(printf '%s\n' "$summary") "$summary_sanitized" || {
       mp_die "could not redact digest summary" 3
       return
     }
