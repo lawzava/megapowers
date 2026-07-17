@@ -46,9 +46,7 @@ work; keep planning, decomposition, and the final write with yourself.
   model, or effort per worker, so do not assume the optional Terra-pinned
   `builder` and `reviewer` profiles apply.
   Use `fork_turns = "none"` and a self-contained brief for independent work;
-  inherit only the smallest recent context a worker genuinely needs. Create a
-  dedicated linked worktree before dispatching any writer and include its path
-  in the brief.
+  inherit only the smallest recent context a worker genuinely needs.
 - Named or cheaper Codex workers: use a separate role-aware Codex surface or
   bounded `codex exec` run. Use `delegate-resolve` when independence requires
   another provider. The native V2 session remains same-model fan-out.
@@ -62,23 +60,24 @@ work; keep planning, decomposition, and the final write with yourself.
   vision-capable reader; screenshots land in `.megapowers/evidence/` and you
   re-read them rather than trusting a text summary.
 
-## Single-writer discipline
+## Writer ownership discipline
 
-There is exactly one writer to shared branches: you.
+There is exactly one writer to each owned path.
 
-- Delegates write only inside dedicated worktrees or return patches.
-- Outside recursive SDD, you review, integrate, and commit; nothing lands
-  without going through you.
+- Outside recursive coordinator mode, delegates write only inside dedicated
+  worktrees or return patches.
+- The lead reviews the joined diff and performs any authorized Git action after
+  its direct children return.
 - Re-run the tests yourself before believing a task is done. Never trust a
   self-reported pass.
 
-Recursive SDD is the only multi-writer exception. It still has one writer per
-branch and linked worktree. A coordinator alone integrates its subtree branch,
-and the lead alone integrates the feature target. The coordinator creates every
-writer worktree before dispatch, passes a self-contained brief with
-`fork_turns = "none"`, joins its descendants, runs review and integration
-verification, and returns one final result. Multiple sessions coordinate only
-through the same clone's private `refs/megapowers/runs/` state.
+For explicitly selected recursive coordinator mode, native subagents may write
+concurrently only to disjoint owned paths in the shared checkout. Do not create
+worktrees for this mode. A coordinator may subdivide only its inherited ownership.
+Overlapping paths, shared interfaces, and dependencies remain sequential. Each
+coordinator waits for its direct children, verifies their combined edits, and
+returns one synthesized subtree result to its parent. The lead joins only its
+direct children. Children must not perform Git index or ref operations.
 
 ## Hook backstops
 

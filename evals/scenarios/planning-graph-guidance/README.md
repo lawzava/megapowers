@@ -84,33 +84,3 @@ memories `should not be reverified`. Each emitted:
 MISSING source-role-authority
 RED: planning-graph-guidance contract incomplete
 ```
-
-## Parallel plan contract, 2026-07-16
-
-After adding the four plan contract markers, but before adding the guidance,
-`evals/run.sh planning-graph-guidance` returned JSON verdict `fail`. The direct
-checker output was:
-
-```text
-MISSING parallel-safety
-MISSING ownership
-MISSING may-decompose
-MISSING overlap-forces-sequential
-RED: planning-graph-guidance contract incomplete
-```
-
-After adding the execution fields, sequential conditions, and exact ownership
-guidance, the same eval returned:
-
-```json
-{"scenario":"planning-graph-guidance","skill":"writing-plans","kind":"artifact","agent":"mock","mode":"skill","verdict":"pass","ms":1554}
-```
-
-For the mutation check, a temporary copy changed `Ownership overlaps an active
-task` to `Ownership overlap is allowed`. The real skill remained unchanged.
-The solve and check scripts rejected the copy with:
-
-```text
-MISSING overlap-forces-sequential
-RED: planning-graph-guidance contract incomplete
-```

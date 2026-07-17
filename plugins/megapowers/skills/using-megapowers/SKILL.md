@@ -1,6 +1,6 @@
 ---
 name: using-megapowers
-description: Use at conversation start to find and invoke skills before any response, including questions.
+description: Use when starting any conversation - establishes how to find and use skills, requiring skill invocation before any response including clarifying questions
 license: MIT
 ---
 

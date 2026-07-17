@@ -129,8 +129,10 @@ Find the installed plugin directory with `codex plugin list`, review the files,
 then copy the profiles you want into `~/.codex/agents/` (global) or
 `<repo>/.codex/agents/` (project). For a cheaper or differently configured
 Codex worker outside native v2, use a bounded `codex exec` run; for another
-provider, use `delegate-resolve`. Before dispatching any writer, create a
-dedicated linked worktree and include its path in the brief.
+provider, use `delegate-resolve`. For ordinary delegation, create a dedicated
+linked worktree before dispatching a writer and include its path in the brief.
+Recursive coordinator mode is the explicit shared-checkout exception; do not
+create worktrees for it.
 
 A v2 global baseline with up to ten concurrent subagents is:
 
@@ -143,7 +145,7 @@ Use subagents only when the user or applicable AGENTS.md or skill instructions e
 
 For independent workers, pass fork_turns = "none" and make the brief self-contained. Use a small positive fork_turns count only when specific recent turns are essential. Use fork_turns = "all" only for a true same-context continuation, never as a convenience default.
 
-The root owns integration of the final target. In an explicitly selected recursive coordinator workflow, each coordinator alone integrates its subtree, each writing child uses its assigned branch and linked worktree, and the parent receives one final result per child coordinator. Do not finish gating work until all required workers have returned and their outputs have been reviewed and independently validated. Completed workers remain idle; send a follow-up only for the same assignment, start a fresh worker for a new problem, and interrupt only running workers.
+The root owns integration. Do not finish gating work until all required workers have returned and their outputs have been reviewed and independently validated. Completed workers remain idle; send a follow-up only for the same assignment, start a fresh worker for a new problem, and interrupt only running workers.
 
 Treat the canonical task path as the nesting counter. If it already has five task-name components beneath /root, do not spawn another subagent; continue locally or report the limit.
 """
@@ -170,22 +172,6 @@ plan/spec review can still route independently to Fable. A Codex lead should
 not register `codex mcp-server` under `[mcp_servers.codex]`: that channel is
 for another harness delegating into Codex, while native subagents are the
 direct path inside Codex.
-
-### Recursive multi-writer SDD
-
-Recursive coordinator mode is an explicit
-`megapowers:subagent-driven-development` workflow, not the default delegation
-path. Every participating coordinator session must use the same clone so the
-run registry and private `refs/megapowers/runs/` state are shared. Task
-checkpoint commits require explicit human authorization; selecting the
-workflow does not grant it.
-
-The default per-run limit is three writer worktrees and one integration
-worktree. Recover or inspect an interrupted run with `sdd-run status RUN_ID`.
-There is no automatic stale takeover: diagnose stale claims and slots, but do
-not steal or release them automatically. Recursive SDD grants no publish
-authority. It does not authorize pushing, merging the feature target,
-releasing, or deploying.
 
 ### Codex hooks
 
@@ -242,8 +228,8 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.3.8`, or, for Claude Code,
-  add `"ref": "v0.3.8"` to the `extraKnownMarketplaces` source (see
+  `codex plugin marketplace add lawzava/megapowers@v0.3.9`, or, for Claude Code,
+  add `"ref": "v0.3.9"` to the `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
 pin, remove the marketplace and re-add it at the new tag.
@@ -255,7 +241,7 @@ pin, remove the marketplace and re-add it at the new tag.
 Neither is an integrity pin (no sha in the ref), so a pin controls when you
 move, not cryptographic provenance. Release tags from `v0.1.3` on are
 GPG-signed and can be verified out of band (see SECURITY.md, Release
-integrity). Tags `v0.1.1` through `v0.3.8` are the release pin range once this
+integrity). Tags `v0.1.1` through `v0.3.9` are the release pin range once this
 version is published.
 
 ## Every other harness: the skills CLI

@@ -2,7 +2,7 @@
 
 Use this template when dispatching an implementer subagent.
 
-````
+```
 Subagent (general-purpose):
   description: "Implement Task N: [task name]"
   model: [MODEL — include only when the dispatch surface supports per-worker
@@ -40,38 +40,6 @@ Subagent (general-purpose):
     6. Report back
 
     Work from: [directory]
-
-    Before editing, verify that `[directory]` is the assigned linked worktree:
-
-    ```bash
-    cd "[directory]" || exit 1
-    git_dir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
-    git_common=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
-    [ "$git_dir" != "$git_common" ]
-    ```
-
-    If the check fails, report `BLOCKED`. Do not edit, create a replacement
-    worktree, or fall back to the controller's checkout.
-
-    For recursive SDD, the dispatch also binds the registry run, node, session,
-    claim object, writer slot number and object, result ref, result JSON path,
-    and evidence directory. Treat those values as exact capabilities. The
-    registry session must own both the active node claim and writer slot.
-
-    The final writer for a recursive node owns terminal result publication.
-    Your first `DONE` report is nonterminal while fresh review runs. Do not
-    publish `done` until the coordinator confirms that required reviews are
-    clean and resumes you for publication. If a fresh fixer supersedes you,
-    that fixer assumes this responsibility. If you cannot proceed, publish a
-    `blocked` result with concrete unresolved items. Commit any intentional
-    partial source state first so the assigned branch and source checkout are
-    clean; never discard unknown changes.
-
-    For either terminal status, write the bound result JSON and evidence files,
-    then run `sdd-run result-put [RUN_ID] [NODE_PATH] [RESULT_FILE] [EVIDENCE_DIR] --session [SESSION_ID]`.
-    Capture and return its printed result OID and immutable evidence paths. Do
-    not remove the worktree or release the slot or claim; the coordinator does
-    that only after verifying the result OID.
 
     While you work: if you encounter something unexpected or unclear, ask
     questions. It's always OK to pause and clarify. Don't guess or make
@@ -162,7 +130,6 @@ Subagent (general-purpose):
     - One-line test summary (e.g. "14/14 passing, output pristine")
     - Your concerns, if any
     - The report file path
-    - For a recursive terminal return: result OID and immutable evidence paths
 
     If BLOCKED or NEEDS_CONTEXT, put the specifics in the final message
     itself — the controller acts on it directly.
@@ -170,4 +137,4 @@ Subagent (general-purpose):
     Use DONE_WITH_CONCERNS if you completed the work but have doubts about correctness.
     Use BLOCKED if you cannot complete the task. Use NEEDS_CONTEXT if you need
     information that wasn't provided. Don't silently produce work you're unsure about.
-````
+```

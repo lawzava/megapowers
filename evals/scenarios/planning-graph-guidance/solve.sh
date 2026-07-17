@@ -2,8 +2,7 @@
 set -euo pipefail
 
 skills="$ROOT/plugins/megapowers/skills"
-plan_source="$(< "$skills/writing-plans/SKILL.md")"
-plan="$(printf '%s\n' "$plan_source" | tr '\n' ' ')"
+plan="$(tr '\n' ' ' < "$skills/writing-plans/SKILL.md")"
 debug="$(tr '\n' ' ' < "$skills/systematic-debugging/SKILL.md")"
 memory="$(tr '\n' ' ' < "$skills/project-memory/SKILL.md")"
 
@@ -13,29 +12,15 @@ has() {
   printf '%s\n' "$text" | grep -Eiq "$pattern"
 }
 
-overlap_is_permissive() {
-  text="$1"
-  has "$text" "\`?Ownership\`?[[:space:]]+overlaps?[[:space:]]+(is|are)[[:space:]]+(allowed|permitted|safe)" ||
-    has "$text" "\`?Ownership\`?[[:space:]]+overlaps?[[:space:]]+an[[:space:]]+active[[:space:]]+task[[:space:]]+but[[:space:]]+does[[:space:]]+not[[:space:]]+constrain[[:space:]]+concurrency"
-}
-
-overlap_forces_sequential() {
-  text="$1"
-  ! overlap_is_permissive "$text" && {
-    has "$text" "\`?Ownership\`?[[:space:]]+overlaps?[[:space:]]+an[[:space:]]+active[[:space:]]+task[.\`]?[[:space:]]*$" ||
-      has "$text" "\`?Ownership\`?[[:space:]]+overlaps?[[:space:]]+is[[:space:]]+never[[:space:]]+(allowed|permitted|safe)[.\`]?[[:space:]]*$"
-  }
-}
-
 marker() {
   name="$1"
   text="$2"
   pattern="$3"
-  if ! has "$text" "$pattern"; then
+  if has "$text" "$pattern"; then
+    echo "OK $name"
+  else
     echo "MISSING $name"
-    return
   fi
-  echo "OK $name"
 }
 
 source_roles() {
@@ -100,17 +85,8 @@ if has "$memory" 'every recall.{0,120}(contradiction|conflict)|each recall.{0,12
   memory_recall_rc=0
 fi
 
-overlap_rc=1
-if overlap_forces_sequential "$plan_source"; then
-  overlap_rc=0
-fi
-
 {
   marker blocked-by "$plan" 'Blocked by'
-  marker parallel-safety "$plan" 'Parallel safety'
-  marker ownership "$plan" 'Ownership'
-  marker may-decompose "$plan" 'May decompose'
-  marker overlap-forces-sequential "$overlap_rc" '^0$'
   marker blocker-owner "$plan" 'Owner:|owner.{0,80}(unresolved|blocker|input)'
   marker unblock-condition "$plan" 'Unblocks when:|unblock condition'
   marker expand-migrate-contract "$plan" 'expand.{0,180}migrate.{0,180}contract'

@@ -1,7 +1,7 @@
 {
   "name": "mega-orchestration",
   "description": "Decide the structure (inline, fan-out, delegate, best-of-N, council, autonomous run), route each role to the best model, verify across vendors, and gate irreversible actions.",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "author": {
     "name": "lawzava"
   },

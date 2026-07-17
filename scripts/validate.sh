@@ -514,19 +514,13 @@ if awk '
      /small positive fork_turns count only when specific recent turns are essential/ { bounded_inheritance=1 }
      /fork_turns = "all"/ && /same-context continuation/ { all_exception=1 }
      /root owns integration/ { root_integration=1 }
-     /final target/ { final_target=1 }
-     /coordinator/ { coordinator=1 }
-     /subtree/ { subtree=1 }
-     /assigned branch/ { assigned_branch=1 }
-     /linked worktree/ { linked_worktree=1 }
-     /one final result/ { one_final_result=1 }
      /required workers have returned/ { join_gate=1 }
      /reviewed and independently validated/ { independent_validation=1 }
      /Completed workers remain idle/ { completed_idle=1 }
      /follow-up only for the same assignment/ { same_assignment=1 }
      /fresh worker for a new problem/ { fresh_problem=1 }
      /interrupt only running workers/ { running_interrupt=1 }
-     END { exit !(nonempty && authorized && depth_policy && root_only && nested_exception && batch_limit && fresh_default && bounded_inheritance && all_exception && root_integration && final_target && coordinator && subtree && assigned_branch && linked_worktree && one_final_result && join_gate && independent_validation && completed_idle && same_assignment && fresh_problem && running_interrupt) }
+     END { exit !(nonempty && authorized && depth_policy && root_only && nested_exception && batch_limit && fresh_default && bounded_inheritance && all_exception && root_integration && join_gate && independent_validation && completed_idle && same_assignment && fresh_problem && running_interrupt) }
    ' &&
    ! grep -Eq '^[[:space:]]*(agents\.)?max_(threads|depth)[[:space:]]*=' templates/codex-config.toml; then
   ok "Codex config opts into v2 with bounded fresh-context fan-out, join/lifecycle rules, and no ignored v1 limits"
@@ -556,21 +550,6 @@ if grep -qF 'Codex v2 inherits the session model and effort even with fresh cont
   ok "Codex operational guidance makes model selection conditional on the dispatch surface"
 else
   bad "Codex operational guidance must not require unavailable per-worker model selection under native v2"
-fi
-if grep -qF 'Recursive coordinator mode' plugins/megapowers/skills/subagent-driven-development/SKILL.md &&
-   grep -qF 'refs/megapowers/runs/' plugins/megapowers/skills/subagent-driven-development/SKILL.md &&
-   grep -qF 'three writer worktrees and one integration worktree' plugins/megapowers/skills/subagent-driven-development/SKILL.md &&
-   grep -qF 'Do not use agent teams because teams do not nest' plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md &&
-   grep -qF 'If it already has five task-name components beneath /root, do not spawn another subagent; continue locally or report the limit.' plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md &&
-   grep -qF 'release the exact writer slot token recorded earlier' plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md &&
-   grep -qF 'Recursive SDD is the only multi-writer exception' templates/CODEX-LEAD.md &&
-   grep -qF 'Recursive SDD uses nested Agent calls, not agent teams' templates/CLAUDE.md &&
-   awk -f evals/scenarios/recursive-multi-writer-contract/guidance-policy.awk \
-     plugins/megapowers/skills/subagent-driven-development/coordinator-prompt.md &&
-   bash evals/scenarios/recursive-multi-writer-contract/guidance-policy.test.sh; then
-  ok "recursive SDD guidance preserves coordinator ownership across Codex and Claude Code"
-else
-  bad "recursive SDD guidance must preserve coordinator ownership across Codex and Claude Code"
 fi
 
 echo "== hook tests =="

@@ -1,4 +1,0 @@
-id    = "recursive-multi-writer-contract"
-title = "recursive SDD preserves ownership, durability, bounded resources, and harness rules"
-skill = "subagent-driven-development"
-kind  = "artifact"

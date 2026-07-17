@@ -4,7 +4,7 @@ set -u
 o="$WORKDIR/out.txt"
 [ -f "$o" ] || { echo "missing evidence: out.txt"; exit 1; }
 
-markers='blocked-by parallel-safety ownership may-decompose overlap-forces-sequential blocker-owner unblock-condition expand-migrate-contract context-and-adr-pass source-role-authority conflict-surfaced diagnosis-before-plan memory-not-duplicate-canonical-docs memory-recall-verification-scope'
+markers='blocked-by blocker-owner unblock-condition expand-migrate-contract context-and-adr-pass source-role-authority conflict-surfaced diagnosis-before-plan memory-not-duplicate-canonical-docs memory-recall-verification-scope'
 for marker in $markers; do
   grep -Eq "^(OK|MISSING) ${marker}$" "$o" || {
     echo "missing marker: $marker"

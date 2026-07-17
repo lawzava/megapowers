@@ -33,7 +33,7 @@ Use subagents only when the user or applicable AGENTS.md or skill instructions e
 
 For independent workers, pass fork_turns = "none" and make the brief self-contained. Use a small positive fork_turns count only when specific recent turns are essential. Use fork_turns = "all" only for a true same-context continuation, never as a convenience default.
 
-The root owns integration of the final target. In an explicitly selected recursive coordinator workflow, each coordinator alone integrates its subtree, each writing child uses its assigned branch and linked worktree, and the parent receives one final result per child coordinator. Do not finish gating work until all required workers have returned and their outputs have been reviewed and independently validated. Completed workers remain idle; send a follow-up only for the same assignment, start a fresh worker for a new problem, and interrupt only running workers.
+The root owns integration. Do not finish gating work until all required workers have returned and their outputs have been reviewed and independently validated. Completed workers remain idle; send a follow-up only for the same assignment, start a fresh worker for a new problem, and interrupt only running workers.
 
 Treat the canonical task path as the nesting counter. If it already has five task-name components beneath /root, do not spawn another subagent; continue locally or report the limit.
 """
