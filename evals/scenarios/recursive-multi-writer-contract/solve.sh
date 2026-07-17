@@ -31,6 +31,7 @@ validates_policy() {
   mark bounded-worktrees contains "$skill" 'three writer worktrees and one integration worktree'
   mark bounded-cache contains "$skill" 'bounded shared cache|bounded per-run cache'
   mark branch-ownership contains "$skill" 'one writer.{0,100}(branch|worktree)|(branch|worktree).{0,100}one writer'
+  mark sequential-when-recursive-commit-authorization-absent contains "$skill" 'Sequential mode:.{0,240}separate recursive task-local commit authorization is (absent|not granted)'
   mark sequential-commit-authorization contains "$skill" 'Sequential SDD commits once per task when the human selects this skill'
   mark recursive-explicit-commit-authorization contains "$skill" 'requires separate, explicit, run-specific human authorization.{0,200}--allow-task-commits'
   mark recursive-selection-not-authorization contains "$skill" 'Selecting this skill or the recursive workflow alone is not authorization'

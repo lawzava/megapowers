@@ -12,8 +12,9 @@ compliance, then code quality), and one broad whole-branch review at the end.
 ## Execution modes
 
 **Sequential mode:** one writer at a time on one feature branch. Use it when
-plan tasks overlap, dependencies form one critical path, task-local commits are
-not authorized, or the harness cannot provide nested subagents.
+plan tasks overlap, dependencies form one critical path, separate recursive
+task-local commit authorization is absent, or the harness cannot provide nested
+subagents.
 
 **Recursive coordinator mode:** independent plan roots run concurrently on
 owned branches and ephemeral worktrees. Each coordinator may decompose an
