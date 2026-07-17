@@ -64,7 +64,7 @@ The verb is `add`, not `install`. `codex plugin marketplace add` accepts
 `owner/repo[@ref]` (codex-cli 0.142.5+); unpinned tracks the default branch.
 Updates: `codex plugin marketplace upgrade megapowers`, then re-run
 `codex plugin add` for each plugin. Change-controlled installs pin with
-`@v0.3.8` instead and update by re-adding at the new tag. To track a fork,
+`@v0.3.9` instead and update by re-adding at the new tag. To track a fork,
 clone it and run `codex plugin marketplace add ./` from the checkout.
 After the core plugin is installed, use its `upgrading-megapowers` skill for
 future updates. It preserves the active channel and pinning policy and offers
@@ -158,8 +158,10 @@ Present these to the user; apply only what they approve:
   Offer `templates/codex-complex.config.toml` as
   `$CODEX_HOME/complex.config.toml` for deliberate Sol ultra sessions started
   with `codex --profile complex`; do not embed it under `[profiles.*]`.
-  The lead must create a dedicated linked worktree before invoking any writer
-  and pass that path in the task brief.
+  For ordinary delegation, the lead must create a dedicated linked worktree
+  before invoking a writer and pass that path in the task brief. Recursive
+  coordinator mode is the explicit shared-checkout exception; do not create
+  worktrees for it.
 - Remove superseded duplicates: if the user previously hand-installed copies
   of these hooks or skills (session-start, deny-destructive, auto-format, or
   legacy standalone skill folders that the bundles now provide), list them and

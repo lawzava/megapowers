@@ -37,6 +37,10 @@ Status: supported.
   the marketplace cannot distribute them; the templates carry examples instead.
   Trust caveat: workflow subagents always run in acceptEdits, so their file
   edits are auto-approved regardless of session mode.
+- Recursive SDD: Claude Code supports nested Agent calls. Agent teams are
+  outside this mode because they cannot nest. Megapowers requires disjoint path
+  ownership in the shared checkout; Claude Code does not enforce that ownership.
+  No Megapowers runtime, registry, or worktree manager participates.
 
 ## Codex
 
@@ -66,10 +70,15 @@ agent role templates.
   collaboration surface. V2 is same-model context sharding and exposes
   `fork_turns`, but no per-spawn role, model, or effort selector. Its session
   ceiling is ten subagents; the shipped policy keeps ordinary batches to six,
-  uses fresh context for independent work, leaves spawning and integration with
-  the root, and requires gating workers to return before completion. Codex
+  uses fresh context for independent work, leaves ordinary fan-out spawning and
+  integration with the root, and requires gating workers to return before
+  completion. Codex
   0.144.4 does not hard-enforce `agents.max_depth` under v2, so the template
   supplies a model-visible policy that stops nesting at depth five instead.
+- Recursive SDD: Codex supports native nested subagents. Megapowers requires
+  disjoint path ownership in the shared checkout; Codex does not enforce that
+  ownership or the Git restrictions. No Megapowers runtime, registry, or
+  worktree manager participates.
 - From Claude Code, prefer OpenAI's first-party
   [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) for Codex
   review, adversarial review, rescue, transfer, and background job management.

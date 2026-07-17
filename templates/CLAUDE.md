@@ -16,8 +16,8 @@ Let the megapowers process skills lead; don't paraphrase or pre-empt them.
 - Something's broken → **systematic-debugging** before proposing a fix.
 - Wrapping up → **requesting-code-review**, **verification-before-completion**, then
   **finishing-a-development-branch**.
-- Isolated or parallel work → **using-git-worktrees**, **subagent-driven-development**,
-  **dispatching-parallel-agents**.
+- Ordinary isolated or parallel work → **using-git-worktrees**,
+  **subagent-driven-development**, **dispatching-parallel-agents**.
 
 When a skill applies, invoke it before answering. It owns the procedure; these notes
 just say when to reach for which.
@@ -39,9 +39,17 @@ provider's tier map, and the floor; delegates.toml maps roles to providers and
 defines how each delegate runs. Resolve routes with `scripts/delegate-resolve
 <role>`; the delegation skill and the delegate agents read the same tables.
 
-Single-writer rule: delegates write only inside worktrees or return patches. The lead
-owns integration and commits. Always run the tests yourself and confirm the output;
-never trust a self-reported pass.
+For ordinary delegation, delegates write only inside worktrees or return patches. The
+lead owns final review and authorized Git actions. Always run the tests yourself and
+confirm the output; never trust a self-reported pass.
+
+Recursive coordinator mode uses nested Agent calls, not agent teams. Teams cannot
+nest. Use it only when coordinator subagents have access to `Agent`. Assign children
+disjoint paths in the shared checkout, and keep overlapping work sequential. Do not
+create worktrees for this mode. Each coordinator waits for its direct children,
+verifies their combined edits, and returns one synthesized subtree result to its
+parent. Children must not perform Git index or ref operations. The lead performs any
+authorized Git action only after its direct children return.
 
 For very large audits, migrations, or repeatable multi-agent research, prefer Claude
 Code dynamic workflows (its built-in multi-agent workflow runner, invoked with the
