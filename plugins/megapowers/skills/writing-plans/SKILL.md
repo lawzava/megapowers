@@ -106,6 +106,19 @@ Use `Blocked by: None` when it has no dependency. For every material unresolved
 input, add `Blocker:`, `Owner:`, and `Unblocks when:` fields and mark the
 affected task not execution-ready until that condition is met.
 
+**Parallel safety:** Write `Sequential`, `Parallel with Task N`, or `Parallel
+after Task N`, followed by one sentence explaining the dependency boundary.
+
+**Ownership:** List exact files or non-overlapping directory roots. Parallel
+tasks must not own the same path or a parent and child path.
+
+**May decompose:** Write `Yes` only when a coordinator can split this task into
+independently testable children with disjoint ownership. Otherwise write `No`.
+
+Shared interface changes, overlapping paths, and producer to consumer
+dependencies stay sequential. A child coordinator inherits its parent's
+ownership and cannot broaden it.
+
 **Files:** exact paths, grouped as Create, Modify (with line ranges), and
 Test.
 

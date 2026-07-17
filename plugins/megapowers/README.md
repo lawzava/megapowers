@@ -11,6 +11,9 @@ conditions, so the right practice is applied at the right moment.
 - Execute a plan: `executing-plans` (inline, yourself),
   `subagent-driven-development` (a fresh subagent per task, with per-task
   review), `dispatching-parallel-agents` (independent tasks in parallel)
+- Coordinate nested work: native recursive coordinator guidance for Codex and
+  Claude Code, with concurrent writers limited to disjoint owned paths in one
+  shared checkout
 - Implement: `test-driven-development` (write the failing test first),
   `systematic-debugging` (root cause before any fix)
 - Verify and review: `verification-before-completion` (evidence before

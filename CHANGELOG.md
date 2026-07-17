@@ -8,6 +8,24 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.3.9 - 2026-07-17
+
+### Added
+
+- Recursive coordinator guidance for native Codex and Claude Code subagents
+  allows independent writers to use disjoint owned paths in one shared
+  checkout, without a Megapowers runtime or worktree manager.
+- Plans can now state parallel safety, exact path ownership, and whether a
+  coordinator may split a task into independently testable children.
+
+### Changed
+
+- Each recursive coordinator joins and verifies its direct children, then
+  returns one synthesized subtree result to its parent. Git operations remain
+  with the top-level lead after its direct children finish.
+- A lightweight contract test keeps the Codex and Claude Code guidance aligned
+  without adding runtime code or agent-facing test output.
+
 ## 0.3.8 - 2026-07-15
 
 ### Added

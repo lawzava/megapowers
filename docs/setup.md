@@ -129,8 +129,10 @@ Find the installed plugin directory with `codex plugin list`, review the files,
 then copy the profiles you want into `~/.codex/agents/` (global) or
 `<repo>/.codex/agents/` (project). For a cheaper or differently configured
 Codex worker outside native v2, use a bounded `codex exec` run; for another
-provider, use `delegate-resolve`. Before dispatching any writer, create a
-dedicated linked worktree and include its path in the brief.
+provider, use `delegate-resolve`. For ordinary delegation, create a dedicated
+linked worktree before dispatching a writer and include its path in the brief.
+Recursive coordinator mode is the explicit shared-checkout exception; do not
+create worktrees for it.
 
 A v2 global baseline with up to ten concurrent subagents is:
 
@@ -226,8 +228,8 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.3.8`, or, for Claude Code,
-  add `"ref": "v0.3.8"` to the `extraKnownMarketplaces` source (see
+  `codex plugin marketplace add lawzava/megapowers@v0.3.9`, or, for Claude Code,
+  add `"ref": "v0.3.9"` to the `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
 pin, remove the marketplace and re-add it at the new tag.
@@ -239,7 +241,7 @@ pin, remove the marketplace and re-add it at the new tag.
 Neither is an integrity pin (no sha in the ref), so a pin controls when you
 move, not cryptographic provenance. Release tags from `v0.1.3` on are
 GPG-signed and can be verified out of band (see SECURITY.md, Release
-integrity). Tags `v0.1.1` through `v0.3.8` are the release pin range once this
+integrity). Tags `v0.1.1` through `v0.3.9` are the release pin range once this
 version is published.
 
 ## Every other harness: the skills CLI
