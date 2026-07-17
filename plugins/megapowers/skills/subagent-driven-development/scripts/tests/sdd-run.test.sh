@@ -200,6 +200,12 @@ if [ "${1:-}" = worktree ] && [ "${2:-}" = list ] &&
   fi
   exit "$status"
 fi
+if [ "${1:-}" = -c ] && [ "${2:-}" = core.quotePath=false ] &&
+   [ "${3:-}" = worktree ] && [ "${4:-}" = list ] &&
+   [ "${5:-}" = --porcelain ] && [ -n "${MP_WORKTREE_PORCELAIN_PREFIX:-}" ]; then
+  printf '%s\n' "$MP_WORKTREE_PORCELAIN_PREFIX"
+  exec "$MP_REAL_GIT" "$@"
+fi
 exec "$MP_REAL_GIT" "$@"
 WRAPPER
 cat > "$TMP/jq-wrapper/jq" <<'WRAPPER'
@@ -264,6 +270,8 @@ expect_ok "$RUN" init close-worktree-race --plan plan.md --root race-root --targ
 expect_ok "$RUN" init cleanup-worktree-race --plan plan.md --root cleanup-root --target feature/multi-writer --session cleanup-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init cleanup-primary-root --plan plan.md --root cleanup-primary-root --target feature/multi-writer --session cleanup-primary-owner --harness codex --max-depth 2 --agent-budget 1 --allow-task-commits
 expect_ok "$RUN" init slot-worktree-matrix --plan plan.md --root matrix-node --root matrix-peer --target feature/multi-writer --session matrix-owner --harness codex --max-depth 2 --agent-budget 2 --writers 1 --integrations 1 --allow-task-commits
+expect_ok "$RUN" init slot-node-exact --plan plan.md --root a --target feature/multi-writer --session exact-owner --harness codex --max-depth 2 --agent-budget 1 --writers 1 --integrations 2 --allow-task-commits
+expect_ok "$RUN" init slot-malformed-worktree --plan plan.md --root stray --target feature/multi-writer --session malformed-owner --harness codex --max-depth 2 --agent-budget 1 --writers 1 --integrations 1 --allow-task-commits
 defaults_base=refs/megapowers/runs/defaults
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.writer_limit')" 3
 expect_eq "$(git cat-file blob "$defaults_base/manifest" | jq -r '.integration_limit')" 1
@@ -736,6 +744,112 @@ expect_ok "$RUN" release-claim slot-worktree-matrix matrix-node \
   --session matrix-session --expected "${matrix_claim%% *}"
 expect_ok "$RUN" release-claim slot-worktree-matrix matrix-peer \
   --session matrix-peer-session --expected "${matrix_peer_claim%% *}"
+
+# A node integration slot matches one exact candidate attempt. Descendant node
+# candidates and branches without the required trailing /head are unrelated.
+write_root_brief slot-node-exact a exact/ 0 0 1 2 exact-node.json
+expect_ok "$RUN" brief-put slot-node-exact a exact-node.json --session exact-owner
+exact_claim=$("$RUN" claim slot-node-exact a --session exact-session --harness codex)
+exact_descendant_path="$TMP/slot-node-exact-descendant"
+exact_nonhead_path="$TMP/slot-node-exact-nonhead"
+matrix_add_worktree "$exact_descendant_path" \
+  mp/slot-node-exact/candidates/nodes/a/b/attempt/head
+matrix_add_worktree "$exact_nonhead_path" \
+  mp/slot-node-exact/candidates/nodes/a/attempt/tail
+
+exact_release=$("$RUN" slot-acquire slot-node-exact integration a \
+  --session exact-session --harness codex)
+exact_release_n=${exact_release%% *}
+exact_release_oid=${exact_release#* }
+exact_release_ref="refs/megapowers/runs/slot-node-exact/slots/integration/$exact_release_n"
+expect_ok "$RUN" slot-release slot-node-exact integration "$exact_release_n" \
+  --session exact-session --expected "$exact_release_oid"
+exact_release_after=$(git rev-parse --verify "$exact_release_ref" 2>/dev/null || true)
+expect_eq "$exact_release_after" ""
+# Restore progress after the RED run, where the broad prefix matcher blocks.
+[ -z "$exact_release_after" ] || git update-ref -d "$exact_release_ref" "$exact_release_after"
+
+exact_recover=$("$RUN" slot-acquire slot-node-exact integration a \
+  --session exact-session --harness codex)
+exact_recover_n=${exact_recover%% *}
+exact_recover_oid=${exact_recover#* }
+exact_recover_ref="refs/megapowers/runs/slot-node-exact/slots/integration/$exact_recover_n"
+exact_recover_stale=$(git cat-file blob "$exact_recover_oid" |
+  jq -c '.claimed_at="2026-07-16T11:44:59Z"' | git hash-object -w --stdin)
+git update-ref "$exact_recover_ref" "$exact_recover_stale" "$exact_recover_oid"
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot slot-node-exact \
+  integration "$exact_recover_n" --owner-session exact-owner \
+  --expected "$exact_recover_stale" --confirmed-inactive
+exact_recover_after=$(git rev-parse --verify "$exact_recover_ref" 2>/dev/null || true)
+expect_eq "$exact_recover_after" ""
+[ -z "$exact_recover_after" ] || git update-ref -d "$exact_recover_ref" "$exact_recover_after"
+
+exact_blocked=$("$RUN" slot-acquire slot-node-exact integration a \
+  --session exact-session --harness codex)
+exact_blocked_n=${exact_blocked%% *}
+exact_blocked_oid=${exact_blocked#* }
+exact_blocked_ref="refs/megapowers/runs/slot-node-exact/slots/integration/$exact_blocked_n"
+exact_candidate_path="$TMP/slot-node-exact-candidate"
+matrix_add_worktree "$exact_candidate_path" \
+  mp/slot-node-exact/candidates/nodes/a/attempt/head
+exact_generation_ref=refs/megapowers/runs/slot-node-exact/generation
+exact_generation_before=$(git rev-parse "$exact_generation_ref")
+expect_status 4 "$RUN" slot-release slot-node-exact integration "$exact_blocked_n" \
+  --session exact-session --expected "$exact_blocked_oid"
+expect_eq "$(git rev-parse "$exact_blocked_ref")" "$exact_blocked_oid"
+expect_eq "$(git rev-parse "$exact_generation_ref")" "$exact_generation_before"
+exact_blocked_stale=$(git cat-file blob "$exact_blocked_oid" |
+  jq -c '.claimed_at="2026-07-16T11:44:59Z"' | git hash-object -w --stdin)
+git update-ref "$exact_blocked_ref" "$exact_blocked_stale" "$exact_blocked_oid"
+expect_status 4 env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot \
+  slot-node-exact integration "$exact_blocked_n" --owner-session exact-owner \
+  --expected "$exact_blocked_stale" --confirmed-inactive
+expect_eq "$(git rev-parse "$exact_blocked_ref")" "$exact_blocked_stale"
+expect_eq "$(git rev-parse "$exact_generation_ref")" "$exact_generation_before"
+git worktree remove "$exact_candidate_path"
+expect_ok env PATH="$TMP/date-wrapper:$PATH" "$RUN" recover-slot \
+  slot-node-exact integration "$exact_blocked_n" --owner-session exact-owner \
+  --expected "$exact_blocked_stale" --confirmed-inactive
+git worktree remove "$exact_descendant_path"
+git worktree remove "$exact_nonhead_path"
+expect_ok "$RUN" release-claim slot-node-exact a --session exact-session \
+  --expected "${exact_claim%% *}"
+
+# Porcelain metadata is valid only inside an open worktree record. A stray
+# leading metadata line must fail closed without releasing the slot or moving
+# the run generation.
+write_root_brief slot-malformed-worktree stray malformed/ 0 0 1 1 malformed-node.json
+expect_ok "$RUN" brief-put slot-malformed-worktree stray malformed-node.json \
+  --session malformed-owner
+malformed_claim=$("$RUN" claim slot-malformed-worktree stray \
+  --session malformed-session --harness codex)
+malformed_slot=$("$RUN" slot-acquire slot-malformed-worktree writer stray \
+  --session malformed-session --harness codex)
+malformed_slot_n=${malformed_slot%% *}
+malformed_slot_oid=${malformed_slot#* }
+malformed_slot_ref="refs/megapowers/runs/slot-malformed-worktree/slots/writer/$malformed_slot_n"
+malformed_generation_ref=refs/megapowers/runs/slot-malformed-worktree/generation
+for malformed_prefix in "HEAD $head" locked prunable; do
+  malformed_generation_before=$(git rev-parse "$malformed_generation_ref")
+  expect_status 3 env PATH="$TMP/git-wrapper:$PATH" MP_REAL_GIT="$real_git" \
+    MP_WORKTREE_PORCELAIN_PREFIX="$malformed_prefix" \
+    "$RUN" slot-release slot-malformed-worktree writer "$malformed_slot_n" \
+    --session malformed-session --expected "$malformed_slot_oid"
+  malformed_slot_after=$(git rev-parse --verify "$malformed_slot_ref" 2>/dev/null || true)
+  malformed_generation_after=$(git rev-parse "$malformed_generation_ref")
+  expect_eq "$malformed_slot_after" "$malformed_slot_oid"
+  expect_eq "$malformed_generation_after" "$malformed_generation_before"
+  # Restore the exact precondition after a RED command mutates it.
+  [ "$malformed_slot_after" = "$malformed_slot_oid" ] ||
+    git update-ref "$malformed_slot_ref" "$malformed_slot_oid"
+  [ "$malformed_generation_after" = "$malformed_generation_before" ] ||
+    git update-ref "$malformed_generation_ref" "$malformed_generation_before" \
+      "$malformed_generation_after"
+done
+expect_ok "$RUN" slot-release slot-malformed-worktree writer "$malformed_slot_n" \
+  --session malformed-session --expected "$malformed_slot_oid"
+expect_ok "$RUN" release-claim slot-malformed-worktree stray \
+  --session malformed-session --expected "${malformed_claim%% *}"
 
 # A release and reacquire in one second must not recreate an ownership object ID.
 write_root_brief claim-aba aba-node aba/ 0 0 0 0 aba-node.json

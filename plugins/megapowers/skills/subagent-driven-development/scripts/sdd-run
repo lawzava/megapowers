@@ -254,7 +254,7 @@ mp_require_slot_worktrees_clear() {
       return
     }
     wanted="refs/heads/mp/$run/candidates/nodes/$node/"
-    match_mode=prefix
+    match_mode=node_candidate
     detached_prefix="/$run/integration/nodes/$node/"
   else
     wanted="refs/heads/mp/$run/candidates/target/"
@@ -278,7 +278,12 @@ mp_require_slot_worktrees_clear() {
           return
         }
         ;;
-      HEAD\ *|locked|locked\ *|prunable|prunable\ *) ;;
+      HEAD\ *|locked|locked\ *|prunable|prunable\ *)
+        [ -n "$path" ] || {
+          mp_die "malformed shared-clone worktree inspection" 3
+          return
+        }
+        ;;
       branch\ *)
         [ -n "$path" ] && [ -z "$state" ] || {
           mp_die "malformed shared-clone worktree inspection" 3
@@ -307,6 +312,19 @@ mp_require_slot_worktrees_clear() {
         if [ "$state" = attached ]; then
           if [ "$match_mode" = exact ]; then
             [ "$branch" = "$wanted" ] && associated=1
+          elif [ "$match_mode" = node_candidate ]; then
+            case "$branch" in
+              "$wanted"*)
+                remainder=${branch#"$wanted"}
+                case "$remainder" in
+                  */head)
+                    remainder=${remainder%/head}
+                    [ -n "$remainder" ] &&
+                      case "$remainder" in */*) ;; *) associated=1 ;; esac
+                    ;;
+                esac
+                ;;
+            esac
           else
             case "$branch" in "$wanted"*) associated=1 ;; esac
           fi

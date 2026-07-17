@@ -22,34 +22,40 @@ branch to its parent. One elected run owner alone advances the feature target.
 
 Recursive mode is explicit. It starts only when the accepted plan supplies
 `Blocked by`, `Parallel safety`, `Ownership`, and `May decompose`, the human has
-authorized task-local commits, every participant uses the same Git clone, and
-the selected harness supports the requested depth. Otherwise use sequential
-mode without weakening review or worktree isolation.
+separately authorized task-local commits for that run, every participant uses
+the same Git clone, and the selected harness supports the requested depth.
+Otherwise use sequential mode without weakening review or worktree isolation.
 
 **Why subagents:** each task gets deliberately fresh context that you construct.
 Some harnesses can inherit or fork parent history, so request a fresh context
 explicitly for implementers and reviewers. Hand each one exactly what its task
 needs, which keeps it focused and preserves your own context for coordination.
 
-**Commit cadence:** this workflow commits once per task. The sequential ledger
-records commit ranges; recursive run refs record node branches and results. Git
-history survives the compactions that erase conversation memory. Choosing this
-skill is how the human opts into per-task commits; it is not a hidden side
-effect. Commits land on the feature branch or assigned worktree; do not start
-implementation on a main or master branch without explicit consent. If
-per-task commits do not fit, use megapowers:executing-plans instead.
+**Commit cadence:** Sequential SDD commits once per task when the human selects
+this skill, retaining its existing per-task commit opt-in semantics. Its ledger
+records commit ranges. Recursive SDD requires separate, explicit, run-specific
+human authorization for task-local commits, recorded by `sdd-run init
+--allow-task-commits`. Selecting this skill or the recursive workflow alone is
+not authorization. Recursive run refs record node branches and results. Git
+history survives the compactions that erase conversation memory. Commits land
+on the feature branch or assigned worktree; do not start implementation on a
+main or master branch without explicit consent. In neither mode does task-local
+commit authorization grant push, merge-to-main, pull request, release, or
+deploy authority. If per-task commits do not fit, use
+megapowers:executing-plans instead.
 
 **Continuous execution:** do not check in with your human partner between tasks. Stop only for a BLOCKED status you cannot resolve, ambiguity that prevents progress, or completion of all tasks. Narrate at most one short line between tool calls; the ledger or run refs and tool results carry the record.
 
 ## When to Use
 
-Use this skill when a written plan exists, subagents are available, and the
-human authorizes per-task commits. Select sequential mode for overlapping or
-tightly coupled tasks. Select recursive coordinator mode only for explicitly
-safe, disjoint roots under the execution gate above. With no plan, brainstorm
-first. When subagents are unavailable or the human wants inline execution with
-their own commit cadence, use megapowers:executing-plans (the same criterion
-appears in writing-plans and executing-plans).
+Use this skill when a written plan exists and subagents are available. In
+sequential mode, selecting the skill opts into per-task commits. Select
+sequential mode for overlapping or tightly coupled tasks. Select recursive
+coordinator mode only for explicitly safe, disjoint roots under the execution
+gate above, including its separate run-specific commit authorization. With no
+plan, brainstorm first. When subagents are unavailable or the human wants
+inline execution with their own commit cadence, use megapowers:executing-plans
+(the same criterion appears in writing-plans and executing-plans).
 
 ## Workspace boundary
 
