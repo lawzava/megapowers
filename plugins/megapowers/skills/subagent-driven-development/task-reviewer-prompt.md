@@ -49,17 +49,11 @@ Subagent (general-purpose):
     lock ordering, a function or API contract, or shared mutable state,
     checking the call sites is the right method.
 
-    Your review is read-only on this checkout. Do not mutate the working
-    tree, the index, HEAD, or branch state in any way.
+    ## Ground Rules
 
-    ## Do Not Trust the Report
-
-    Treat the implementer's report as unverified claims about the code. It
-    may be incomplete, inaccurate, or optimistic. Verify the claims against
-    the diff. Design rationales in the report are claims too: "left it per
-    YAGNI," "kept it simple deliberately," or any other justification is the
-    implementer grading their own work. Judge the code on its merits — a
-    stated rationale never downgrades a finding's severity.
+    Read the shared rubric at [RUBRIC_FILE] first and apply it throughout:
+    read-only discipline, do-not-trust-the-report, severity calibration,
+    specification-compliance-blocks, and evidence standards all live there.
 
     ## Tests
 
@@ -120,22 +114,6 @@ Subagent (general-purpose):
     file:line, or a check you ran — no preamble, no process narration,
     no closing summary.
 
-    ## Calibration
-
-    Categorize issues by actual severity. Not everything is Critical.
-    Important means this task cannot be trusted until it is fixed: incorrect
-    or fragile behavior, a missed requirement, or maintainability damage you
-    would block a merge over — verbatim duplication of a logic block,
-    swallowed errors, tests that assert nothing. "Coverage could be broader"
-    and polish suggestions are Minor.
-    If the plan or brief explicitly mandates something this rubric calls a
-    defect (a test that asserts nothing, verbatim duplication of a logic
-    block), that IS a finding — report it as Important, labeled
-    plan-mandated. The plan's authorship does not grade its own work; the
-    human decides.
-    Acknowledge what was done well before listing issues — accurate praise
-    helps the implementer trust the rest of the feedback.
-
     ## Output Format
 
     ### Spec Compliance
@@ -166,6 +144,8 @@ Subagent (general-purpose):
 ```
 
 **Placeholders:**
+- `[RUBRIC_FILE]` — absolute path to `review-rubric.md` in the
+  requesting-code-review skill's directory (a sibling skill of this one)
 - `[MODEL]` — optional: include the reviewer model only when the dispatch
   surface supports per-worker selection; omit the entire line for Codex v2
 - `[BRIEF_FILE]` — required: the task brief file (`scripts/task-brief PLAN N`
