@@ -30,7 +30,7 @@ Full install, update, verification, and uninstall instructions are in
 [`docs/agent-install.md`](./docs/agent-install.md), then give it this prompt:
 
 > Install megapowers on this machine by fetching and following
-> https://raw.githubusercontent.com/lawzava/megapowers/v0.3.9/docs/agent-install.md
+> https://raw.githubusercontent.com/lawzava/megapowers/v0.4.0/docs/agent-install.md
 
 The guide asks before changing permissions or settings.
 
@@ -48,9 +48,8 @@ The guide asks before changing permissions or settings.
   and other roles to installed agent CLIs. megapowers adds no API key or hosted
   service.
 
-Hooks and most helper scripts are Bash. The optional brainstorming visual
-companion is a local Node server, and the eval scorer is Go. Each can be read
-and run from a checkout.
+Hooks and most helper scripts are Bash; the eval scorer is Go. Each can be
+read and run from a checkout.
 
 ## Plugins
 

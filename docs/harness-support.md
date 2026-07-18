@@ -153,8 +153,8 @@ Status: supported as a skills target; CLI plugin manifests ship.
 ## Operating systems
 
 Skills are plain markdown and work wherever the host tool runs. Hooks and most
-helpers are Bash with jq, git, and grep. The optional brainstorming visual
-companion is a local Node server; the eval scorer is Go. CI exercises Linux.
+helpers are Bash with jq, git, and grep; the eval scorer is Go. CI exercises
+Linux.
 macOS is expected to work but is not CI-covered. Windows is untested: native
 Windows cannot run the shell helpers, while Git Bash and WSL have not been
 verified. The `run-hook.cmd` wrapper finds Git Bash for SessionStart and no-ops
