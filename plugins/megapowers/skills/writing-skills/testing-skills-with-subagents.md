@@ -27,19 +27,6 @@ Don't test:
 - Skills without rules to violate
 - Skills agents have no incentive to bypass
 
-## TDD Mapping for Skill Testing
-
-| TDD Phase | Skill Testing | What You Do |
-|-----------|---------------|-------------|
-| RED | Baseline test | Run scenario without skill, watch agent fail |
-| Verify RED | Capture rationalizations | Document exact failures verbatim |
-| GREEN | Write skill | Address specific baseline failures |
-| Verify GREEN | Pressure test | Run scenario with skill, verify compliance |
-| REFACTOR | Plug holes | Find new rationalizations, add counters |
-| Stay GREEN | Re-verify | Test again, ensure still compliant |
-
-Same cycle as code TDD, different test format.
-
 ## RED Phase: Baseline Testing (Watch It Fail)
 
 Goal: run the test without the skill — watch the agent fail, document exact failures.
@@ -302,30 +289,6 @@ Meta-test: "Skill was clear, I should follow it"
 
 Bulletproof achieved.
 
-## Testing Checklist (TDD for Skills)
-
-Before deploying a skill, verify you followed RED-GREEN-REFACTOR.
-
-RED phase:
-- [ ] Created pressure scenarios (3+ combined pressures)
-- [ ] Ran scenarios without the skill (baseline)
-- [ ] Documented agent failures and rationalizations verbatim
-
-GREEN phase:
-- [ ] Wrote skill addressing specific baseline failures
-- [ ] Ran scenarios with the skill
-- [ ] Agent now complies
-
-REFACTOR phase:
-- [ ] Identified new rationalizations from testing
-- [ ] Added explicit counters for each loophole
-- [ ] Updated rationalization table
-- [ ] Updated red flags list
-- [ ] Updated description with violation symptoms
-- [ ] Re-tested — agent still complies
-- [ ] Meta-tested to verify clarity
-- [ ] Agent follows the rule under maximum pressure
-
 ## Common Mistakes (Same as TDD)
 
 Writing the skill before testing (skipping RED).
@@ -352,17 +315,6 @@ Stopping after the first pass.
 Tests passing once isn't bulletproof.
 Fix: continue the REFACTOR cycle until no new rationalizations appear.
 
-## Quick Reference (TDD Cycle)
-
-| TDD Phase | Skill Testing | Success Criteria |
-|-----------|---------------|------------------|
-| RED | Run scenario without skill | Agent fails, document rationalizations |
-| Verify RED | Capture exact wording | Verbatim documentation of failures |
-| GREEN | Write skill addressing failures | Agent now complies with skill |
-| Verify GREEN | Re-test scenarios | Agent follows rule under pressure |
-| REFACTOR | Close loopholes | Add counters for new rationalizations |
-| Stay GREEN | Re-verify | Agent still complies after refactoring |
-
 ## Optimizing the Description
 
 The description is measurable the same way the body is. Generate about 20
@@ -379,11 +331,3 @@ body-only edits do not require a description freeze.
 
 Adapted from Anthropic's skill-creator (anthropics/skills, Apache-2.0); see
 ATTRIBUTION.md.
-
-## The Bottom Line
-
-Skill creation is TDD. Same principles, same cycle, same benefits.
-
-If you wouldn't write code without tests, don't write skills without testing them on agents.
-
-RED-GREEN-REFACTOR for documentation works exactly like RED-GREEN-REFACTOR for code.
