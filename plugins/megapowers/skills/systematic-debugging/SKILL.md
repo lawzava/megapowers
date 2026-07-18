@@ -24,13 +24,10 @@ Complete each phase before moving to the next.
 
 Goal: understand what is failing and why, backed by evidence.
 
-- Read repository instructions. If present, read canonical `CONTEXT.md` (or
-  the repository-named equivalent). Read relevant accepted ADRs when present,
-  and matching project memories when present. Repository instructions govern
-  process. `CONTEXT.md` supplies current domain vocabulary; accepted ADRs govern
-  narrower design intent. Project memories are hidden historical hints:
-  reverify them before use. Surface conflicts for resolution; never silently
-  resolve one.
+- Read repository instructions, canonical `CONTEXT.md`, accepted ADRs, and
+  matching project memories, with the source-precedence rules from
+  megapowers:writing-plans (Input and Source Pass): instructions govern
+  process, memories are reverified hints, conflicts get surfaced.
 - Read error output completely. Messages, stack traces, and line numbers often name the cause.
 - Reproduce reliably. If you cannot, gather more data rather than guess.
 - Actual observed behavior is authoritative for diagnosis. Complete the
@@ -42,7 +39,7 @@ Goal: understand what is failing and why, backed by evidence.
 - A flaky test is a bug with a root cause, not something to retry into passing. A test that fails intermittently and passes on rerun is not fixed; find the source of nondeterminism (shared state, time, ordering, randomness) before you claim the suite reliable. If the flaky test is outside your task's scope, report it honestly rather than fixing it.
 - Check recent changes: diffs, new dependencies, config, environmental differences.
 - In multi-component systems (CI to build to signing, API to service to database), instrument each boundary: log what enters and exits each component and verify config propagation, then run once so the evidence shows which layer fails before you investigate that layer. Tag each temporary probe with a searchable label and its question; when answered, remove it or deliberately promote it to permanent monitoring.
-- When the error surfaces deep in the call stack, trace the bad value backward to where it originates and fix at the source, not the symptom. See `root-cause-tracing.md` in this directory for the full technique.
+- When the error surfaces deep in the call stack, trace the bad value backward to where it originates and fix at the source, not the symptom. See `debugging-techniques.md` in this directory for the full technique.
 
 ### Phase 2: Pattern Analysis
 
@@ -72,9 +69,7 @@ If systematic investigation shows the issue is in fact environmental, timing dep
 
 Available in this directory:
 
-- **`root-cause-tracing.md`**: trace bugs backward through the call stack to find the original trigger
-- **`defense-in-depth.md`**: add validation at multiple layers after finding the root cause
-- **`condition-based-waiting.md`**: replace arbitrary timeouts with condition polling
+- **`debugging-techniques.md`**: root-cause tracing, defense-in-depth validation, and condition-based waiting
 - **`find-polluter.sh`**: bisect the test suite to find which earlier test pollutes shared state
 
 Related skills:

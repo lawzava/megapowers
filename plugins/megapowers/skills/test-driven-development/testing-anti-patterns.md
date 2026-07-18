@@ -198,36 +198,4 @@ Integration tests with real components are often simpler than complex mocks.
 
 ## TDD Prevents These Anti-Patterns
 
-Why TDD helps:
-1. Write the test first — forces you to think about what you're actually testing.
-2. Watch it fail — confirms the test checks real behavior, not mocks.
-3. Minimal implementation — keeps test-only methods from creeping in.
-4. Real dependencies — you see what the test actually needs before mocking.
-
-If you're testing mock behavior, TDD got skipped somewhere: you added mocks without first watching the test fail against real code.
-
-## Quick Reference
-
-| Anti-Pattern | Fix |
-|--------------|-----|
-| Assert on mock elements | Test real component or unmock it |
-| Test-only methods in production | Move to test utilities |
-| Mock without understanding | Understand dependencies first, mock minimally |
-| Incomplete mocks | Mirror real API completely |
-| Tests as afterthought | TDD - tests first |
-| Over-complex mocks | Consider integration tests |
-
-## Signs Something Is Off
-
-- Assertions checking for `*-mock` test IDs
-- Methods only called in test files
-- Mock setup that's more than half the test
-- A test that fails when you remove the mock
-- Not being able to explain why the mock is needed
-- Mocking "just to be safe"
-
-## The Bottom Line
-
-Mocks are tools to isolate, not things to test.
-
-If TDD reveals that you're testing mock behavior, something went wrong. Test real behavior, or reconsider why you're mocking at all.
+Write the test first and watch it fail against real code: that confirms the test checks real behavior, keeps test-only methods from creeping in, and shows what the test actually needs before you mock. If you find yourself testing mock behavior, TDD got skipped somewhere.
