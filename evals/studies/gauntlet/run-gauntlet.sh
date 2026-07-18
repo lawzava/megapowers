@@ -10,17 +10,13 @@
 #                   [--modes skill,control] [--parallel 4] [--run-timeout 600]
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/../lib.sh"
 
 run_one() { # model|mode|idx|out|run_timeout
-  local model mode idx out run_timeout
+  local model mode idx out run_timeout malias agent
   IFS='|' read -r model mode idx out run_timeout <<< "$1"
-  local agent=claude; case "$model" in gpt-*|codex*) agent=codex ;; esac
-  local malias
-  case "$model" in
-    claude-haiku-4-5) malias=haiku ;;
-    claude-fable-5)   malias=frontier ;;
-    *)                malias="$(printf '%s' "$model" | tr -c '[:alnum:].-' '-')" ;;
-  esac
+  malias="$(study_malias "$model")"
+  agent="$(study_agent "$model")"
   local rundir; rundir="$out/$malias/$mode/run-$(printf '%02d' "$idx")"
   [ -f "$rundir/meta.json" ] && return 0
   rm -rf "$rundir"; mkdir -p "$rundir"
@@ -29,36 +25,8 @@ run_one() { # model|mode|idx|out|run_timeout
   "$HERE/fixtures/setup-gauntlet.sh" "$repo" >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
   git -C "$repo" rev-list --count --all > "$rundir/baseline-commits.txt"
 
-  local t0=$SECONDS rc
-  if [ "$agent" = codex ]; then
-    ( cd "$repo" && timeout "$run_timeout" codex exec --json --ephemeral \
-        --ignore-user-config --ignore-rules --skip-git-repo-check \
-        -C "$repo" -s workspace-write -c approval_policy='"never"' -m "$model" \
-        "$(cat "$HERE/prompts/gauntlet-$mode.txt")" \
-        > "$rundir/transcript-raw.jsonl" 2> "$rundir/stderr.log" </dev/null )
-    rc=$?
-    jq -c 'select(.type=="item.completed") | .item
-           | if .type=="command_execution" then
-               {type:"assistant", message:{content:[{type:"tool_use", name:"Bash",
-                 input:{command: (.command // ""
-                   | sub("^(/bin/)?(ba)?sh -lc ";"") | sub("^['\''\"]";"") | sub("['\''\"]$";""))}}]}}
-             elif .type=="file_change" then
-               {type:"assistant", message:{content:[{type:"tool_use", name:"Write",
-                 input:{file_path: ((.changes // []) | map(.path) | join(" "))}}]}}
-             else empty end' \
-      "$rundir/transcript-raw.jsonl" > "$rundir/transcript.jsonl" 2>> "$rundir/stderr.log"
-    jq -rs '[.[] | select(.type=="item.completed") | .item | select(.type=="agent_message") | .text] | last // empty' \
-      "$rundir/transcript-raw.jsonl" > "$rundir/final-message.txt" 2>/dev/null
-  else
-    ( cd "$repo" && timeout "$run_timeout" claude -p "$(cat "$HERE/prompts/gauntlet-$mode.txt")" \
-        --safe-mode --model "$model" --max-turns 25 \
-        --dangerously-skip-permissions --no-session-persistence \
-        --output-format stream-json --verbose \
-        > "$rundir/transcript.jsonl" 2> "$rundir/stderr.log" )
-    rc=$?
-    jq -r 'select(.type=="result") | .result // empty' \
-      "$rundir/transcript.jsonl" > "$rundir/final-message.txt" 2>/dev/null
-  fi
+  local t0=$SECONDS rc=0
+  study_exec "$agent" "$model" "$repo" "$HERE/prompts/gauntlet-$mode.txt" "$rundir" "$run_timeout" 25 || rc=$?
 
   git -C "$repo" rev-list --count --all > "$rundir/commits-after.txt"
   git -C "$repo" status --porcelain > "$rundir/git-status.txt" 2>/dev/null
@@ -93,15 +61,10 @@ done
 [ -n "$OUT" ] || { echo "usage: run-gauntlet.sh --out DIR [--n N] [--models ..] [--modes ..]" >&2; exit 2; }
 mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 
-jobs="$(mktemp)"
 for idx in $(seq 1 "$N"); do
   for model in ${MODELS//,/ }; do
     for mode in ${MODES//,/ }; do
-      echo "$model|$mode|$idx|$OUT|$RUN_TIMEOUT" >> "$jobs"
+      echo "$model|$mode|$idx|$OUT|$RUN_TIMEOUT"
     done
   done
-done
-echo "$(wc -l < "$jobs") runs (parallel=$PAR) -> $OUT"
-xargs -d '\n' -P "$PAR" -I{} "$0" --job {} < "$jobs"
-rm -f "$jobs"
-echo "all runs finished; score with: oracle.sh $OUT"
+done | study_fanout "$PAR" "$OUT"

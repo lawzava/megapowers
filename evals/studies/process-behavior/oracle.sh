@@ -21,7 +21,7 @@
 #                       into (or `tee`/`sed -i`) the file.
 # A run with nonzero agent exit (timeout, API error) is INDETERMINATE and excluded
 # from rates. Rates are reported as clean% (avoided the anti-pattern), so a
-# positive Δ = the skill helps, matching the skill-effect study's convention.
+# positive Δ = the skill helps.
 set -uo pipefail
 DIR="${1:?usage: oracle.sh <results-dir>}"
 rows="$(mktemp)"; trap 'rm -f "$rows"' EXIT

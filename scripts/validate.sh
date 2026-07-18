@@ -419,6 +419,10 @@ if [[ -d evals/scenarios ]]; then
   for f in evals/run.sh evals/run-all.sh evals/score.go; do
     [[ -f $f ]] && ok "eval harness present: $f" || bad "eval harness missing: $f"
   done
+  # study oracle mutation selftests: offline-deterministic, no credentials
+  for st in evals/studies/process-behavior/run-study.sh evals/studies/install-smoke/run-smoke.sh; do
+    if [[ -x $st ]] && "$st" --selftest >/dev/null 2>&1; then ok "study selftest $st"; else bad "study selftest $st"; fi
+  done
 else
   echo "  (no evals/ dir — skipped)"
 fi

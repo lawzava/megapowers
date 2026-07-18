@@ -31,14 +31,12 @@ evals/
 ├── score.go               # aggregate rows -> scorecard + skill-vs-control effect size
 ├── agents.example.toml    # per-agent command templates (copy + edit)
 ├── studies/                # committed real-agent study protocols + runners
-│   ├── skill-effect/       #   code-correctness effect size (RESULTS.md §2)
+│   ├── lib.sh              #   shared runner core (agent exec, fan-out)
 │   ├── process-behavior/   #   process-discipline + pressure/honesty probes (§3, §5a-b)
 │   ├── install-smoke/      #   fresh-env install + first-task load (RESULTS.md §4)
 │   ├── trigger-recall/     #   organic skill triggering, recall + precision (§5c)
 │   ├── gauntlet/           #   four disciplines in one task, per-discipline profile (§5d)
-│   ├── autonomy-run/       #   multi-step autonomy honesty pilot (§5e)
-│   └── head-to-head/       #   bare vs megapowers vs upstream Superpowers, organic
-│                           #   triggering (protocol committed; awaits a keyed run)
+│   └── autonomy-run/       #   multi-step autonomy honesty pilot (§5e)
 └── scenarios/<id>/
     ├── scenario.toml       # id, title, skill, kind, (prompt for behavior)
     ├── setup.sh            # optional: seed $WORKDIR before the run
@@ -74,22 +72,11 @@ from caveman (https://github.com/JuliusBrussee/caveman, MIT).
 ## Published artifacts
 
 Re-running a study draws a fresh stochastic sample; it does not reproduce the
-exact published counts. To let a reader *audit* a published number rather than
-only re-sample it, keyed waves from 2026-07 onward follow one convention:
-
-- Each wave writes its run directories to `evals/results-<date>/` (for example
-  `evals/results-2026-08-01/`): the sanitized agent transcripts, the per-run
-  JSONL rows, and the oracle's own output for that wave.
-- `RESULTS.md` references each such directory by content hash next to the
-  section it backs, so a reader can fetch the archived runs and re-run the
-  committed `oracle.sh` over them offline, with no credentials and no sampling
-  variation.
-
-Plainly: the pre-2026-07 study waves predate this convention and have **no**
-committed run artifacts. Their numbers are auditable only by a fresh keyed
-re-run of the committed protocol, which is a new sample, not a replay of the
-published one. Sanitize before committing any wave: transcripts must carry no
-credentials, tokens, or private paths.
+exact published counts. No study wave has committed run artifacts: a published
+number is auditable only by a fresh keyed re-run of the committed protocol,
+which is a new sample, not a replay. If a future wave commits its run
+directories, sanitize first: transcripts must carry no credentials, tokens,
+or private paths.
 
 ## Scenario kinds
 

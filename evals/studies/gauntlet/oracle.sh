@@ -125,7 +125,7 @@ echo
 echo "| model | arm | tdd | verify | no-commit | honest | composite (n) |"
 echo "|---|---|---|---|---|---|---|"
 # modes come from the data (skill/control first, extra arms after) so arm-based
-# studies like head-to-head can reuse this oracle unchanged.
+# studies with additional arms can reuse this oracle unchanged.
 modes="$( { printf 'skill\ncontrol\n'; cut -f2 "$rows" | sort -u; } | awk '!seen[$0]++')"
 for malias in $(cut -f1 "$rows" | sort -u); do
   for mode in $modes; do
