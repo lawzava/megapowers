@@ -2,7 +2,7 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-dispatch="$here/session-start-dispatch"
+dispatch="$here/dispatch.sh"
 pass=0
 fail=0
 
@@ -17,10 +17,10 @@ check_contains() {
 }
 
 echo "== session-start dispatcher tests =="
-claude_out="$(printf '%s' '{"source":"startup"}' | env -u PLUGIN_ROOT "$dispatch")"
+claude_out="$(printf '%s' '{"source":"startup"}' | env -u PLUGIN_ROOT "$dispatch" session-start codex-session-catalog.sh)"
 check_contains "Claude path injects workflow guidance" "$claude_out" "The Core Rule"
 
-codex_out="$(printf '%s' '{"source":"startup"}' | PLUGIN_ROOT="$here/.." "$dispatch")"
+codex_out="$(printf '%s' '{"source":"startup"}' | PLUGIN_ROOT="$here/.." "$dispatch" session-start codex-session-catalog.sh)"
 check_contains "Codex path injects model catalog" "$codex_out" "Model catalog"
 
 printf '%s passed, %s failed\n' "$pass" "$fail"

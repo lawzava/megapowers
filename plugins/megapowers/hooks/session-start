@@ -34,18 +34,8 @@ else
   using_megapowers_content="Error reading using-megapowers skill"
 fi
 
-# Escape string for JSON embedding using bash parameter substitution.
-# Each ${s//old/new} is a single C-level pass - orders of magnitude
-# faster than the character-by-character loop this replaces.
-escape_for_json() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\r'/\\r}"
-    s="${s//$'\t'/\\t}"
-    printf '%s' "$s"
-}
+# shellcheck source=lib-json.sh
+. "${SCRIPT_DIR}/lib-json.sh"
 
 preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request (including clarifying questions or exploring code), check whether a skill applies and, if so, follow it."
 

@@ -17,15 +17,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 catalog="$("$here/render-model-catalog" 2>/dev/null || true)"
 [ -n "$catalog" ] || exit 0
 
-escape_for_json() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\r'/\\r}"
-    s="${s//$'\t'/\\t}"
-    printf '%s' "$s"
-}
+# shellcheck source=lib-json.sh
+. "$here/lib-json.sh"
 
 printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$(escape_for_json "$catalog")"
 exit 0
