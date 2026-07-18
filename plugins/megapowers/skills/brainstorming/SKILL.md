@@ -43,12 +43,8 @@ For hard-to-reverse or high-stakes work, ask the user to review the written spec
 
 Invoke the writing-plans skill to create a detailed implementation plan. This is the terminal state. Do not invoke any implementation skill from here. The only skill brainstorming hands off to is writing-plans.
 
-## Visual Companion
+## Showing Instead of Telling
 
-A localhost browser companion for showing mockups, diagrams, and visual options. Do not offer it upfront: wait until a question would be clearer shown than told (a real mockup, layout, or diagram question, not merely a UI topic), then offer it as its own message and wait:
-
-> "This next part might be easier if I show you — I can put together mockups, diagrams, and comparisons in a browser tab as we go. It's still new and can be token-intensive. Want me to? I'll open it for you."
-
-If they accept, read `visual-companion.md` (in this skill's directory) before proceeding. If they decline, continue text-only and don't offer again unless they raise it.
+When a question would be clearer shown than told (a real mockup, layout, or diagram question, not merely a UI topic), write a self-contained HTML or SVG mockup to a temp file and open or send it with whatever the harness provides. Keep it lightweight; regenerate the file as the conversation refines it.
 
 Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
