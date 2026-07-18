@@ -11,6 +11,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
+. "$HERE/../lib.sh"
 
 # task table: prompt-file|expected-skill(or - for negatives)|fixture-arg
 # on-*        : tuned-wording positives (the original, published set)
@@ -103,13 +104,8 @@ if [ ! -d "$TPL" ]; then
     > "$OUT/setup-install-orch.log" 2>&1 || { echo "mega-orchestration install failed" >&2; exit 1; }
 fi
 
-jobs="$(mktemp)"
 for idx in $(seq 1 "$N"); do
   while IFS='|' read -r task expected fixarg; do
-    [ -n "$task" ] && echo "$task|$expected|$fixarg|$idx|$OUT|$MODEL|$TPL" >> "$jobs"
+    [ -n "$task" ] && echo "$task|$expected|$fixarg|$idx|$OUT|$MODEL|$TPL"
   done <<< "$TASKS"
-done
-echo "$(wc -l < "$jobs") runs (parallel=$PAR) -> $OUT"
-xargs -d '\n' -P "$PAR" -I{} "$0" --job {} < "$jobs"
-rm -f "$jobs"
-echo "all runs finished; score with: oracle.sh $OUT"
+done | study_fanout "$PAR" "$OUT"

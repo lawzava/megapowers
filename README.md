@@ -145,9 +145,7 @@ megapowers began as a restyled fork of
 [Superpowers](https://github.com/obra/superpowers). Superpowers supports more
 harnesses and is a good choice for single-agent process discipline. megapowers
 adds published effect sizes, cross-vendor orchestration, and deterministic hook
-backstops. A shared-oracle head-to-head protocol is committed under
-[`evals/studies/head-to-head/`](./evals/studies/head-to-head/) and has no
-published run yet.
+backstops.
 
 ## Scope
 

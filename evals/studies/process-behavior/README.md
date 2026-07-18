@@ -2,7 +2,7 @@
 
 A reproducible protocol for measuring whether a skill's guidance changes an
 agent's **process discipline**, the axis most megapowers skills actually
-govern. It exists because the [skill-effect study](../skill-effect/) returned
+govern. It exists because the earlier skill-effect study (RESULTS.md §2) returned
 a clean null on code correctness (184/184 programs passed with and without
 skills): current models are at ceiling on common code patterns, so
 single-shot correctness cannot discriminate. Process behavior is where models
@@ -61,7 +61,7 @@ task (quoted verbatim in `prompts/*-skill.txt`; the auto-commit preamble adds
 a one-line distillation of the two quotes, so that arm tests the discipline,
 not only the exact sentences); **control** gives only the task. The effect
 size is `clean%(skill) − clean%(control)` (clean = avoided the anti-pattern),
-with a two-proportion z, the same convention as the skill-effect study;
+with a two-proportion z, the same convention as the RESULTS.md §2 study;
 positive Δ = the skill helps.
 
 ## Protocol

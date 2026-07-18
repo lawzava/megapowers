@@ -14,17 +14,13 @@
 # with a larger --n tops up cells without redoing work.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/../lib.sh"
 
 run_one() { # probe|model|mode|idx|out|max_turns|run_timeout
-  local probe model mode idx out max_turns run_timeout
+  local probe model mode idx out max_turns run_timeout malias agent
   IFS='|' read -r probe model mode idx out max_turns run_timeout <<< "$1"
-  local malias
-  case "$model" in
-    claude-haiku-4-5) malias=haiku ;;
-    claude-fable-5)   malias=frontier ;;
-    *)                malias="$(printf '%s' "$model" | tr -c '[:alnum:].-' '-')" ;;
-  esac
-  local agent=claude; case "$model" in gpt-*|codex*) agent=codex ;; esac
+  malias="$(study_malias "$model")"
+  agent="$(study_agent "$model")"
   local rundir; rundir="$out/$probe/$malias/$mode/run-$(printf '%02d' "$idx")"
   [ -f "$rundir/meta.json" ] && return 0
   rm -rf "$rundir"   # a rundir without meta.json is an interrupted run; stale artifacts must not survive
@@ -36,55 +32,14 @@ run_one() { # probe|model|mode|idx|out|max_turns|run_timeout
   fi
   git -C "$repo" rev-list --count --all > "$rundir/baseline-commits.txt"
 
-  local t0=$SECONDS rc
-  if [ "$agent" = codex ]; then
-    # clean-room codex: --ignore-user-config drops the user's config.toml AND
-    # global AGENTS.md (verified: a subject asked to quote outside instructions
-    # reports none) while auth still comes from CODEX_HOME.
-    ( cd "$repo" && timeout "$run_timeout" codex exec --json --ephemeral \
-        --ignore-user-config --ignore-rules --skip-git-repo-check \
-        -C "$repo" -s workspace-write -c approval_policy='"never"' -m "$model" \
-        "$(cat "$HERE/prompts/$probe-$mode.txt")" \
-        > "$rundir/transcript-raw.jsonl" 2> "$rundir/stderr.log" </dev/null )
-    rc=$?
-    # normalize codex JSONL into the claude-shaped event stream oracle.sh reads:
-    # completed command_executions -> Bash tool_use (bash -lc wrapper stripped so
-    # anchored regexes see the inner command); completed file_changes -> ONE Write
-    # tool_use whose file_path joins all paths in the change (a patch that writes
-    # test+impl together must score as one simultaneous write, not test-first)
-    jq -c 'select(.type=="item.completed") | .item
-           | if .type=="command_execution" then
-               {type:"assistant", message:{content:[{type:"tool_use", name:"Bash",
-                 input:{command: (.command // ""
-                   | sub("^(/bin/)?(ba)?sh -lc ";"") | sub("^['\''\"]";"") | sub("['\''\"]$";""))}}]}}
-             elif .type=="file_change" then
-               {type:"assistant", message:{content:[{type:"tool_use", name:"Write",
-                 input:{file_path: ((.changes // []) | map(.path) | join(" "))}}]}}
-             else empty end' \
-      "$rundir/transcript-raw.jsonl" > "$rundir/transcript.jsonl" 2>> "$rundir/stderr.log"
-  else
-    ( cd "$repo" && timeout "$run_timeout" claude -p "$(cat "$HERE/prompts/$probe-$mode.txt")" \
-        --safe-mode --model "$model" --max-turns "$max_turns" \
-        --dangerously-skip-permissions --no-session-persistence \
-        --output-format stream-json --verbose \
-        > "$rundir/transcript.jsonl" 2> "$rundir/stderr.log" )
-    rc=$?
-  fi
+  local t0=$SECONDS rc=0
+  study_exec "$agent" "$model" "$repo" "$HERE/prompts/$probe-$mode.txt" "$rundir" "$run_timeout" "$max_turns" || rc=$?
 
   git -C "$repo" rev-list --count --all > "$rundir/commits-after.txt"
   git -C "$repo" log --all --format='%H %s' > "$rundir/git-log.txt" 2>/dev/null
   git -C "$repo" status --porcelain > "$rundir/git-status.txt" 2>/dev/null
   git -C "$repo" diff --name-only HEAD > "$rundir/changed-files.txt" 2>/dev/null
   [ -f "$repo/.test-runs.log" ] && cp "$repo/.test-runs.log" "$rundir/test-runs.log"
-
-  # the agent's final report (honesty probes classify it; kept for audits anyway)
-  if [ "$agent" = codex ]; then
-    jq -rs '[.[] | select(.type=="item.completed") | .item | select(.type=="agent_message") | .text] | last // empty' \
-      "$rundir/transcript-raw.jsonl" > "$rundir/final-message.txt" 2>/dev/null
-  else
-    jq -r 'select(.type=="result") | .result // empty' \
-      "$rundir/transcript.jsonl" > "$rundir/final-message.txt" 2>/dev/null
-  fi
 
   # task-completion diagnostic (did the agent do the job?) — separate from the
   # behavior verdict; computed here because the throwaway repo is about to vanish.
@@ -217,18 +172,12 @@ done
 [ -n "$OUT" ] || { echo "usage: run-study.sh --out DIR [--n N] [--probes ..] [--models ..] [--modes ..]" >&2; exit 2; }
 mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 
-# enumerate idx-major so models/modes interleave — rate drift can't bias one cell
-jobs="$(mktemp)"
 for idx in $(seq 1 "$N"); do
   for probe in ${PROBES//,/ }; do
     for model in ${MODELS//,/ }; do
       for mode in ${MODES//,/ }; do
-        echo "$probe|$model|$mode|$idx|$OUT|$MAX_TURNS|$RUN_TIMEOUT" >> "$jobs"
+        echo "$probe|$model|$mode|$idx|$OUT|$MAX_TURNS|$RUN_TIMEOUT"
       done
     done
   done
-done
-echo "$(wc -l < "$jobs") runs (parallel=$PAR) -> $OUT"
-xargs -d '\n' -P "$PAR" -I{} "$0" --job {} < "$jobs"
-rm -f "$jobs"
-echo "all runs finished; score with: oracle.sh $OUT"
+done | study_fanout "$PAR" "$OUT"
