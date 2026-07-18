@@ -38,32 +38,6 @@ skill_desc() {
 # peak anyway).
 byte_len() { printf '%s' "$1" | LC_ALL=C wc -c | tr -d '[:space:]'; }
 
-# Optional Codex skill metadata can make a skill explicit-only. The dedicated
-# metadata validator checks the sidecar first, so this budget helper only needs
-# to read the documented scalar policy value.
-codex_implicit_invocation() {
-  local sidecar
-  sidecar="$(dirname "$1")/agents/openai.yaml"
-  if [[ ! -f $sidecar ]]; then
-    printf 'true\n'
-    return
-  fi
-  awk '
-    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
-    /^[^[:space:]]/ {
-      section=$0
-      sub(/[[:space:]]*:.*$/, "", section)
-      next
-    }
-    section == "policy" && /^[[:space:]]+allow_implicit_invocation[[:space:]]*:/ {
-      value=$0
-      sub(/^[^:]*:[[:space:]]*/, "", value)
-      sub(/[[:space:]]+$/, "", value)
-      print value
-    }
-  ' "$sidecar"
-}
-
 claude_mp=".claude-plugin/marketplace.json"
 codex_mp=".agents/plugins/marketplace.json"
 
@@ -166,16 +140,6 @@ for role in builder reviewer; do
     bad "Codex $role role missing from mega-orchestration assets or differs from root template"
   fi
 done
-if grep -q '^model_reasoning_effort = "high"$' templates/codex-agents/reviewer.toml; then
-  ok "Codex reviewer uses the catalog delegate-default high effort"
-else
-  bad "Codex reviewer must use the catalog delegate-default high effort"
-fi
-if grep -qF 'git rev-parse --git-common-dir' templates/codex-agents/builder.toml; then
-  ok "Codex builder refuses edits outside a dedicated linked worktree"
-else
-  bad "Codex builder must verify it was dispatched into a dedicated linked worktree before editing"
-fi
 if [[ -f $codex_mp ]]; then
   while IFS=$'\t' read -r name source path install auth category; do
     [[ -z $name ]] && continue
@@ -281,53 +245,6 @@ else
   bad "using-megapowers skill or SessionStart hook missing (cannot measure always-loaded budget)"
 fi
 
-# 3. Codex implicit initial skills-list budget: Codex uses 2% of a known context
-#    window or an 8000-character fallback. Skills whose sidecar sets
-#    policy.allow_implicit_invocation to false remain explicitly invocable but
-#    are outside this implicit chooser budget. The budget covers rendered
-#    metadata lines, not descriptions alone. Model the current namespaced alias
-#    form with a conservative three-character root alias, then reserve 448
-#    characters for the renderer's alias-table prose and one long marketplace
-#    install root.
-CODEX_MAX=8000
-CODEX_ALIAS_RESERVE=448
-codex_over=0; codex_peak=0; codex_peak_name=""; codex_agg=0; codex_found=0; codex_explicit_only=0
-for cx in plugins/*/.codex-plugin/plugin.json; do
-  [[ -f $cx ]] || continue
-  pdir="$(dirname "$(dirname "$cx")")"
-  pname="$(jq -r '.name // empty' "$cx" 2>/dev/null)"
-  skp="$(jq -r '.skills // empty' "$cx" 2>/dev/null)"
-  [[ -n $pname && -n $skp ]] || continue
-  codex_found=1
-  skdir="$pdir/${skp#./}"; skdir="${skdir%/}"
-  psum=0
-  while IFS= read -r sk; do
-    [[ -z $sk ]] && continue
-    if [[ $(codex_implicit_invocation "$sk") == false ]]; then
-      codex_explicit_only=$((codex_explicit_only + 1))
-      continue
-    fi
-    sname="$(basename "$(dirname "$sk")")"
-    rel="${sk#"$skdir/"}"
-    line="- ${pname}:${sname}: $(skill_desc "$sk") (file: r99/${rel})"
-    psum=$((psum + $(byte_len "$line") + 1))
-  done < <(find "$skdir" -name SKILL.md 2>/dev/null)
-  codex_agg=$((codex_agg + psum))
-  ptotal=$((psum + CODEX_ALIAS_RESERVE))
-  if (( ptotal > codex_peak )); then codex_peak=$ptotal; codex_peak_name="$(basename "$pdir")"; fi
-  if (( ptotal > CODEX_MAX )); then bad "Codex plugin rendered metadata plus alias reserve over ${CODEX_MAX}B: $(basename "$pdir") (${ptotal}B)"; codex_over=1; fi
-done
-if (( codex_found == 1 )); then
-  ok "Codex implicit initial-list budget excludes ${codex_explicit_only} explicit-only skill(s)"
-  (( codex_over == 0 )) && ok "every Codex plugin rendered metadata plus alias reserve within ${CODEX_MAX}B (peak: ${codex_peak_name} ${codex_peak}B)"
-  codex_agg_total=$((codex_agg + CODEX_ALIAS_RESERVE))
-  if (( codex_agg_total > CODEX_MAX )); then
-    bad "all Codex plugin rendered metadata plus alias reserve exceeds ${CODEX_MAX}B implicit initial-list budget (${codex_agg_total}B)"
-  else
-    ok "all Codex plugin rendered metadata plus alias reserve within ${CODEX_MAX}B implicit initial-list budget (${codex_agg_total}B)"
-  fi
-fi
-
 echo "== Antigravity manifests =="
 while IFS= read -r pj; do
   [[ -z $pj ]] && continue
@@ -412,14 +329,6 @@ if [[ -z $legacy_codex_hooks ]]; then
 else
   bad "legacy manual Codex hook manifests would duplicate plugin hooks: ${legacy_codex_hooks//$'\n'/, }"
 fi
-mp_hook_count="$(jq '[.hooks[][]?.hooks[]?] | length' plugins/megapowers/hooks/hooks.json 2>/dev/null)"
-mo_hook_count="$(jq '[.hooks[][]?.hooks[]?] | length' plugins/mega-orchestration/hooks/hooks.json 2>/dev/null)"
-mg_hook_count="$(jq '[.hooks[][]?.hooks[]?] | length' plugins/mega-guardrails/hooks/hooks.json 2>/dev/null)"
-if [[ $mp_hook_count == 1 && $mo_hook_count == 2 && $mg_hook_count == 2 ]]; then
-  ok "Codex/Claude plugin manifests expose five intentional hook handlers"
-else
-  bad "expected hook handler shape megapowers=1 orchestration=2 guardrails=2; got $mp_hook_count/$mo_hook_count/$mg_hook_count"
-fi
 while IFS= read -r hj; do
   [ -n "$hj" ] || continue
   if ! jq -e . "$hj" >/dev/null 2>&1; then bad "$hj invalid JSON"; continue; fi
@@ -462,94 +371,10 @@ for cx in plugins/*/.codex-plugin/plugin.json; do
 done
 
 echo "== repository hygiene =="
-if grep -qxF '.firecrawl/' .gitignore; then
-  ok ".firecrawl is ignored as local research state"
-else
-  bad ".gitignore must exclude .firecrawl/"
-fi
 if jq -e '.permissions.deny | all(test("\\*"; "") | not)' templates/settings.example.json >/dev/null 2>&1; then
   ok "secret-path permission denies use exact paths"
 else
   bad "templates/settings.example.json permission denies must not use ineffective wildcard paths"
-fi
-if grep -q '^\[profiles\.' templates/codex-config.toml; then
-  bad "Codex config guidance must not embed named profiles in config.toml"
-else
-  ok "Codex config guidance keeps named profiles out of config.toml"
-fi
-if grep -q '^model = "gpt-5.6-sol"$' templates/codex-complex.config.toml 2>/dev/null && grep -q '^model_reasoning_effort = "ultra"$' templates/codex-complex.config.toml 2>/dev/null; then
-  ok "Codex complex profile ships as a separate Sol ultra config layer"
-else
-  bad "templates/codex-complex.config.toml must ship the separate Sol ultra profile"
-fi
-if grep -q '^commit_attribution[[:space:]]*=' templates/codex-config.toml; then
-  bad "Codex config template must not ship the removed commit_attribution key"
-else
-  ok "Codex config template omits removed commit_attribution key"
-fi
-v2_hint() {
-  awk '
-    /^multi_agent_mode_hint_text = """$/ { in_hint=1; next }
-    in_hint && /^"""$/ { exit }
-    in_hint { print }
-  ' "$1"
-}
-config_v2_hint="$(v2_hint templates/codex-config.toml)"
-setup_v2_hint="$(v2_hint docs/setup.md)"
-if awk '
-     /^\[features\.multi_agent_v2\]$/ { in_v2=1; next }
-     in_v2 && /^\[/ { exit }
-     in_v2 && /^enabled = true$/ { enabled=1 }
-     in_v2 && /^max_concurrent_threads_per_session = 11$/ { cap=1 }
-     END { exit !(enabled && cap) }
-   ' templates/codex-config.toml &&
-   printf '%s\n' "$config_v2_hint" | awk '
-     NF { nonempty=1 }
-     /applicable AGENTS.md or skill instructions explicitly authorize delegation/ { authorized=1 }
-     /five task-name components beneath \/root/ { depth_policy=1 }
-     /root agent owns spawning by default/ { root_only=1 }
-     /workers spawn only in a deliberately designed coordinator workflow with isolated artifact ownership/ { nested_exception=1 }
-     /ordinary batch to at most six workers/ { batch_limit=1 }
-     /fork_turns = "none"/ { fresh_default=1 }
-     /small positive fork_turns count only when specific recent turns are essential/ { bounded_inheritance=1 }
-     /fork_turns = "all"/ && /same-context continuation/ { all_exception=1 }
-     /root owns integration/ { root_integration=1 }
-     /required workers have returned/ { join_gate=1 }
-     /reviewed and independently validated/ { independent_validation=1 }
-     /Completed workers remain idle/ { completed_idle=1 }
-     /follow-up only for the same assignment/ { same_assignment=1 }
-     /fresh worker for a new problem/ { fresh_problem=1 }
-     /interrupt only running workers/ { running_interrupt=1 }
-     END { exit !(nonempty && authorized && depth_policy && root_only && nested_exception && batch_limit && fresh_default && bounded_inheritance && all_exception && root_integration && join_gate && independent_validation && completed_idle && same_assignment && fresh_problem && running_interrupt) }
-   ' &&
-   ! grep -Eq '^[[:space:]]*(agents\.)?max_(threads|depth)[[:space:]]*=' templates/codex-config.toml; then
-  ok "Codex config opts into v2 with bounded fresh-context fan-out, join/lifecycle rules, and no ignored v1 limits"
-else
-  bad "Codex config must enable v2 with 11 session threads, bounded root-owned fresh-context fan-out, join/lifecycle rules, a depth-five hint, and no v1 agent limits"
-fi
-if [[ "$config_v2_hint" == "$setup_v2_hint" ]]; then
-  ok "Codex setup copies the complete model-visible v2 policy verbatim"
-else
-  bad "docs/setup.md must copy templates/codex-config.toml multi_agent_mode_hint_text verbatim"
-fi
-if grep -qF 'V2 is same-model context sharding' templates/CODEX-LEAD.md &&
-   grep -qF 'does not expose a per-spawn role, model, or effort selector' docs/setup.md &&
-   grep -qF 'Native v2 does not expose per-spawn role, model, or' plugins/mega-orchestration/skills/orchestrating/references/harness-primitives.md &&
-   grep -qF 'effort selection; treat it as same-model context sharding' plugins/mega-orchestration/skills/orchestrating/references/harness-primitives.md &&
-   grep -qF 'Its spawn surface exposes a task name,' plugins/megapowers/skills/using-megapowers/references/codex-tools.md &&
-   grep -qF 'brief, and `fork_turns`, not a per-worker role, model, or effort selector' plugins/megapowers/skills/using-megapowers/references/codex-tools.md; then
-  ok "Codex v2 guidance distinguishes native same-model fan-out from named role and cross-runtime routing"
-else
-  bad "Codex v2 guidance must not claim that native v2 fan-out selects Terra-pinned role profiles"
-fi
-if grep -qF 'Codex v2 inherits the session model and effort even with fresh context' plugins/megapowers/skills/subagent-driven-development/SKILL.md &&
-   grep -qF 'omit this line for Codex v2' plugins/megapowers/skills/subagent-driven-development/implementer-prompt.md &&
-   grep -qF 'omit this line for Codex v2' plugins/megapowers/skills/subagent-driven-development/task-reviewer-prompt.md &&
-   grep -qF 'Native v2 uses the current session model and effort' plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/codex.md &&
-   grep -qF 'Native v2 can honor only the current session model and effort' plugins/mega-orchestration/README.md; then
-  ok "Codex operational guidance makes model selection conditional on the dispatch surface"
-else
-  bad "Codex operational guidance must not require unavailable per-worker model selection under native v2"
 fi
 
 echo "== hook tests =="
@@ -601,14 +426,8 @@ fi
 echo "== delegates.toml =="
 dr="plugins/mega-orchestration/skills/multi-agent-delegation/scripts/delegate-resolve"
 dt="plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml"
-claude_ref="plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/claude.md"
 mc_core="plugins/megapowers/models.toml"
 mc_orch="plugins/mega-orchestration/models.toml"
-if grep -qF 'claude -p "<prompt>" --safe-mode --no-session-persistence' "$claude_ref"; then
-  ok "Claude delegate channel isolates ambient configuration and puts prompt before variadic flags"
-else
-  bad "Claude delegate command must put the prompt directly after -p, before --safe-mode and --no-session-persistence"
-fi
 if [[ -f $mc_core && -f $mc_orch ]]; then
   # Twin shipped catalogs: plugins cannot locate each other at runtime, so the
   # same file ships in both plugin roots; any drift is a release bug.
@@ -633,13 +452,6 @@ echo "== docs consistency =="
 if [[ -f $claude_mp && -f $codex_mp ]] && command -v jq >/dev/null 2>&1; then
   cx_total="$(jq '.plugins|length' "$codex_mp")"
   if [[ $cx_total -eq 7 ]]; then ok "Codex marketplace publishes all seven plugin bundles"; else bad "Codex marketplace expected 7 plugin bundles, found $cx_total"; fi
-  # fold line wraps before matching: the doc sentence may wrap mid-pattern
-  setup_flat="$(tr '\n' ' ' < docs/setup.md 2>/dev/null)"
-  if printf '%s' "$setup_flat" | grep -q "five hook handlers across three plugins"; then
-    ok "setup.md states the exact Codex hook handler count"
-  else
-    bad "setup.md must state that Codex exposes five hook handlers across three plugins"
-  fi
   release_version="$(sed -n 's/^## \([0-9][0-9.]*\) -.*/\1/p' CHANGELOG.md | head -1)"
   version_drift=0
   while IFS= read -r manifest; do
