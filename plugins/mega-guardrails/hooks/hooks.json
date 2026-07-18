@@ -1,10 +1,10 @@
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/deny-destructive-dispatch.sh" } ] }
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh deny-destructive.sh codex-deny-destructive.sh" } ] }
     ],
     "PostToolUse": [
-      { "matcher": "Write|Edit", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/auto-format-dispatch.sh" } ] }
+      { "matcher": "Write|Edit", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh auto-format.sh" } ] }
     ]
   }
 }

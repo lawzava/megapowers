@@ -6,12 +6,13 @@
 #     dirs, format a disk, overwrite a block device, fork bomb, chmod 777 /). These are
 #     never a legitimate agent action, so denying them costs no real capability.
 #   - ASK (surface a confirmation instead of a flat refusal) for reversible-but-risky
-#     ops: destructive git (reset --hard, clean -f, branch -D, push --force, and a
-#     whole-tree checkout/restore of '.', which discards uncommitted work), bulk cloud
-#     deletes (aws s3 rm --recursive / rb --force), prune/destroy/delete-all
-#     (docker prune -f, terraform destroy -auto-approve, kubectl delete --all), and a
-#     remote download piped into a shell (curl … | bash). These are recoverable (reflog,
-#     versioning) or a deliberate footgun, so the human decides in the moment.
+#     LOCAL ops: destructive git (reset --hard, clean -f, branch -D, push --force, and
+#     a whole-tree checkout/restore of '.', which discards uncommitted work), and a
+#     remote download piped into a shell (curl … | bash). These are recoverable
+#     (reflog) or a deliberate footgun, so the human decides in the moment. Remote
+#     destructive ops (cloud deletes, terraform destroy, kubectl delete --all) are
+#     NOT pattern-matched here: they are one-shot real-world effects, which is the
+#     effect-broker skill's job, not a command-string grep's.
 #   Note: this hook does NOT try to catch secret exfiltration — that is a security
 #   concern better handled by the sandbox credential-block + permission denies in
 #   templates/settings.example.json, not by grepping command strings (which false-positives
@@ -59,17 +60,17 @@ emit() {
 # command length. On a benign multi-KB heredoc that is over a second of dead wait added
 # to EVERY Bash tool call. This grep is O(n) and runs once. PREFILTER_TOKENS is the
 # union of every command word the deny/ask checks anchor on (the scan_level case labels:
-# rm/find/chmod/dd/mkfs/wipefs/blkdiscard/shred/git/aws/docker/terraform/tofu/kubectl/
-# the shell wrappers/eval) plus the raw-string anchors (curl/wget/fetch for
-# remote_pipe_to_shell, /dev/ for the block-device redirect in raw_catastrophic, and the
-# :() fork bomb). curl/wget/fetch are OUTSIDE the \b(...)\b group and unanchored on
-# purpose: remote_pipe_to_shell() matches them as plain substrings too (so `prefetch ... |
-# python3` or `xcurl ... | node` still ASK), and the prefilter must hit everything the
-# parser would, so it stays unanchored here in lockstep. Keep it in lockstep with those
-# tables; prefilter-coverage.test.sh replays every DENY/ASK fixture through it and fails
-# if any stops hitting. Correctness rule: the prefilter may only fast-ALLOW on a no-hit.
-# It never denies, and an oversized hit degrades to ASK, never a plain allow.
-PREFILTER_TOKENS='\b(rm|find|chmod|dd|mkfs|wipefs|blkdiscard|shred|git|aws|docker|terraform|tofu|kubectl|bash|sh|zsh|dash|ash|ksh|eval)\b|curl|wget|fetch|/dev/|:\(\)'
+# rm/find/chmod/dd/mkfs/wipefs/blkdiscard/shred/git/the shell wrappers/eval) plus the
+# raw-string anchors (curl/wget/fetch for remote_pipe_to_shell, /dev/ for the
+# block-device redirect in raw_catastrophic, and the :() fork bomb). curl/wget/fetch are
+# OUTSIDE the \b(...)\b group and unanchored on purpose: remote_pipe_to_shell() matches
+# them as plain substrings too (so `prefetch ... | python3` or `xcurl ... | node` still
+# ASK), and the prefilter must hit everything the parser would, so it stays unanchored
+# here in lockstep. Keep it in lockstep with those tables; the main test replays every
+# DENY/ASK fixture through it and fails if any stops hitting. Correctness rule: the
+# prefilter may only fast-ALLOW on a no-hit. It never denies, and an oversized hit
+# degrades to ASK, never a plain allow.
+PREFILTER_TOKENS='\b(rm|find|chmod|dd|mkfs|wipefs|blkdiscard|shred|git|bash|sh|zsh|dash|ash|ksh|eval)\b|curl|wget|fetch|/dev/|:\(\)'
 rc=0
 printf '%s' "$cmd" | grep -Eq "$PREFILTER_TOKENS" || rc=$?
 if [ "$rc" -eq 1 ]; then
@@ -390,65 +391,6 @@ git_is_risky() {
   return 1
 }
 
-aws_is_risky() {
-  shell_words "$1" || return 1
-  local w s3=0 rm=0 rb=0 rec=0 force=0 dryrun=0
-  for w in "${WORDS[@]}"; do
-    case "$w" in
-      s3|s3api) s3=1 ;; rm) rm=1 ;; rb) rb=1 ;;
-      --recursive) rec=1 ;; --force) force=1 ;; --dryrun|--dry-run) dryrun=1 ;;
-    esac
-  done
-  [ "$dryrun" -eq 1 ] && return 1
-  { [ "$s3" -eq 1 ] && [ "$rm" -eq 1 ] && [ "$rec" -eq 1 ]; } && return 0
-  { [ "$s3" -eq 1 ] && [ "$rb" -eq 1 ] && [ "$force" -eq 1 ]; } && return 0
-  return 1
-}
-
-# Only a real `docker [<group>] prune` op is risky — not an unrelated command that
-# merely contains the word "prune" deep in its args (docker run ... npm prune -f).
-docker_is_risky() {
-  shell_words "$1" || return 1
-  local w positional=0 is_prune=0 force=0 expect_prune=0
-  for w in "${WORDS[@]}"; do
-    if [[ "$w" = -* ]]; then
-      case "$w" in --force|-f|--force=true) force=1 ;; -[A-Za-z]*) [[ "$w" = *f* ]] && force=1 ;; esac
-      continue
-    fi
-    positional=$((positional + 1))
-    if [ "$positional" -eq 1 ]; then
-      case "$w" in
-        prune) is_prune=1 ;;
-        system|image|container|volume|network|builder|buildx) expect_prune=1 ;;
-        *) return 1 ;;   # run / exec / compose / build / ... — not a prune op
-      esac
-    elif [ "$expect_prune" -eq 1 ]; then
-      [ "$w" = "prune" ] && is_prune=1
-      expect_prune=0
-    fi
-  done
-  [ "$is_prune" -eq 1 ] && [ "$force" -eq 1 ]
-}
-
-tf_is_risky() {
-  shell_words "$1" || return 1
-  local w destroy=0 auto=0
-  for w in "${WORDS[@]}"; do
-    case "$w" in destroy|-destroy|--destroy) destroy=1 ;; -auto-approve|--auto-approve|-auto-approve=true) auto=1 ;; esac
-  done
-  [ "$destroy" -eq 1 ] && [ "$auto" -eq 1 ]
-}
-
-kubectl_is_risky() {
-  shell_words "$1" || return 1
-  local w del=0 all=0 dry=0
-  for w in "${WORDS[@]}"; do
-    case "$w" in delete) del=1 ;; --all|--all=true) all=1 ;; --dry-run|--dry-run=*) dry=1 ;; esac
-  done
-  [ "$dry" -eq 1 ] && return 1
-  [ "$del" -eq 1 ] && [ "$all" -eq 1 ]
-}
-
 # --- raw-string tier: only catastrophic, quote-stripped so quoted data can't trip it -
 # Rebuild the command with quoted regions removed, then match block-device redirect and
 # fork bomb. (echo ':(){ :|:& };:' keeps the payload inside quotes -> stripped -> safe.)
@@ -504,10 +446,6 @@ scan_level() {
         # plain file (shred secret.txt, mkfs.ext4 disk.img) it is a normal operation.
         format_is_catastrophic "$tail" && { REASON="$name targeting a block device (would wipe a disk). Against a plain file this is allowed."; DECISION="deny"; return 0; } ;;
       git)      git_is_risky "$tail"     && ask_reason="destructive git (reset --hard / clean -f / branch -D / push --force / whole-tree checkout or restore). Uncommitted changes have no reflog; confirm it's intended, or target specific paths." ;;
-      aws)      aws_is_risky "$tail"     && ask_reason="aws s3 rm --recursive / rb --force deletes bucket data. Confirm it's intended." ;;
-      docker)   docker_is_risky "$tail"  && ask_reason="docker prune --force removes containers/images/volumes. Confirm it's intended." ;;
-      terraform|tofu) tf_is_risky "$tail" && ask_reason="terraform/tofu destroy -auto-approve tears down infrastructure with no prompt. Confirm it's intended." ;;
-      kubectl)  kubectl_is_risky "$tail" && ask_reason="kubectl delete --all removes every resource of a kind. Confirm it's intended, or target a specific resource." ;;
       bash|sh|zsh|dash|ash|ksh)
         shell_words "$tail" || WORDS=()
         take=0

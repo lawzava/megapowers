@@ -339,17 +339,29 @@ while IFS= read -r hj; do
     cmd0="${cmdpath%% *}"                          # executable path, without any args
     resolved="${cmd0/'${CLAUDE_PLUGIN_ROOT}'/$pdir}"
     if [[ -f $resolved ]]; then ok "hook command exists: $cmd0"; else bad "hook command missing: $cmd0 (in $hj)"; fi
-    # run-hook.cmd <name> dispatches to <hooks_dir>/<name>; validate that payload
-    # too, so a wrapper-invoked hook script can't be deleted while checks stay green.
+    # run-hook.cmd (and dispatch.sh behind it) name sibling scripts as args;
+    # validate every one so a wrapped hook script can't be deleted while
+    # checks stay green.
     if [[ "$(basename "$cmd0")" == "run-hook.cmd" ]]; then
-      rest="${cmdpath#"$cmd0"}"; rest="${rest# }"; payload="${rest%% *}"
-      if [[ -n $payload ]]; then
+      rest="${cmdpath#"$cmd0"}"
+      for payload in $rest; do
         pres="$(dirname "$resolved")/$payload"
         if [[ -f $pres ]]; then ok "wrapped hook payload exists: $payload"; else bad "wrapped hook payload missing: $payload (in $hj)"; fi
-      fi
+      done
     fi
   done < <(jq -r '.hooks[]?[]?.hooks[]?.command // empty' "$hj" 2>/dev/null)
 done < <(find plugins -type f -path '*/hooks/hooks.json' 2>/dev/null | sort)
+# dispatch.sh and run-hook.cmd ship as byte-twins in every hooks/ dir (plugins
+# cannot locate each other at runtime); any drift is a release bug.
+for twin in dispatch.sh run-hook.cmd; do
+  twin_ref=""; twin_bad=0
+  while IFS= read -r tf; do
+    [ -n "$tf" ] || continue
+    if [[ -z $twin_ref ]]; then twin_ref="$tf"; continue; fi
+    cmp -s "$twin_ref" "$tf" || { bad "hook twin drift: $tf vs $twin_ref"; twin_bad=1; }
+  done < <(find plugins -type f -path "*/hooks/$twin" 2>/dev/null | sort)
+  [[ -n $twin_ref && $twin_bad -eq 0 ]] && ok "hook twin $twin identical across plugins"
+done
 
 echo "== cross-manifest consistency =="
 # a plugin's version must agree across its Claude and Codex manifests
