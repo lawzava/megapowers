@@ -12,9 +12,8 @@
 # "deny" and "allow"; "ask" is "parsed but not supported yet". Returning an
 # unsupported value makes Codex mark the hook run failed, report the error, and
 # then run the tool anyway. deny-destructive.sh emits "ask" for the reversible
-# -but-risky tier (git reset --hard, aws s3 rm --recursive, docker prune -f,
-# terraform destroy -auto-approve, kubectl delete --all, curl | bash). A Codex
-# command hook cannot surface an interactive confirmation, so this adapter maps:
+# -but-risky tier (destructive git, curl | bash). A Codex command hook cannot
+# surface an interactive confirmation, so this adapter maps:
 #
 #   guard "deny"        -> pass the deny JSON through (Codex blocks the command)
 #   guard "ask"         -> emit nothing, exit 0 (fall back to Codex's own
@@ -22,9 +21,9 @@
 #                          do NOT return the unsupported "ask")
 #   guard allow/no hit  -> emit nothing, exit 0
 #
-# Wiring: deny-destructive-dispatch.sh selects this adapter from the plugin's
-# hooks.json when Codex sets PLUGIN_ROOT. Locating the sibling guard via
-# BASH_SOURCE keeps it directly testable. Fails OPEN: any error exits 0 (allow).
+# Wiring: dispatch.sh selects this adapter from the plugin's hooks.json when
+# Codex sets PLUGIN_ROOT. Locating the sibling guard via BASH_SOURCE keeps it
+# directly testable. Fails OPEN: any error exits 0 (allow).
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 guard="$here/deny-destructive.sh"

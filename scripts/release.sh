@@ -14,11 +14,19 @@ if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "usage: release.sh <X.Y.Z>" >&2
   exit 2
 fi
-if ! grep -q "^## $version - " CHANGELOG.md; then
+if ! grep -q "^## ${version//./\\.} - " CHANGELOG.md; then
   echo "release.sh: CHANGELOG.md has no '## $version - ' entry; write it first" >&2
   exit 2
 fi
 command -v jq >/dev/null 2>&1 || { echo "release.sh: jq is required" >&2; exit 2; }
+
+# In-place sed portably: GNU sed takes -i with no argument, BSD sed needs an
+# explicit (empty) backup suffix.
+if sed --version >/dev/null 2>&1; then
+  sedi() { sed -Ei "$@"; }
+else
+  sedi() { sed -Ei '' "$@"; }
+fi
 
 for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json; do
   [[ -f $manifest ]] || continue
@@ -28,9 +36,9 @@ for manifest in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plu
 done
 
 # Public install pins. Patterns match any prior X.Y.Z so restamping is safe.
-sed -Ei "s|/v[0-9]+\.[0-9]+\.[0-9]+/docs/agent-install\.md|/v${version}/docs/agent-install.md|g" README.md
-sed -Ei "s|@v[0-9]+\.[0-9]+\.[0-9]+|@v${version}|g" docs/agent-install.md docs/setup.md
-sed -Ei "s|\"ref\": \"v[0-9]+\.[0-9]+\.[0-9]+\"|\"ref\": \"v${version}\"|g" docs/setup.md
-sed -Ei "s|through \`v[0-9]+\.[0-9]+\.[0-9]+\` are the release pin range|through \`v${version}\` are the release pin range|" docs/setup.md
+sedi "s|/v[0-9]+\.[0-9]+\.[0-9]+/docs/agent-install\.md|/v${version}/docs/agent-install.md|g" README.md
+sedi "s|@v[0-9]+\.[0-9]+\.[0-9]+|@v${version}|g" docs/agent-install.md docs/setup.md
+sedi "s|\"ref\": \"v[0-9]+\.[0-9]+\.[0-9]+\"|\"ref\": \"v${version}\"|g" docs/setup.md
+sedi "s|through \`v[0-9]+\.[0-9]+\.[0-9]+\` are the release pin range|through \`v${version}\` are the release pin range|" docs/setup.md
 
 echo "release.sh: stamped $version into plugin manifests and doc pins"

@@ -107,21 +107,16 @@ single-shot code correctness is exactly where a pattern-skill has least to add.
   vary on: **process/discipline behavior** (does the agent follow the workflow, avoid
   the anti-pattern, gate proportionally: what most megapowers skills govern, which
   code-gen can't capture), genuinely out-of-distribution or much harder tasks, or an
-  older/weaker model. The study harness supports all three: swap `--model` or add a
-  task in [`studies/skill-effect/`](studies/skill-effect/). We report the null rather
-  than keep hunting for a task that fails; chasing a positive the data doesn't support
-  would defeat the point of having an eval. §3 below measures the process axis.
+  older/weaker model. We report the null rather than keep hunting for a task that
+  fails; chasing a positive the data doesn't support would defeat the point of
+  having an eval. §3 below measures the process axis.
 
-**Reproduce.** The scoring oracle and task definitions are committed at
-[`studies/skill-effect/`](studies/skill-effect/); the exact generation prompts
-for the published 184-program run were not preserved, so a re-run regenerates
-programs from the task definitions rather than replaying the original prompts.
-Generate N programs per (task × mode) with any agent/model, save them as JSON,
-then:
-
-```bash
-evals/studies/skill-effect/oracle.sh results.json   # scorecard with Δ and z
-```
+**Reproduce.** Not reproducible from this repo. The `studies/skill-effect/`
+protocol was removed in 0.4.0: the exact generation prompts for the published
+184-program run were never preserved, so the committed scorer could only
+re-sample, not replay, and it was deleted with the rest of the frozen study
+(history has it before the 0.4.0 tag). The numbers above stand as a recorded
+historical measurement.
 
 The scenario harness has its own effect-size path for behavior scenarios:
 

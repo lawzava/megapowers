@@ -13,11 +13,11 @@ blanket-blocking:
 - Denies a short list of catastrophic, unrecoverable commands: recursive `rm`
   of `/`, `~`, `$HOME`, or a top-level system dir; `mkfs`; `dd` to a block
   device; `chmod 777 /`; redirect to a raw disk; fork bomb.
-- Asks (surfaces a confirmation) for reversible-but-risky ones:
-  `git reset --hard` / `clean -f` / `branch -D` / `push --force`;
-  `aws s3 rm --recursive` / `rb --force`; `docker prune -f`;
-  `terraform destroy -auto-approve`; `kubectl delete --all`; a remote
-  download piped into a shell (`curl ... | bash`).
+- Asks (surfaces a confirmation) for reversible-but-risky local ones:
+  `git reset --hard` / `clean -f` / `branch -D` / `push --force`; a remote
+  download piped into a shell (`curl ... | bash`). Remote destructive ops
+  (cloud deletes, `terraform destroy`, `kubectl delete --all`) are not
+  pattern-matched: real-world effects belong to the effect-broker skill.
 - Allows ordinary scoped work: `rm -rf ./dist`, `rm -rf "$TMPDIR/x"`,
   API-key `curl`, dry-runs.
 

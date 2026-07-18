@@ -3,10 +3,10 @@
 # delegate review, ask for one before finishing. Deterministic, cheap, no model
 # call, and a heuristic backstop rather than a proof of review. Fail-open: any
 # error/uncertainty -> allow (exit 0). Self-suppressing via stop_hook_active,
-# the delegate-usage check, and once-per-diff-state (below). Codex sessions
-# never reach this script: hooks.json routes it through dispatch.sh, which
-# no-ops when PLUGIN_ROOT is set. Depends only on jq/git/grep (sha256sum is
-# optional; without it the once-per-diff-state suppression is skipped).
+# the delegate-usage check, and once-per-diff-state (below). Runs on both
+# Claude Code and Codex (hooks.json passes it as both dispatch.sh targets).
+# Depends only on jq/git/grep (sha256sum is optional; without it the
+# once-per-diff-state suppression is skipped).
 set -u
 input="$(cat)"
 
@@ -24,7 +24,14 @@ command -v jq >/dev/null 2>&1 || exit 0
 # command field that runs a delegate CLI, or a Codex rollout cmd key. The
 # marker list mirrors the shipped `detect` arrays in delegates.toml and
 # models.toml; a new provider means adding its marker here.
-delegate_re='"name"[[:space:]]*:[[:space:]]*"mcp__codex__codex|"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)|"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*(codex +exec|agy +(exec|run)|claude +-p|codex-companion\.mjs(\\")? +(adversarial-)?review)|(\\")?cmd(\\")?:[[:space:]]*\\?"([^"\\]|\\.)*(codex +exec|claude +-p)'
+#
+# The CLI-marker prefix is [^"\\]* (no escaped characters), so a marker QUOTED
+# inside a command (`rg -n \"claude -p\" docs`) does not count as a review:
+# the escaped quote before the marker breaks the match. The codex-companion
+# alternative keeps an escape-tolerant prefix because its own path is quoted.
+# Residual limitation: an unquoted prose mention in a command value
+# (`echo claude -p`) still suppresses; the pre-rewrite hook shared it.
+delegate_re='"name"[[:space:]]*:[[:space:]]*"mcp__codex__codex|"subagent_type"[[:space:]]*:[[:space:]]*"(codex|[a-z0-9_-]+-delegate)|"command"[[:space:]]*:[[:space:]]*"[^"\\]*(codex +exec|agy +(exec|run)|claude +-p)|"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*codex-companion\.mjs(\\")? +(adversarial-)?review|(\\")?cmd(\\")?:[[:space:]]*\\?"[^"\\]*(codex +exec|claude +-p)'
 transcript="$(printf '%s' "$input" | jq -r '.transcript_path // empty')"
 if [ -n "$transcript" ] && [ -f "$transcript" ]; then
   grep -qE "$delegate_re" "$transcript" 2>/dev/null && exit 0

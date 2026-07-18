@@ -36,6 +36,12 @@ Categorize findings by actual severity. Not everything is Critical.
   swallowed errors, tests that assert nothing).
 - **Minor:** "coverage could be broader," wording, documentation, polish.
 
+Within a Specification Compliance axis, calibrate severity by requirement
+impact, not by engineering categories: Critical defeats the required core
+outcome or needs a human requirement decision; Important materially misses,
+adds, or misunderstands a requirement; Minor is a limited mismatch in
+wording or polish that describes impact without excusing noncompliance.
+
 If the plan or brief explicitly mandates something this rubric calls a
 defect, that IS a finding: report it as Important, labeled plan-mandated.
 The plan's authorship does not grade its own work; the human decides.
@@ -46,13 +52,13 @@ helps the implementer trust the rest of the feedback.
 ## Specification Compliance Blocks
 
 An unauthorized deviation from an explicit requirement is specification
-noncompliance regardless of how clean or well-tested the implementation is,
-and regardless of whether you consider the deviation an improvement. Unless
-the requirements or their human owner explicitly authorize it, the
-spec-compliance verdict is Fail. Clean engineering never compensates for a
-missed or unauthorized requirement, and compliance never hides an
-engineering defect: evaluate the axes independently and do not merge,
-average, or rerank findings across them.
+noncompliance, regardless of how clean or well-tested the implementation
+is. Unless the requirements or their human owner explicitly authorize it,
+the Specification Compliance verdict is Fail, even when you consider the
+deviation an improvement. Clean engineering cannot compensate for a missed
+or unauthorized requirement, and specification compliance cannot hide an
+engineering defect: evaluate the axes independently. Do not merge, average,
+or rerank findings or severities across axes.
 
 ## Evidence
 

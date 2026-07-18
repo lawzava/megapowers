@@ -88,6 +88,16 @@ printf 'the docs say you can run claude -p to get a review\n' > "$TR"
 reset_sentinel
 check BLOCK "$(j false "$TR")" "prose claude -p mention does NOT suppress"
 
+# A marker QUOTED inside a command value (a search, not an invocation) must
+# NOT suppress: the escaped quote before the marker breaks the match.
+printf '{"type":"tool_use","name":"Bash","input":{"command":"rg -n \\"claude -p\\" docs"}}\n' > "$TR"
+reset_sentinel
+check BLOCK "$(j false "$TR")" "quoted marker inside a search command does NOT suppress"
+
+printf '{"type":"tool_use","name":"Bash","input":{"command":"grep -r \\"codex exec\\" plugins"}}\n' > "$TR"
+reset_sentinel
+check BLOCK "$(j false "$TR")" "quoted codex exec inside a grep does NOT suppress"
+
 # REGRESSION (C8/C25): merely MENTIONING delegate names/CLIs in prose or a read
 # doc must NOT suppress — this is the whole point of the fix.
 printf 'assistant discussed mcp__codex__codex, codex exec, and model-delegate from the docs\n' > "$TR"

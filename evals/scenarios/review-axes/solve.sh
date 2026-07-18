@@ -2,10 +2,13 @@
 set -euo pipefail
 
 reviewer="$ROOT/plugins/megapowers/skills/requesting-code-review/code-reviewer.md"
+rubric="$ROOT/plugins/megapowers/skills/requesting-code-review/review-rubric.md"
 requesting="$ROOT/plugins/megapowers/skills/requesting-code-review/SKILL.md"
 receiving="$ROOT/plugins/megapowers/skills/receiving-code-review/SKILL.md"
 sdd="$ROOT/plugins/megapowers/skills/subagent-driven-development/SKILL.md"
-flat="$(tr '\n' ' ' < "$reviewer" | tr -s '[:space:]' ' ')"
+# The reviewer reads the shared rubric via [RUBRIC_FILE]; the contract binds
+# the union of the template and the rubric it instructs the reviewer to apply.
+flat="$(cat "$reviewer" "$rubric" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
 
 axis_block() {
   heading="$1"
