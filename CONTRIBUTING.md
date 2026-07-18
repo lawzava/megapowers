@@ -40,6 +40,13 @@ claim of effect needs a run behind it.
 - No unsourced statistics in skills. See `evals/RESULTS.md` for the format a
   claim of effect needs.
 
+## Releases
+
+Write the `## X.Y.Z - ` CHANGELOG.md entry, then run `scripts/release.sh X.Y.Z`.
+It stamps every plugin manifest and the public install pins in README.md,
+docs/agent-install.md, and docs/setup.md; `scripts/validate.sh` checks the
+result against the changelog.
+
 ## What gets merged
 
 Small, verifiable improvements land fast. Large reworks should start as an
