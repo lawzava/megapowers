@@ -10,7 +10,7 @@ conditions, so the right practice is applied at the right moment.
 - Plan: `writing-plans`
 - Execute a plan: `executing-plans` (inline, yourself),
   `subagent-driven-development` (a fresh subagent per task, with per-task
-  review), `dispatching-parallel-agents` (independent tasks in parallel)
+  review)
 - Coordinate nested work: native recursive coordinator guidance for Codex and
   Claude Code, with concurrent writers limited to disjoint owned paths in one
   shared checkout
