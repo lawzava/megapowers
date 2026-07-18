@@ -2,7 +2,7 @@
   "hooks": {
     "Stop": [
       { "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh run-loop.sh" } ] },
-      { "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh delegate-nudge.sh" } ] }
+      { "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh delegate-nudge.sh delegate-nudge.sh" } ] }
     ]
   }
 }

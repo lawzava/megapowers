@@ -24,10 +24,11 @@ Complete each phase before moving to the next.
 
 Goal: understand what is failing and why, backed by evidence.
 
-- Read repository instructions, canonical `CONTEXT.md`, accepted ADRs, and
-  matching project memories, with the source-precedence rules from
-  megapowers:writing-plans (Input and Source Pass): instructions govern
-  process, memories are reverified hints, conflicts get surfaced.
+- Read repository instructions (they govern process), canonical `CONTEXT.md`
+  if present (current domain vocabulary), relevant accepted ADRs when present
+  (narrower design intent), and matching project memories when present
+  (hidden historical hints: reverify before use). Surface conflicts;
+  never silently resolve one.
 - Read error output completely. Messages, stack traces, and line numbers often name the cause.
 - Reproduce reliably. If you cannot, gather more data rather than guess.
 - Actual observed behavior is authoritative for diagnosis. Complete the
