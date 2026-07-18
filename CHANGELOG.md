@@ -8,6 +8,59 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.4.0 - 2026-07-19
+
+Maintainability release: the 2026-07-18 over-engineering audit executed in
+full. Roughly a fifth of the repo's line count is gone with no capability
+loss beyond the two removals called out below.
+
+### Removed
+
+- **Breaking:** the brainstorming visual companion (hand-rolled WebSocket
+  server, launcher scripts, frame template, operator manual). Brainstorming
+  now writes static HTML/SVG mockups and opens them with whatever the
+  harness provides.
+- **Breaking:** the `dispatching-parallel-agents` skill. Its content lives
+  in `mega-orchestration:orchestrating` (Parallel fan-out section);
+  subagent-driven-development already covered plan execution.
+- The deny-destructive ask tier for remote tools (aws, docker, terraform,
+  tofu, kubectl). Real-world effects are the effect-broker skill's job;
+  the hook keeps catastrophic local denies, destructive-git asks, and the
+  curl-pipe-shell ask.
+- evals: the never-run `head-to-head` study and the unreproducible
+  `skill-effect` study tree (RESULTS.md keeps the published numbers), plus
+  the unimplemented results-hash audit convention from the evals README.
+- validate.sh prose-pin assertions (exact-sentence greps in docs and
+  skills), the hook-handler count shape, and the Codex implicit-list
+  budget model of a third-party renderer.
+
+### Changed
+
+- Hooks: one generic `dispatch.sh` per plugin (byte-twins, cmp-gated)
+  replaces the four per-hook shims; every hook now routes through
+  `run-hook.cmd`, making Windows handling uniform and gating delegate-nudge
+  for Codex like its run-loop sibling. delegate-nudge is rewritten as a
+  stateless-config nag with one static marker regex (no TOML-driven regex
+  synthesis, sha256sum-only sentinel).
+- evals: the four remaining study runners share `studies/lib.sh` (agent
+  invocation, codex JSONL normalization, fan-out); the offline oracle
+  selftests now run in validate.sh.
+- Skills: the two reviewer prompt templates share `review-rubric.md`;
+  golang-patterns is a compact design-choice checklist with the sqlite
+  testDB footgun moved to greenfield-go-stack; systematic-debugging's three
+  technique references merge into one `debugging-techniques.md`;
+  testing-anti-patterns and testing-skills-with-subagents lose their
+  duplicated recap sections.
+
+### Added
+
+- `scripts/release.sh <version>` stamps all plugin manifests and the doc
+  install pins from the changelog, replacing the 17-file hand edit per
+  release.
+- `plugins/megapowers/hooks/lib-json.sh` (shared `escape_for_json`).
+- AGENTS.md documents that mega-guardrails intentionally ships no root
+  `plugin.json`.
+
 ## 0.3.9 - 2026-07-17
 
 ### Added
