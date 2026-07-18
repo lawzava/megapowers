@@ -77,7 +77,7 @@ A delegate's value is that it is a different model or runtime from the one
 orchestrating; that difference is what makes an independent review
 independent. Read every default as "route to that provider unless you are
 already it." When you only need parallelism rather than a second opinion, use
-same-model fan-out (dispatching-parallel-agents).
+same-model parallel fan-out (mega-orchestration:orchestrating).
 
 For the cross-vendor roles (verify, judge, council_member) this is executable,
 not advisory: each carries a `[fallbacks]` chain to a second vendor, and they

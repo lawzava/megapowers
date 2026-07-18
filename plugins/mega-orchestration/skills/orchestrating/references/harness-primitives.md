@@ -15,8 +15,8 @@ call to a primitive the runtime does not expose.
   share the parent's prompt cache, so they are cheaper than fresh subagents for
   same-context candidates. A stopped subagent auto-resumes when it receives a
   SendMessage and keeps its full history, so re-dispatch-with-recap is obsolete.
-  This is the surface dispatching-parallel-agents and subagent-driven-development
-  use.
+  This is the surface orchestrating's parallel fan-out and
+  subagent-driven-development use.
 - **Agent teams**: experimental and disabled by default. When explicitly
   enabled, named teammates message each other and the lead via SendMessage, and
   an idle teammate resumes with full history when messaged. Since v2.1.198 a
@@ -112,7 +112,7 @@ call to a primitive the runtime does not expose.
 
 - **Subagents**: the main agent spawns parallel subagents with per-subagent
   workspace isolation (it auto-creates worktrees for them and cleans up
-  afterward). Maps to megapowers:dispatching-parallel-agents. Oversight is the
+  afterward). Maps to orchestrating's parallel fan-out. Oversight is the
   Agent Manager surface.
 - **Scheduling and unattended**: Scheduled Tasks run cron-style prompts
   periodically (via `/schedule`); maps to mega-orchestration:autonomous-run

@@ -17,7 +17,7 @@ Let the megapowers process skills lead; don't paraphrase or pre-empt them.
 - Wrapping up → **requesting-code-review**, **verification-before-completion**, then
   **finishing-a-development-branch**.
 - Ordinary isolated or parallel work → **using-git-worktrees**,
-  **subagent-driven-development**, **dispatching-parallel-agents**.
+  **subagent-driven-development**, or parallel fan-out per **orchestrating**.
 
 When a skill applies, invoke it before answering. It owns the procedure; these notes
 just say when to reach for which.

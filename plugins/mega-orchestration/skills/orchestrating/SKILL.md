@@ -35,7 +35,7 @@ than the work.
 |---|---|
 | One clear path, routine stakes | Inline. No structure. |
 | Long-horizon work with unknown ownership, unresolved decisions, or unclear sequencing that prevents an honest spec or plan | mega-orchestration:wayfinding: map uncertainty and resolve the next decision before design or planning. |
-| 2+ independent tasks, no shared state | megapowers:dispatching-parallel-agents (if installed): one focused agent per task, dispatched together. |
+| 2+ independent tasks, no shared state | Parallel fan-out (below): one focused agent per task, dispatched together. |
 | A written plan of mostly-independent tasks | megapowers:subagent-driven-development (if installed): fresh subagent per task with per-task review. |
 | A subtask another model/runtime does better (review, small scoped impl, browser/visual) | mega-orchestration:multi-agent-delegation: resolve the role via `delegates.toml`. |
 | Wide solution space, high stakes work product | mega-orchestration:best-of-n: N independent candidates; select by oracle when one can exist, blind judge otherwise. |
@@ -48,6 +48,18 @@ These compose: an autonomous run's milestones can each run through
 subagent-driven-development, best-of-n can use cross-model-verification as its
 blind judge, and any structure's risky output earns a verification pass. Route
 the outer shape first, then the inner steps as they arrive.
+
+## Parallel fan-out
+
+For 2+ independent, parallel-safe tasks: one agent per task, all dispatch
+calls in one response so they run concurrently. Every brief is focused (one
+scoped task, constraints on what not to touch), self-contained (paths,
+identifiers, error messages; pin fresh context explicitly where the harness
+supports it), and explicit about what to return. You own integration: review
+each summary, check for conflicts between agents' edits, and run the full
+verification suite yourself. If one task's outcome could reshape another,
+handle them in one agent; a written plan of tasks belongs to
+megapowers:subagent-driven-development instead.
 
 ## How much compute: spend by stakes times uncertainty
 

@@ -29,6 +29,8 @@ requirements unless clearly marked optional.
   JavaScript or TypeScript modules, not these Claude shell hooks.
 - Antigravity CLI plugins use a root `plugin.json`; its native skills are flat
   markdown files under `.agents/skills/` or a plugin `skills/` directory.
+  `mega-guardrails` intentionally ships no root `plugin.json`: it is
+  hooks-only, and Antigravity consumes skills, not these hooks.
 - Full per-harness support details: `docs/harness-support.md` (canonical,
   freshness-checked).
 
