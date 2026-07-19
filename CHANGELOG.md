@@ -8,6 +8,21 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.4.1 - 2026-07-20
+
+### Changed
+
+- Agent baselines now keep large worktrees, build caches, browser profiles,
+  and similar artifacts in a writable, capacity-checked `$TMPDIR`. `/tmp`
+  remains available for small OS temporary files and IPC state.
+- Code review worktrees follow the same scratch policy instead of hard-coding
+  `/tmp`.
+
+### Added
+
+- Release validation checks that the Codex and Claude baselines and the shared
+  review rubric retain the scratch-storage policy.
+
 ## 0.4.0 - 2026-07-19
 
 Maintainability release: the 2026-07-18 over-engineering audit executed in
