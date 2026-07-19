@@ -89,6 +89,19 @@ only catastrophic `deny` decisions because Codex does not support the guard's
 reversible-risk `ask` tier. It is an accident backstop, not a sandbox; think
 before deletes, resets, and force pushes.
 
+## Scratch storage
+
+- Honor `$TMPDIR` and tool-specific temporary or cache variables. Do not
+  hard-code `/tmp` for worktrees, build caches, browser profiles, model
+  archives, or other potentially large artifacts.
+- Before a large scratch job, confirm the selected directory exists, is
+  writable in the current sandbox, and has enough capacity. Prefer disk-backed
+  scratch when `/tmp` is memory-backed or constrained.
+- If the configured scratch root is not writable, request scoped access or use
+  an ignored workspace directory. Do not silently fall back to `/tmp` for
+  large output.
+- Keep `/tmp` for small, short-lived OS temporary files and IPC state.
+
 ## Git and style
 
 - Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`),

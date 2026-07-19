@@ -81,6 +81,19 @@ The mega-guardrails deny-destructive hook is an accident backstop: it blocks a h
 of obviously destructive commands. It is not a sandbox and not a security boundary.
 Don't rely on it to contain untrusted input or risky operations; think before you run.
 
+## Scratch storage
+
+- Honor `$TMPDIR` and tool-specific temporary or cache variables. Do not
+  hard-code `/tmp` for worktrees, build caches, browser profiles, model
+  archives, or other potentially large artifacts.
+- Before a large scratch job, confirm the selected directory exists, is
+  writable in the current sandbox, and has enough capacity. Prefer disk-backed
+  scratch when `/tmp` is memory-backed or constrained.
+- If the configured scratch root is not writable, request scoped access or use
+  an ignored workspace directory. Do not silently fall back to `/tmp` for
+  large output.
+- Keep `/tmp` for small, short-lived OS temporary files and IPC state.
+
 ## Style
 
 - Terse. No filler, no preamble, no hedging. Status updates in one line.

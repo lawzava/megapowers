@@ -75,3 +75,16 @@ no hooks. In short:
 
 When in doubt about how a task should run, defer to the preset the lead named
 and to that config.
+
+## Scratch storage
+
+- Honor `$TMPDIR` and tool-specific temporary or cache variables. Do not
+  hard-code `/tmp` for worktrees, build caches, browser profiles, model
+  archives, or other potentially large artifacts.
+- Before a large scratch job, confirm the selected directory exists, is
+  writable in the current sandbox, and has enough capacity. Prefer disk-backed
+  scratch when `/tmp` is memory-backed or constrained.
+- If the configured scratch root is not writable, request scoped access or use
+  an ignored workspace directory. Do not silently fall back to `/tmp` for
+  large output.
+- Keep `/tmp` for small, short-lived OS temporary files and IPC state.

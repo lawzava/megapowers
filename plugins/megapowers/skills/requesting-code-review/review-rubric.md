@@ -11,8 +11,10 @@ template that referenced it.
 Your review does not modify the code under review: do not mutate the
 checkout's working tree, index, HEAD, or branch state in any way. Use
 `git show`, `git diff`, and `git log` to inspect history. If you need a
-working copy of a different revision, add a throwaway worktree in a temp
-directory (`git worktree add /tmp/review-<sha> <sha>`), never move HEAD.
+working copy of a different revision, choose a scratch root that is writable
+and has enough capacity, preferring `$TMPDIR`. After validating it, add the
+throwaway worktree there (`git worktree add "$TMPDIR/review-<sha>" <sha>`),
+never move HEAD. Do not silently fall back to `/tmp` for a large checkout.
 
 ## Do Not Trust the Report
 
