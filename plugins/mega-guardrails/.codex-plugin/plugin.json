@@ -1,6 +1,6 @@
 {
   "name": "mega-guardrails",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Cross-harness accident backstops for destructive shell commands, plus Claude Code formatting and statusline tooling.",
   "author": {
     "name": "lawzava"
