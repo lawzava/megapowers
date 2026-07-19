@@ -169,6 +169,28 @@ if [[ -f $codex_mp ]]; then
   done < <(jq -r '.plugins[] | [.name, .source.source, .source.path, .policy.installation, .policy.authentication, .category] | @tsv' "$codex_mp" 2>/dev/null)
 fi
 
+echo "== scratch storage guidance =="
+for template in templates/CODEX-LEAD.md templates/CODEX.md templates/CLAUDE.md; do
+  if grep -q '^## Scratch storage$' "$template" &&
+     grep -qF "Honor \`\$TMPDIR\`" "$template" &&
+     grep -qF 'writable in the current sandbox' "$template" &&
+     grep -qF 'has enough capacity' "$template" &&
+     grep -qF "Do not silently fall back to \`/tmp\` for" "$template" &&
+     grep -qF "Keep \`/tmp\` for small, short-lived OS temporary files and IPC state." "$template"; then
+    ok "$template has portable scratch storage guidance"
+  else
+    bad "$template must guide agents to a writable, capacity-checked \$TMPDIR"
+  fi
+done
+review_rubric="plugins/megapowers/skills/requesting-code-review/review-rubric.md"
+if grep -qF "git worktree add \"\$TMPDIR/review-<sha>\" <sha>" "$review_rubric" &&
+   grep -qF "Do not silently fall back to \`/tmp\` for a large checkout." "$review_rubric" &&
+   ! grep -qF '/tmp/review-<sha>' "$review_rubric"; then
+  ok "review worktrees honor TMPDIR"
+else
+  bad "review worktrees must honor TMPDIR instead of hard-coding /tmp"
+fi
+
 echo "== skills =="
 while IFS= read -r sk; do
   [[ -z $sk ]] && continue
