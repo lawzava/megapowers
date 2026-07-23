@@ -70,12 +70,12 @@ migration, observability gaps.
 
 ## Review output schema
 
-Request this shape (via `--output-schema` or the contract block) so the lead
-can act on the verdict without re-parsing prose:
+`delegate-run` passes `schemas/review-verdict-v1.json` through
+`--output-schema`. Its stable shape is:
 
 ```json
 {
-  "verdict": "approve | needs-attention",
+  "verdict": "approve | needs_attention",
   "findings": [{
     "severity": "critical | major | minor",
     "file": "path",
@@ -84,7 +84,11 @@ can act on the verdict without re-parsing prose:
     "finding": "...",
     "recommendation": "..."
   }],
-  "next_steps": ["..."]
+  "next_steps": ["..."],
+  "evidence": {
+    "commands": ["..."],
+    "screenshots": ["..."]
+  }
 }
 ```
 

@@ -52,13 +52,13 @@ work; keep planning, decomposition, and the final write with yourself.
   another provider. The native V2 session remains same-model fan-out.
 - Complex plan/spec review and cross-vendor independence (verify, judge,
   council_member): resolve with the mega-orchestration plugin's
-  `skills/multi-agent-delegation/scripts/delegate-resolve <role> --exclude-lead`;
-  the fallback chains route away from your vendor, typically to `claude -p`
-  with `plan_review` for the planning companion (channel mechanics: the
-  skill's `references/providers/claude.md`).
-- Visual verification: the browser provider, `playwright-cli` plus a
-  vision-capable reader; screenshots land in `.megapowers/evidence/` and you
-  re-read them rather than trusting a text summary.
+  `skills/multi-agent-delegation/scripts/delegate-run --role <role>
+  --author-vendor <vendor> --artifact <worktree|file> --claim <text>`; the
+  fallback chains route away from every declared author and the launcher
+  records a subject-bound receipt.
+- Visual verification: a real independent vision-model route judges evidence
+  captured by the separate `playwright-cli` driver; screenshot hashes land in
+  the receipt and you re-read the images rather than trusting a text summary.
 
 ## Writer ownership discipline
 

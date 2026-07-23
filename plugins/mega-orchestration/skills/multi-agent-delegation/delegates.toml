@@ -1,5 +1,5 @@
 # megapowers delegate routing: which provider handles which role, and run presets.
-# Last reviewed: 2026-07-12 (routes age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-07-23 (routes age; scripts/check-freshness.sh guards this date).
 # The model CATALOG (lead, tiers, providers, floor) lives in models.toml at the
 # plugin root, layered the same way: project .megapowers/models.toml, then user
 # ~/.config/megapowers/models.toml, then the shipped copy. Edit an override layer,
@@ -11,39 +11,83 @@
 [requires]
 visual        = ["computer_use"]
 browser_test  = ["computer_use"]
-visual_verify = ["computer_use", "vision"]
+visual_verify = ["vision"]
 
 # --- Roles: which provider handles what ---
 # Visual/browser routing is a cost-adjusted call (bench check 2026-07-04, run
 # against the then-current GPT-5.5; the route moved to gpt-5.6-sol on 2026-07-10
-# without a re-bench): OSWorld-Verified had Claude ahead (Fable 5 ~85 / Opus 4.8
-# 83.4 vs GPT-5.5 78.7, Gemini 3.1 Pro well behind), but Codex runs 3-4x cheaper
-# in tokens, so it leads computer-use work and the browser provider referees
-# (visual_verify) and serves as the redo path when the primary's output misses
-# the bar (escalation rule in mega-orchestration:orchestrating).
+# without a re-bench). Codex leads computer-use work; visual_verify uses an
+# independent vision model to judge evidence from the separate browser driver.
 [roles]
 plan_review    = "claude"    # review a plan before implementing (the planning buddy)
 code_review    = "codex"     # review a diff
 small_impl     = "codex"     # well-scoped, small-sized implementation
 visual         = "codex"     # UI / visual work (native computer use)
 browser_test   = "codex"     # browser / end-to-end testing
-visual_verify  = "browser"   # independent cross-vendor pass on rendered UI/UX work
+visual_verify  = "claude"    # vision model judges evidence captured by the separate Playwright driver
 verify         = "claude"    # cross-model-verification: adversarial refute pass (must differ from the author's vendor)
 judge          = "claude"    # best-of-n: blind judge when no oracle decides (prefer a vendor none of the authors used)
 council_member = "claude"    # council-adjudication: independent answer + blind ranking member
 
 # --- Fallbacks: ordered cross-vendor chains for the different-vendor roles ---
-# delegate-resolve walks this chain and skips any provider that is --excluded (use
-# --exclude-lead so the lead's vendor drops out automatically), disabled, or whose
-# binary is not installed. The review roles carry chains too, so a lead swap keeps
-# reviews resolvable away from the lead's own vendor; small_impl stays single-route
+# delegate-resolve walks this chain and skips any provider named by
+# --author-vendor or --exclude, disabled, or whose binary is not installed. The
+# review roles carry chains so they resolve away from every artifact author;
+# small_impl stays single-route
 # (it is not an independence role).
 [fallbacks]
 plan_review    = ["claude", "codex"]
 code_review    = ["codex", "claude"]
+visual_verify  = ["claude", "codex"]
 verify         = ["claude", "codex"]
 judge          = ["claude", "codex"]
 council_member = ["claude", "codex"]
+
+# Role policy selects the model tier and reasoning effort. Provider defaults
+# remain catalog metadata for the lead and for legacy v1 override files.
+[role_tiers]
+plan_review    = "frontier"
+code_review    = "strong"
+small_impl     = "strong"
+visual         = "frontier"
+browser_test   = "frontier"
+visual_verify  = "frontier"
+verify         = "frontier"
+judge          = "frontier"
+council_member = "frontier"
+
+[role_efforts]
+plan_review    = "high"
+code_review    = "high"
+small_impl     = "high"
+visual         = "high"
+browser_test   = "high"
+visual_verify  = "high"
+verify         = "high"
+judge          = "high"
+council_member = "high"
+
+# Independent roles must be resolved away from every artifact-author vendor.
+# `--exclude-lead` remains a compatibility flag but does not satisfy this
+# requirement because the catalog lead is not necessarily the artifact author.
+[independence]
+plan_review    = "author_vendor"
+code_review    = "author_vendor"
+visual_verify  = "author_vendor"
+verify         = "author_vendor"
+judge          = "all_author_vendors"
+council_member = "author_vendor"
+
+# Drivers gather evidence. They are not model providers and cannot satisfy a
+# review role, vendor-independence claim, model tier, or ship floor.
+[drivers.playwright]
+binary       = "playwright-cli"
+channel      = "playwright-cli"
+capabilities = ["browser_driver"]
+reference    = "references/providers/browser.md"
+
+[role_drivers]
+visual_verify = "playwright"
 
 # --- Presets: how a delegate runs (resolve with `delegate-resolve --preset <name>`) ---
 [presets.read_only]

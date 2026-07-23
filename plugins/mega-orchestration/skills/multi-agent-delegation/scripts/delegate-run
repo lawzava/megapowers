@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+# Resolve and execute one read-only delegate review, then write a provenance-bound receipt.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+resolver="$here/delegate-resolve"
+diff_id_tool="$here/review-diff-id"
+verdict_schema="$here/../schemas/review-verdict-v1.json"
+
+usage() {
+  echo "usage: delegate-run --role <role> --author-vendor <vendor>... --artifact <worktree|file> --claim <text> [--receipt <file>] [--screenshot <file>]... [--config <file>] [--models <file>]" >&2
+}
+
+role="" artifact="" claim="" receipt="" cfg="" models=""
+author_vendors=()
+screenshots=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --role) [ $# -ge 2 ] || { usage; exit 2; }; role="$2"; shift 2 ;;
+    --author-vendor) [ $# -ge 2 ] || { usage; exit 2; }; author_vendors+=("$2"); shift 2 ;;
+    --artifact) [ $# -ge 2 ] || { usage; exit 2; }; artifact="$2"; shift 2 ;;
+    --claim) [ $# -ge 2 ] || { usage; exit 2; }; claim="$2"; shift 2 ;;
+    --receipt) [ $# -ge 2 ] || { usage; exit 2; }; receipt="$2"; shift 2 ;;
+    --screenshot) [ $# -ge 2 ] || { usage; exit 2; }; screenshots+=("$2"); shift 2 ;;
+    --config) [ $# -ge 2 ] || { usage; exit 2; }; cfg="$2"; shift 2 ;;
+    --models) [ $# -ge 2 ] || { usage; exit 2; }; models="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "delegate-run: unknown argument: $1" >&2; usage; exit 2 ;;
+  esac
+done
+
+[ -n "$role" ] && [ -n "$artifact" ] && [ -n "$claim" ] && [ "${#author_vendors[@]}" -gt 0 ] || {
+  usage
+  exit 2
+}
+command -v jq >/dev/null 2>&1 || { echo "delegate-run: jq is required" >&2; exit 2; }
+
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -- "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 -- "$1" | cut -d' ' -f1
+  else
+    echo "delegate-run: sha256sum or shasum is required" >&2
+    return 2
+  fi
+}
+
+subject_kind="file"
+subject_artifact="$artifact"
+if [ "$artifact" = "worktree" ]; then
+  subject_kind="worktree-diff"
+  subject_artifact="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "delegate-run: --artifact worktree requires a Git worktree" >&2
+    exit 2
+  }
+  subject_id="$("$diff_id_tool" "$subject_artifact")"
+  [ -n "$receipt" ] || receipt="$(git rev-parse --git-path megapowers-review-receipt.json)"
+else
+  [ -f "$artifact" ] || { echo "delegate-run: artifact not found: $artifact" >&2; exit 2; }
+  subject_artifact="$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")"
+  subject_id="$(hash_file "$subject_artifact")"
+  [ -n "$receipt" ] || { echo "delegate-run: --receipt is required for a file artifact" >&2; exit 2; }
+fi
+
+if [ "$role" = "visual_verify" ] && [ "${#screenshots[@]}" -eq 0 ]; then
+  echo "delegate-run: visual_verify requires at least one --screenshot" >&2
+  exit 2
+fi
+
+resolve_args=("$role")
+for vendor in "${author_vendors[@]}"; do resolve_args+=(--author-vendor "$vendor"); done
+[ -n "$cfg" ] && resolve_args+=(--config "$cfg")
+[ -n "$models" ] && resolve_args+=(--models "$models")
+set +e
+route="$("$resolver" "${resolve_args[@]}" 2>&1)"
+route_rc=$?
+set -e
+if [ "$route_rc" -ne 0 ]; then
+  printf '%s\n' "$route" >&2
+  exit "$route_rc"
+fi
+
+route_val() { printf '%s\n' "$route" | sed -n "s/^$1=//p" | head -1; }
+provider="$(route_val PROVIDER)"
+vendor="$(route_val VENDOR)"
+model="$(route_val MODEL)"
+tier="$(route_val TIER)"
+effort="$(route_val EFFORT)"
+binary="$(route_val BINARY)"
+[ -n "$provider" ] && [ -n "$vendor" ] && [ -n "$model" ] && [ -n "$tier" ] && [ -n "$effort" ] && [ -n "$binary" ] || {
+  echo "delegate-run: resolved route omitted provider provenance" >&2
+  exit 2
+}
+for author in "${author_vendors[@]}"; do
+  [ "$author" != "$vendor" ] || {
+    echo "delegate-run: resolver returned author vendor '$vendor' for independent review" >&2
+    exit 2
+  }
+done
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/megapowers-delegate.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+raw="$tmpdir/raw.json"
+normalized="$tmpdir/verdict.json"
+
+if [ "$subject_kind" = "worktree-diff" ]; then
+  review_package="$tmpdir/review-package.txt"
+  {
+    echo "## Git status"
+    git -C "$subject_artifact" status --short
+    echo
+    echo "## Staged diff (HEAD to index)"
+    git -C "$subject_artifact" diff --cached --binary --no-ext-diff
+    echo
+    echo "## Unstaged diff (index to worktree)"
+    git -C "$subject_artifact" diff --binary --no-ext-diff
+    echo
+    echo "## Untracked files"
+    while IFS= read -r -d '' file; do
+      echo
+      echo "### $file"
+      git diff --no-index --binary --no-ext-diff /dev/null "$subject_artifact/$file" || [ "$?" -eq 1 ]
+    done < <(git -C "$subject_artifact" ls-files --others --exclude-standard -z)
+  } > "$review_package"
+  review_target="Read the complete pending-tree review package at $review_package. It contains status, tracked/staged/unstaged diff, and untracked files."
+else
+  review_target="Read the artifact file at $subject_artifact."
+fi
+
+prompt="$(printf '%s\n\n%s\n\n%s\n' \
+  "<task>Adversarially review this artifact. Claim to refute: $claim</task>" \
+  "<verification>$review_target Cite inspected paths in evidence.commands and screenshot paths in evidence.screenshots. Return only the requested JSON object.</verification>" \
+  "<output_contract>Use the Megapowers review verdict v1 schema. APPROVE only when no critical or major finding remains.</output_contract>")"
+
+case "$vendor" in
+  anthropic)
+    help="$("$binary" --help 2>&1 || true)"
+    for flag in --bare --json-schema --effort; do
+      grep -q -- "$flag" <<< "$help" || {
+        echo "delegate-run: '$binary' lacks required isolation/schema flag $flag" >&2
+        exit 6
+      }
+    done
+    # Claude's structured-output surface accepts the object-schema subset but
+    # rejects the draft metadata URI used by standalone JSON Schema validators.
+    schema_compact="$(jq -c 'del(."$schema", .title)' "$verdict_schema")"
+    claude_args=(-p "$prompt" --model "$model" --effort "$effort"
+      --allowedTools "Read,Glob,Grep" --output-format json --json-schema "$schema_compact")
+    claude_config=""
+    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+      claude_args+=(--bare)
+    else
+      credential_source="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json"
+      [ -f "$credential_source" ] || {
+        echo "delegate-run: Claude route needs ANTHROPIC_API_KEY or $credential_source" >&2
+        exit 6
+      }
+      claude_config="$tmpdir/claude-config"
+      mkdir -p "$claude_config"
+      cp "$credential_source" "$claude_config/.credentials.json"
+    fi
+    set +e
+    if [ -n "$claude_config" ]; then
+      (
+        cd "$tmpdir" || exit 6
+        MEGAPOWERS_ROLE="$role" MEGAPOWERS_PRESET=read_only MEGAPOWERS_EXACT_OUTPUT=1 \
+          CLAUDE_CONFIG_DIR="$claude_config" "$binary" "${claude_args[@]}"
+      ) >"$raw" 2>"$tmpdir/provider.err"
+    else
+      (
+        cd "$tmpdir" || exit 6
+        env -u CLAUDE_CONFIG_DIR MEGAPOWERS_ROLE="$role" \
+          MEGAPOWERS_PRESET=read_only MEGAPOWERS_EXACT_OUTPUT=1 \
+          "$binary" "${claude_args[@]}"
+      ) >"$raw" 2>"$tmpdir/provider.err"
+    fi
+    provider_rc=$?
+    set -e
+    [ "$provider_rc" -eq 0 ] || { sed -n '1,80p' "$tmpdir/provider.err" >&2; exit 6; }
+    jq -e '.structured_output // .result // .' "$raw" > "$normalized" 2>/dev/null || {
+      echo "delegate-run: Anthropic provider returned invalid JSON" >&2
+      exit 7
+    }
+    ;;
+  openai)
+    help="$("$binary" exec --help 2>&1 || true)"
+    for flag in --output-schema --ephemeral --sandbox; do
+      grep -q -- "$flag" <<< "$help" || {
+        echo "delegate-run: '$binary exec' lacks required isolation/schema flag $flag" >&2
+        exit 6
+      }
+    done
+    set +e
+    printf '%s' "$prompt" | MEGAPOWERS_ROLE="$role" MEGAPOWERS_PRESET=read_only MEGAPOWERS_EXACT_OUTPUT=1 \
+      "$binary" exec --ephemeral --ignore-user-config --skip-git-repo-check \
+      -C "$(pwd)" --sandbox read-only --model "$model" \
+      --config "model_reasoning_effort=\"$effort\"" \
+      --output-schema "$verdict_schema" --output-last-message "$raw" - \
+      >"$tmpdir/provider.log" 2>"$tmpdir/provider.err"
+    provider_rc=$?
+    set -e
+    [ "$provider_rc" -eq 0 ] || { sed -n '1,80p' "$tmpdir/provider.err" >&2; exit 6; }
+    jq -e . "$raw" > "$normalized" 2>/dev/null || {
+      echo "delegate-run: OpenAI provider returned invalid JSON" >&2
+      exit 7
+    }
+    ;;
+  *)
+    echo "delegate-run: no safe adapter for vendor '$vendor'" >&2
+    exit 6
+    ;;
+esac
+
+jq -e '
+  ((keys_unsorted - ["verdict","findings","next_steps","evidence"]) | length == 0) and
+  (.verdict == "approve" or .verdict == "needs_attention") and
+  (.findings | type == "array") and
+  (all(.findings[];
+    ((keys_unsorted - ["severity","file","lines","confidence","finding","recommendation"]) | length == 0) and
+    (.severity == "critical" or .severity == "major" or .severity == "minor") and
+    (.file | type == "string") and
+    (.lines | type == "string") and
+    (.confidence | type == "number" and . >= 0 and . <= 1) and
+    (.finding | type == "string") and
+    (.recommendation | type == "string")
+  )) and
+  (.next_steps | type == "array") and
+  (all(.next_steps[]; type == "string")) and
+  (.evidence.commands | type == "array") and
+  (all(.evidence.commands[]; type == "string")) and
+  (.evidence.screenshots | type == "array") and
+  (all(.evidence.screenshots[]; type == "string"))
+' "$normalized" >/dev/null || {
+  echo "delegate-run: provider result does not satisfy review-verdict-v1" >&2
+  exit 7
+}
+
+authors_json="$(printf '%s\n' "${author_vendors[@]}" | jq -Rsc 'split("\n") | map(select(length > 0)) | unique')"
+screens_json='[]'
+if [ "${#screenshots[@]}" -gt 0 ]; then
+  for screenshot in "${screenshots[@]}"; do
+    [ -f "$screenshot" ] || { echo "delegate-run: screenshot not found: $screenshot" >&2; exit 2; }
+    screenshot_abs="$(cd "$(dirname "$screenshot")" && pwd)/$(basename "$screenshot")"
+    screenshot_sha="$(hash_file "$screenshot_abs")"
+    screens_json="$(jq -cn --argjson old "$screens_json" --arg path "$screenshot_abs" --arg sha "$screenshot_sha" '$old + [{path:$path,sha256:$sha}]')"
+  done
+fi
+
+created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+mkdir -p "$(dirname "$receipt")"
+tmp_receipt="$receipt.tmp.$$"
+jq -n \
+  --arg role "$role" --arg kind "$subject_kind" --arg artifact "$subject_artifact" \
+  --arg id "$subject_id" --arg claim "$claim" --arg provider "$provider" \
+  --arg vendor "$vendor" --arg model "$model" --arg tier "$tier" --arg effort "$effort" \
+  --arg created "$created_at" --argjson authors "$authors_json" \
+  --argjson result "$(cat "$normalized")" --argjson screenshots "$screens_json" \
+  '{
+    schema:"megapowers.review-receipt.v1",
+    role:$role,
+    subject:{kind:$kind,artifact:$artifact,id:$id,claim:$claim},
+    author_vendors:$authors,
+    reviewer:{provider:$provider,vendor:$vendor,model:$model,tier:$tier,effort:$effort},
+    independent:true,
+    result:$result,
+    evidence:{commands:$result.evidence.commands,screenshots:$screenshots},
+    created_at:$created
+  }' > "$tmp_receipt"
+mv "$tmp_receipt" "$receipt"
+
+cat "$receipt"
+[ "$(jq -r '.result.verdict' "$receipt")" = "approve" ] || exit 5

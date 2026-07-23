@@ -6,14 +6,24 @@ license: MIT
 
 # Subagent-Driven Development
 
-Execute a written plan by dispatching a fresh implementer subagent per task, reviewing each task in two stages (spec compliance, then code quality) with a fresh reviewer, and running one broad whole-branch review at the end. The default process executes tasks sequentially on one branch. Recursive coordinator mode is an explicit exception for independent tasks with disjoint ownership.
+Execute a written plan with fresh, narrowly briefed subagents where delegation
+pays for itself. Scale review to risk: low-risk tasks use focused tests and
+self-review, medium-risk work gets one independent boundary review, and
+high-risk work gets review at each risky boundary plus final independent
+verification. The default process executes tasks sequentially on one branch.
+Recursive coordinator mode is an explicit exception for independent tasks with
+disjoint ownership.
 
 **Why subagents:** each task gets deliberately fresh context that you construct.
 Some harnesses can inherit or fork parent history, so request a fresh context
 explicitly for implementers and reviewers. Hand each one exactly what its task
 needs, which keeps it focused and preserves your own context for coordination.
 
-**Commit cadence:** the ordinary sequential workflow commits once per task, and that commit stream is its recovery mechanism: the ledger records commit ranges, and git history survives the compactions that erase conversation memory. Choosing ordinary SDD is how the human opts into per-task commits; it is not a hidden side effect. Selecting recursive coordinator mode does not authorize child commits or any other Git operation. If per-task commits do not fit, use megapowers:executing-plans or the explicit recursive mode instead.
+**Git authorization:** selecting SDD never grants permission to commit, push,
+merge, or open a pull request. Preserve the user's and repository's existing
+authorization. When commits are authorized, the ledger records their ranges.
+Otherwise the ledger and working tree are the recovery mechanism. Recursive
+children never perform Git index or ref operations.
 
 **Continuous execution:** do not check in with your human partner between tasks. Stop only for a BLOCKED status you cannot resolve, ambiguity that prevents progress, or completion of all tasks. Narrate at most one short line between tool calls; the ledger and tool results carry the record.
 
@@ -21,11 +31,23 @@ needs, which keeps it focused and preserves your own context for coordination.
 
 Use this skill when a written plan exists, its tasks are mostly independent, and subagents are available. Use the ordinary sequential process when per-task commits are acceptable. Select recursive coordinator mode only when the harness supports nested subagents and every concurrent writer can receive disjoint ownership. With no plan, tightly coupled tasks, or no safe ownership split, execute manually or use megapowers:executing-plans.
 
+For deterministic mechanical changes that share one oracle, use bulk
+mechanical mode: one owner, one bounded batch, one focused verification set,
+and one proportional review. Do not create an implementer and reviewer loop per
+file.
+
 ## Recursive Coordinator Mode
 
 Recursive coordinator mode is guidance for native Codex and Claude Code subagents, not an execution runtime. Select it explicitly when a plan has several independent roots and coordinators can assign exclusive paths before dispatch. The ordinary sequential process below remains the fallback.
 
 All writers share the current checkout; recursive mode creates no worktrees. Each child receives exclusive ownership of exact files or non-overlapping directory roots. A coordinator may subdivide only the ownership it inherited. Overlapping ownership, shared interface changes, and dependencies stay sequential. If independence cannot be stated in one concise ownership sentence, keep the work under one writer.
+
+Before any recursive dispatch, run
+`scripts/ownership-preflight PLAN_FILE`. Do not dispatch if it reports missing,
+ambiguous, globbed, duplicated, or parent-child-overlapping ownership among
+parallel tasks. Correct the plan or execute the affected work sequentially.
+The executable parser contract is
+`scripts/tests/ownership-preflight.test.sh`.
 
 The lead launches one native coordinator per independent root. A coordinator may launch native children for independent pieces of its own scope. It waits for every required child, reviews the combined diff, resolves integration issues within its ownership, runs the required verification, and returns one synthesized result to its parent. The lead coordinates only its direct children. Descendants report to the coordinator that spawned them.
 
@@ -39,16 +61,39 @@ Use native done, blocked, and needs-context results. The parent decides whether 
 
 ## The Process
 
-Setup, once: read the plan file once, create todos for every task, and check for an existing progress ledger (see Durable Progress). Then scan the plan for conflicts before dispatching Task 1: tasks that contradict each other or the Global Constraints, and anything the plan explicitly mandates that the review rubric treats as a defect. Present everything you find to your human partner as one batched question, each finding beside the plan text that mandates it, asking which governs, rather than one interrupt per discovery mid-plan. Under an active autonomous-run charter at level `autonomous` or `on-the-loop`, do not stop for the batch: resolve each conflict with the least-surprise reading and journal it with a confidence, though a conflict that makes a task's acceptance criteria contradictory is still a real blocker. A clean scan needs no comment; the review loop remains the net for conflicts that only emerge from implementation.
+Setup once: read the plan and existing progress ledger. Use those as the one
+progress surface rather than duplicating every task into a second todo list.
+Then scan the plan for conflicts before dispatching Task 1: tasks that
+contradict each other or the Global Constraints, and anything the plan
+explicitly mandates that the review rubric treats as a defect. Present
+everything you find as one batched question. Under an autonomous or on-the-loop
+charter, resolve non-blocking conflicts with the least-surprise reading and
+journal them.
 
 Per task, in order:
 
-1. Record the BASE commit in the ledger, generate the task's brief with `scripts/task-brief PLAN_FILE N`, and dispatch an implementer using [implementer-prompt.md](implementer-prompt.md) with the brief path, report path, and scene-setting context. Answer any questions it asks before it proceeds. It implements, tests, commits, and self-reviews; self-review never replaces the task review.
-2. On DONE, generate the review package with `scripts/review-package BASE HEAD` and dispatch a fresh task reviewer using [task-reviewer-prompt.md](task-reviewer-prompt.md) with the printed path. Both verdicts are required; a report missing either spec compliance or code quality is incomplete.
-3. Findings go to a fresh fix subagent: the implementer side fixes, the reviewer never edits, and you never fix in your own context. Any Specification Compliance Fail requires correction or explicit requirement-owner authorization regardless of local finding severity, followed by re-review; it must never be rolled into the Minor backlog. Regenerate the package and dispatch a fresh re-review; repeat until the spec verdict is clean and quality is approved. "Close enough" on spec compliance is a failed review, and a task with open Critical or Important engineering findings is not done.
-4. Mark the task complete in the todo list and append the ledger line.
+1. Record the BASE commit in the ledger, generate the task's brief with
+   `scripts/task-brief PLAN_FILE N`, and dispatch an implementer using
+   [implementer-prompt.md](implementer-prompt.md). The brief explicitly states
+   whether pre-existing commit authorization exists. The implementer tests and
+   self-reviews, and commits only when that authorization is present.
+2. Apply the declared risk tier. Low-risk tasks proceed on focused evidence and
+   self-review. Medium-risk tasks get one independent review at the most useful
+   boundary. High-risk tasks get a fresh task reviewer for each risky boundary.
+   A requested review reports specification compliance and engineering quality
+   as separate verdicts.
+3. Send all actionable findings for an artifact in one fix wave, then re-review.
+   Cap fix and re-review at three cycles per artifact. After the third unresolved
+   verdict, mark the task blocked and surface the remaining findings. Never loop
+   until clean without a stopping rule.
+4. Mark the task complete in the plan or ledger, whichever is the declared
+   progress surface.
 
-After all tasks: dispatch the final whole-branch review using megapowers:requesting-code-review's [code-reviewer.md](../requesting-code-review/code-reviewer.md) on the most capable available model. For a branch touching billing, auth, concurrency, or security, add an independent different-vendor pass via mega-orchestration:cross-model-verification if installed; a same-model review shares the author's blind spots. Then use megapowers:finishing-a-development-branch.
+After all tasks, run the branch-boundary verification. Medium and high-risk
+branches get one whole-branch review. High-risk billing, auth, concurrency,
+security, schema, data, or external-side-effect changes also get an
+author-vendor-excluded pass through the structured delegate launcher. Do not
+repeat a review already performed on the identical complete diff.
 
 ## Model Selection
 
@@ -91,6 +136,8 @@ For reviewers:
 For fixes:
 
 - Dispatch fix subagents for every Specification Compliance Fail and for Critical and Important engineering findings. A failed specification verdict with only locally Minor findings still requires correction or explicit requirement-owner authorization and re-review; never record it as deferred Minor work. Record Engineering Standards Minor findings in the ledger and point the final whole-branch review at that list so it can triage what must be fixed before merge; a roll-up nobody reads is a silent discard.
+- A Specification Compliance Fail requires correction or explicit approval and
+  must never be treated as Minor.
 - Every fix dispatch carries the implementer contract: the fixer re-runs the tests covering its change and reports the covering test files, the command run, and the output. Name the covering tests in the dispatch; a one-line fix does not need the whole suite. Dispatch the re-review only once all three pieces of evidence are present.
 - If the final whole-branch review returns findings, dispatch one fix subagent with the complete findings list, not one fixer per finding; per-finding fixers each rebuild context and re-run suites, and a real session's fix wave run that way cost more than all its tasks combined.
 
@@ -98,13 +145,24 @@ For fixes:
 
 Everything you paste into a dispatch, and everything a subagent prints back, stays resident in your context for the rest of the session. Hand artifacts over as files: senior-engineer register (see using-megapowers, Communication), conclusion first, self-contained. `scripts/sdd-workspace` resolves the working-tree directory all of these artifacts live in.
 
+Each delegate has one report channel. For small reports, return the report
+directly. For bulky reports, write the report file and return only status plus
+its path. Do not duplicate claims and evidence across chat and file.
+
 - **Task brief:** `scripts/task-brief PLAN_FILE N` extracts the task's full text to a file and prints the path. The brief is the single source of requirements; exact values (numbers, magic strings, signatures, test cases) appear only there. The dispatch adds where the task fits in the project, the brief path introduced as the requirements to follow verbatim, interfaces and decisions from earlier tasks the brief cannot know, your resolution of any ambiguity you noticed in it, and the report path with its contract. Never hand a subagent the whole plan file.
-- **Report file:** named after the brief (task-N-brief.md pairs with task-N-report.md). The implementer writes the full report there and returns only status, commits, a one-line test summary, and concerns. Fix dispatches append their fix report to the same file; re-reviews read the updated file.
+- **Report file:** named after the brief (task-N-brief.md pairs with
+  task-N-report.md). For a bulky report, the implementer writes the full report
+  there and returns only status plus the path. Fixes append to the same file.
 - **Reviewer inputs:** the brief, the report, and the review package as three paths, plus the binding constraints. `scripts/review-package BASE HEAD` writes the commit list, stat summary, and full diff with context to one file and prints its path, so the reviewer reads everything in one call. The final review gets the same treatment with the branch's merge base (for example `git merge-base main HEAD`) as BASE.
 
 ## Durable Progress
 
 Conversation memory does not survive compaction; controllers that lost their place have re-dispatched entire completed task sequences, the single most expensive failure observed. The ledger at `.megapowers/sdd/progress.md` under the repo root is the recovery map.
+
+Roll the controller into a fresh context after 8 to 10 completed tasks, or
+earlier when another task would cross 80 percent of the context or cache
+budget. Persist the ledger first. Reserve the final 20 percent for integration,
+review, verification, and synthesis.
 
 - At skill start, read the ledger. Tasks marked complete there are done; never re-dispatch them. Resume at the first task not marked complete.
 - Before each dispatch, append `Task N: base <sha7> (in progress)` with the current short HEAD. The review step needs this exact BASE, and it otherwise lives only in volatile conversation memory.

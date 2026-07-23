@@ -68,11 +68,9 @@ jobs:
   plugin-validate:
     # Native Claude Code manifest validation: catches plugin/marketplace schema
     # drift our hand-rolled jq checks may miss (`--strict` promotes unrecognized-
-    # field warnings to errors). Advisory (continue-on-error) because the claude
-    # CLI's headless, no-auth behavior in CI is unverified; promote to a hard gate
-    # once a green run confirms it. @anthropic-ai/claude-code installs `claude`.
+    # field warnings to errors). This is a required release gate.
+    # @anthropic-ai/claude-code installs `claude`.
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6

@@ -9,9 +9,9 @@ license: MIT
 ## Overview
 
 A plan is a handoff artifact. Write it for a skilled engineer who has zero
-context for this codebase, does not know the toolset or problem domain, and
-must not need to ask anyone anything: exact files to touch, complete code,
-exact commands with expected output, docs worth checking. Use the
+context for this codebase and must not guess binding decisions. Give the
+outcome, owned files, dependencies, interfaces, acceptance oracle,
+verification commands, and relevant docs. Use the
 senior-engineer register (see using-megapowers, Communication): declarative,
 self-contained, readable by an agent with no conversation context.
 DRY. YAGNI. TDD.
@@ -60,12 +60,17 @@ code makes it pass, the pass is confirmed, a checkpoint marks the task
 boundary. Each step covers one action; a step bundling several actions
 obscures which one failed.
 
-**Commit cadence is the executor's policy, not a plan mandate.** Never bake
-an unconditional `git commit` into every task. Some workflows commit per
-task (subagent-driven-development does, by design; invoking it opts into
-that), others batch or leave committing to the human's direction. Write the
-checkpoint so it commits when the chosen workflow commits per task, not as
-an automatic side effect of finishing a step.
+Before decomposing tasks, create an acceptance evidence map. Copy each
+criterion verbatim and assign its implementation target, local oracle, required
+external, UX, or database oracle, and evidence owner. Do not replace an exact
+emulator, normal-user, published-release, or target-environment witness with a
+neighboring unit test.
+
+**Commit cadence is the executor's policy, not a plan mandate.** Selecting a
+workflow never grants permission to commit. Choosing subagent-driven
+development opts into per-task commits only when the user and repository
+already authorize them. Otherwise checkpoints persist through the ledger and
+working tree.
 
 The plan itself follows the communication register: no dash punctuation in
 the prose or template text you write (use colons or new sentences).
@@ -110,7 +115,9 @@ affected task not execution-ready until that condition is met.
 after Task N`, followed by one sentence explaining the dependency boundary.
 
 **Ownership:** List exact files or non-overlapping directory roots. Parallel
-tasks must not own the same path or a parent and child path.
+tasks must not own the same path or a parent and child path. Plans intended for
+recursive coordinator mode must pass subagent-driven-development's
+`scripts/ownership-preflight PLAN_FILE` before dispatch.
 
 **May decompose:** Write `Yes` only when a coordinator can split this task into
 independently testable children with disjoint ownership. Otherwise write `No`.
@@ -119,8 +126,10 @@ Shared interface changes, overlapping paths, and producer to consumer
 dependencies stay sequential. A child coordinator inherits its parent's
 ownership and cannot broaden it.
 
-**Files:** exact paths, grouped as Create, Modify (with line ranges), and
-Test.
+**Files:** exact paths, grouped as Create, Modify, and Test. Prefer symbols or
+section names over unstable line ranges. Include exact line ranges only when a
+subtle algorithm, protocol, or interface cannot be implemented reliably
+without them.
 
 **Interfaces:** what the task consumes from earlier tasks and produces for
 later ones, with exact function names, parameter and return types. A task's
@@ -133,24 +142,21 @@ compatible path, migrate moves every consumer while both paths work, and
 contract removes the old path only after migration is verified. Each stage
 must leave tests and deployment green for every supported mixed state.
 
-**Steps:** each carries its full content inline. The test step shows the
-test code. Verification steps give the exact command and the expected
-result, including the expected failure message on the red run. The
-implementation step shows the code. The checkpoint step commits only if the
-execution workflow commits per task, otherwise it defers to the executor's
-or human's commit policy.
+**Steps:** each names one observable outcome. State the failing behavior, the
+minimal implementation target, and the exact verification command with its
+expected result. Include code only for a subtle algorithm, protocol, fixture,
+or interface where prose would leave a binding decision unresolved. The
+checkpoint records progress and commits only when separate authorization
+already exists.
 
-## No Placeholders
+## No Placeholders or Binding Gaps
 
-Every step must contain the actual content the engineer needs. These are
-**plan failures**; do not write them:
+Every step contains the decisions the engineer needs. These are plan failures:
 - "TBD", "TODO", "implement later", "fill in details"
 - "Add appropriate error handling" / "add validation" / "handle edge cases"
-- "Write tests for the above" without the actual test code
-- "Similar to Task N" (repeat the code: the engineer may read tasks out of
-  order)
-- Steps that describe what to do without showing how (code steps require
-  code blocks)
+- "Write tests for the above" without naming behavior and an oracle
+- "Similar to Task N" when the dependency or interface remains implicit
+- A requirement with no owning task or verification command
 - References to types, functions, or methods not defined in any task
 
 ## Self-Review

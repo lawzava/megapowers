@@ -5,8 +5,8 @@
 # routes, stack picks, and published eval numbers age even when no one touches
 # the files. Each opinion-bearing file carries a "Last reviewed:"/"Last run:"
 # date; this script fails when any of them is older than its review window
-# (90 days by default, overridable per file; an explicit --max-age-days applies
-# to every entry). A monthly scheduled CI job runs it, so staleness surfaces as
+# (30 days by default, overridable per file; an explicit --max-age-days applies
+# to every entry). A weekly scheduled CI job runs it, so staleness surfaces as
 # a failed run instead of rotting silently. To clear a failure: re-review the
 # file's opinions (update or confirm them), then bump its date.
 #
@@ -19,7 +19,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 2
 
-DEFAULT_MAX_AGE=90
+DEFAULT_MAX_AGE=30
 MAX_AGE_DAYS=$DEFAULT_MAX_AGE
 FLAG_SET=0
 while [ $# -gt 0 ]; do

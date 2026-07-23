@@ -47,7 +47,14 @@ run_one() { # task|expected|fixarg|idx|out|model|template
   rm -rf "$rundir"; mkdir -p "$rundir"
   local work; work="$(mktemp -d "${TMPDIR:-/tmp}/trig.XXXXXX")" || return 1
   cp -r "$tpl" "$work/cfg"
-  "$HERE/fixtures/setup-project.sh" "$work/repo" $fixarg >/dev/null 2>&1
+  if ! "$HERE/fixtures/setup-project.sh" "$work/repo" $fixarg >/dev/null 2>&1; then
+    echo "setup failed: $task" > "$rundir/stderr.log"
+    jq -n --arg task "$task" --arg expected "$expected" --arg model "$model" --argjson idx "$idx" \
+      '{task:$task, expected:$expected, model:$model, idx:$idx, rc:1, run_status:"harness_error", phase:"setup"}' \
+      > "$rundir/meta.json"
+    rm -rf "$work"
+    return 1
+  fi
   local rc t0=$SECONDS
   ( cd "$work/repo" && CLAUDE_CONFIG_DIR="$work/cfg" timeout 480 claude -p "$(cat "$HERE/prompts/$task.txt")" \
       --model "$model" --max-turns 14 \
@@ -62,10 +69,13 @@ run_one() { # task|expected|fixarg|idx|out|model|template
     "$rundir/transcript.jsonl" > "$rundir/skills-invoked.txt" 2>/dev/null
   jq -n --arg task "$task" --arg expected "$expected" --arg model "$model" \
         --argjson idx "$idx" --argjson rc "$rc" --argjson secs "$((SECONDS - t0))" \
-        '{task:$task, expected:$expected, model:$model, idx:$idx, rc:$rc, seconds:$secs}' \
+        '{task:$task, expected:$expected, model:$model, idx:$idx, rc:$rc, seconds:$secs,
+          run_status:(if $rc == 0 then "completed" else "harness_error" end),
+          phase:"actor"}' \
         > "$rundir/meta.json"
   rm -rf "$work"
   echo "done: $task/run-$idx rc=$rc invoked=[$(paste -sd, "$rundir/skills-invoked.txt")]"
+  return "$rc"
 }
 
 if [ "${1:-}" = "--job" ]; then run_one "$2"; exit $?; fi

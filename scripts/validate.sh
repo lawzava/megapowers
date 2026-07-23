@@ -440,6 +440,10 @@ done < <(find scripts/tests -type f -name '*.test.sh' 2>/dev/null | sort)
 
 echo "== evals =="
 if [[ -d evals/scenarios ]]; then
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    if bash "$t" >/dev/null 2>&1; then ok "eval harness test $t"; else bad "eval harness test $t"; fi
+  done < <(find evals/tests evals/studies/tests -type f -name '*.test.sh' 2>/dev/null | sort)
   ev_bad=0; ev_n=0
   for sd in evals/scenarios/*/; do
     [[ -d $sd ]] || continue

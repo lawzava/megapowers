@@ -27,30 +27,29 @@ Read the plan and review it critically before executing anything. Raise
 concerns with your human partner first. Under an active autonomous-run
 charter at level `autonomous` or `on-the-loop`, resolve non-blocking concerns
 yourself, journal each resolution, and proceed; stop only for a real blocker.
-With no open concerns, create todos for the plan's tasks and start.
+With no open concerns, declare one progress surface, the plan checkboxes or a
+ledger, and start. Do not duplicate the plan into conversational todos.
 
 Execute tasks top to bottom. The plan is the specification: follow its steps,
 run its verifications as written, and invoke any skills it names. A task is
 complete only after its verification passes, and its completion is persisted
-in the same step: the todo list, the plan file's checkbox, and the ledger
-(see Durable Progress).
+in the declared progress surface.
 
 ## Durable Progress
 
 A long inline execution is as exposed to compaction and crashes as any other
-run. Conversation memory and in-context todos are not the record; the plan's
-checkboxes and the ledger are.
+run. Conversation memory and in-context todos are not the record. Use plan
+checkboxes for a short run or the ledger for a long run, not both.
 
-- At start, read the plan's checkboxes and, if present, the ledger at
+- At start, read the selected progress surface. A long run uses the ledger at
   `.megapowers/sdd/progress.md` under the repo root (the same self-ignoring
   scratch directory subagent-driven-development uses; if `.megapowers/sdd/`
   does not exist, create it with a `*` `.gitignore` inside so the ledger is
   never committed). Anything checked off or marked complete is done. Resume
   at the first unchecked task; never re-run completed work.
-- As each task's verification passes, flip its checkbox in the plan file
-  (`- [ ]` to `- [x]`) and append `Task N: complete (<sha7 if you committed>)`
-  to the ledger.
-- After compaction, trust the plan's checkboxes, the ledger, and `git log`
+- As each task's verification passes, either flip its plan checkbox or append
+  `Task N: complete (<sha7 if an authorized commit exists>)` to the ledger.
+- After compaction, trust the selected progress surface and `git log`
   over your own recollection.
 
 ## Blockers
@@ -66,9 +65,9 @@ blocked rather than asking mid-run.
 
 ## Completion
 
-After all tasks are complete and verified, get the whole branch reviewed via
-megapowers:requesting-code-review; the inline path gets the same review
-discipline as the subagent path. Then use
+After all tasks are complete and verified, apply the risk-tier policy from
+megapowers:requesting-code-review. Low-risk work may finish on tests and
+self-review; medium and high-risk branches get an independent review. Then use
 megapowers:finishing-a-development-branch to verify tests, present the
 integration options, and execute the choice.
 

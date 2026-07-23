@@ -30,6 +30,33 @@ Before claiming any status or expressing satisfaction, work through these steps 
 
 Each claim has its own oracle. Tests need the test run, a build needs the build command, a bug fix needs the original symptom exercised, a regression test must fail with the fix reverted, and an agent's success report needs independent verification of the actual changes. Confidence, a partial check, or a passing linter is not that oracle.
 
+## Acceptance Evidence Map
+
+Copy every acceptance criterion verbatim into one evidence map:
+
+`criterion | implementation target | local oracle | external, UX, or database oracle | earned state | evidence`
+
+Never weaken or paraphrase a criterion in the map. Record one of these states:
+
+- **Implemented:** the requested change exists.
+- **Locally verified:** the canonical local oracle passes.
+- **Externally verified:** the real target environment and every required
+  normal-user, external-service, or database witness pass.
+
+Claim only the highest state earned. A local test never silently earns external
+verification.
+
+For user-facing behavior, automated tests do not replace a normal-user witness.
+Exercise the supported entry point with ordinary permissions and record
+discoverability, the interaction, the visible result, and the result's
+provenance.
+
+For external database-backed behavior, record each cutpoint separately:
+caller request, service receipt and decision, target-environment database write
+or read, outward response, and user-visible result. Record the environment,
+correlation or record key, and observed evidence at every cutpoint. A missing
+required cutpoint leaves external verification pending or blocked.
+
 ## Unavailable Requirements
 
 If a required dependency, tool, or input is unavailable, say so explicitly — a completion claim that hides a missing requirement is a false claim. A workaround or fallback never silently satisfies the requirement: disclose the substitution and report the requirement itself as unmet (blocked or partial) until the human accepts the substitute.

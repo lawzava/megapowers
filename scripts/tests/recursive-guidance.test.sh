@@ -43,7 +43,7 @@ for path in "${runtime_paths[@]}"; do
   [[ ! -e "$ROOT/$path" ]] || fail "runtime artifact still ships: $path"
 done
 
-expected_scripts=$'review-package\nsdd-workspace\ntask-brief'
+expected_scripts=$'ownership-preflight\nreview-package\nsdd-workspace\ntask-brief\ntests/ownership-preflight.test.sh'
 actual_scripts=$(
   cd "$ROOT/plugins/megapowers/skills/subagent-driven-development/scripts" || exit 1
   find . -type f -print | sed 's#^\./##' | sort
@@ -111,6 +111,7 @@ must_have "$SDD" 'Only the top-level lead performs any authorized Git action'
 must_have "$SDD" 'fork_turns = "none"'
 must_have "$SDD" 'nested Agent calls'
 must_have "$SDD" 'agent teams because teams cannot nest'
+must_have "$SDD" 'scripts/ownership-preflight PLAN_FILE'
 
 must_have "$PLANS" '**Parallel safety:**'
 must_have "$PLANS" '**Ownership:**'
@@ -124,7 +125,8 @@ must_have "$CLAUDE" 'Do not create worktrees for this mode.'
 must_have "$CLAUDE" 'Children must not perform Git index or ref operations.'
 must_have "$CLAUDE" 'Each coordinator waits for its direct children, verifies their combined edits, and returns one synthesized subtree result to its parent.'
 must_have "$PRIMITIVES" 'Recursive coordinator mode is guidance over native nested subagents.'
-must_have "$SUPPORT" 'No Megapowers runtime, registry, or worktree manager participates.'
+must_have "$SUPPORT" 'Megapowers runs a plan preflight before dispatch'
+must_have "$SUPPORT" 'no registry, scheduler, or worktree manager participates.'
 must_have "$README" 'native recursive coordinator guidance for Codex and Claude Code'
 must_have "$AGENT_INSTALL" 'Recursive coordinator mode is the explicit shared-checkout exception; do not create worktrees for it.'
 must_have "$SETUP" 'Recursive coordinator mode is the explicit shared-checkout exception; do not create worktrees for it.'

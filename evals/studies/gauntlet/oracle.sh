@@ -67,8 +67,8 @@ for meta in "$DIR"/*/*/run-*/meta.json; do
     *)                malias="$(jq -r .model "$meta" | tr -d '\n' | tr -c '[:alnum:].-' '-')" ;;
   esac
   tr="$rundir/transcript.jsonl"; msg="$rundir/final-message.txt"
-  if [ "$rc" != "0" ]; then
-    printf '%s\t%s\tINDETERMINATE\t-\t-\t-\t-\t%s\n' "$malias" "$mode" "$task" >> "$rows"; continue
+  if [ "$rc" != "0" ] || [ "$(jq -r '.run_status // "completed"' "$meta")" = "harness_error" ]; then
+    printf '%s\t%s\tHARNESS_ERROR\t-\t-\t-\t-\t%s\n' "$malias" "$mode" "$task" >> "$rows"; continue
   fi
 
   # tdd sub-oracle (same event logic as the process-behavior tdd probes)
@@ -146,5 +146,7 @@ echo '```'
 awk -F'\t' '$3=="OK"{k=$1" "$2" ["$4"/"$5"/"$6"/"$7"] task-"$8} {c[k]++} END{for(x in c) if (x!="") print c[x]"\t"x}' "$rows" | sort -k2
 echo '```'
 ind=$(awk -F'\t' '$3=="INDETERMINATE"{c++} END{print c+0}' "$rows")
+harness=$(awk -F'\t' '$3=="HARNESS_ERROR"{c++} END{print c+0}' "$rows")
 echo
 echo "_indeterminate runs excluded: ${ind}_"
+echo "_harness errors excluded from rates and treated as study failures: ${harness}_"

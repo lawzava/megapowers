@@ -2,13 +2,13 @@ name: freshness
 
 # The repo's opinions (model IDs, delegate routes, stack picks, published eval
 # numbers) rot on a clock, not on a commit — so this runs on a schedule, not on
-# push. A failed monthly run means a dated file is overdue for re-review; fix
+# push. A failed weekly run means a dated file is overdue for re-review; fix
 # it by re-reviewing the opinions and bumping the file's date line.
 # validate.sh separately guards the date-line FORMAT on every push.
 
 on:
   schedule:
-    - cron: '17 6 1 * *' # monthly, 1st at 06:17 UTC
+    - cron: '17 6 * * 1' # weekly, Monday at 06:17 UTC
   workflow_dispatch:
 
 permissions:
@@ -19,5 +19,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Dated opinions reviewed within 90 days
+      - name: Dated opinions reviewed within 30 days
         run: scripts/check-freshness.sh

@@ -20,6 +20,16 @@ if [ -f "$dir/status" ]; then
   echo "## Status"; echo '```'; cat "$dir/status"; echo '```'; echo
 fi
 
+if [ -f "$dir/evidence.md" ]; then
+  echo "## Acceptance evidence"
+  sed '1{/^# Acceptance evidence$/d;}' "$dir/evidence.md"
+  echo
+  if grep -qE '\|[[:space:]]*(pending|blocked)[[:space:]]*\|' "$dir/evidence.md"; then
+    echo "_Missing required evidence remains pending or blocked._"
+    echo
+  fi
+fi
+
 if [ -f "$jr" ]; then
   # Parse by field position (fields split on " | "): $2=kind, $3="conf=X". This is
   # robust to a stray "|" or "conf=" inside a message — the kind is always field 2.

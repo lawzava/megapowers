@@ -27,7 +27,9 @@ for meta in "$DIR"/*/run-*/meta.json; do
   tool_uses="$(jq -r 'select(.type=="assistant") | .message.content[]?
                       | select(.type=="tool_use") | .name' \
                "$rundir/transcript.jsonl" 2>/dev/null | wc -l)"
-  if [ ! -s "$rundir/transcript.jsonl" ]; then verdict=INDETERMINATE; detail="no-transcript(rc=$rc)"
+  if [ "$(jq -r '.run_status // "completed"' "$meta")" = "harness_error" ]; then
+    verdict=HARNESS_ERROR; detail="$(jq -r '(.phase // "actor") + "-error(rc=" + (.rc|tostring) + ")"' "$meta")"
+  elif [ ! -s "$rundir/transcript.jsonl" ]; then verdict=INDETERMINATE; detail="no-transcript(rc=$rc)"
   elif ! jq empty "$rundir/transcript.jsonl" >/dev/null 2>&1; then
     verdict=INDETERMINATE; detail="bad-transcript(rc=$rc)"
   elif [ "$rc" != "0" ] && [ "$tool_uses" -eq 0 ]; then
@@ -60,7 +62,7 @@ echo "| task | expected skill | recall / quiet-rate (n) |"
 echo "|---|---|---|"
 for task in $(cut -f1 "$rows" | sort -u); do
   exp="$(awk -F'\t' -v t="$task" '$1==t{print $2; exit}' "$rows")"
-  n=$(awk -F'\t' -v t="$task" '$1==t && $3!="INDETERMINATE"{c++} END{print c+0}' "$rows")
+  n=$(awk -F'\t' -v t="$task" '$1==t && $3!="INDETERMINATE" && $3!="HARNESS_ERROR"{c++} END{print c+0}' "$rows")
   if [ "$exp" != "-" ]; then
     hits=$(awk -F'\t' -v t="$task" '$1==t && $3=="HIT"{c++} END{print c+0}' "$rows")
     awk -v t="$task" -v e="$exp" -v h="$hits" -v n="$n" \
@@ -77,5 +79,7 @@ echo '```'
 awk -F'\t' '{k=$1" "$3" ["$4"]"} {c[k]++} END{for(x in c) print c[x]"\t"x}' "$rows" | sort -k2
 echo '```'
 ind=$(awk -F'\t' '$3=="INDETERMINATE"{c++} END{print c+0}' "$rows")
+harness=$(awk -F'\t' '$3=="HARNESS_ERROR"{c++} END{print c+0}' "$rows")
 echo
 echo "_indeterminate runs excluded: ${ind}_"
+echo "_harness errors excluded from rates and treated as study failures: ${harness}_"

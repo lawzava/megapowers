@@ -29,7 +29,11 @@ If you wrote implementation code before the test, delete it and start fresh from
 1. Red: write one minimal failing test that shows what should happen. One behavior per test, a name that describes that behavior, real code rather than mocks wherever possible. A test that exercises a mock proves only the mock.
 2. Verify red: run the test and confirm it fails for the expected reason, because the feature is missing. If it passes, it is testing existing behavior; fix the test. If it errors (typo, missing import), fix the error and re-run until it fails cleanly. Don't skip this step.
 3. Green: write the simplest code that makes the test pass. No speculative options, no features the test doesn't demand, and no tidying of surrounding code the task didn't ask for.
-4. Verify green: confirm the new test passes with clean output and the full suite still passes. Run the project's canonical test entrypoint (`./test.sh`, `make test`, `pytest`/`unittest discover`), not only the file you wrote. A green module over a red suite is how pre-existing failures get claimed as clean. If the test fails, fix the code, not the test. If other tests fail, fix them now.
+4. Verify green with the smallest focused test that proves the current
+   behavior. Run the project's canonical suite at task, milestone, or branch
+   boundaries and before a completion claim, not after every red-green edit. A
+   focused pass is iteration evidence, not whole-project closure. If the test
+   fails, fix the code, not the test.
 5. Refactor: remove duplication, improve names, extract helpers, staying green throughout. Add no behavior, and leave code the change didn't touch alone; a bug fix does not need surrounding cleanup.
 6. Repeat: next failing test for the next behavior.
 

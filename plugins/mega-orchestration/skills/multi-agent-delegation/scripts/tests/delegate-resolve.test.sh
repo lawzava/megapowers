@@ -14,7 +14,7 @@ mkdir -p "$TMP/xdg" "$TMP/home" "$TMP/proj"
 
 pass=0; fail=0
 check() {  # $1=desc $2=want-substring $3=got
-  if printf '%s' "$3" | grep -qF "$2"; then pass=$((pass+1)); else fail=$((fail+1)); printf '  FAIL %s\n    want: %s\n    got:  %s\n' "$1" "$2" "$3"; fi
+  if printf '%s' "$3" | grep -qF -- "$2"; then pass=$((pass+1)); else fail=$((fail+1)); printf '  FAIL %s\n    want: %s\n    got:  %s\n' "$1" "$2" "$3"; fi
 }
 check_exit() {  # $1=desc $2=want-code $3=got-code
   if [ "$2" = "$3" ]; then pass=$((pass+1)); else fail=$((fail+1)); printf '  FAIL %s (want exit %s, got %s)\n' "$1" "$2" "$3"; fi
@@ -50,9 +50,9 @@ cat > "$TMP/proj/.megapowers/delegates.toml" <<'EOF'
 [providers.codex]
 binary = "sh"
 [providers.codex.tiers]
-frontier = "project-override-model"
+strong = "project-override-model"
 EOF
-out="$(cd "$TMP/proj" && "$DR" code_review 2>&1)"; rc=$?
+out="$(cd "$TMP/proj" && "$DR" code_review --author-vendor anthropic 2>&1)"; rc=$?
 check_exit "project layer resolves" 0 "$rc"
 check "project layer overrides model" "MODEL=project-override-model" "$out"
 check "shipped layer still supplies vendor" "VENDOR=openai" "$out"
@@ -70,7 +70,7 @@ code_review = "codex"
 [fallbacks]
 code_review = []
 EOF
-out="$(cd "$TMP/emptyfallback" && "$DR" code_review --exclude codex 2>&1)"; rc=$?
+out="$(cd "$TMP/emptyfallback" && "$DR" code_review --author-vendor other --exclude codex 2>&1)"; rc=$?
 check_exit "empty project fallback array replaces shipped chain" 3 "$rc"
 
 # User layer: wins over shipped, loses to project.
@@ -79,11 +79,11 @@ cat > "$XDG_CONFIG_HOME/megapowers/delegates.toml" <<'EOF'
 [providers.codex]
 binary = "sh"
 [providers.codex.tiers]
-frontier = "user-override-model"
+strong = "user-override-model"
 EOF
-out="$(cd "$TMP/home" && "$DR" code_review 2>&1)"
+out="$(cd "$TMP/home" && "$DR" code_review --author-vendor anthropic 2>&1)"
 check "user layer overrides shipped" "MODEL=user-override-model" "$out"
-out="$(cd "$TMP/proj" && "$DR" code_review 2>&1)"
+out="$(cd "$TMP/proj" && "$DR" code_review --author-vendor anthropic 2>&1)"
 check "project layer beats user layer" "MODEL=project-override-model" "$out"
 
 # --where lists active layers, highest priority first.
@@ -275,9 +275,9 @@ cat > "$XDG_CONFIG_HOME/megapowers/models.toml" <<'EOF'
 [providers.codex]
 binary = "sh"
 [providers.codex.tiers]
-frontier = "user-catalog-model"
+strong = "user-catalog-model"
 EOF
-out="$(cd "$TMP/home" && "$DR" code_review 2>&1)"
+out="$(cd "$TMP/home" && "$DR" code_review --author-vendor anthropic 2>&1)"
 check "user catalog layer overrides shipped tier map" "MODEL=user-catalog-model" "$out"
 rm -f "$XDG_CONFIG_HOME/megapowers/models.toml"
 
@@ -308,7 +308,7 @@ binary = "sh"
 binary = "sh"
 EOF
 for r in plan_review code_review; do
-  out="$(cd "$TMP/codexlead" && "$DR" "$r" --exclude-lead 2>&1)"; rc=$?
+  out="$(cd "$TMP/codexlead" && "$DR" "$r" --author-vendor openai 2>&1)"; rc=$?
   check_exit "$r --exclude-lead resolves under codex lead" 0 "$rc"
   check "$r falls back cross-vendor under codex lead" "PROVIDER=claude" "$out"
 done
@@ -326,7 +326,7 @@ binary = "sh"
 binary = "sh"
 EOF
 for r in plan_review verify; do
-  out="$(cd "$TMP/claudelead" && "$DR" "$r" --exclude-lead 2>&1)"; rc=$?
+  out="$(cd "$TMP/claudelead" && "$DR" "$r" --author-vendor anthropic 2>&1)"; rc=$?
   check_exit "$r --exclude-lead resolves under claude lead" 0 "$rc"
   check "$r falls back cross-vendor under claude lead" "PROVIDER=codex" "$out"
 done
@@ -459,6 +459,77 @@ check "--check names the offending effort" "max" "$out"
 # Shipped catalog carries the efforts scale.
 out="$(DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" "$DR" --check 2>&1)"; rc=$?
 check_exit "--check shipped files with efforts exits 0" 0 "$rc"
+
+echo "== v0.5 role-policy tests =="
+
+# The author, not the catalog lead, defines independence. With a Codex lead and
+# an Anthropic-authored artifact, verification must select OpenAI.
+mkdir -p "$TMP/author-policy/.megapowers"
+cat > "$TMP/author-policy/.megapowers/models.toml" <<'EOF'
+[providers.codex]
+binary = "sh"
+[providers.claude]
+binary = "sh"
+EOF
+cat > "$TMP/author-policy/.megapowers/delegates.toml" <<'EOF'
+[drivers.playwright]
+binary = "sh"
+EOF
+out="$(cd "$TMP/author-policy" && "$DR" verify --author-vendor anthropic 2>&1)"; rc=$?
+check_exit "author-vendor route resolves" 0 "$rc"
+check "Anthropic author selects OpenAI verifier" "VENDOR=openai" "$out"
+check "author vendor is emitted" "AUTHOR_VENDORS=anthropic" "$out"
+
+out="$(cd "$TMP/author-policy" && "$DR" verify --exclude-lead 2>&1)"; rc=$?
+check_exit "--exclude-lead alone does not satisfy author policy" 2 "$rc"
+check "missing author policy is explicit" "--author-vendor" "$out"
+
+out="$(cd "$TMP/author-policy" && "$DR" judge --author-vendor openai --author-vendor anthropic 2>&1)"; rc=$?
+check_exit "all author vendors excluded leaves no judge" 3 "$rc"
+
+out="$(cd "$TMP/author-policy" && "$DR" small_impl 2>&1)"; rc=$?
+check_exit "small_impl resolves with role policy" 0 "$rc"
+check "small_impl selects strong model" "MODEL=gpt-5.6-terra" "$out"
+check "small_impl tier is strong" "TIER=strong" "$out"
+check "small_impl effort is high" "EFFORT=high" "$out"
+
+# A v2 provider cannot bypass the ship floor by omitting or inventing a tier.
+cat > "$TMP/missing-tier.toml" <<'EOF'
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[efforts]
+scale = ["low", "medium", "high"]
+[providers.alpha]
+vendor = "acme"
+binary = "sh"
+channel = "cli"
+model = "alpha-legacy"
+effort = "high"
+[defaults]
+floor = "strong:low"
+[roles]
+code_review = "alpha"
+[role_tiers]
+code_review = "strong"
+[role_efforts]
+code_review = "high"
+EOF
+out="$("$DR" code_review --config "$TMP/missing-tier.toml" 2>&1)"; rc=$?
+check_exit "v2 provider without requested tier mapping fails closed" 2 "$rc"
+
+sed 's/code_review = "strong"/code_review = "unknown"/' "$TMP/missing-tier.toml" > "$TMP/unknown-role-tier.toml"
+out="$("$DR" code_review --config "$TMP/unknown-role-tier.toml" 2>&1)"; rc=$?
+check_exit "unknown role tier exits 2" 2 "$rc"
+
+# Visual verification resolves a model judge plus a separate Playwright driver.
+out="$(cd "$TMP/author-policy" && "$DR" visual_verify --author-vendor openai 2>&1)"; rc=$?
+check_exit "visual_verify resolves" 0 "$rc"
+check "visual verifier is a model provider" "PROVIDER=claude" "$out"
+check "visual verifier has a model" "MODEL=claude-fable-5" "$out"
+check "visual verifier has a tier" "TIER=frontier" "$out"
+check "visual verifier has an effort" "EFFORT=high" "$out"
+check "visual verifier carries Playwright driver" "DRIVER=playwright" "$out"
+check "visual verifier carries resolved driver binary" "DRIVER_BINARY=sh" "$out"
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

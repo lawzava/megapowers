@@ -1,66 +1,62 @@
 #!/usr/bin/env bash
-# Linked-worktree test: in a linked worktree, `.git` is a FILE (a gitdir pointer),
-# not a directory. The once-per-diff-state sentinel must be resolved through
-# `git rev-parse --git-path` so it lands in the worktree's own git dir
-# (.git/worktrees/<name>/...), never at a literal ".git/<file>" path that would
-# either miss the real gitdir or corrupt the gitdir-pointer file itself.
-# Run: plugins/mega-orchestration/hooks/tests/delegate-nudge-worktree.test.sh
+# A review receipt is scoped to the linked worktree's gitdir.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$HERE/../delegate-nudge.sh"
+DIFF_ID="$HERE/../../skills/multi-agent-delegation/scripts/review-diff-id"
 TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 cd "$TMP" || exit 1
 
 git init -q main
 cd main || exit 1
-git config user.email t@t; git config user.name t; git config commit.gpgsign false
+git config user.email test@example.com
+git config user.name test
+git config commit.gpgsign false
 printf 'func handler() {}\n' > svc.go
 git add svc.go
-git commit -q -m init
-git branch wt-branch >/dev/null 2>&1
+git commit -qm init
+git branch wt-branch
 git worktree add -q ../wt wt-branch
 
-pass=0; fail=0
-
+pass=0
+fail=0
 cd "$TMP/wt" || exit 1
-if [ -f .git ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "  FAIL sanity: worktree .git should be a file, not a directory"; fi
+[ -f .git ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL linked worktree .git is not a file"; }
 
-printf 'func handler() { billing() }\n' > svc.go   # risky, uncommitted
+printf 'func handler() { billing() }\n' > svc.go
 TR="$TMP/wt/transcript.jsonl"
 : > "$TR"
 input="$(printf '{"stop_hook_active":false,"transcript_path":"%s"}' "$TR")"
 
-echo "== delegate-nudge linked-worktree tests =="
+echo "== delegate-nudge linked-worktree receipt tests =="
+out="$(printf '%s' "$input" | bash "$HOOK" 2>/dev/null)"
+printf '%s' "$out" | grep -q '"decision":"block"' && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL unreviewed worktree diff did not block"; }
 
-out1="$(printf '%s' "$input" | bash "$HOOK" 2>/dev/null)"
-if printf '%s' "$out1" | grep -q '"decision":"block"'; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "  FAIL first stop on risky diff in worktree should nudge"; fi
-
-sentinel="$(git rev-parse --git-path megapowers-delegate-nudge-seen)"
-case "$sentinel" in
+receipt="$(git rev-parse --git-path megapowers-review-receipt.json)"
+case "$receipt" in
   */worktrees/*) pass=$((pass + 1)) ;;
-  *) fail=$((fail + 1)); printf '  FAIL sentinel path not under a per-worktree gitdir: %s\n' "$sentinel" ;;
+  *) fail=$((fail + 1)); printf '  FAIL receipt path is not worktree-local: %s\n' "$receipt" ;;
 esac
-if [ -f "$sentinel" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "  FAIL sentinel file was not written"; fi
+id="$("$DIFF_ID")"
+jq -cn --arg id "$id" '{
+  schema:"megapowers.review-receipt.v1",
+  role:"verify",
+  subject:{kind:"worktree-diff",artifact:".",id:$id,claim:"billing is correct"},
+  author_vendors:["openai"],
+  reviewer:{provider:"claude",vendor:"anthropic",model:"review",tier:"frontier",effort:"high"},
+  independent:true,
+  result:{verdict:"approve",findings:[],next_steps:[],evidence:{commands:[],screenshots:[]}},
+  evidence:{commands:[],screenshots:[]},
+  created_at:"2026-07-23T00:00:00Z"
+}' > "$receipt"
 
-# The main worktree's .git must be untouched (still a real directory, not a file).
-if [ -d "$TMP/main/.git" ] && [ ! -f "$TMP/main/.git/megapowers-delegate-nudge-seen" ]; then
-  pass=$((pass + 1))
-else
-  fail=$((fail + 1)); echo "  FAIL main repo's .git dir was affected by the worktree's sentinel"
-fi
+[ -f "$receipt" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL receipt was not written"; }
+[ ! -f "$TMP/main/.git/megapowers-review-receipt.json" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL receipt leaked into main gitdir"; }
+grep -q '^gitdir:' "$TMP/wt/.git" && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL .git pointer corrupted"; }
 
-# The linked worktree's own .git file must still be the plain gitdir pointer,
-# not have been overwritten by the sentinel write.
-if grep -q '^gitdir:' "$TMP/wt/.git" 2>/dev/null; then
-  pass=$((pass + 1))
-else
-  fail=$((fail + 1)); echo "  FAIL worktree's .git pointer file was corrupted"
-fi
-
-out2="$(printf '%s' "$input" | bash "$HOOK" 2>/dev/null)"
-if printf '%s' "$out2" | grep -q '"decision":"block"'; then fail=$((fail + 1)); echo "  FAIL second stop, SAME risky diff in worktree, should not re-nudge"; else pass=$((pass + 1)); fi
+out="$(printf '%s' "$input" | bash "$HOOK" 2>/dev/null)"
+[ -z "$out" ] && pass=$((pass + 1)) || { fail=$((fail + 1)); echo "  FAIL valid worktree-local receipt did not allow"; }
 
 echo "== $pass passed, $fail failed =="
-cd "$TMP" || true
-rm -rf "$TMP"
 [ "$fail" -eq 0 ]

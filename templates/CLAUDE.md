@@ -33,8 +33,9 @@ megapowers SessionStart hook runs hooks/render-model-catalog), so model and tier
 choices need no skill invocation. Model updates go in an override layer, which
 survives plugin updates. This file assumes Claude leads: if the shipped
 catalog's `[lead]` declares another provider, set `[lead] provider = "claude"`
-in an override layer so `--exclude-lead` and the cross-vendor chains route
-away from the actual author. The catalog declares who leads, the tier scale, each
+in an override layer. Independent reviews declare each artifact author's
+actual vendor with `--author-vendor`; lead identity is not authorship. The
+catalog declares who leads, the tier scale, each
 provider's tier map, and the floor; delegates.toml maps roles to providers and
 defines how each delegate runs. Resolve routes with `scripts/delegate-resolve
 <role>`; the delegation skill and the delegate agents read the same tables.

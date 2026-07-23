@@ -45,7 +45,19 @@ claim of effect needs a run behind it.
 Write the `## X.Y.Z - ` CHANGELOG.md entry, then run `scripts/release.sh X.Y.Z`.
 It stamps every plugin manifest and the public install pins in README.md,
 docs/agent-install.md, and docs/setup.md; `scripts/validate.sh` checks the
-result against the changelog.
+result against the changelog. After the signed tag is public, run the strict
+fresh-install gate against that exact remote ref:
+
+```bash
+evals/studies/install-smoke/run-smoke.sh \
+  --out "${TMPDIR:-/tmp}/megapowers-install-X.Y.Z" \
+  --source lawzava/megapowers --ref vX.Y.Z --version X.Y.Z \
+  --harnesses claude,codex
+```
+
+This post-publish gate must have no FAIL or SKIP result. It records the fetched
+commit in `source.json`; do not substitute a local checkout for release
+certification.
 
 ## What gets merged
 

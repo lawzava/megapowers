@@ -22,7 +22,14 @@ run_one() { # model|mode|idx|out|run_timeout
   rm -rf "$rundir"; mkdir -p "$rundir"
   local work; work="$(mktemp -d "${TMPDIR:-/tmp}/gaunt.XXXXXX")" || return 1
   local repo="$work/repo"
-  "$HERE/fixtures/setup-gauntlet.sh" "$repo" >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
+  if ! "$HERE/fixtures/setup-gauntlet.sh" "$repo" >/dev/null 2>&1; then
+    echo "setup failed: gauntlet" > "$rundir/stderr.log"
+    jq -n --arg model "$model" --arg agent "$agent" --arg mode "$mode" --argjson idx "$idx" \
+      '{model:$model, agent:$agent, mode:$mode, idx:$idx, rc:1, run_status:"harness_error", phase:"setup", task:"UNKNOWN"}' \
+      > "$rundir/meta.json"
+    rm -rf "$work"
+    return 1
+  fi
   git -C "$repo" rev-list --count --all > "$rundir/baseline-commits.txt"
 
   local t0=$SECONDS rc=0
@@ -38,10 +45,13 @@ run_one() { # model|mode|idx|out|run_timeout
   ( cd "$repo" && timeout 60 python3 -c 'from wordbench import word_freq; assert word_freq("a B a") == {"a": 2, "b": 1}' >/dev/null 2>&1 ) && task=PASS
   jq -n --arg model "$model" --arg agent "$agent" --arg mode "$mode" --arg task "$task" \
         --argjson idx "$idx" --argjson rc "$rc" --argjson secs "$((SECONDS - t0))" \
-        '{model:$model, agent:$agent, mode:$mode, idx:$idx, rc:$rc, seconds:$secs, task:$task}' \
+        '{model:$model, agent:$agent, mode:$mode, idx:$idx, rc:$rc, seconds:$secs, task:$task,
+          run_status:(if $rc == 0 then "completed" else "harness_error" end),
+          phase:"actor"}' \
         > "$rundir/meta.json"
   rm -rf "$work"
   echo "done: $malias/$mode/run-$idx rc=$rc task=$task"
+  return "$rc"
 }
 
 if [ "${1:-}" = "--job" ]; then run_one "$2"; exit $?; fi

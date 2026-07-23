@@ -9,33 +9,30 @@ If dispatched as a subagent for a specific task, ignore this skill and proceed.
 ## The Core Rule
 
 Invoke any relevant or requested skill before your first response or action,
-including clarifying questions, exploring code, or reading files. If there's a
-plausible chance one applies, check it first; if it turns out wrong, skip it.
-Simple-looking tasks are where skills get skipped, and memory drifts: open the
-skill, don't recall it. Before entering plan mode, brainstorm first.
+including clarifying questions or code reads. If one plausibly applies, open it;
+do not rely on memory. Before entering plan mode, brainstorm first.
 
-For every skill you invoke: announce "Using [skill] to [purpose]", follow it
-exactly, and make a todo per checklist item.
+Announce the outer workflow once, with its purpose and route. Nested skills are
+internal steps and need no separate announcement unless the route materially
+changes. Do not expand skill checklists or plan checkboxes into duplicate
+todos. Use one durable progress surface for work that needs one.
 
 ## Skill Priority
 
-Process skills set the approach, then implementation skills carry it out:
-"let's build X" starts with brainstorming, "fix this bug" with
-systematic-debugging. For structuring non-trivial work,
-mega-orchestration:orchestrating is the decision root when that plugin is
-installed.
+Process skills set the approach. If scope, area, oracle, and risk are clear,
+take the scoped fast path through test-driven development. Ambiguous features
+start with brainstorming; unknown failures start with systematic-debugging.
+For non-trivial structure, use mega-orchestration:orchestrating when installed.
 
 ## Communication
 
 Senior engineer's register for anything a human or agent reads:
 
-- Lead with the conclusion; detail follows, by importance.
-- Short declarative sentences. No filler, no hedging, no drama.
-- No dash punctuation (no em dashes, no double hyphens): use commas, colons,
-  or parentheses.
-- Enumerables: a short list or table, not a paragraph.
-- Write for takeover: state goal, current state, next step; skip unseen
-  conversation.
+- Lead with the conclusion, then important detail.
+- Use short declarative sentences, no filler or drama.
+- No dash punctuation.
+- For takeover, state goal, current state, and next step. Use a short list or
+  table for enumerables.
 
 ## Platform Adaptation
 

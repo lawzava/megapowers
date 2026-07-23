@@ -30,7 +30,7 @@ Full install, update, verification, and uninstall instructions are in
 [`docs/agent-install.md`](./docs/agent-install.md), then give it this prompt:
 
 > Install megapowers on this machine by fetching and following
-> https://raw.githubusercontent.com/lawzava/megapowers/v0.4.1/docs/agent-install.md
+> https://raw.githubusercontent.com/lawzava/megapowers/v0.5.0/docs/agent-install.md
 
 The guide asks before changing permissions or settings.
 
@@ -136,7 +136,9 @@ The main edit points are:
 
 `scripts/validate.sh` checks manifests, portable skill frontmatter, hook
 wiring, shell scripts, security markers, documentation consistency, and the
-deterministic eval scenarios.
+deterministic eval scenarios. Release certification additionally runs the
+strict exact-tag fresh-install study documented in
+[`evals/studies/install-smoke/`](./evals/studies/install-smoke/).
 
 ## Relationship to Superpowers
 

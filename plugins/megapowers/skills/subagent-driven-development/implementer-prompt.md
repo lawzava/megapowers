@@ -35,7 +35,7 @@ Subagent (general-purpose):
     1. Implement exactly what the task specifies
     2. Write tests (following TDD if task says to)
     3. Verify implementation works
-    4. Commit your work
+    4. Commit only when this brief explicitly says existing authorization permits it
     5. Self-review (see below)
     6. Report back
 
@@ -46,7 +46,7 @@ Subagent (general-purpose):
     assumptions.
 
     While iterating, run the focused test for what you're changing; run the
-    full suite once before committing, not after every edit.
+    canonical suite once at the task boundary, not after every edit.
 
     ## Code Organization
 
@@ -123,12 +123,8 @@ Subagent (general-purpose):
     - Self-review findings (if any)
     - Any issues or concerns
 
-    Then report back with only (under 15 lines — the detail lives in the
-    report file):
+    Then report back with only:
     - **Status:** DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
-    - Commits created (short SHA + subject)
-    - One-line test summary (e.g. "14/14 passing, output pristine")
-    - Your concerns, if any
     - The report file path
 
     If BLOCKED or NEEDS_CONTEXT, put the specifics in the final message

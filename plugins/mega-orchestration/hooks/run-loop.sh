@@ -1,51 +1,78 @@
 #!/usr/bin/env bash
-# Stop-hook loop driver for autonomous-run (Claude Code only): if this session
-# is working an active run (.megapowers/run/<id>/ with a live STATE) and the
-# session tries to stop, block once and point at the next unmet milestone.
-# The discipline lives in the autonomous-run skill; this is an accelerator.
-# Fail-open: any error/uncertainty -> allow (exit 0). Self-suppressing via
-# stop_hook_active. A run only stops reading "active" through honest state:
-# journal a blocked/paused/result entry and re-derive the status file.
-# Depends only on jq/grep/sed.
+# Stop-hook accelerator for explicitly owned autonomous runs.
+# Fail open on missing context, malformed ownership, or any uncertainty.
 set -u
 input="$(cat)"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=stop-context.sh
+. "$here/stop-context.sh"
 
 command -v jq >/dev/null 2>&1 || exit 0
-
-# Avoid loops: if this stop was already triggered by a stop hook, allow.
 [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false')" = "true" ] && exit 0
+stop_context_is_exempt "$input" && exit 0
 
+session_id="$(printf '%s' "$input" | jq -r '.session_id // empty')"
+[ -n "$session_id" ] || exit 0
 base="${MEGAPOWERS_RUN_DIR:-.megapowers/run}"
 [ -d "$base" ] || exit 0
-
-# Only drive runs this session actually touched: a stale run from another day
-# must not haunt every later session. The transcript names the run dir when the
-# session read/wrote it (paths land in tool_use inputs and results).
 transcript="$(printf '%s' "$input" | jq -r '.transcript_path // empty')"
-[ -n "$transcript" ] && [ -f "$transcript" ] || exit 0
+
+owner_matches() {
+  local file="$1"
+  [ -f "$file" ] || return 1
+  jq -e --arg sid "$session_id" '
+    .schema == 1 and .session_id == $sid and .role == "autonomous-run"
+  ' "$file" >/dev/null 2>&1
+}
+
+claim_invoked() {
+  local id="$1"
+  [ -n "$transcript" ] && [ -f "$transcript" ] || return 1
+  jq -e --arg id "$id" '
+    def tool_uses:
+      if .type == "tool_use" then .
+      elif .type == "assistant" then
+        .message.content[]? | select(.type == "tool_use")
+      else empty end;
+    tool_uses |
+    select(.name == "Bash") |
+    select((.input.command // "") |
+      test("(^|[;&|[:space:]])([^[:space:]]*/)?run-claim[[:space:]]+" + $id + "([;&|[:space:]]|$)"))
+  ' "$transcript" >/dev/null 2>&1
+}
 
 for dir in "$base"/*/; do
   [ -d "$dir" ] || continue
   [ -f "$dir/status" ] || continue
   id="$(basename "$dir")"
-  # Match the path form with a trailing slash ("<base>/<id>/"), not the bare
-  # id: a run named "fix" must not match prose, and run "r1" must not match a
-  # touch of "r1-old/". Real touches reference files under the run dir.
-  grep -qF "$base/$id/" "$transcript" 2>/dev/null || continue
+  case "$id" in ''|*[!A-Za-z0-9_-]*) continue ;; esac
+  owner_file="$dir/owner.json"
+  if ! owner_matches "$owner_file"; then
+    claim_invoked "$id" || continue
+    tmp_owner="$owner_file.tmp.$$"
+    jq -cn --arg sid "$session_id" \
+      '{schema:1,session_id:$sid,role:"autonomous-run"}' > "$tmp_owner" 2>/dev/null || {
+      rm -f "$tmp_owner" 2>/dev/null
+      continue
+    }
+    mv "$tmp_owner" "$owner_file" 2>/dev/null || {
+      rm -f "$tmp_owner" 2>/dev/null
+      continue
+    }
+  fi
   state="$(sed -n 's/^STATE=//p' "$dir/status" | head -1)"
   case "$state" in
     initialized|working|running|in-progress|in_progress) ;;
-    *) continue ;;   # blocked/paused/done/anything-else: the run says stop is fine
+    *) continue ;;
   esac
-  # in-the-loop means the human approves at milestone boundaries; the hook must
-  # not bulldoze that checkpoint. The loop discipline rides on the skill there.
   level="$(sed -n 's/^LEVEL=//p' "$dir/status" | head -1)"
   [ "$level" = "in-the-loop" ] && continue
   cursor="$(sed -n 's/^CURSOR=//p' "$dir/status" | head -1)"
-  # CURSOR is agent-written free text: build the JSON with jq so no value can
-  # break the hook's output.
+  scripts="$here/../skills/autonomous-run/scripts"
   jq -nc --arg id "$id" --arg state "${state:-unset}" --arg cursor "${cursor:-unset}" \
-    '{decision:"block", reason:("Autonomous run " + $id + " is active (STATE=" + $state + ", CURSOR=" + $cursor + ") and its done-when criteria are not recorded as met. Continue the loop per its runbook: do the next unmet milestone, run its declared acceptance check, journal the result (scripts/run-journal), and re-derive status (scripts/run-derive-status — it derives done when every milestone is done). If you are pausing deliberately, or you are blocked, or a charter cap is reached, journal a paused or blocked entry and re-derive status so STATE says so — then stopping is correct. Verify a finished run with scripts/run-verify-status.")}'
+    --arg journal "$scripts/run-journal" --arg derive "$scripts/run-derive-status" \
+    --arg verify "$scripts/run-verify-status" \
+    '{decision:"block", reason:("Autonomous run " + $id + " is owned by this session and active (STATE=" + $state + ", CURSOR=" + $cursor + "). Continue the next unmet milestone and its declared acceptance check. Journal the result with " + $journal + ", derive status with " + $derive + ", and verify closure with " + $verify + ". To stop deliberately, journal paused or blocked and re-derive status.")}'
   exit 0
 done
 exit 0
