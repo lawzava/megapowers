@@ -1,7 +1,7 @@
 {
   "name": "mega-ts",
   "description": "Greenfield TypeScript stack selection and idiomatic TypeScript patterns.",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "author": {
     "name": "lawzava"
   },

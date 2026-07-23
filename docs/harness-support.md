@@ -1,6 +1,6 @@
 # Harness support matrix
 
-Last reviewed: 2026-07-15.
+Last reviewed: 2026-07-23.
 
 This repo is cross-harness, but not every harness has the same extension
 surface. Two facts apply across the whole matrix:
@@ -40,7 +40,8 @@ Status: supported.
 - Recursive SDD: Claude Code supports nested Agent calls. Agent teams are
   outside this mode because they cannot nest. Megapowers requires disjoint path
   ownership in the shared checkout; Claude Code does not enforce that ownership.
-  No Megapowers runtime, registry, or worktree manager participates.
+  Megapowers runs a plan preflight before dispatch to reject overlapping
+  declarations; no registry, scheduler, or worktree manager participates.
 
 ## Codex
 
@@ -77,8 +78,8 @@ agent role templates.
   supplies a model-visible policy that stops nesting at depth five instead.
 - Recursive SDD: Codex supports native nested subagents. Megapowers requires
   disjoint path ownership in the shared checkout; Codex does not enforce that
-  ownership or the Git restrictions. No Megapowers runtime, registry, or
-  worktree manager participates.
+  ownership or the Git restrictions. Megapowers runs a plan preflight before
+  dispatch; no registry, scheduler, or worktree manager participates.
 - From Claude Code, prefer OpenAI's first-party
   [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) for Codex
   review, adversarial review, rescue, transfer, and background job management.

@@ -11,9 +11,18 @@ fresh context explicitly, then give the reviewer a crafted evaluation package.
 Do not let a fork default inherit the author's reasoning: that biases the
 review toward the implementation it should challenge.
 
-**Core principle:** Review early, review often.
+**Core principle:** Review in proportion to risk, with independence where it
+changes confidence.
 
-Review after each task in subagent-driven development, after completing a major feature, and before merging. It also pays off when you are stuck, before a refactor, and after fixing a complex bug. A change that looks simple still deserves review; that is often where a quiet bug hides.
+- Low-risk work: focused tests plus self-review. One branch review is optional.
+- Medium-risk work: one independent review at the task, milestone, or branch
+  boundary.
+- High-risk work: review each risky boundary and perform final independent
+  verification. Auth, billing, security, concurrency, schema or data changes,
+  and external side effects are high risk.
+
+Do not stack task and branch reviews unless the risk warrants both. A stalled
+or uncertain change may be reviewed earlier regardless of tier.
 
 ## The Review
 

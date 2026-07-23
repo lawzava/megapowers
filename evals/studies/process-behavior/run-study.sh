@@ -28,7 +28,13 @@ run_one() { # probe|model|mode|idx|out|max_turns|run_timeout
   local work; work="$(mktemp -d "${TMPDIR:-/tmp}/pbrun.XXXXXX")" || return 1
   local repo="$work/repo"
   if ! "$HERE/fixtures/setup-$probe.sh" "$repo" >/dev/null 2>&1; then
-    echo "setup failed: $probe" > "$rundir/stderr.log"; rm -rf "$work"; return 1
+    echo "setup failed: $probe" > "$rundir/stderr.log"
+    jq -n --arg probe "$probe" --arg model "$model" --arg mode "$mode" --arg agent "$agent" \
+      --argjson idx "$idx" \
+      '{probe:$probe, model:$model, agent:$agent, mode:$mode, idx:$idx, rc:1, run_status:"harness_error", phase:"setup", task:"UNKNOWN"}' \
+      > "$rundir/meta.json"
+    rm -rf "$work"
+    return 1
   fi
   git -C "$repo" rev-list --count --all > "$rundir/baseline-commits.txt"
 
@@ -86,10 +92,13 @@ run_one() { # probe|model|mode|idx|out|max_turns|run_timeout
   jq -n --arg probe "$probe" --arg model "$model" --arg mode "$mode" --arg task "$task" \
         --arg agent "$agent" \
         --argjson idx "$idx" --argjson rc "$rc" --argjson secs "$((SECONDS - t0))" \
-        '{probe:$probe, model:$model, agent:$agent, mode:$mode, idx:$idx, rc:$rc, seconds:$secs, task:$task}' \
+        '{probe:$probe, model:$model, agent:$agent, mode:$mode, idx:$idx, rc:$rc, seconds:$secs, task:$task,
+          run_status:(if $rc == 0 then "completed" else "harness_error" end),
+          phase:"actor"}' \
         > "$rundir/meta.json"
   rm -rf "$work"
   echo "done: $probe/$malias/$mode/run-$idx rc=$rc task=$task"
+  return "$rc"
 }
 
 if [ "${1:-}" = "--job" ]; then run_one "$2"; exit $?; fi

@@ -34,6 +34,7 @@ the run directory.
 | `runbook.md` | The operating loop: how to pick the next unmet milestone, when to stop, what to do on failure. |
 | `journal.md` | Append-only audit trail of every action, decision, and result. Never rewritten. |
 | `status` | Machine-readable `KEY=value` lines the loop and any hook read: STATE, CURSOR, LEVEL, LAST_VERIFY, PLAN_WARNINGS. Derived, never hand-written; the pointer, not the history. |
+| `evidence.md` | Literal acceptance map: implementation target, local oracle, required external, UX, or database oracle, earned state, and evidence. |
 
 Milestone format matters because status derivation parses it: headings are
 `## <tag>: <name>` where `<tag>` matches `[A-Za-z][A-Za-z0-9_-]*` (one token,
@@ -50,10 +51,12 @@ The run executes a goal that already survived design scrutiny; it does not
 invent one. Refine an ambiguous goal through megapowers:brainstorming (if
 installed) and copy the resulting spec's acceptance criteria into the charter's
 done-when list verbatim, each with an executable check where one can exist. A
-code milestone gets its plan via megapowers:writing-plans and executes through
-megapowers:subagent-driven-development; its declared check is then "plan file X
-fully checked off and its verification commands pass", never the executor's
-say-so. While a charter is active at level `autonomous` or `on-the-loop`, the
+code milestone gets a plan only when a durable multi-step handoff is useful.
+Autonomous execution chooses inline work for small or coupled milestones and
+SDD for independently owned tasks where delegation pays for itself, then
+journals that choice. Its declared check names the literal acceptance oracle,
+never the executor's say-so. While a charter is active at level `autonomous` or
+`on-the-loop`, the
 megapowers process skills' interactive gates resolve themselves and journal the
 decision instead of stopping; `in-the-loop` keeps every gate interactive.
 Without the megapowers plugin, write the charter and milestones directly; the
@@ -63,6 +66,10 @@ contract stands on its own.
 
 The runbook owns the procedure. The outcomes it must produce:
 
+- In each controlling session, explicitly invoke `scripts/run-claim <run-id>`
+  before relying on the Stop hook to continue the run. The command binds that
+  session ID to the run's `owner.json`; merely reading run files never claims
+  ownership.
 - Once `plan.md` is authored, freeze it with `scripts/run-init <run-id>
   --replan` before working the first milestone, so the milestone digest exists
   to certify the eventual done-claim; `run-verify-status` fails a done-claim
@@ -78,14 +85,19 @@ The runbook owns the procedure. The outcomes it must produce:
   its import path), not merely that it imports, so a vendored local substitute
   cannot satisfy it. Detect failure honestly; on failure, fix and re-verify
   within the stopping rule's bounds.
+- Keep `evidence.md` literal. Distinguish implemented, locally verified, and
+  externally verified, and claim only the highest state earned. User-facing
+  criteria require the supported ordinary-user path. External database-backed
+  criteria record caller, service, database, response, and visible-result
+  cutpoints with environment and correlation keys.
 - Journal at every decision point with `scripts/run-journal <run-id> <kind>
   <confidence> <msg>` (kind = action, decision, result, blocked, paused;
   confidence 0.0 to 1.0). Tag messages with their milestone ("M2: ..."). Ground
   every progress claim in a tool result: a result entry cites the declared
   check it ran and what it output, evidence rather than intention. A trailing
   paused entry derives STATE=paused; any later entry resumes.
-- At each milestone boundary, checkpoint the work (commit on the run's branch,
-  or the workspace's native checkpoint), then regenerate status with
+- At each milestone boundary, checkpoint the work using an already authorized
+  commit or the durable ledger and working tree, then regenerate status with
   `scripts/run-derive-status <run-id>`.
 - Stop when every done-when criterion in `charter.md` is met, a stop budget
   declared in the charter is exhausted, or you hit a blocker only the human can
@@ -102,6 +114,15 @@ finished, and it is eval-guarded (evals/scenarios/autonomous-run-contract).
 When a step delegates, the exact brief lives in the delegation artifacts;
 reference them from the journal message so the run stays replayable without
 bloating the log.
+
+Selecting an autonomous workflow never grants permission to commit, push,
+merge, deploy, or perform another external side effect. Existing user and
+repository authorization remains binding.
+
+Roll the controller after 8 to 10 completed tasks, or before another task would
+cross 80 percent of the context or cache budget. Persist status and the journal
+first. Reserve the final 20 percent for integration, verification, and
+synthesis.
 
 ## Autonomy level (the dial, not blind autonomy)
 
@@ -160,7 +181,7 @@ declarative, self-contained.
 - Irreversible actions go through staging appropriate to the autonomy level;
   the effect broker, when present, is the mechanism.
 - On Claude Code, the `run-loop.sh` Stop hook blocks a premature stop while a
-  run this session touched still reads active and points at the next unmet
+  run this session explicitly claimed still reads active and points at the next unmet
   milestone. It is an accelerator, not the mechanism: it fails open on any
   doubt, respects `in-the-loop` (milestone checkpoints belong to the human),
   and the honest exit is a journaled blocked, paused, or final result entry

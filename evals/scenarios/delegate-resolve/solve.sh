@@ -17,10 +17,10 @@ mkdir -p "$XDG_CONFIG_HOME"
 
 {
   # --- existing contract ---
-  echo "=== code_review ==="; "$R" code_review --config "$cfg"; echo "rc=$?"
+  echo "=== code_review ==="; "$R" code_review --config "$cfg" --author-vendor anthropic; echo "rc=$?"
   echo "=== visual ==="; "$R" visual --config "$cfg"; echo "rc=$?"
   echo "=== browser_test ==="; "$R" browser_test --config "$cfg"; echo "rc=$?"
-  echo "=== visual_verify ==="; "$R" visual_verify --config "$cfg"; echo "rc=$?"
+  echo "=== visual_verify ==="; "$R" visual_verify --config "$cfg" --author-vendor openai; echo "rc=$?"
   echo "=== unknown ==="; "$R" bogus --config "$cfg" 2>&1; echo "rc=$?"
   echo "=== disabled ==="
   dt="$PWD/dt.toml"
@@ -37,9 +37,9 @@ mkdir -p "$XDG_CONFIG_HOME"
   "$R" code_review --config 2>&1; echo "rc=$?"
 
   # --- second vendor, fallbacks, --exclude, availability, presets, parse error ---
-  echo "=== verify-primary ==="; "$R" verify --config "$cfg"; echo "rc=$?"
-  echo "=== verify-exclude-anthropic ==="; "$R" verify --config "$cfg" --exclude anthropic; echo "rc=$?"
-  echo "=== verify-exclude-both ==="; "$R" verify --config "$cfg" --exclude openai --exclude anthropic 2>&1; echo "rc=$?"
+  echo "=== verify-primary ==="; "$R" verify --config "$cfg" --author-vendor openai; echo "rc=$?"
+  echo "=== verify-exclude-anthropic ==="; "$R" verify --config "$cfg" --author-vendor anthropic; echo "rc=$?"
+  echo "=== verify-exclude-both ==="; "$R" verify --config "$cfg" --author-vendor openai --exclude anthropic 2>&1; echo "rc=$?"
   echo "=== fallback-skip-absent ==="
   av="$PWD/av.toml"
   printf '[providers.p_absent]\nmodel = "x"\nvendor = "va"\nbinary = "mp_absent_bin"\n[providers.p_present]\nmodel = "y"\nvendor = "vb"\nbinary = "mp_present_bin"\n[roles]\nmyrole = "p_absent"\n[fallbacks]\nmyrole = ["p_absent", "p_present"]\n' > "$av"

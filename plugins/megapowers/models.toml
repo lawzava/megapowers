@@ -1,5 +1,5 @@
 # megapowers model catalog: what orchestrates, what models exist, what each is for.
-# Last reviewed: 2026-07-12 (model IDs age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-07-23 (model IDs age; scripts/check-freshness.sh guards this date).
 # Edit an OVERRIDE LAYER, not this shipped file: a project .megapowers/models.toml or
 # user ~/.config/megapowers/models.toml wins per key and survives plugin updates.
 # Two identical copies ship (plugins/megapowers/models.toml and
@@ -7,14 +7,14 @@
 # at runtime; scripts/validate.sh fails on any drift between them.
 # Consumers: the megapowers SessionStart hook renders this into every session's
 # context (hooks/render-model-catalog), and mega-orchestration's delegate-resolve
-# and delegate-nudge read it for lead, tiers, providers, floor, and detect markers.
+# and delegate-resolve reads it for lead, tiers, providers, and floor.
 # Routing (roles, fallbacks, presets) stays in the multi-agent-delegation skill's
 # delegates.toml. Provider sections written in delegates.toml layers (pre-0.3
 # style) still parse and WIN over this catalog, so old override files keep working.
 
 # --- Lead: what orchestrates ---
-# delegate-resolve --lead prints it; --exclude-lead resolves a role away from the
-# lead's vendor. Swap the lead in an override layer; prose never hardcodes it.
+# delegate-resolve --lead prints it. Artifact reviews use --author-vendor rather
+# than assuming the lead authored the artifact.
 [lead]
 provider = "codex"
 tier     = "frontier"
@@ -46,12 +46,9 @@ max    = "correctness over cost; no shipped provider allows it"
 # --- Providers: how to reach each backend ---
 # `binary` is the CLI delegate-resolve probes with `command -v`. `reference` names
 # the channel-mechanics file, resolved relative to the multi-agent-delegation skill
-# directory (the reference files ship with that skill). `detect` lists transcript
-# markers of review-capable delegate invocations; the delegate-nudge hook suppresses
-# its nudge when one appears (mcp__ entries match tool-use name fields; all other
-# entries match Bash command fields). Entries from disabled providers still count:
-# it is a fail-open heuristic, not a grant. `use` is the one-line purpose shown in
-# the always-loaded session block.
+# directory (the reference files ship with that skill). `detect` remains legacy
+# catalog metadata; Stop-hook approval is based on a current structured receipt,
+# never a transcript marker. `use` is shown in the session block.
 [providers.codex]
 effort  = "xhigh"  # lead default model_reasoning_effort; small scoped impl may run lower (see templates/codex-agents/)
 efforts = ["low", "medium", "high", "xhigh"]   # never max
@@ -83,24 +80,13 @@ capabilities = ["code", "vision", "computer_use"]
 detect  = ["claude -p"]
 reference = "references/providers/claude.md"
 use     = "planning buddy plus independent plan review, verification, and judging"
-notes   = "Isolated headless `claude -p --safe-mode --no-session-persistence`; resolve cross-vendor work with --exclude-lead."
+notes   = "One-shot headless Claude: --bare with API keys, disposable config/cwd with OAuth; independent reviews declare every author vendor."
 
 # Frontier only by policy: sonnet and haiku are never routed; anything claude
 # does runs fable.
 [providers.claude.tiers]
 frontier = "claude-fable-5"
-
-# Browser / visual verification and fallback: drive the UI with playwright-cli and
-# reason over the screenshots with a vision-capable model. Depends only on a
-# standalone CLI, not on any single vendor's browser agent.
-[providers.browser]
-vendor  = "none"
-binary  = "playwright-cli"
-channel = "playwright-cli"
-capabilities = ["computer_use", "vision"]
-reference = "references/providers/browser.md"
-use     = "visual verify: playwright-cli plus a vision-capable reader"
-notes   = "capture -> reason-over-screenshot -> act loop; screenshots saved to .megapowers/evidence/. See agents/browser-delegate.md."
+strong   = "claude-fable-5"
 
 # --- Defaults: cross-cutting rules ---
 [defaults]

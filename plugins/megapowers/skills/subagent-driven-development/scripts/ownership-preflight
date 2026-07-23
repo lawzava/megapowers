@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+plan="${1:-}"
+[ -n "$plan" ] && [ -f "$plan" ] || {
+  echo "usage: ownership-preflight PLAN_FILE" >&2
+  exit 2
+}
+
+records="$(mktemp)"
+trap 'rm -f "$records"' EXIT
+
+awk '
+  /^### Task [0-9]+:/ {
+    if (task != "") print task "\t" ownership "\t" parallel
+    task=$3; sub(/:$/, "", task); ownership=""; parallel=""
+    next
+  }
+  task != "" && /^\*\*Ownership:\*\*/ {
+    ownership=$0; sub(/^\*\*Ownership:\*\*[[:space:]]*/, "", ownership)
+    next
+  }
+  task != "" && /^\*\*Parallel safety:\*\*/ {
+    parallel=$0; sub(/^\*\*Parallel safety:\*\*[[:space:]]*/, "", parallel)
+    next
+  }
+  END { if (task != "") print task "\t" ownership "\t" parallel }
+' "$plan" > "$records"
+
+[ -s "$records" ] || {
+  echo "ownership preflight: no '### Task N:' blocks found" >&2
+  exit 1
+}
+
+declare -A exists ownership parallel_decl
+while IFS=$'\t' read -r task owned parallel; do
+  exists["$task"]=1
+  ownership["$task"]="$owned"
+  parallel_decl["$task"]="$parallel"
+done < "$records"
+
+failures=0
+fail() {
+  echo "ownership preflight: $*" >&2
+  failures=$((failures + 1))
+}
+
+while IFS= read -r duplicate; do
+  [ -n "$duplicate" ] && fail "Task $duplicate is declared more than once"
+done < <(cut -f1 "$records" | sort | uniq -d)
+
+normalize_paths() {
+  local raw="$1" token
+  raw="${raw//\`/}"
+  IFS=',' read -ra tokens <<< "$raw"
+  for token in "${tokens[@]}"; do
+    token="${token#"${token%%[![:space:]]*}"}"
+    token="${token%"${token##*[![:space:]]}"}"
+    token="${token#./}"
+    [ -n "$token" ] && printf '%s\n' "${token%/}"
+  done
+}
+
+valid_path() {
+  local path="$1"
+  [[ "$path" != /* && "$path" != "." && "$path" != *".."* &&
+     "$path" != *"*"* && "$path" != *"?"* && "$path" != *"["* &&
+     "$path" != *$'\n'* && "$path" != *" "* ]]
+}
+
+paths_overlap() {
+  local left="${1%/}" right="${2%/}"
+  [[ "$left" = "$right" || "$left" = "$right/"* || "$right" = "$left/"* ]]
+}
+
+for task in "${!exists[@]}"; do
+  if [ -z "${ownership[$task]}" ]; then
+    fail "Task $task has no Ownership declaration"
+    continue
+  fi
+  count=0
+  while IFS= read -r path; do
+    count=$((count + 1))
+    valid_path "$path" || fail "Task $task has non-exact ownership path: $path"
+  done < <(normalize_paths "${ownership[$task]}")
+  [ "$count" -gt 0 ] || fail "Task $task has no owned paths"
+done
+
+declare -A depends explicit_parallel
+while IFS=$'\t' read -r task _ parallel; do
+  case "$parallel" in
+    Parallel\ with\ Task*)
+      while IFS= read -r other; do
+        [ -n "${exists[$other]:-}" ] || {
+          fail "Task $task references missing parallel Task $other"
+          continue
+        }
+        explicit_parallel["$task,$other"]=1
+        explicit_parallel["$other,$task"]=1
+      done < <(printf '%s\n' "$parallel" | grep -oE 'Task[[:space:]]+[0-9]+' | awk '{print $2}')
+      ;;
+    Parallel\ after\ Task*)
+      while IFS= read -r other; do
+        if [ -n "${exists[$other]:-}" ]; then
+          depends["$task,$other"]=1
+        else
+          fail "Task $task references missing prerequisite Task $other"
+        fi
+      done < <(printf '%s\n' "$parallel" | grep -oE 'Task[[:space:]]+[0-9]+' | awk '{print $2}')
+      ;;
+    Sequential*) ;;
+    *) fail "Task $task has invalid Parallel safety declaration: ${parallel:-missing}" ;;
+  esac
+done < "$records"
+
+mapfile -t tasks < <(printf '%s\n' "${!exists[@]}" | sort -n)
+
+# Compute dependency reachability. Unordered non-sequential tasks can run at
+# the same time, including siblings that both become ready after one parent.
+for via in "${tasks[@]}"; do
+  for from in "${tasks[@]}"; do
+    [ -n "${depends[$from,$via]:-}" ] || continue
+    for to in "${tasks[@]}"; do
+      [ -n "${depends[$via,$to]:-}" ] && depends["$from,$to"]=1
+    done
+  done
+done
+
+for ((i=0; i<${#tasks[@]}; i++)); do
+  for ((j=i+1; j<${#tasks[@]}; j++)); do
+    left_task="${tasks[$i]}"
+    right_task="${tasks[$j]}"
+    concurrent=0
+    if [ -n "${explicit_parallel[$left_task,$right_task]:-}" ]; then
+      concurrent=1
+    elif [[ "${parallel_decl[$left_task]}" != Sequential* &&
+            "${parallel_decl[$right_task]}" != Sequential* &&
+            -z "${depends[$left_task,$right_task]:-}" &&
+            -z "${depends[$right_task,$left_task]:-}" ]]; then
+      concurrent=1
+    fi
+    [ "$concurrent" -eq 1 ] || continue
+    while IFS= read -r left; do
+      while IFS= read -r right; do
+        if paths_overlap "$left" "$right"; then
+          fail "concurrent Tasks $left_task and $right_task overlap: $left <> $right"
+        fi
+      done < <(normalize_paths "${ownership[$right_task]}")
+    done < <(normalize_paths "${ownership[$left_task]}")
+  done
+done
+
+if [ "$failures" -ne 0 ]; then
+  echo "ownership preflight: FAIL ($failures error(s))" >&2
+  exit 1
+fi
+
+echo "ownership preflight: PASS"

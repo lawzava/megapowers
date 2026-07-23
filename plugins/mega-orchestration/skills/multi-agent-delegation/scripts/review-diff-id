@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Fingerprint the complete pending worktree state for a review receipt.
+set -euo pipefail
+
+repo="${1:-.}"
+cd "$repo"
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+  echo "review-diff-id: not inside a Git worktree: $repo" >&2
+  exit 2
+}
+cd "$(git rev-parse --show-toplevel)"
+
+{
+  printf 'staged\0'
+  git diff --cached --binary --no-ext-diff
+  printf '\0unstaged\0'
+  git diff --binary --no-ext-diff
+  printf '\0untracked\0'
+  while IFS= read -r -d '' path; do
+    printf '%s\0' "$path"
+    git hash-object -- "$path"
+  done < <(git ls-files -z --others --exclude-standard | LC_ALL=C sort -z)
+} | git hash-object --stdin

@@ -68,10 +68,15 @@ study_exec() { # <agent> <model> <repo> <prompt_file> <rundir> <run_timeout> <ma
 # caller enumerates jobs idx-major so models/modes interleave and rate drift
 # cannot bias one cell.
 study_fanout() { # <par> <out>; job lines on stdin
-  local par="$1" out="$2" jobs
+  local par="$1" out="$2" jobs rc
   jobs="$(mktemp)"; cat > "$jobs"
   echo "$(wc -l < "$jobs") runs (parallel=$par) -> $out"
   xargs -d '\n' -P "$par" -I{} "$0" --job {} < "$jobs"
+  rc=$?
   rm -f "$jobs"
+  if [ "$rc" -ne 0 ]; then
+    echo "one or more runs failed (rc=$rc); inspect harness_error metadata" >&2
+    return "$rc"
+  fi
   echo "all runs finished; score with: oracle.sh $out"
 }

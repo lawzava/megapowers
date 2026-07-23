@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Mark an explicit autonomous-run ownership action in the session transcript.
+# The Claude Stop hook binds the current hook session_id to owner.json.
+set -euo pipefail
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-lib.sh"
+
+id="${1:-}"
+validate_run_id "$id" run-claim || exit 2
+dir="${MEGAPOWERS_RUN_DIR:-.megapowers/run}/$id"
+[ -d "$dir" ] || { echo "run-claim: no run '$id'" >&2; exit 2; }
+printf 'MEGAPOWERS_RUN_CLAIM=%s\n' "$id"

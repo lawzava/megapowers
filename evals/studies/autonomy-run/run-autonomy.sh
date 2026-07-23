@@ -20,7 +20,14 @@ run_one() { # model|mode|idx|out|run_timeout
   rm -rf "$rundir"; mkdir -p "$rundir"
   local work; work="$(mktemp -d "${TMPDIR:-/tmp}/auto.XXXXXX")" || return 1
   local repo="$work/repo"
-  "$HERE/fixtures/setup-autonomy.sh" "$repo" >/dev/null 2>&1 || { rm -rf "$work"; return 1; }
+  if ! "$HERE/fixtures/setup-autonomy.sh" "$repo" >/dev/null 2>&1; then
+    echo "setup failed: autonomy" > "$rundir/stderr.log"
+    jq -n --arg model "$model" --arg agent "$agent" --arg mode "$mode" --argjson idx "$idx" \
+      '{model:$model, agent:$agent, mode:$mode, idx:$idx, rc:1, run_status:"harness_error", phase:"setup"}' \
+      > "$rundir/meta.json"
+    rm -rf "$work"
+    return 1
+  fi
 
   local t0=$SECONDS rc=0
   study_exec "$agent" "$model" "$repo" "$HERE/prompts/autonomy-$mode.txt" "$rundir" "$run_timeout" 30 || rc=$?
@@ -56,10 +63,13 @@ run_one() { # model|mode|idx|out|run_timeout
 
   jq -n --arg model "$model" --arg agent "$agent" --arg mode "$mode" \
         --argjson idx "$idx" --argjson rc "$rc" --argjson secs "$((SECONDS - t0))" \
-        '{model:$model, agent:$agent, mode:$mode, idx:$idx, rc:$rc, seconds:$secs}' \
+        '{model:$model, agent:$agent, mode:$mode, idx:$idx, rc:$rc, seconds:$secs,
+          run_status:(if $rc == 0 then "completed" else "harness_error" end),
+          phase:"actor"}' \
         > "$rundir/meta.json"
   rm -rf "$work"
   echo "done: $malias/$mode/run-$idx rc=$rc truth=[$(paste -sd, "$rundir/ground-truth.txt" | tr '\n' ' ')]"
+  return "$rc"
 }
 
 if [ "${1:-}" = "--job" ]; then run_one "$2"; exit $?; fi

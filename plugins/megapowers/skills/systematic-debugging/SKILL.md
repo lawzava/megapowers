@@ -39,7 +39,13 @@ Goal: understand what is failing and why, backed by evidence.
 - When performance is the symptom, record a controlled pre-change performance baseline under the same workload and environment used for the later comparison.
 - A flaky test is a bug with a root cause, not something to retry into passing. A test that fails intermittently and passes on rerun is not fixed; find the source of nondeterminism (shared state, time, ordering, randomness) before you claim the suite reliable. If the flaky test is outside your task's scope, report it honestly rather than fixing it.
 - Check recent changes: diffs, new dependencies, config, environmental differences.
-- In multi-component systems (CI to build to signing, API to service to database), instrument each boundary: log what enters and exits each component and verify config propagation, then run once so the evidence shows which layer fails before you investigate that layer. Tag each temporary probe with a searchable label and its question; when answered, remove it or deliberately promote it to permanent monitoring.
+- In multi-component systems (CI to build to signing, API to service to
+  database), instrument each boundary. For external database-backed behavior,
+  record the caller request, service receipt and decision, target-environment
+  database write or read, outward response, and user-visible result. Carry one
+  environment plus correlation or record key through every cutpoint. Tag each
+  temporary probe with its question; when answered, remove it or deliberately
+  promote it to permanent monitoring.
 - When the error surfaces deep in the call stack, trace the bad value backward to where it originates and fix at the source, not the symptom. See `debugging-techniques.md` in this directory for the full technique.
 
 ### Phase 2: Pattern Analysis

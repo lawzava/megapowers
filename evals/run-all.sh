@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # run-all.sh — run every scenario and summarize. Deterministic by default:
 # artifact scenarios run for real; behavior/trigger scenarios run against the mock
-# agent. Exits non-zero if any scenario fails (indeterminate does not fail the run).
+# agent. Exits non-zero if any scenario fails or has a harness error
+# (behavioral indeterminate does not fail the run).
 #
 # Usage: run-all.sh [--agent <name>] [--json <file>] [--paired]
 #   --paired: also run each behavior/trigger scenario in CONTROL mode (skill withheld),
@@ -23,7 +24,7 @@ while [ $# -gt 0 ]; do
 done
 
 rows="$(mktemp)"; trap 'rm -f "$rows"' EXIT
-pass=0; fail=0; indet=0; failed_ids=""
+pass=0; fail=0; indet=0; herr=0; failed_ids=""
 
 tally() {  # $1 = a JSON result row
   echo "$1" >> "$rows"
@@ -31,6 +32,7 @@ tally() {  # $1 = a JSON result row
   case "$v" in
     pass) pass=$((pass+1)); printf '  \033[32mPASS\033[0m %s\n' "$2" ;;
     indeterminate) indet=$((indet+1)); printf '  \033[33mINDET\033[0m %s\n' "$2" ;;
+    harness_error) herr=$((herr+1)); failed_ids="$failed_ids $2"; printf '  \033[31mHERR\033[0m %s\n' "$2" ;;
     *) fail=$((fail+1)); failed_ids="$failed_ids $2"; printf '  \033[31mFAIL\033[0m %s\n' "$2" ;;
   esac
 }
@@ -48,7 +50,13 @@ for sdir in "$EVALS"/scenarios/*/; do
       behavior|trigger)
         crow="$(bash "$EVALS/run.sh" "$id" --agent "$agent" --control)"
         echo "$crow" >> "$rows"
-        printf '  \033[34mCTRL\033[0m  %s (control)\n' "$id"
+        cv="$(printf '%s' "$crow" | sed -n 's/.*"verdict":"\([a-z_]*\)".*/\1/p')"
+        if [ "$cv" = "harness_error" ]; then
+          herr=$((herr+1)); failed_ids="$failed_ids $id-control"
+          printf '  \033[31mHERR\033[0m %s (control)\n' "$id"
+        else
+          printf '  \033[34mCTRL\033[0m  %s (control)\n' "$id"
+        fi
         ;;
     esac
   fi
@@ -68,6 +76,6 @@ fi
 
 [ -n "$jsonout" ] && cp "$rows" "$jsonout"
 echo
-echo "== evals: $pass passed, $fail failed, $indet indeterminate (agent: $agent) =="
+echo "== evals: $pass passed, $fail failed, $indet indeterminate, $herr harness errors (agent: $agent) =="
 [ -n "$failed_ids" ] && echo "   failed:$failed_ids"
-[ "$fail" -eq 0 ]
+[ "$fail" -eq 0 ] && [ "$herr" -eq 0 ]

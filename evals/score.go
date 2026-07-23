@@ -4,7 +4,7 @@
 //
 // Reads JSONL rows emitted by run.sh:
 //
-//	{"scenario":..,"skill":..,"kind":..,"agent":..,"mode":"skill|control","verdict":"pass|fail|indeterminate","ms":N}
+//	{"scenario":..,"skill":..,"kind":..,"agent":..,"mode":"skill|control","verdict":"pass|fail|indeterminate|harness_error","phase":..,"rc":N,"ms":N}
 //
 // Emits a markdown scorecard: overall pass rate, per-scenario verdicts, and — for
 // scenarios run in BOTH skill and control mode — the effect size (Δ pass-rate plus a
@@ -30,7 +30,7 @@ type row struct {
 	MS       int    `json:"ms"`
 }
 
-type tally struct{ pass, fail, indet int }
+type tally struct{ pass, fail, indet, harnessError int }
 
 func (t *tally) add(v string) {
 	switch v {
@@ -38,6 +38,8 @@ func (t *tally) add(v string) {
 		t.pass++
 	case "fail":
 		t.fail++
+	case "harness_error":
+		t.harnessError++
 	default:
 		t.indet++
 	}
@@ -196,19 +198,19 @@ func main() {
 	fmt.Println("# megapowers eval scorecard")
 	fmt.Println()
 	if n == 0 {
-		fmt.Println("No decided results.")
+		fmt.Printf("No decided results. %d indeterminate, %d harness errors.\n", overall.indet, overall.harnessError)
 		return
 	}
-	fmt.Printf("**Overall:** %d/%d passed (%.0f%%), %d indeterminate.\n\n",
-		overall.pass, n, rate*100, overall.indet)
+	fmt.Printf("**Overall:** %d/%d passed (%.0f%%), %d indeterminate, %d harness errors.\n\n",
+		overall.pass, n, rate*100, overall.indet, overall.harnessError)
 
 	fmt.Println("## Per scenario")
 	fmt.Println()
-	fmt.Println("| scenario | pass | fail | indet |")
-	fmt.Println("|---|---|---|---|")
+	fmt.Println("| scenario | pass | fail | indet | harness error |")
+	fmt.Println("|---|---|---|---|---|")
 	for _, s := range order {
 		t := perScenario[s]
-		fmt.Printf("| %s | %d | %d | %d |\n", s, t.pass, t.fail, t.indet)
+		fmt.Printf("| %s | %d | %d | %d | %d |\n", s, t.pass, t.fail, t.indet, t.harnessError)
 	}
 	fmt.Println()
 

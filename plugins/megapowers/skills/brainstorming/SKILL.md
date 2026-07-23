@@ -10,6 +10,12 @@ Help turn ideas into fully formed designs and specs through natural collaborativ
 
 Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design.
 
+Before opening a design cycle, check whether scope, affected area, acceptance
+oracle, and risk are already clear. If all four are clear and the change is
+reversible, skip brainstorming and planning. Announce the scoped implementation
+route once and proceed directly through test-driven development. Do not create a
+spec merely to restate an accepted requirement.
+
 ## The Gate: Proportional to Blast Radius
 
 Scale the approval gate to how hard the work is to reverse:
@@ -41,7 +47,10 @@ For hard-to-reverse or high-stakes work, ask the user to review the written spec
 
 ## Handoff
 
-Invoke the writing-plans skill to create a detailed implementation plan. This is the terminal state. Do not invoke any implementation skill from here. The only skill brainstorming hands off to is writing-plans.
+For work that genuinely needed design, invoke writing-plans when multiple
+dependent implementation steps need a durable handoff. A small accepted design
+may hand directly to test-driven development. Brainstorming itself does not
+implement.
 
 ## Showing Instead of Telling
 

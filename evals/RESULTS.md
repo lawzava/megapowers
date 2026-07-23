@@ -11,7 +11,7 @@ were not committed for the pre-2026-07 waves (see the "Published artifacts" note
 in [`README.md`](./README.md)), so those numbers are audited by re-running the
 committed oracle on a fresh keyed run, not by inspecting archived transcripts.
 
-Last run: 2026-07-04 (deterministic spine; each real-agent study wave is dated in its section).
+Last run: 2026-07-23 (deterministic spine; each real-agent study wave is dated in its section).
 
 Two results frame the rest: process disciplines that today's harnesses don't
 enforce move behavior completely (test-first ordering: 0/36 → 36/36 across
@@ -26,19 +26,17 @@ The suite's day-to-day proof. Every scenario is a deterministic oracle; several
 double as regression guards for real bugs fixed during development. Reproduce:
 
 ```bash
-scripts/validate.sh        # structural: manifests, frontmatter, cross-refs, hooks
-bash evals/run-all.sh      # 15 scenarios (deterministic + mock-agent) + score.go self-test
+scripts/validate.sh
+bash evals/run-all.sh --json results.jsonl
 ```
 
-Result (re-run 2026-07-04): **`validate.sh` passed in full** (174 checks at the
-time of that run, with `shellcheck` absent from PATH; the count grows as guards
-are added, and `shellcheck` on PATH adds one shell-lint check per script, 270 in
-total here) · **`run-all.sh` 16/16 passed, 0 failed, 0 indeterminate** (15
-scenarios plus the `score.go` Fisher self-test). These counts are snapshots, not fixed targets: an
-earlier 2026-07-02 baseline was 137 checks, and the total moves as guards land,
-so we state the count at the time of the run rather than pin a number that then
-drifts. The `deny-destructive` guard additionally ships a **123-case** test
-suite (run via `validate.sh`). Every oracle was mutation-tested (fed a broken
+Result (re-run 2026-07-23): **`validate.sh` passed 388/388 checks**, including
+shellcheck and native strict Claude manifest validation · **`run-all.sh` passed
+22/22, with 0 failed, 0 indeterminate, and 0 harness errors** (21 scenarios plus
+the `score.go` Fisher self-test). These counts are snapshots, not fixed targets:
+an earlier 2026-07-02 baseline was 137 checks, and the total moves as guards
+land. The `deny-destructive` guard additionally ships a **123-case** test suite
+(run via `validate.sh`). Every oracle was mutation-tested (fed a broken
 artifact) to confirm it can actually fail; these are real checks, not no-ops.
 
 ## 2. Real-agent skill effect-size study

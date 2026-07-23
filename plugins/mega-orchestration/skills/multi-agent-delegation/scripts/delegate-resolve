@@ -34,7 +34,8 @@
 # fabricated primitive). The first usable candidate wins.
 #
 # Usage:
-#   delegate-resolve <role> [--config <file>] [--models <file>] [--exclude <vendor|provider>]... [--list]
+#   delegate-resolve <role> [--config <file>] [--models <file>]
+#                    [--author-vendor <vendor>]... [--exclude <vendor|provider>]... [--list]
 #   delegate-resolve --preset <name> [--config <file>]
 #   delegate-resolve --list-presets [--config <file>]
 #   delegate-resolve --where [--config <file>]
@@ -49,11 +50,11 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 shipped="$here/../delegates.toml"   # scripts/../delegates.toml
 
 usage() {
-  echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--exclude <vendor|provider>]... [--list]" >&2
+  echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--author-vendor <vendor>]... [--exclude <vendor|provider>]... [--list]" >&2
   echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --where | --lead | --check" >&2
 }
 
-role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; cfg=""; mcfg=""; excludes=()
+role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; cfg=""; mcfg=""; excludes=(); author_vendors=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
@@ -62,6 +63,8 @@ while [ $# -gt 0 ]; do
               mcfg="$2"; shift 2 ;;
     --exclude) [ $# -ge 2 ] || { echo "delegate-resolve: --exclude needs a vendor or provider name" >&2; usage; exit 2; }
               excludes+=("$2"); shift 2 ;;
+    --author-vendor) [ $# -ge 2 ] || { echo "delegate-resolve: --author-vendor needs a vendor name" >&2; usage; exit 2; }
+              author_vendors+=("$2"); shift 2 ;;
     --preset) [ $# -ge 2 ] || { echo "delegate-resolve: --preset needs a name" >&2; usage; exit 2; }
               preset="$2"; shift 2 ;;
     --list) list=1; shift ;;
@@ -297,6 +300,35 @@ if [ "$check" -eq 1 ]; then
       [ -n "$fp" ] || continue
       cat_exists "providers.$fp" || note "fallback for '$r' names missing provider '$fp'"
     done <<< "$(fallbacks_of "$r")"
+    if section_exists role_tiers; then
+      rt="$(section_val role_tiers "$r")"
+      [ -n "$rt" ] || note "role '$r' has no [role_tiers] entry"
+      [ -z "$rt" ] || printf '%s\n' "$scale_list" | grep -qx -- "$rt" || note "role '$r' tier '$rt' not in [tiers] scale"
+      if [ -n "$rt" ]; then
+        while IFS= read -r rp; do
+          [ -n "$rp" ] || continue
+          [ -n "$(cat_val "providers.$rp.tiers" "$rt")" ] || note "provider '$rp' has no tier '$rt' required by role '$r'"
+        done <<< "$(fallbacks_of "$r")"
+        [ -n "$(fallbacks_of "$r")" ] || [ -n "$(cat_val "providers.$p.tiers" "$rt")" ] || note "provider '$p' has no tier '$rt' required by role '$r'"
+      fi
+    fi
+    if section_exists role_efforts; then
+      re="$(section_val role_efforts "$r")"
+      [ -n "$re" ] || note "role '$r' has no [role_efforts] entry"
+      [ -z "$re" ] || printf '%s\n' "$(cat_array efforts scale)" | grep -qx -- "$re" || note "role '$r' effort '$re' not in [efforts] scale"
+      if [ -n "$re" ]; then
+        rproviders="$(fallbacks_of "$r")"; [ -n "$rproviders" ] || rproviders="$p"
+        while IFS= read -r rp; do
+          [ -n "$rp" ] || continue
+          printf '%s\n' "$(cat_array "providers.$rp" efforts)" | grep -qx -- "$re" || note "provider '$rp' does not support effort '$re' required by role '$r'"
+        done <<< "$rproviders"
+      fi
+    fi
+    drv="$(section_val role_drivers "$r")"
+    if [ -n "$drv" ]; then
+      section_exists "drivers.$drv" || note "role '$r' names missing driver '$drv'"
+      [ -n "$(section_val "drivers.$drv" binary)" ] || note "driver '$drv' has no binary"
+    fi
   done <<< "$(list_roles)"
   lp="$(cat_val lead provider)"
   if [ -n "$lp" ] && ! cat_exists "providers.$lp"; then note "[lead] provider '$lp' missing"; fi
@@ -409,6 +441,72 @@ if [ -z "$primary" ]; then
   exit 3
 fi
 
+# Schema v2 role policy selects the tier and effort for this work. A config
+# that declares either policy table must cover every role it routes, otherwise
+# a missing key would silently fall back to an unrelated provider default.
+role_tier="$(section_val role_tiers "$role")"
+if section_exists role_tiers && [ -z "$role_tier" ]; then
+  echo "delegate-resolve: role '$role' has no [role_tiers] entry" >&2
+  exit 2
+fi
+role_effort="$(section_val role_efforts "$role")"
+if section_exists role_efforts && [ -z "$role_effort" ]; then
+  echo "delegate-resolve: role '$role' has no [role_efforts] entry" >&2
+  exit 2
+fi
+if [ -n "$role_tier" ]; then
+  [ -n "$scale_list" ] || { echo "delegate-resolve: role '$role' declares tier '$role_tier' without a [tiers] scale" >&2; exit 2; }
+  printf '%s\n' "$scale_list" | grep -qx -- "$role_tier" || {
+    echo "delegate-resolve: role '$role' tier '$role_tier' is not in the [tiers] scale" >&2
+    exit 2
+  }
+fi
+effort_scale="$(cat_array efforts scale)"
+if [ -n "$role_effort" ]; then
+  [ -n "$effort_scale" ] || { echo "delegate-resolve: role '$role' declares effort '$role_effort' without an [efforts] scale" >&2; exit 2; }
+  printf '%s\n' "$effort_scale" | grep -qx -- "$role_effort" || {
+    echo "delegate-resolve: role '$role' effort '$role_effort' is not in the [efforts] scale" >&2
+    exit 2
+  }
+fi
+
+# Independence is relative to the artifact authors, never merely to the
+# catalog lead. `--exclude-lead` remains available for compatibility, but it
+# cannot satisfy an author-bound policy.
+independence="$(section_val independence "$role")"
+if [ -n "$independence" ] && [ "${#author_vendors[@]}" -eq 0 ]; then
+  echo "delegate-resolve: independent role '$role' requires --author-vendor <vendor>" >&2
+  exit 2
+fi
+if [ "${#author_vendors[@]}" -gt 0 ]; then
+  for av in "${author_vendors[@]}"; do
+    [ -n "$av" ] || { echo "delegate-resolve: --author-vendor cannot be empty" >&2; exit 2; }
+    excludes+=("$av")
+  done
+fi
+
+# A driver captures evidence for a model role. It is a separate executable,
+# not a provider, and therefore never satisfies vendor, tier, or floor checks.
+driver="$(section_val role_drivers "$role")"
+driver_binary=""
+driver_channel=""
+if [ -n "$driver" ]; then
+  section_exists "drivers.$driver" || {
+    echo "delegate-resolve: role '$role' names missing driver '$driver'" >&2
+    exit 2
+  }
+  driver_binary="$(section_val "drivers.$driver" binary)"
+  driver_channel="$(section_val "drivers.$driver" channel)"
+  [ -n "$driver_binary" ] || {
+    echo "delegate-resolve: driver '$driver' has no binary" >&2
+    exit 2
+  }
+  command -v "$driver_binary" >/dev/null 2>&1 || {
+    echo "delegate-resolve: driver '$driver' binary '$driver_binary' is not installed" >&2
+    exit 3
+  }
+fi
+
 # candidate chain: the role's [fallbacks] (in order) or just its single provider.
 candidates="$(fallbacks_of "$role")"
 [ -n "$candidates" ] || candidates="$primary"
@@ -434,10 +532,8 @@ if [ -n "$floor" ] && [ -n "$scale_list" ]; then
     exit 2
   fi
 fi
-# The floor's effort half validates against the [efforts] scale and becomes a
-# minimum for providers that declare a default effort.
+# The floor's effort half validates against the [efforts] scale.
 floor_effort_idx=""
-effort_scale="$(cat_array efforts scale)"
 if [ -n "$floor" ]; then
   feff="${floor#*:}"
   if [ "$feff" != "$floor" ] && [ -n "$feff" ]; then
@@ -450,7 +546,7 @@ if [ -n "$floor" ]; then
 fi
 req="$(array_val requires "$role")"
 
-selected=""; only_disabled=1
+selected=""; selected_model=""; selected_tier=""; selected_effort=""; only_disabled=1
 while IFS= read -r p; do
   [ -n "$p" ] || continue
   cat_exists "providers.$p" || {
@@ -475,31 +571,67 @@ while IFS= read -r p; do
       continue
     fi
   fi
+  if [ -n "$role_tier" ]; then
+    candidate_tier="$role_tier"
+    candidate_model="$(cat_val "providers.$p.tiers" "$candidate_tier")"
+    if [ -z "$candidate_model" ]; then
+      echo "delegate-resolve: provider '$p' has no model mapping for role '$role' tier '$candidate_tier'" >&2
+      exit 2
+    fi
+  else
+    pm="$(provider_model "$p")" || exit 2
+    candidate_model="${pm%%$'\t'*}"
+    candidate_tier="${pm#*$'\t'}"
+  fi
+  candidate_effort="${role_effort:-$(cat_val "providers.$p" effort)}"
+  if [ -n "$role_effort" ]; then
+    supported_efforts="$(cat_array "providers.$p" efforts)"
+    if [ -z "$supported_efforts" ] || ! printf '%s\n' "$supported_efforts" | grep -qx -- "$role_effort"; then
+      echo "delegate-resolve: provider '$p' does not support role '$role' effort '$role_effort'" >&2
+      exit 2
+    fi
+  fi
   if [ -n "$floor_idx" ]; then
-    pdt="$(cat_val "providers.$p" default_tier)"
-    if [ -n "$pdt" ]; then
-      pidx="$(tier_index "$pdt")"
-      if [ -n "$pidx" ] && [ "$pidx" -lt "$floor_idx" ]; then
-        echo "delegate-resolve: provider '$p' tier '$pdt' is below floor '${floor%%:*}' (skipped)" >&2
+    if [ -z "$candidate_tier" ]; then
+      if [ -n "$role_tier" ]; then
+        echo "delegate-resolve: provider '$p' has no tier and cannot satisfy floor '${floor%%:*}'" >&2
+        exit 2
+      fi
+    else
+      pidx="$(tier_index "$candidate_tier")"
+      if [ -z "$pidx" ]; then
+        echo "delegate-resolve: provider '$p' tier '$candidate_tier' is not in the [tiers] scale" >&2
+        exit 2
+      fi
+      if [ "$pidx" -lt "$floor_idx" ]; then
+        echo "delegate-resolve: provider '$p' tier '$candidate_tier' is below floor '${floor%%:*}' (skipped)" >&2
         continue
       fi
     fi
   fi
   if [ -n "$floor_effort_idx" ]; then
-    peff="$(cat_val "providers.$p" effort)"
-    if [ -n "$peff" ]; then
-      peff_idx="$(printf '%s\n' "$effort_scale" | grep -nx -- "$peff" | cut -d: -f1)"
+    if [ -z "$candidate_effort" ]; then
+      if [ -n "$role_effort" ]; then
+        echo "delegate-resolve: provider '$p' has no effort and cannot satisfy floor '${floor#*:}'" >&2
+        exit 2
+      fi
+    else
+      peff_idx="$(printf '%s\n' "$effort_scale" | grep -nx -- "$candidate_effort" | cut -d: -f1)"
       if [ -z "$peff_idx" ]; then
-        echo "delegate-resolve: provider '$p' effort '$peff' is not in the [efforts] scale" >&2
+        echo "delegate-resolve: provider '$p' effort '$candidate_effort' is not in the [efforts] scale" >&2
         exit 2
       fi
       if [ "$peff_idx" -lt "$floor_effort_idx" ]; then
-        echo "delegate-resolve: provider '$p' effort '$peff' is below floor '${floor#*:}' (skipped)" >&2
+        echo "delegate-resolve: provider '$p' effort '$candidate_effort' is below floor '${floor#*:}' (skipped)" >&2
         continue
       fi
     fi
   fi
-  selected="$p"; break
+  selected="$p"
+  selected_model="$candidate_model"
+  selected_tier="$candidate_tier"
+  selected_effort="$candidate_effort"
+  break
 done <<< "$candidates"
 
 if [ -z "$selected" ]; then
@@ -530,9 +662,9 @@ if [ -z "$selected" ]; then
 fi
 
 # --- emit the resolved route -----------------------------------------------------
-pm="$(provider_model "$selected")" || exit 2
-model="${pm%%$'\t'*}"; tier="${pm#*$'\t'}"
-effort="$(cat_val "providers.$selected" effort)"
+model="$selected_model"
+tier="$selected_tier"
+effort="$selected_effort"
 channel="$(cat_val "providers.$selected" channel)"
 vendor="$(cat_val "providers.$selected" vendor)"
 binv="$(cat_val "providers.$selected" binary)"
@@ -548,5 +680,9 @@ echo "ENABLED=true"
 [ -n "$vendor" ] && echo "VENDOR=$vendor"
 [ -n "$binv" ] && echo "BINARY=$binv"
 [ -n "$floor" ] && echo "FLOOR=$floor"
+[ "${#author_vendors[@]}" -gt 0 ] && echo "AUTHOR_VENDORS=$(IFS=,; printf '%s' "${author_vendors[*]}")"
+[ -n "$driver" ] && echo "DRIVER=$driver"
+[ -n "$driver_binary" ] && echo "DRIVER_BINARY=$driver_binary"
+[ -n "$driver_channel" ] && echo "DRIVER_CHANNEL=$driver_channel"
 [ -n "$notes" ] && echo "NOTES=$notes"
 exit 0   # explicit: the last `[ -n ... ] && echo` returns 1 when a field is empty

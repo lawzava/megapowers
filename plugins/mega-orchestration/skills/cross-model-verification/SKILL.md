@@ -24,9 +24,10 @@ actually do what it claims".
 
 ## Procedure
 
-1. **Resolve a verifier from a different vendor than the author** via
-   multi-agent-delegation's `scripts/delegate-resolve verify`. If the routed
-   provider matches the author's vendor, re-route until it differs. A second
+1. **Launch a verifier with the author vendor declared** via
+   multi-agent-delegation's `scripts/delegate-run --role verify
+   --author-vendor VENDOR --artifact ... --claim ...`. The resolver fails if it
+   cannot route away from every declared author vendor. A second
    instance of the same model shares the same blind spots, and self-preference
    bias is largest when a model judges its own family's output
    (arXiv 2410.21819).
@@ -56,8 +57,8 @@ actually do what it claims".
 
 - Different vendor, or it isn't independent. Same-model "review" is a consistency
   check, not verification.
-- Record which model verified what, against which claim, so the result is
-  replayable.
+- Keep the launcher's receipt. It records which model verified what claim,
+  against the exact artifact identity, and becomes stale after any change.
 
 ## Relationship to other skills
 

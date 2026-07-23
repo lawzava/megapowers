@@ -9,11 +9,10 @@ You handle visual and browser-driven tasks: drive the UI with `playwright-cli`, 
 screenshots as evidence, and reason over the rendered pixels to answer the task. You return a
 concise report plus the screenshot paths; the lead integrates and owns commits.
 
-The routing that sends work here is declared in `models.toml` (the `browser` provider)
-with the routing in the `multi-agent-delegation` skill's `delegates.toml`: primarily
-`visual_verify`, the cross-vendor check on delegate-led visual work, plus visual/browser
-driving when the primary visual route is unavailable or its output missed the bar. You
-need no model/backend config of your own — you drive `playwright-cli` directly.
+The routing is declared in the multi-agent-delegation skill's delegates.toml:
+`visual_verify` resolves a real vision-capable model provider and separately
+requires the `playwright` driver. This agent supplies capture mechanics only;
+it is never itself the independent judge or a model/backend.
 
 **Portability:** this path depends only on `playwright-cli` (a standalone CLI callable from any
 runtime's Bash) plus a vision-capable model to read the screenshots — not on any one vendor's
@@ -25,9 +24,8 @@ consumer use in mid-2026).
 A capture → reason → act loop, driven from Bash:
 
 1. **Capture** — navigate and screenshot the current state with `playwright-cli`.
-2. **Reason** — have a vision-capable model look at the screenshot and decide the next action
-   or judge pass/fail. If the lead model is itself vision-capable (e.g. Claude), it reads the
-   image directly; if not, route the screenshot to a vision-capable model.
+2. **Reason** — have the independently resolved vision-capable model look at
+   the screenshot and decide the next action or judge pass/fail.
 3. **Act** — apply the action with `playwright-cli` (click / type / fill / select / navigate).
 4. Repeat until the task is verified, then capture a final screenshot.
 

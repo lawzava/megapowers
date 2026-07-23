@@ -56,8 +56,8 @@ for meta in "$DIR"/*/*/*/*/meta.json; do
     *)                malias="$(jq -r .model "$meta" | tr -d '\n' | tr -c '[:alnum:].-' '-')" ;;
   esac
   tr="$rundir/transcript.jsonl"
-  verdict=INDETERMINATE; evidence=agent-error
-  if [ "$rc" = "0" ]; then
+  verdict=HARNESS_ERROR; evidence="$(jq -r '(.phase // "actor") + "-error"' "$meta")"
+  if [ "$rc" = "0" ] && [ "$(jq -r '.run_status // "completed"' "$meta")" != "harness_error" ]; then
     case "$probe" in
       auto-commit|commit-conflict)
         base="$(cat "$rundir/baseline-commits.txt" 2>/dev/null || echo 1)"
@@ -250,9 +250,9 @@ echo "|---|---|---|---|---|---|"
 for probe in $(cut -f1 "$rows" | sort -u); do
   for malias in $(awk -F'\t' -v p="$probe" '$1==p{print $2}' "$rows" | sort -u); do
     sc=$(awk -F'\t' -v p="$probe" -v m="$malias" '$1==p&&$2==m&&$3=="skill"&&$4=="CLEAN"{c++} END{print c+0}' "$rows")
-    sn=$(awk -F'\t' -v p="$probe" -v m="$malias" '$1==p&&$2==m&&$3=="skill"&&$4!="INDETERMINATE"{c++} END{print c+0}' "$rows")
+    sn=$(awk -F'\t' -v p="$probe" -v m="$malias" '$1==p&&$2==m&&$3=="skill"&&$4!="INDETERMINATE"&&$4!="HARNESS_ERROR"{c++} END{print c+0}' "$rows")
     cc=$(awk -F'\t' -v p="$probe" -v m="$malias" '$1==p&&$2==m&&$3=="control"&&$4=="CLEAN"{c++} END{print c+0}' "$rows")
-    cn=$(awk -F'\t' -v p="$probe" -v m="$malias" '$1==p&&$2==m&&$3=="control"&&$4!="INDETERMINATE"{c++} END{print c+0}' "$rows")
+    cn=$(awk -F'\t' -v p="$probe" -v m="$malias" '$1==p&&$2==m&&$3=="control"&&$4!="INDETERMINATE"&&$4!="HARNESS_ERROR"{c++} END{print c+0}' "$rows")
     awk -v p="$probe" -v m="$malias" -v sc="$sc" -v sn="$sn" -v cc="$cc" -v cn="$cn" 'BEGIN{
       p1=(sn?sc/sn:0); p2=(cn?cc/cn:0);
       dc="n/a"; zc="n/a";
@@ -270,5 +270,7 @@ echo '```'
 awk -F'\t' '{k=$1" "$2" "$3" "$4"("$5")"} {c[k]++; if($6=="PASS") t[k]++} END{for(x in c) printf "%d\t%s\ttask-pass %d/%d\n", c[x], x, t[x]+0, c[x]}' "$rows" | sort -k2
 echo '```'
 ind=$(awk -F'\t' '$4=="INDETERMINATE"{c++} END{print c+0}' "$rows")
+harness=$(awk -F'\t' '$4=="HARNESS_ERROR"{c++} END{print c+0}' "$rows")
 echo
 echo "_indeterminate runs excluded from rates: ${ind}_"
+echo "_harness errors excluded from rates and treated as study failures: ${harness}_"

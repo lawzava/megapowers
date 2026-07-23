@@ -1,18 +1,16 @@
-# Provider: browser (playwright-cli plus a vision-capable model)
+# Driver: browser capture with playwright-cli
 
-Vendor-neutral visual verification and fallback driving. Depends only on
-`playwright-cli` (a standalone CLI callable from any runtime's Bash) plus a
-vision-capable model to read the screenshots, not on any one vendor's browser
-agent.
+Vendor-neutral evidence capture for visual verification. This is a driver, not
+a model provider: it gathers screenshots but cannot satisfy a review role,
+vendor-independence requirement, tier, effort, or verdict.
 
 ## Channel
 
 A capture, reason, act loop from Bash:
 
 1. Capture: navigate and screenshot the current state with `playwright-cli`.
-2. Reason: a vision-capable model reads the screenshot and decides the next
-   action or the verdict. A vision-capable lead reads the image directly;
-   otherwise route the screenshot to one.
+2. Reason: the independently resolved vision-capable model reads the screenshot
+   and decides the next action or verdict.
 3. Act: apply the action with `playwright-cli` (click, type, fill, select,
    navigate), repeat until verified, then capture a final screenshot.
 

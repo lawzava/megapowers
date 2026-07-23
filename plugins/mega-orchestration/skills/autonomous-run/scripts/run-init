@@ -94,6 +94,17 @@ $level
 - blast radius: <what this run may NOT touch — e.g. no prod, no external sends>
 EOF
 
+[ -f "$dir/evidence.md" ] || cat > "$dir/evidence.md" <<'EOF'
+# Acceptance evidence
+Completion states: implemented | locally verified | externally verified
+
+Copy each charter criterion verbatim. Claim only the highest earned state.
+
+| criterion (verbatim) | implementation target | local oracle | external, UX, or database oracle | earned state | evidence |
+|---|---|---|---|---|---|
+| <criterion 1 verbatim> | <path or behavior> | <command and result> | <target-environment witness or n/a> | pending | <artifact, record key, screenshot, or output> |
+EOF
+
 if [ -f "$dir/plan.md" ]; then
   plan_authored=1   # the caller supplied a real plan; freeze it below
 else
@@ -126,6 +137,9 @@ call inline (MEGAPOWERS_MODEL=<id> run-journal ...). A plain export does NOT
 survive between tool calls; each runs in a fresh shell.
 Before claiming finished: scripts/run-verify-status <run-id> must pass — it stamps
 LAST_VERIFY into status. STATE=done with LAST_VERIFY=none means never certified.
+Update evidence.md against each literal charter criterion. A local pass earns
+locally verified, not externally verified, when a target-environment or
+normal-user witness is still required.
 EOF
 
 [ -f "$dir/journal.md" ] || printf '# Journal (append-only)\n' > "$dir/journal.md"

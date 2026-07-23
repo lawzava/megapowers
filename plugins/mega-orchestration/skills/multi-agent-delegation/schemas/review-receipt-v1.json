@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Megapowers Review Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "role", "subject", "author_vendors", "reviewer", "independent", "result", "evidence", "created_at"],
+  "properties": {
+    "schema": {"const": "megapowers.review-receipt.v1"},
+    "role": {"type": "string"},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "artifact", "id", "claim"],
+      "properties": {
+        "kind": {"enum": ["worktree-diff", "file"]},
+        "artifact": {"type": "string"},
+        "id": {"type": "string", "minLength": 1},
+        "claim": {"type": "string", "minLength": 1}
+      }
+    },
+    "author_vendors": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "vendor", "model", "tier", "effort"],
+      "properties": {
+        "provider": {"type": "string"},
+        "vendor": {"type": "string"},
+        "model": {"type": "string"},
+        "tier": {"type": "string"},
+        "effort": {"type": "string"}
+      }
+    },
+    "independent": {"const": true},
+    "result": {"$ref": "review-verdict-v1.json"},
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands", "screenshots"],
+      "properties": {
+        "commands": {"type": "array", "items": {"type": "string"}},
+        "screenshots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256"],
+            "properties": {
+              "path": {"type": "string"},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    },
+    "created_at": {"type": "string"}
+  }
+}

@@ -52,15 +52,21 @@ cleanup() { [ "$keep" -eq 1 ] || rm -rf "$workdir"; }
 trap cleanup EXIT
 
 # 1. setup (seed the workdir)
+phase="setup"
+stage_rc=0
 if [ -f "$sdir/setup.sh" ]; then
   ( cd "$workdir" && SCENARIO_DIR="$sdir" ROOT="$ROOT" bash "$sdir/setup.sh" ) >>"$trace" 2>&1
+  stage_rc=$?
 fi
 
 # 2. act
+if [ "$stage_rc" -eq 0 ]; then
+phase="actor"
 case "$kind" in
   artifact)
     if [ -f "$sdir/solve.sh" ]; then
       ( cd "$workdir" && SCENARIO_DIR="$sdir" ROOT="$ROOT" bash "$sdir/solve.sh" ) >>"$trace" 2>&1
+      stage_rc=$?
     fi
     ;;
   behavior|trigger)
@@ -69,6 +75,7 @@ case "$kind" in
         : # control: the compliant behavior is withheld; do nothing
       elif [ -f "$sdir/mock/actions.sh" ]; then
         ( cd "$workdir" && SCENARIO_DIR="$sdir" ROOT="$ROOT" bash "$sdir/mock/actions.sh" ) >>"$trace" 2>&1
+        stage_rc=$?
       fi
     else
       # real agent: resolve its command template from agents.toml (falls back to example)
@@ -81,20 +88,27 @@ case "$kind" in
       cmd="${cmd//\{\{WORKDIR\}\}/$workdir}"
       cmd="${cmd//\{\{MODE\}\}/$mode}"
       ( cd "$workdir" && eval "$cmd" ) >>"$trace" 2>&1
+      stage_rc=$?
     fi
     ;;
   *) echo "unknown scenario kind: $kind" >&2; exit 2 ;;
 esac
+fi
 
 # 3. check (the oracle)
-WORKDIR="$workdir" TRACE="$trace" SCENARIO_DIR="$sdir" MODE="$mode" \
-  bash "$sdir/check.sh" >>"$trace" 2>&1
-rc=$?
-case "$rc" in
-  0) verdict="pass" ;;
-  77) verdict="indeterminate" ;;
-  *) verdict="fail" ;;
-esac
+if [ "$stage_rc" -ne 0 ]; then
+  verdict="harness_error"
+else
+  phase="oracle"
+  WORKDIR="$workdir" TRACE="$trace" SCENARIO_DIR="$sdir" MODE="$mode" \
+    bash "$sdir/check.sh" >>"$trace" 2>&1
+  stage_rc=$?
+  case "$stage_rc" in
+    0) verdict="pass" ;;
+    77) verdict="indeterminate" ;;
+    *) verdict="fail" ;;
+  esac
+fi
 
 ended="$(now_ms)"
 ms=$(( ended - started )); [ "$ms" -lt 0 ] && ms=0
@@ -102,11 +116,12 @@ ms=$(( ended - started )); [ "$ms" -lt 0 ] && ms=0
 # emit one JSON row (jq if present for safe escaping, else a plain line)
 if command -v jq >/dev/null 2>&1; then
   jq -cn --arg id "$id" --arg skill "$skill" --arg kind "$kind" --arg agent "$agent" \
-        --arg mode "$mode" --arg verdict "$verdict" --argjson ms "$ms" \
-    '{scenario:$id, skill:$skill, kind:$kind, agent:$agent, mode:$mode, verdict:$verdict, ms:$ms}'
+        --arg mode "$mode" --arg verdict "$verdict" --arg phase "$phase" \
+        --argjson rc "$stage_rc" --argjson ms "$ms" \
+    '{scenario:$id, skill:$skill, kind:$kind, agent:$agent, mode:$mode, verdict:$verdict, phase:$phase, rc:$rc, ms:$ms}'
 else
-  printf '{"scenario":"%s","skill":"%s","kind":"%s","agent":"%s","mode":"%s","verdict":"%s","ms":%d}\n' \
-    "$id" "$skill" "$kind" "$agent" "$mode" "$verdict" "$ms"
+  printf '{"scenario":"%s","skill":"%s","kind":"%s","agent":"%s","mode":"%s","verdict":"%s","phase":"%s","rc":%d,"ms":%d}\n' \
+    "$id" "$skill" "$kind" "$agent" "$mode" "$verdict" "$phase" "$stage_rc" "$ms"
 fi
 
 [ "$verdict" = "pass" ]

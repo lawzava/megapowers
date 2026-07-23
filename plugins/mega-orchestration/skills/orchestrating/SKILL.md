@@ -36,6 +36,7 @@ than the work.
 | One clear path, routine stakes | Inline. No structure. |
 | Long-horizon work with unknown ownership, unresolved decisions, or unclear sequencing that prevents an honest spec or plan | mega-orchestration:wayfinding: map uncertainty and resolve the next decision before design or planning. |
 | 2+ independent tasks, no shared state | Parallel fan-out (below): one focused agent per task, dispatched together. |
+| Deterministic mechanical changes sharing one oracle | Bulk mechanical mode: one owner, one bounded batch, one focused verification set. |
 | A written plan of mostly-independent tasks | megapowers:subagent-driven-development (if installed): fresh subagent per task with per-task review. |
 | A subtask another model/runtime does better (review, small scoped impl, browser/visual) | mega-orchestration:multi-agent-delegation: resolve the role via `delegates.toml`. |
 | Wide solution space, high stakes work product | mega-orchestration:best-of-n: N independent candidates; select by oracle when one can exist, blind judge otherwise. |
@@ -60,6 +61,10 @@ each summary, check for conflicts between agents' edits, and run the full
 verification suite yourself. If one task's outcome could reshape another,
 handle them in one agent; a written plan of tasks belongs to
 megapowers:subagent-driven-development instead.
+
+For bulk mechanical mode, partition only when the oracle or ownership genuinely
+differs. One-file-per-agent fan-out multiplies briefing and review cost without
+adding independence.
 
 ## How much compute: spend by stakes times uncertainty
 
@@ -89,6 +94,11 @@ Two rules cut across the ladder:
 - Nothing that ships routes below the floor declared in models.toml
   (`[defaults] floor` in mega-orchestration:multi-agent-delegation).
 
+After dispatch, wait for completion, blocked, needs-context, failure, or user
+interruption. Do not poll unchanged state on a timer. Inspect status on a
+reported transition or a bounded stuck-worker timeout. Use a harness-native
+watcher for CI and deployment status when available.
+
 ## Harness primitives
 
 Subagents, agent teams, background tasks, workflow engines, and effort dials
@@ -103,6 +113,11 @@ call to a primitive the runtime does not have.
 - Decide the structure once, out loud, before dispatching anything. One
   journal or chat line ("structure: SDD, 6 tasks, delegate review per task")
   makes the choice reviewable.
+- Use `fork_turns = "none"` by default. A positive count is exceptional,
+  limited to the indispensable recent continuation, at most three turns. Use
+  `all` only for an explicit same-context resumption.
+- Give each delegate one report channel. Small results return directly; bulky
+  results go to a file and return only status plus the path.
 - Single-writer always: whatever the structure, one integrator owns the tree
   and the commits (see mega-orchestration:multi-agent-delegation). Claude Code
   prevents teammate messages from counting as human approval or changing

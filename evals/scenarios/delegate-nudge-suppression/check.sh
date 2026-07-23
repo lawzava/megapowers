@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 set -u
+
 out="$WORKDIR/nudge.out"
 [ -f "$out" ] || { echo "no output"; exit 1; }
-grep -q "codex_reply=ALLOW"            "$out" || { echo "regressed: codex-reply call did not suppress"; exit 1; }
-grep -q "codex_subagent=ALLOW"         "$out" || { echo "regressed: codex subagent_type did not suppress"; exit 1; }
-grep -q "prose_only=NAG"               "$out" || { echo "regressed: prose mention false-suppressed the nudge"; exit 1; }
-grep -q "notdelegate=NAG"              "$out" || { echo "regressed: 'notdelegate' subagent_type false-suppressed the nudge"; exit 1; }
-grep -q "first_stop=NAG"               "$out" || { echo "regressed: first stop on a risky diff did not nudge"; exit 1; }
-grep -q "second_stop_same_diff=ALLOW"  "$out" || { echo "regressed: once-per-diff-state fix broken - re-nagged on an unchanged risky diff"; exit 1; }
-grep -q "third_stop_diff_changed=NAG"  "$out" || { echo "regressed: hook failed to re-nag once the risky diff actually changed"; exit 1; }
-echo "ok: delegate-nudge suppression correct"
-exit 0
+grep -q "delegate_call_without_receipt=NAG" "$out" || { echo "delegate invocation falsely counted as review proof"; exit 1; }
+grep -q "repeated_without_receipt=NAG" "$out" || { echo "unchanged risky diff escaped without a receipt"; exit 1; }
+grep -q "current_approval=ALLOW" "$out" || { echo "current independent approval receipt did not allow"; exit 1; }
+grep -q "stale_approval=NAG" "$out" || { echo "stale receipt allowed a changed tree"; exit 1; }
+grep -q "needs_attention=NAG" "$out" || { echo "needs-attention receipt allowed completion"; exit 1; }
+echo "ok: delegate-nudge receipt gate correct"

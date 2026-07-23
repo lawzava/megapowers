@@ -12,9 +12,9 @@ the resulting artifacts. You do NOT implement the change yourself.
 
 1. From the project root, run the `multi-agent-delegation` skill's
    `scripts/delegate-resolve <role>` for the role you were given (`--list`
-   enumerates roles; add `--exclude-lead` for the cross-vendor roles verify,
-   judge, and council_member, and for plan_review and code_review when the
-   artifact under review was authored by the lead's vendor). Run it from the project root so the project's
+   enumerates roles). For every independent review role, pass each artifact
+   author's actual vendor with repeatable `--author-vendor`; lead identity is
+   not authorship. Run it from the project root so the project's
    `.megapowers/delegates.toml` and `.megapowers/models.toml` override layers
    apply. Act on the printed route: PROVIDER, MODEL, TIER, EFFORT, CHANNEL,
    BINARY.
@@ -31,11 +31,9 @@ tests yourself before reporting.
 ## Modes
 
 REVIEW / second opinion (read-only). For plan_review, code_review, and verify.
-Use the read_only preset. Pass the plan, spec, or diff to critique, and demand
-the verdict as JSON against the review output schema in the provider's
-reference file, so it comes back machine-checkable rather than as
-self-reported prose. Return the verdict condensed: correctness issues, risks,
-and concrete suggestions.
+Use the read_only preset and `scripts/delegate-run`, which demands the
+vendor-neutral verdict schema and writes the subject-bound receipt. Return the
+verdict condensed: correctness issues, risks, and concrete suggestions.
 
 BROWSER / visual (computer use). For the visual and browser_test roles, with
 the acceptance criteria in the prompt. Save screenshots to

@@ -8,6 +8,54 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.5.0 - 2026-07-23
+
+Reliability and efficiency release based on a cross-harness audit of live
+Codex and Claude sessions.
+
+### Added
+
+- A fail-closed independent-review launcher with author-vendor exclusion,
+  role-specific model tier and effort, strict structured verdicts, complete
+  worktree identities, atomic provenance receipts, and screenshot hashes for
+  visual verification.
+- An explicit browser-driver layer. Playwright captures evidence while a real
+  independently routed vision model owns the visual verdict.
+- Recursive ownership preflight rejects missing, globbed, duplicated, and
+  parent-child-overlapping paths before shared-checkout writers launch.
+- Autonomous runs carry literal acceptance evidence, verification states,
+  external-system cutpoints, explicit session ownership, and report-time
+  warnings for pending or blocked evidence.
+- Deterministic tests cover launcher receipts, Stop-hook ownership and
+  freshness, recursive ownership, and fail-closed eval phases.
+
+### Changed
+
+- Process skills use one workflow announcement and one progress surface,
+  select a scoped TDD fast path when requirements are clear, scale review and
+  planning to risk, cap review loops, batch mechanical work, avoid unchanged
+  polling, and reserve context for integration and verification.
+- Stop hooks distinguish controller, reviewer, plan, read-only, and exact-output
+  contexts. Review completion requires a current receipt rather than a
+  transcript marker; autonomous continuation requires an explicit run claim.
+  Receipts are subject-bound accident backstops, not tamper-proof attestations.
+- Eval and real-agent study runners propagate setup and actor failures.
+  Scorecards report harness errors separately from genuine indeterminate
+  outcomes and exclude neither as a fabricated pass.
+- Freshness review defaults to 30 days and runs weekly. Native Claude manifest
+  validation is a required CI gate.
+- The install smoke installs every plugin, rejects all-SKIP results, and offers
+  a strict post-publish mode that fetches and verifies an exact remote tag,
+  commit, and manifest version before fresh-home Claude and Codex tasks.
+
+### Removed
+
+- Browser automation as a fake model provider.
+- Transcript-marker suppression as proof of independent review.
+- Workflow-implied commit authorization, redundant skill announcements,
+  duplicate checklists, unbounded review retries, and routine unchanged-state
+  polling.
+
 ## 0.4.1 - 2026-07-20
 
 ### Changed

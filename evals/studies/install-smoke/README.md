@@ -31,14 +31,21 @@ config, no other plugins, no CLAUDE.md/AGENTS.md):
    MIT), so a model could in principle reproduce it from training; an
    install-time random token would be needed for an unguessable proof.
 
-Verdicts are `PASS` / `FAIL` / `SKIP(reason)` per assertion; a harness with no
-CLI or no working auth is SKIPPED, not silently passed. Exit code 1 on any FAIL.
+Verdicts are `PASS` / `FAIL` / `SKIP(reason)` per assertion. Local diagnostic
+mode permits a SKIP only when at least one assertion passes; an all-SKIP run
+fails. Exact-ref remote release mode is strict: any SKIP or FAIL fails the run.
 
 ## Run
 
 ```bash
 evals/studies/install-smoke/run-smoke.sh --out /tmp/install-smoke
 # subset: --harnesses claude,codex
+
+# post-publish release gate: fetch and test the exact public tag
+evals/studies/install-smoke/run-smoke.sh \
+  --out /tmp/install-smoke-v0.5.0 \
+  --source lawzava/megapowers --ref v0.5.0 --version 0.5.0 \
+  --harnesses claude,codex
 ```
 
 Requires real credentials (run outside any credential-blocking sandbox).
@@ -46,9 +53,10 @@ Artifacts (install logs, task transcripts) land in `--out` for auditing.
 
 ## Scope and limits
 
-- The marketplace add uses the local checkout path, not the network form
-  (`lawzava/megapowers`). It validates the repo's marketplace and manifest
-  wiring end to end, but not GitHub fetching.
+- Local diagnostic mode uses a checkout path. The release gate clones the
+  declared remote tag, verifies HEAD is exactly that tag, verifies every
+  Claude/Codex plugin manifest has the expected version, records the commit in
+  `source.json`, then installs from that immutable checkout into fresh homes.
 - The first-task probe is an explicit skill request (deterministic oracle).
   Whether skills trigger organically on a matching task is a behavior
   question; that axis belongs to the process-behavior study's methodology,

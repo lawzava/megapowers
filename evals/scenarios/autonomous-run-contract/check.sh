@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -u
 o="$WORKDIR/out.txt"; [ -f "$o" ] || { echo "no output"; exit 1; }
-for f in charter.md plan.md runbook.md journal.md status; do grep -q "$f" "$o" || { echo "scaffold missing $f"; exit 1; }; done
+for f in charter.md plan.md runbook.md journal.md status evidence.md; do grep -q "$f" "$o" || { echo "scaffold missing $f"; exit 1; }; done
+grep -q 'Acceptance evidence' "$o" || { echo "run report does not surface acceptance evidence"; exit 1; }
+grep -q 'implemented | locally verified | externally verified' "$o" || { echo "evidence scaffold lacks explicit completion states"; exit 1; }
 for cmd in init journal report derive verify; do
   grep -q "rc_bad_${cmd}=2" "$o" || { echo "$cmd must reject a traversal run ID with exit 2"; exit 1; }
 done

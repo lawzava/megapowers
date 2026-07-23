@@ -21,8 +21,10 @@ files. `models.toml` is the model catalog: who leads (`[lead]`), the
 vendor-neutral tier scale and per-tier purposes (`[tiers]`, `[tiers.use]`),
 the providers with their tier maps, capabilities, and channel data, and the
 ship floor (`[defaults]`). `delegates.toml` is the routing: which provider
-handles which role (`[roles]`, `[requires]`, `[fallbacks]`) and how each run
-preset behaves (`[presets]`). Both resolve the same way: a project
+handles which role (`[roles]`, `[requires]`, `[fallbacks]`), the required tier
+and effort (`[role_tiers]`, `[role_efforts]`), author-vendor independence
+(`[independence]`), evidence drivers (`[drivers]`, `[role_drivers]`), and how
+each run preset behaves (`[presets]`). Both resolve the same way: a project
 `.megapowers/<file>` or user `~/.config/megapowers/<file>` layer overrides the
 shipped copy per key, so a new model release is one tier-map line in a file
 that survives plugin updates (`scripts/delegate-resolve --where` shows the
@@ -37,9 +39,10 @@ delegate agents, and the session-start catalog block read the config live, so
 no code changes are needed.
 
 Each provider's `reference` key names that provider's channel mechanics and
-prompting guidance: references/providers/codex.md, references/providers/claude.md,
-and references/providers/browser.md. Read the resolved provider's file before
-dispatching instead of assuming any vendor's quirks from memory.
+prompting guidance: references/providers/codex.md and
+references/providers/claude.md. Browser automation is a driver, not a model
+provider; its mechanics live in references/providers/browser.md. Read the
+resolved provider and driver references before dispatching.
 
 The nine roles: plan_review, code_review, small_impl, visual, browser_test,
 visual_verify, verify, judge, council_member.
@@ -53,15 +56,17 @@ setting are compared by tier only.
 ## Resolving a Route
 
 `scripts/delegate-resolve <role>` resolves the config executably (`--preset
-<name>` for presets, `--exclude <vendor|provider>` to drop a backend,
-`--exclude-lead` to drop whatever `[lead]` declares, `--models <file>` to pin
+<name>` for presets, `--author-vendor <vendor>` once per artifact-author vendor
+for independent roles, `--exclude <vendor|provider>` to drop a backend,
+`--exclude-lead` as a compatibility exclusion, `--models <file>` to pin
 the catalog, `--lead` to print the declared orchestrator, `--where` to print
 the active config layers, `--check` to validate the table, `--list` and
 `--list-presets` to enumerate). It walks
 the role's fallback chain, skipping any provider that is excluded, disabled,
 missing a required capability, below the configured floor, or whose CLI is not
 installed, so a route never resolves to a runtime you do not have, and prints
-ROLE/PROVIDER/MODEL/TIER/EFFORT/CHANNEL/ENABLED/VENDOR/BINARY/FLOOR/NOTES.
+ROLE/PROVIDER/MODEL/TIER/EFFORT/CHANNEL/ENABLED/VENDOR/BINARY/FLOOR/NOTES,
+plus DRIVER fields when the role requires an evidence driver.
 
 Exit codes are a stable contract a harness can branch on: 0 resolved, act on
 the printed route; 2 usage or config error, including a malformed config, with
@@ -79,16 +84,26 @@ independent. Read every default as "route to that provider unless you are
 already it." When you only need parallelism rather than a second opinion, use
 same-model parallel fan-out (mega-orchestration:orchestrating).
 
-For the cross-vendor roles (verify, judge, council_member) this is executable,
-not advisory: each carries a `[fallbacks]` chain to a second vendor, and they
-must resolve to a vendor different from the author's. Resolve with
-`--exclude-lead` (the config's `[lead]` names the orchestrator, so
-the exclusion follows a lead swap automatically) or an explicit `--exclude
-<vendor>`; the helper walks the chain to a different-vendor route, and if none
-is available it exits 3 rather than handing the work back to the author's
-vendor. plan_review and code_review carry the same chains so a lead swap keeps
-them resolvable with `--exclude-lead`; small_impl stays single-route, it is
-not an independence role.
+For plan_review, code_review, visual_verify, verify, judge, and council_member,
+this is executable, not advisory. Pass every artifact author using repeatable
+`--author-vendor`; the resolver rejects a missing author declaration and walks
+the fallback chain past every matching vendor. `--exclude-lead` does not prove
+authorship and cannot satisfy this policy. If no independent provider is
+available, resolution fails rather than handing the work back to an author's
+vendor. small_impl stays single-route because it is not an independence role.
+
+For read-only independent review, prefer
+`scripts/delegate-run --role ROLE --author-vendor VENDOR --artifact
+worktree|FILE --claim TEXT`. It resolves and executes the safe provider adapter,
+requires the verdict schema, computes the complete worktree or file identity,
+and atomically writes a provenance receipt. The receipt is evidence only for
+that exact subject identity; any tracked, staged, unstaged, or untracked change
+invalidates it. Exit 0 means approved, 5 means a valid needs-attention verdict,
+6 a provider failure, and 7 invalid provider output.
+
+The launcher validates `schemas/review-verdict-v1.json` and emits
+`schemas/review-receipt-v1.json`. Its executable regression contract is
+`scripts/tests/delegate-run.test.sh`.
 
 ## Role Defaults
 
@@ -105,13 +120,11 @@ comment above that table in delegates.toml. The stable shape:
   `[requires]` table enforces the capability). Whoever drives, evidence
   discipline holds: screenshots land in `.megapowers/evidence/` and the lead
   re-reads them rather than trusting the text summary.
-- visual_verify routes to the browser provider: drive the UI with
-  `playwright-cli` and reason over the screenshots with a vision-capable
-  model, so the vendor reading the pixels differs from the vendor that
-  authored the work. The role has no fallback; without `playwright-cli` the
-  helper exits 3 rather than fabricating a route. It also serves as the redo
-  path when the visual route's output misses the bar, and the original
-  provider then verifies the redo, keeping author and verifier distinct. See
+- visual_verify resolves a real vision-capable model provider and separately
+  requires the `playwright-cli` driver. The driver captures pixels; it cannot
+  satisfy vendor independence, tier, effort, or a verdict. `delegate-run`
+  requires screenshot paths and binds their hashes into the receipt. Without
+  either the independent model route or the driver, resolution fails. See
   [browser-delegate](../../agents/browser-delegate.md).
 
 Keep planning, decomposition, broad multi-file context, bulk reads, and the
@@ -149,13 +162,15 @@ Provider identity means the vendor that actually runs the model, not the name
 of the harness or compatibility protocol in front of it. A gateway or proxy is
 acceptable only as a distinct provider entry with a truthful `vendor` key.
 Never route an OpenAI model through a provider declared as Anthropic, or the
-reverse: `--exclude-lead` would report a false independent pass because vendor
-identity is the exclusion boundary.
+reverse: author-vendor exclusion would report a false independent pass because
+vendor identity is the exclusion boundary.
 
-When Claude is the different-vendor plan reviewer, verifier, or judge, use its
-isolated one-shot channel (`--safe-mode --no-session-persistence`) and make the
-prompt self-contained. That keeps ambient Claude Code plugins and hooks from
-turning an independent review into a recursive or stateful session.
+When Claude is the different-vendor reviewer or judge, the launcher uses
+`--bare` with an API key. For OAuth, it copies only the credential into a
+disposable config home and runs from a disposable directory; this isolates
+user plugins, hooks, memory, and project instructions, but enterprise-managed
+Claude configuration may still apply. Both paths are one-shot and receive a
+self-contained prompt.
 
 For a delegate call that runs long, the sanctioned async channel is MCP Tasks,
 the durable call-now/fetch-later extension; it is still finalizing, so reach

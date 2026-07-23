@@ -24,6 +24,11 @@ Identify the base branch (merge-base against main or master, or ask) so the merg
 
 ## The menu
 
+If the user already stated the destination, validate the relevant gates and
+execute that choice directly. Do not show the menu. Explicit destructive
+confirmation still applies to discard. Show the menu only when the destination
+is unclear.
+
 Normal repo and named branch worktree, exactly these 4 options, no added commentary:
 
 ```
