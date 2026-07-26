@@ -193,12 +193,9 @@ an upgraded hook is skipped until reviewed again. Use `/hooks` in Codex to
 review and trust the installed definitions. Do not use
 `--dangerously-bypass-hook-trust` for an interactive installation.
 
-Migrating from the v0.3.1 manual pilot: remove only the three megapowers pilot
-entries you previously added to `~/.codex/hooks.json` or a project's
-`.codex/hooks.json`, preserving unrelated hooks. Install/upgrade the three
-plugins above, start Codex, and trust their plugin-provided hooks in `/hooks`.
-Leaving the manual entries in place runs SessionStart, Stop, or PreToolUse
-twice.
+If a megapowers hook fires twice, a hand-wired entry for it is still in
+`~/.codex/hooks.json` or a project's `.codex/hooks.json`. Delete that entry,
+keeping unrelated hooks; the installed plugin provides it now.
 
 After an upgrade, restart the app server so the live process and CLI load the
 same plugin snapshot:
