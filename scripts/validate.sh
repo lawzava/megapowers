@@ -418,6 +418,18 @@ for twin in dispatch.sh run-hook.cmd; do
   done < <(find plugins -type f -path "*/hooks/$twin" 2>/dev/null | sort)
   [[ -n $twin_ref && $twin_bad -eq 0 ]] && ok "hook twin $twin identical across plugins"
 done
+# lib-toml.sh is the same kind of byte-twin, but it is not under hooks/ in both
+# plugins: render-model-catalog sources it from hooks/, delegate-resolve from the
+# multi-agent-delegation skill. Both parse the same models.toml, so a divergent
+# copy means the session catalog and the resolver disagree about the same file.
+lt_a="plugins/megapowers/hooks/lib-toml.sh"
+lt_b="plugins/mega-orchestration/skills/multi-agent-delegation/scripts/lib-toml.sh"
+if [[ -f $lt_a && -f $lt_b ]]; then
+  if cmp -s "$lt_a" "$lt_b"; then ok "lib-toml.sh identical across plugins"; else bad "lib-toml.sh twin drift: $lt_a vs $lt_b"; fi
+else
+  bad "lib-toml.sh missing a copy ($lt_a / $lt_b)"
+fi
+
 echo "== cross-manifest consistency =="
 # a plugin's version must agree across its Claude and Codex manifests
 for cl in plugins/*/.claude-plugin/plugin.json; do

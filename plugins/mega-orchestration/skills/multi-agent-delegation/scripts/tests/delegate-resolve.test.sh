@@ -531,5 +531,71 @@ check "visual verifier has an effort" "EFFORT=high" "$out"
 check "visual verifier carries Playwright driver" "DRIVER=playwright" "$out"
 check "visual verifier carries resolved driver binary" "DRIVER_BINARY=sh" "$out"
 
+# --vendors: the reachability primitive the Stop-hook nudge reads to decide whether
+# an independent cross-vendor review is achievable at all on this machine.
+cat > "$TMP/vendors.toml" <<'EOF'
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[providers.alpha]
+vendor = "acme"
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.alpha.tiers]
+strong = "alpha-1"
+[providers.beta]
+vendor = "globex"
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.beta.tiers]
+strong = "beta-1"
+[providers.gamma]
+vendor = "acme"
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.gamma.tiers]
+strong = "gamma-1"
+[providers.delta]
+vendor = "initech"
+binary = "definitely-not-an-installed-binary-xyz"
+channel = "cli"
+default_tier = "strong"
+[providers.delta.tiers]
+strong = "delta-1"
+[providers.epsilon]
+vendor = "umbrella"
+enabled = false
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.epsilon.tiers]
+strong = "epsilon-1"
+[roles]
+code_review = "alpha"
+EOF
+: > "$TMP/empty-catalog.toml"
+out="$("$DR" --vendors --config "$TMP/vendors.toml" --models "$TMP/empty-catalog.toml" 2>&1)"; rc=$?
+check_exit "--vendors exits 0" 0 "$rc"
+check "--vendors lists a reachable vendor" "acme" "$out"
+check "--vendors lists the second reachable vendor" "globex" "$out"
+n="$(printf '%s\n' "$out" | grep -c .)"
+check_exit "--vendors deduplicates and drops absent/disabled providers" 2 "$n"
+case "$out" in
+  *initech*) fail=$((fail + 1)); echo "  FAIL --vendors must drop a provider whose CLI is absent" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+case "$out" in
+  *umbrella*) fail=$((fail + 1)); echo "  FAIL --vendors must drop a disabled provider" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+
+# The single-vendor case is the one the nudge degrades on.
+sed '/^\[providers.beta\]$/,/^strong = "beta-1"$/d' "$TMP/vendors.toml" > "$TMP/one-vendor.toml"
+out="$("$DR" --vendors --config "$TMP/one-vendor.toml" --models "$TMP/empty-catalog.toml" 2>&1)"
+n="$(printf '%s\n' "$out" | grep -c .)"
+check_exit "one reachable vendor reports a count of 1" 1 "$n"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

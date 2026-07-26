@@ -9,6 +9,8 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib-toml.sh
+. "$SCRIPT_DIR/lib-toml.sh"
 files=()
 if [ -n "${MODELS_TOML:-}" ]; then
   files=("$MODELS_TOML")
@@ -20,30 +22,14 @@ else
 fi
 [ "${#files[@]}" -gt 0 ] || exit 0
 
-defined_in() {  # $1=file $2=section $3=key
-  awk -v sec="[$2]" -v key="$3" '
-    { hn=$0; gsub(/[[:space:]]/,"",hn) }
-    hn==sec {inx=1; next}
-    /^[[:space:]]*\[/ {inx=0}
-    inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {found=1; exit}
-    END {exit !found}
-  ' "$1" 2>/dev/null
-}
-
+# Layer walk: the first readable file that DEFINES a key wins it outright. The
+# leaf readers live in lib-toml.sh; only the precedence policy is local.
 val() {  # $1=section $2=key -> first file that defines it wins
   local f v
   for f in "${files[@]}"; do
     [ -r "$f" ] || continue
-    defined_in "$f" "$1" "$2" || continue
-    v="$(awk -v sec="[$1]" -v key="$2" '
-      { hn=$0; gsub(/[[:space:]]/,"",hn) }
-      hn==sec {inx=1; next}
-      /^[[:space:]]*\[/ {inx=0}
-      inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
-        rest=$0; sub(/^[^=]*=[[:space:]]*/,"",rest)
-        if (rest ~ /^"/) { sub(/^"/,"",rest); sub(/".*/,"",rest); print rest; exit }
-        sub(/#.*/,"",rest); gsub(/[[:space:]]+$/,"",rest); print rest; exit
-      }' "$f" 2>/dev/null)"
+    toml_key_exists_in "$f" "$1" "$2" 2>/dev/null || continue
+    v="$(toml_scalar_in "$f" "$1" "$2" 2>/dev/null)"
     printf '%s' "$v"
     return 0
   done
@@ -53,16 +39,8 @@ arr() {  # $1=section $2=key -> elements one per line, first file wins
   local f out
   for f in "${files[@]}"; do
     [ -r "$f" ] || continue
-    defined_in "$f" "$1" "$2" || continue
-    out="$(awk -v sec="[$1]" -v key="$2" '
-      { hn=$0; gsub(/[[:space:]]/,"",hn) }
-      hn==sec {inx=1; next}
-      /^[[:space:]]*\[/ {inx=0}
-      inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
-        rest=$0; sub(/^[^=]*=/,"",rest)
-        while (match(rest, /"[^"]*"/)) { print substr(rest, RSTART+1, RLENGTH-2); rest=substr(rest, RSTART+RLENGTH) }
-        exit
-      }' "$f" 2>/dev/null)"
+    toml_key_exists_in "$f" "$1" "$2" 2>/dev/null || continue
+    out="$(toml_array_in "$f" "$1" "$2" 2>/dev/null)"
     [ -n "$out" ] && printf '%s\n' "$out"
     return 0
   done
@@ -72,7 +50,7 @@ providers() {  # provider names, union across files, file order
   local f
   for f in "${files[@]}"; do
     [ -r "$f" ] || continue
-    awk '{h=$0; gsub(/[[:space:]]/,"",h)} h ~ /^\[providers\.[A-Za-z0-9_-]+\]$/ {n=h; sub(/^\[providers\./,"",n); sub(/\]$/,"",n); print n}' "$f" 2>/dev/null
+    toml_provider_names_in "$f" 2>/dev/null
   done | awk '!seen[$0]++'
 }
 

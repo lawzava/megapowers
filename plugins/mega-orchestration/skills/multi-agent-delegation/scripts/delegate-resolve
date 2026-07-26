@@ -22,11 +22,10 @@
 # compatibility: provider sections in delegates.toml layers win), then the
 # catalog stack. The catalog stack may be empty.
 #
-# Reads a restricted TOML subset matching delegates.toml: [section] and
-# [section.name] headers (internal whitespace tolerated), one `key = value` per
-# line, values either bare or single/double quoted, `#` comments outside quotes,
-# plus single-line arrays of quoted strings. Multi-line strings and inline tables
-# are not parsed.
+# Reads a restricted TOML subset via lib-toml.sh, which owns the grammar and ships
+# as a byte-twin here and in plugins/megapowers/hooks/ (plugins cannot locate each
+# other at runtime; scripts/validate.sh fails on drift). This file owns only the
+# layer-precedence policy: which file wins a key, and how the two stacks combine.
 #
 # Resolution walks the role's fallback chain (or its single [roles] provider when it
 # has none), skipping any candidate that is --excluded, disabled, or whose CLI is not
@@ -38,6 +37,8 @@
 #                    [--author-vendor <vendor>]... [--exclude <vendor|provider>]... [--list]
 #   delegate-resolve --preset <name> [--config <file>]
 #   delegate-resolve --list-presets [--config <file>]
+#   delegate-resolve [<role>] --vendors [--config <file>]  # reachable vendors, one/line
+#                    (with a role: only vendors that role could actually resolve to)
 #   delegate-resolve --where [--config <file>]
 #   delegate-resolve --lead | --exclude-lead | --check [--config <file>]
 # Exit:  0 resolved · 2 usage/config/parse error · 3 unknown role OR no available
@@ -48,13 +49,15 @@ set -uo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 shipped="$here/../delegates.toml"   # scripts/../delegates.toml
+# shellcheck source=lib-toml.sh
+. "$here/lib-toml.sh"
 
 usage() {
   echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--author-vendor <vendor>]... [--exclude <vendor|provider>]... [--list]" >&2
-  echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --where | --lead | --check" >&2
+  echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --vendors | --where | --lead | --check" >&2
 }
 
-role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; cfg=""; mcfg=""; excludes=(); author_vendors=()
+role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; vendors=0; cfg=""; mcfg=""; excludes=(); author_vendors=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
@@ -69,6 +72,7 @@ while [ $# -gt 0 ]; do
               preset="$2"; shift 2 ;;
     --list) list=1; shift ;;
     --list-presets) list_presets=1; shift ;;
+    --vendors) vendors=1; shift ;;
     --where) where=1; shift ;;
     --lead) lead=1; shift ;;
     --exclude-lead) exclude_lead=1; shift ;;
@@ -147,17 +151,9 @@ done
 # Scalar and array lookups return the first (highest-priority) layer's value;
 # existence checks and listings union across layers.
 
-section_exists_in() { awk -v sec="[$2]" '{h=$0; gsub(/[[:space:]]/,"",h)} h==sec {found=1; exit} END{exit !found}' "$1"; }
+section_exists_in() { toml_section_exists_in "$1" "$2"; }
 section_exists() { local f; for f in "${layers[@]}"; do section_exists_in "$f" "$1" && return 0; done; return 1; }
-key_exists_in() {  # $1=file $2=section $3=key
-  awk -v sec="[$2]" -v key="$3" '
-    { hn=$0; gsub(/[[:space:]]/,"",hn) }
-    hn==sec {inx=1; next}
-    /^[[:space:]]*\[/ {inx=0}
-    inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {found=1; exit}
-    END {exit !found}
-  ' "$1"
-}
+key_exists_in() { toml_key_exists_in "$1" "$2" "$3"; }
 
 list_roles() {
   local f
@@ -173,19 +169,7 @@ list_preset_names() {
   done | awk '!seen[$0]++'
 }
 
-section_val_in() {  # $1=file $2=section (e.g. "roles" | "providers.codex") $3=key
-  awk -v sec="[$2]" -v key="$3" '
-    { hn=$0; gsub(/[[:space:]]/,"",hn) }
-    hn==sec {inx=1; next}
-    /^[[:space:]]*\[/ {inx=0}
-    inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
-      rest=$0; sub(/^[^=]*=[[:space:]]*/,"",rest)
-      if (rest ~ /^"/)      { sub(/^"/,"",rest); sub(/".*/,"",rest); print rest; exit }
-      else if (rest ~ /^'\''/) { sub(/^'\''/,"",rest); sub(/'\''.*/,"",rest); print rest; exit }
-      else { sub(/#.*/,"",rest); gsub(/[[:space:]]+$/,"",rest); print rest; exit }
-    }
-  ' "$1"
-}
+section_val_in() { toml_scalar_in "$1" "$2" "$3"; }
 section_val() {  # $1=section $2=key -> first layer that defines the key wins
   local f v
   for f in "${layers[@]}"; do
@@ -197,21 +181,7 @@ section_val() {  # $1=section $2=key -> first layer that defines the key wins
   return 1
 }
 
-array_val_in() {  # $1=file $2=section $3=key -> one element per line
-  awk -v sec="[$2]" -v key="$3" '
-    { hn=$0; gsub(/[[:space:]]/,"",hn) }
-    hn==sec {inx=1; next}
-    /^[[:space:]]*\[/ {inx=0}
-    inx && $0 ~ ("^[[:space:]]*" key "[[:space:]]*=") {
-      rest=$0; sub(/^[^=]*=/,"",rest)
-      while (match(rest, /"[^"]*"/)) {
-        print substr(rest, RSTART+1, RLENGTH-2)
-        rest=substr(rest, RSTART+RLENGTH)
-      }
-      exit
-    }
-  ' "$1"
-}
+array_val_in() { toml_array_in "$1" "$2" "$3"; }
 array_val() {  # $1=section $2=key -> the first layer that defines the key wins whole
   local f out
   for f in "${layers[@]}"; do
@@ -263,7 +233,7 @@ fallbacks_of() { array_val fallbacks "$1"; }
 providers_list() {  # every [providers.X] name across layers (tier subsections excluded)
   local f
   for f in "${layers[@]}" ${mlayers[@]+"${mlayers[@]}"}; do
-    awk '{h=$0; gsub(/[[:space:]]/,"",h)} h ~ /^\[providers\.[A-Za-z0-9_-]+\]$/ {n=h; sub(/^\[providers\./,"",n); sub(/\]$/,"",n); print n}' "$f"
+    toml_provider_names_in "$f"
   done | awk '!seen[$0]++'
 }
 
@@ -383,6 +353,92 @@ fi
 # --- list / preset modes ---------------------------------------------------------
 if [ "$list" -eq 1 ]; then list_roles; exit 0; fi
 if [ "$list_presets" -eq 1 ]; then list_preset_names; exit 0; fi
+
+# --vendors: distinct vendors reachable right now, one per line.
+#
+# Callers use the COUNT to decide whether vendor independence is achievable: with
+# fewer than two, some author vendor leaves no route away from itself, so demanding
+# an independent review is futile rather than merely inconvenient.
+#
+# WITH a role, the probe walks that role's candidate chain and applies the same
+# filters resolution does. Without one it reports every reachable provider, which
+# is a strictly weaker claim: a globally reachable vendor that the role does not
+# route to, or that fails its capability/tier/effort/floor requirements, cannot
+# serve the role. Anything deciding whether an independent review can resolve must
+# pass the role, or it will count vendors that resolution would reject.
+if [ "$vendors" -eq 1 ]; then
+  if [ -n "$role" ]; then
+    vr_primary="$(section_val roles "$role")"
+    [ -n "$vr_primary" ] || { echo "delegate-resolve: no route for role '$role'" >&2; exit 3; }
+    vr_candidates="$(fallbacks_of "$role")"
+    [ -n "$vr_candidates" ] || vr_candidates="$vr_primary"
+    vr_tier="$(section_val role_tiers "$role")"
+    vr_effort="$(section_val role_efforts "$role")"
+    vr_req="$(array_val requires "$role")"
+    vr_floor="$(cat_val defaults floor)"
+    vr_scale="$scale_list"
+    vr_eff_scale="$(cat_array efforts scale)"
+    vr_floor_idx=""; vr_floor_eff_idx=""
+    if [ -n "$vr_floor" ] && [ -n "$vr_scale" ]; then
+      vr_floor_idx="$(tier_index "${vr_floor%%:*}")"
+    fi
+    if [ -n "$vr_floor" ]; then
+      vr_fe="${vr_floor#*:}"
+      if [ "$vr_fe" != "$vr_floor" ] && [ -n "$vr_fe" ] && [ -n "$vr_eff_scale" ]; then
+        vr_floor_eff_idx="$(printf '%s\n' "$vr_eff_scale" | grep -nx -- "$vr_fe" | cut -d: -f1)"
+      fi
+    fi
+    while IFS= read -r p; do
+      [ -n "$p" ] || continue
+      cat_exists "providers.$p" || continue
+      en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
+      [ "$en" = "false" ] && continue
+      bin="$(cat_val "providers.$p" binary)"
+      if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi
+      if [ -n "$vr_req" ]; then
+        caps="$(cat_array "providers.$p" capabilities)"; capmiss=0
+        while IFS= read -r rc_; do
+          [ -n "$rc_" ] || continue
+          printf '%s\n' "$caps" | grep -qx -- "$rc_" || { capmiss=1; break; }
+        done <<< "$vr_req"
+        [ "$capmiss" -eq 1 ] && continue
+      fi
+      if [ -n "$vr_tier" ]; then
+        [ -n "$(cat_val "providers.$p.tiers" "$vr_tier")" ] || continue
+        ptier="$vr_tier"
+      else
+        ptier="$(cat_val "providers.$p" default_tier)"
+      fi
+      if [ -n "$vr_effort" ]; then
+        printf '%s\n' "$(cat_array "providers.$p" efforts)" | grep -qx -- "$vr_effort" || continue
+        peff="$vr_effort"
+      else
+        peff="$(cat_val "providers.$p" effort)"
+      fi
+      if [ -n "$vr_floor_idx" ] && [ -n "$ptier" ]; then
+        pidx="$(tier_index "$ptier")"
+        { [ -n "$pidx" ] && [ "$pidx" -ge "$vr_floor_idx" ]; } || continue
+      fi
+      if [ -n "$vr_floor_eff_idx" ] && [ -n "$peff" ]; then
+        peidx="$(printf '%s\n' "$vr_eff_scale" | grep -nx -- "$peff" | cut -d: -f1)"
+        { [ -n "$peidx" ] && [ "$peidx" -ge "$vr_floor_eff_idx" ]; } || continue
+      fi
+      v="$(cat_val "providers.$p" vendor)"
+      [ -n "$v" ] && printf '%s\n' "$v"
+    done <<< "$vr_candidates" | awk '!seen[$0]++'
+    exit 0
+  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
+    [ "$en" = "false" ] && continue
+    bin="$(cat_val "providers.$p" binary)"
+    if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi
+    v="$(cat_val "providers.$p" vendor)"
+    [ -n "$v" ] && printf '%s\n' "$v"
+  done <<< "$(providers_list)" | awk '!seen[$0]++'
+  exit 0
+fi
 
 if [ "$lead" -eq 1 ]; then
   lp="$(cat_val lead provider)"
