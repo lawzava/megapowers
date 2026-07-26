@@ -43,7 +43,7 @@ check sits on a line starting with
 `- acceptance:`. A heading that does not parse drops out of done-derivation, so
 `scripts/run-derive-status` counts it into `PLAN_WARNINGS` and refuses `done`
 while any remain. An acceptance check written any other way escapes the digest
-freeze and stays tamperable even with a digest present.
+freeze, so it can change mid-run without the done-claim noticing.
 
 ## Where the charter comes from
 
@@ -175,9 +175,13 @@ declarative, self-contained.
 - Declared milestones are fingerprinted: `run-init` snapshots each milestone
   heading and its acceptance line into `plan-digest`. Thereafter
   `run-verify-status` fails a done-claim (and `run-derive-status` refuses
-  `done`) if a declared milestone vanishes or its acceptance line weakens. To
+  `done`) if a declared milestone vanishes or its acceptance line changes. To
   change the plan deliberately, re-run `--replan`, which re-snapshots and
-  journals a decision; the charter still never changes.
+  journals a decision; the charter still never changes. This is drift
+  detection, not a security control: a long run forgets what it promised, and
+  the fingerprint makes a mid-run redefinition of success explicit rather than
+  silent. Anything that can edit the plan can also re-baseline the digest, so
+  it stops accidents and self-deception, not a determined actor.
 - Irreversible actions go through staging appropriate to the autonomy level;
   the effect broker, when present, is the mechanism.
 - On Claude Code, the `run-loop.sh` Stop hook blocks a premature stop while a

@@ -25,23 +25,8 @@ scriptdir="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=run-lib.sh
 . "$scriptdir/run-lib.sh"
 
-# plan_digest <plan.md> — "<tag> <sha256>" per milestone (heading + acceptance
-# line(s), whitespace-normalized). Identical to run-init/run-verify-status so the
-# hashes match; compared against the frozen plan-digest to catch plan tampering.
-plan_digest() {
-  awk '
-    function norm(s) { gsub(/[ \t]+/, " ", s); sub(/^ +/, "", s); sub(/ +$/, "", s); return s }
-    /^## [A-Za-z][A-Za-z0-9_-]*:/ {
-      if (tag != "") print tag "\t" buf
-      tag = substr($0, 4, index($0, ":") - 4); buf = norm($0); next
-    }
-    /^## / { if (tag != "") print tag "\t" buf; tag = ""; buf = ""; next }
-    tag != "" && $0 ~ /^[ \t]*-?[ \t]*acceptance:/ { buf = buf " ][ " norm($0) }
-    END { if (tag != "") print tag "\t" buf }
-  ' "$1" | while IFS="$(printf '\t')" read -r t c; do
-    printf '%s %s\n' "$t" "$(printf '%s' "$c" | sha256sum | cut -d' ' -f1)"
-  done
-}
+# plan_digest lives in run-lib.sh; it compares the live plan against the frozen
+# fingerprint to surface milestone drift.
 
 [ $# -ge 1 ] || { echo "usage: run-derive-status <run-id>" >&2; exit 2; }
 id="$1"
