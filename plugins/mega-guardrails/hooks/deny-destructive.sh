@@ -21,8 +21,11 @@
 #     rm -rf "$TMPDIR/x", git clean -fn dry-runs, curl with an API-key header).
 #
 # What it is NOT: a sandbox or a security boundary, and NOT the irreversibility layer.
-# It matches a handful of high-signal patterns and deliberately does not try to parse
-# arbitrary shell. Determined obfuscation (command substitution, stdin/heredoc-fed
+# It matches a handful of high-signal patterns. It DOES segment the command string
+# quote-aware first, but that is for precision, not for evasion resistance: without it
+# `echo "rm -rf /"` and `grep -r "chmod 777 /" .` would be denied, and false denials on
+# ordinary work are what get a guard switched off. Determined obfuscation (command
+# substitution, stdin/heredoc-fed
 # shells, aliases, escaped separators, wrapper option-values) will get past it — that is
 # expected, and chasing every bypass with more regex is a losing game we do not play.
 # Conversely it can occasionally over-flag: a heredoc/here-string BODY that literally
@@ -36,8 +39,11 @@
 # hook (Claude Code only) just catches the obvious LOCAL accident before it happens. It
 # fails OPEN: any parse error or oversized input exits 0 (allow) so it never wedges work.
 #
-# Commands wrapped in bash -c / sh -c / eval are re-scanned recursively (bounded depth)
-# so the wrapper doesn't trivially defeat the checks.
+# Commands wrapped in bash -c / sh -c / eval are re-scanned recursively (bounded depth).
+# The reason is accident coverage, not evasion resistance: agents genuinely write
+# `bash -c "cd $d && rm -rf $x"`, and an unset variable there is as catastrophic nested
+# as it is at the top level. Anyone deliberately hiding a command has easier routes
+# (see the bypasses above); the depth cap exists to bound work, not to win that race.
 set -u
 command -v jq >/dev/null 2>&1 || exit 0
 input="$(cat 2>/dev/null || true)"
