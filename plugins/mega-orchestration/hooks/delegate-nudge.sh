@@ -16,8 +16,19 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 # categories constantly: a checklist that lists them, or a template telling an
 # agent to route such work for review, is not a change to that work. Scanning
 # documentation fired the gate on doc-only edits.
+#
+# This file and its tests are excluded for the same reason, one step further in:
+# they must contain the risky keyword list verbatim (the pattern below, the block
+# message that names the categories, and fixtures like `billing()` that prove the
+# gate fires). Without this, editing the guard always trips the guard, and the
+# resulting review request cites its own warning text as the risky change. The
+# exclusion is deliberately narrow: sibling hooks stay scanned, so a real logic
+# change to deny-destructive.sh is still gated, and it only ever matches inside a
+# checkout of this repository.
 prose=(':(top,exclude,glob)**/*.md' ':(top,exclude,glob)**/*.mdx'
-       ':(top,exclude,glob)**/*.markdown' ':(top,exclude,glob)**/*.rst')
+       ':(top,exclude,glob)**/*.markdown' ':(top,exclude,glob)**/*.rst'
+       ':(top,exclude,glob)**/mega-orchestration/hooks/delegate-nudge.sh'
+       ':(top,exclude,glob)**/mega-orchestration/hooks/tests/**')
 diff="$(git diff HEAD --binary --no-ext-diff -- ':/' "${prose[@]}" 2>/dev/null)"
 untracked="$(git ls-files --others --exclude-standard -- ':/' "${prose[@]}" 2>/dev/null)"
 [ -n "$diff" ] || [ -n "$untracked" ] || exit 0
@@ -52,6 +63,35 @@ if [ -x "$diff_id_tool" ] && [ -f "$receipt" ]; then
 fi
 
 launcher="$here/../skills/multi-agent-delegation/scripts/delegate-run"
+resolver="$here/../skills/multi-agent-delegation/scripts/delegate-resolve"
+
+# Cross-vendor review needs at least two reachable vendors. With one (or none),
+# no --author-vendor choice can route away from the author, so instructing the
+# agent to run the launcher would prescribe a command that cannot succeed: it
+# would exit 3 no matter what. The risk is real either way, so the gate still
+# fires; only the remedy changes to one the agent can actually carry out.
+# Probe the verify ROLE, not the machine. A globally installed vendor that the
+# verify chain does not route to, or that fails its capability/tier/effort/floor
+# requirements, cannot serve the review; counting it would claim an independent
+# pass is possible when resolution would exit 3.
+#
+# Default 2 (the stricter path) so a missing or failing resolver never downgrades
+# the remedy. Count only when the resolver itself succeeds, and count with awk
+# rather than `grep -c .`: grep exits 1 on zero matches, which would discard a
+# legitimate zero and leave the default in place, sending a machine with NO
+# reachable vendor down the launcher path it cannot follow.
+reachable=2
+if [ -x "$resolver" ]; then
+  if vendor_list="$("$resolver" verify --vendors 2>/dev/null)"; then
+    reachable="$(printf '%s\n' "$vendor_list" | awk 'NF{n++} END{print n+0}')"
+  fi
+fi
+
+if [ "$reachable" -lt 2 ]; then
+  jq -nc '{decision:"block", reason:("Risky auth, billing, payment, or concurrency logic changed, and no independent reviewer is reachable: fewer than two delegate vendors have an installed CLI, so a different-vendor review cannot be resolved on this machine. Do not silently ship it. Summarize the risky change and its blast radius for the human and get an explicit go-ahead, or install a second vendor CLI and re-run the independent pass. Say plainly that the automated cross-vendor check did not run.")}'
+  exit 0
+fi
+
 jq -nc --arg launcher "$launcher" \
   '{decision:"block", reason:("Risky auth, billing, payment, or concurrency logic changed without a current independent approval receipt. Run " + $launcher + " --role verify --author-vendor <artifact-author-vendor> --artifact worktree --claim <claim>. The launcher resolves a different-vendor reviewer and binds its verdict to the complete pending tree. Unrelated delegate calls and stale receipts do not satisfy this gate.")}'
 exit 0

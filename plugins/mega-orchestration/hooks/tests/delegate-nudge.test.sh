@@ -3,6 +3,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$HERE/../delegate-nudge.sh"
 DIFF_ID="$HERE/../../skills/multi-agent-delegation/scripts/review-diff-id"
+RESOLVER="$HERE/../../skills/multi-agent-delegation/scripts/delegate-resolve"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 cd "$TMP" || exit 1
@@ -109,6 +110,168 @@ check BLOCK "$(j false "$TR")" "untracked risky file blocks"
 rm -f payment_handler.go
 printf 'ordinary notes\n' > notes.txt
 check ALLOW "$(j false "$TR")" "benign untracked file allows"
+
+# Single-vendor degradation: with only one reachable vendor no --author-vendor
+# choice can route away from the author, so the launcher command would exit 3.
+# The gate must still fire (the risk is unchanged) but must stop prescribing a
+# command that cannot succeed.
+rm -f notes.txt
+printf 'func handler() { billing() }\n' > svc.go
+cat > "$TMP/one-vendor.toml" <<'EOF'
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[providers.solo]
+vendor = "acme"
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.solo.tiers]
+strong = "solo-1"
+[roles]
+verify = "solo"
+EOF
+: > "$TMP/empty-catalog.toml"
+
+reason_with_env() {
+  printf '%s' "$2" | env DELEGATES_TOML="$1" MODELS_TOML="$TMP/empty-catalog.toml"     bash "$HOOK" 2>/dev/null | jq -r '.reason // ""' 2>/dev/null
+}
+decision_with_env() {
+  printf '%s' "$2" | env DELEGATES_TOML="$1" MODELS_TOML="$TMP/empty-catalog.toml"     bash "$HOOK" 2>/dev/null | jq -r '.decision // "allow"' 2>/dev/null
+}
+
+solo_reason="$(reason_with_env "$TMP/one-vendor.toml" "$(j false "$TR")")"
+check_got block "$(decision_with_env "$TMP/one-vendor.toml" "$(j false "$TR")")" \
+  "single-vendor setup still gates a risky change"
+case "$solo_reason" in
+  *"no independent reviewer is reachable"*) pass=$((pass + 1)) ;;
+  *) fail=$((fail + 1)); printf '  FAIL single-vendor reason must say no reviewer is reachable :: %s\n' "$solo_reason" ;;
+esac
+case "$solo_reason" in
+  *delegate-run*) fail=$((fail + 1)); printf '  FAIL single-vendor reason must not prescribe the unresolvable launcher\n' ;;
+  *) pass=$((pass + 1)) ;;
+esac
+case "$solo_reason" in
+  *"go-ahead"*) pass=$((pass + 1)) ;;
+  *) fail=$((fail + 1)); printf '  FAIL single-vendor reason must name an achievable remedy\n' ;;
+esac
+
+# ZERO reachable vendors must take the same degraded path as one. `grep -c .`
+# exits 1 on no matches, so a naive count discards a legitimate zero and falls
+# back to the strict default, prescribing a launcher that cannot resolve.
+cat > "$TMP/no-vendor.toml" <<'EOF'
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[providers.ghost]
+vendor = "acme"
+binary = "definitely-not-an-installed-binary-xyz"
+channel = "cli"
+default_tier = "strong"
+[providers.ghost.tiers]
+strong = "ghost-1"
+[roles]
+verify = "ghost"
+EOF
+zero_reason="$(reason_with_env "$TMP/no-vendor.toml" "$(j false "$TR")")"
+check_got block "$(decision_with_env "$TMP/no-vendor.toml" "$(j false "$TR")")" \
+  "zero-vendor setup still gates a risky change"
+case "$zero_reason" in
+  *"no independent reviewer is reachable"*) pass=$((pass + 1)) ;;
+  *) fail=$((fail + 1)); printf '  FAIL zero reachable vendors must take the degraded path :: %s\n' "$zero_reason" ;;
+esac
+case "$zero_reason" in
+  *delegate-run*) fail=$((fail + 1)); printf '  FAIL zero-vendor reason must not prescribe the unresolvable launcher\n' ;;
+  *) pass=$((pass + 1)) ;;
+esac
+
+# Two vendors reachable THROUGH THE VERIFY CHAIN: the normal path keeps
+# prescribing the launcher. The chain must actually list both, and the assertion
+# must be that resolution succeeds for the author vendor, not merely that the
+# message mentions delegate-run. An earlier version of this test declared
+# verify = "solo" with no fallbacks, so with author vendor acme resolution exited
+# 3 while the test still passed: it was asserting the wrong thing.
+cat > "$TMP/two-vendor.toml" <<'EOF'
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[providers.solo]
+vendor = "acme"
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.solo.tiers]
+strong = "solo-1"
+[providers.duo]
+vendor = "globex"
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.duo.tiers]
+strong = "duo-1"
+[roles]
+verify = "solo"
+[fallbacks]
+verify = ["solo", "duo"]
+EOF
+duo_reason="$(reason_with_env "$TMP/two-vendor.toml" "$(j false "$TR")")"
+case "$duo_reason" in
+  *delegate-run*) pass=$((pass + 1)) ;;
+  *) fail=$((fail + 1)); printf '  FAIL two-vendor setup must still prescribe the launcher :: %s\n' "$duo_reason" ;;
+esac
+# the prescribed command must genuinely resolve for either author vendor
+for av in acme globex; do
+  if DELEGATES_TOML="$TMP/two-vendor.toml" MODELS_TOML="$TMP/empty-catalog.toml" \
+     "$RESOLVER" verify --author-vendor "$av" >/dev/null 2>&1; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1)); printf '  FAIL launcher path prescribed but verify cannot resolve for author %s\n' "$av"
+  fi
+done
+
+# A chain that reaches two vendors GLOBALLY but only one through verify must take
+# the degraded path: the role, not the machine, decides whether a review resolves.
+cat > "$TMP/role-scoped.toml" <<'EOF'
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[providers.solo]
+vendor = "acme"
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.solo.tiers]
+strong = "solo-1"
+[providers.duo]
+vendor = "globex"
+binary = "sh"
+channel = "cli"
+default_tier = "strong"
+[providers.duo.tiers]
+strong = "duo-1"
+[roles]
+verify = "solo"
+EOF
+scoped_reason="$(reason_with_env "$TMP/role-scoped.toml" "$(j false "$TR")")"
+case "$scoped_reason" in
+  *"no independent reviewer is reachable"*) pass=$((pass + 1)) ;;
+  *) fail=$((fail + 1)); printf '  FAIL a second vendor outside the verify chain must not count as reachable :: %s\n' "$scoped_reason" ;;
+esac
+
+# Self-exclusion: the guard must not police edits to its own source or tests.
+# Those files necessarily contain the risky keyword list verbatim, so without the
+# exclusion any edit to the guard trips the guard and the review request ends up
+# citing its own warning text as the risky change.
+git reset -q HEAD -- . 2>/dev/null
+git checkout -q -- svc.go 2>/dev/null
+rm -f "$(receipt_path)"
+mkdir -p plugins/mega-orchestration/hooks/tests
+printf 'risky=%s\n' "'authn|billing|concurren'" > plugins/mega-orchestration/hooks/delegate-nudge.sh
+check ALLOW "$(j false "$TR")" "editing the guard itself does not trip the guard"
+printf 'printf %s > svc.go\n' "'func handler() { billing() }'" \
+  > plugins/mega-orchestration/hooks/tests/fixture.test.sh
+check ALLOW "$(j false "$TR")" "guard test fixtures naming billing do not trip the guard"
+
+# ...but a sibling hook carrying the same words is still gated.
+printf 'func chargeCard() { stripe() }\n' > plugins/mega-orchestration/hooks/other-hook.sh
+check BLOCK "$(j false "$TR")" "a sibling hook with risky logic is still gated"
+rm -rf plugins
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
