@@ -37,14 +37,25 @@
 # `effect-broker` skill, which classifies an action and enforces simulate-then-commit.
 # Real containment comes from the sandbox + permission system + the effect broker; this
 # hook (Claude Code only) just catches the obvious LOCAL accident before it happens. It
-# fails OPEN: any parse error or oversized input exits 0 (allow) so it never wedges work.
+# fails OPEN on anything it cannot read (missing jq, unparseable input) so it never wedges
+# work; the one conservative case is a command too long to parse, which asks (see the cap).
 #
 # Commands wrapped in bash -c / sh -c / eval are re-scanned recursively (bounded depth).
 # The reason is accident coverage, not evasion resistance: agents genuinely write
 # `bash -c "cd $d && rm -rf $x"`, and an unset variable there is as catastrophic nested
 # as it is at the top level. Anyone deliberately hiding a command has easier routes
 # (see the bypasses above); the depth cap exists to bound work, not to win that race.
+#
+# SPEED: this hook runs before EVERY Bash call, so its cost is pure added latency.
+# Two things keep it cheap. (1) LC_ALL=C: the parsers slice the command string, and
+# under a UTF-8 locale every offset slice re-counts characters from the start, which
+# makes them quadratic. Byte semantics are safe here because we only compare ASCII
+# shell metacharacters, and UTF-8 continuation bytes (>= 0x80) can never collide with
+# them, so multibyte data is copied through intact. (2) The parsers consume whole runs
+# of ordinary characters per iteration instead of one character at a time, so the loop
+# runs once per quote/separator rather than once per byte.
 set -u
+export LC_ALL=C LANG=C
 command -v jq >/dev/null 2>&1 || exit 0
 input="$(cat 2>/dev/null || true)"
 cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
@@ -60,11 +71,11 @@ emit() {
   exit 0
 }
 
-# --- cheap prefilter: bound the O(n^2) parser cost --------------------------------
-# split_segments/shell_words/strip_quoted scan the command with per-character bash
-# loops; ${cmd:i:1} is O(offset) under a UTF-8 locale, so the parser is quadratic in
-# command length. On a benign multi-KB heredoc that is over a second of dead wait added
-# to EVERY Bash tool call. This grep is O(n) and runs once. PREFILTER_TOKENS is the
+# --- cheap prefilter: skip the parser entirely on ordinary commands ----------------
+# split_segments/shell_words/strip_quoted still re-slice the command per quote and
+# separator, so their cost grows faster than linearly on very long input. Most commands
+# cannot be destructive at all, and this grep is O(n) and runs once, so it answers them
+# without paying for the parser. PREFILTER_TOKENS is the
 # union of every command word the deny/ask checks anchor on (the scan_level case labels:
 # rm/find/chmod/dd/mkfs/wipefs/blkdiscard/shred/git/the shell wrappers/eval) plus the
 # raw-string anchors (curl/wget/fetch for remote_pipe_to_shell, /dev/ for the
@@ -87,12 +98,14 @@ elif [ "$rc" -ge 2 ]; then
   # here is NOT a no-hit, so fall through to the full parser instead of fast-allowing.
   :
 fi
-# (c) trigger token present but the command is too long to parse cheaply. The parser is
-# quadratic, so past ~4000 chars it becomes seconds of latency (the old 20000-char cap
-# sat exactly where latency peaked at ~11s AND fail-OPEN-allowed a 20k command that could
-# be deniable). A token means it COULD be destructive, so we must not fast-allow: degrade
-# conservatively to ASK.
-if ((${#cmd} > 4000)); then
+# (c) trigger token present but the command is too long to parse cheaply. A token means
+# it COULD be destructive, so we must not fast-allow: degrade conservatively to ASK. The
+# cap is a latency guard, not a correctness one. Measured on real agent traffic the parser
+# handles a 5000-char command in ~40ms, and 16000 chars of quote-dense worst-case input in
+# ~0.5s; the p100 command in 1660 observed Bash calls was 5.4k, so this asks on effectively
+# nothing. Keep it high: a cap set near normal command lengths turns the hook into a
+# confirmation prompt on ordinary long heredocs, which is how a guard gets switched off.
+if ((${#cmd} > 16000)); then
   emit ask "command exceeds the safe parse length and contains a potentially destructive token. Review it before running (shorten it for a precise check)."
 fi
 # (b) trigger token present and short enough: fall through to the exact existing parser.
@@ -101,21 +114,31 @@ fi
 # Splits on ; & | and newlines at the top level; content inside '...', "...", `...`
 # is never treated as a separator, so quoted data is not re-split. NUL-delimited so a
 # quoted newline inside a segment survives. Readers use `read -r -d ''`.
+# Chunked, not per-character: each iteration consumes a whole run of ordinary
+# characters with one ${var%%pattern} strip, so the loop runs once per quote or
+# separator rather than once per byte (see the SPEED note above).
 split_segments() {
-  local i ch next quote segment
-  quote=; segment=
-  for ((i = 0; i < ${#cmd}; i++)); do
-    ch="${cmd:i:1}"; next="${cmd:i+1:1}"
-    if [ -n "$quote" ]; then
-      segment+="$ch"; [ "$ch" = "$quote" ] && quote=; continue
-    fi
+  local rest="$cmd" chunk ch next inner segment specials
+  specials=$'[\'"`\n;&|]'
+  segment=
+  while [ -n "$rest" ]; do
+    chunk="${rest%%$specials*}"
+    if [ "$chunk" = "$rest" ]; then segment+="$rest"; break; fi
+    segment+="$chunk"; rest="${rest:${#chunk}}"
+    ch="${rest:0:1}"; rest="${rest:1}"
     case "$ch" in
-      "'" | '"' | '`') quote="$ch"; segment+="$ch" ;;
-      $'\n' | ';' | '&' | '|')
-        printf '%s\0' "$segment"; segment=
-        { [ "$ch" = '&' ] || [ "$ch" = '|' ]; } && [ "$next" = "$ch" ] && i=$((i + 1))
+      "'" | '"' | '`')
+        # copy the quoted run verbatim, delimiters included
+        segment+="$ch"
+        inner="${rest%%"$ch"*}"
+        if [ "$inner" = "$rest" ]; then segment+="$rest"; rest=      # unterminated
+        else segment+="$inner$ch"; rest="${rest:$((${#inner} + 1))}"; fi
         ;;
-      *) segment+="$ch" ;;
+      *)
+        printf '%s\0' "$segment"; segment=
+        next="${rest:0:1}"
+        { [ "$ch" = '&' ] || [ "$ch" = '|' ]; } && [ "$next" = "$ch" ] && rest="${rest:1}"
+        ;;
     esac
   done
   printf '%s\0' "$segment"
@@ -126,20 +149,24 @@ split_segments() {
 # Fills the global array WORDS. Returns 1 on an unterminated quote.
 WORDS=()
 shell_words() {
-  local text="$1" i ch quote token in_token
-  WORDS=(); quote=; token=; in_token=0
-  for ((i = 0; i < ${#text}; i++)); do
-    ch="${text:i:1}"
-    if [ "$quote" = "'" ]; then [ "$ch" = "'" ] && quote= || token+="$ch"; in_token=1; continue; fi
-    if [ "$quote" = '"' ]; then [ "$ch" = '"' ] && quote= || token+="$ch"; in_token=1; continue; fi
+  local rest="$1" chunk ch inner token in_token specials
+  specials=$'[[:space:]\'"]'
+  WORDS=(); token=; in_token=0
+  while [ -n "$rest" ]; do
+    chunk="${rest%%$specials*}"
+    if [ "$chunk" = "$rest" ]; then token+="$rest"; in_token=1; break; fi
+    if [ -n "$chunk" ]; then token+="$chunk"; in_token=1; rest="${rest:${#chunk}}"; fi
+    ch="${rest:0:1}"; rest="${rest:1}"
     case "$ch" in
-      [[:space:]]) [ "$in_token" -eq 1 ] && { WORDS+=("$token"); token=; in_token=0; } ;;
-      "'") quote="'"; in_token=1 ;;
-      '"') quote='"'; in_token=1 ;;
-      *) token+="$ch"; in_token=1 ;;
+      "'" | '"')
+        in_token=1
+        inner="${rest%%"$ch"*}"
+        [ "$inner" = "$rest" ] && return 1                          # unterminated quote
+        token+="$inner"; rest="${rest:$((${#inner} + 1))}"
+        ;;
+      *) [ "$in_token" -eq 1 ] && { WORDS+=("$token"); token=; in_token=0; } ;;
     esac
   done
-  [ -z "$quote" ] || return 1
   [ "$in_token" -eq 1 ] && WORDS+=("$token")
   return 0
 }
@@ -413,22 +440,58 @@ raw_catastrophic() {
   return 1
 }
 
-# A remote download piped into a shell/interpreter (curl … | bash). Quote-aware caller
-# passes de-quoted text, so a mention inside a string doesn't trip it. This is a footgun
-# worth a confirm, not an unrecoverable catastrophe -> ASK.
+# A remote download piped into an interpreter that EXECUTES it (curl … | bash). Quote-aware
+# caller passes de-quoted text, so a mention inside a string doesn't trip it. This is a
+# footgun worth a confirm, not an unrecoverable catastrophe -> ASK.
+#
+# The interpreter must be reading its program FROM the pipe. `curl … | python3 -c '<script>'`
+# and `curl … | node parse.js` run their own program and treat the download as DATA — that is
+# the ordinary way to read a JSON API from the shell and must not prompt. So a code-bearing
+# argument (-c/-e/-m, --eval, or a script path) means allow, while a bare `| bash`, `| sh -x`,
+# `| bash -s -- --yes`, or `| python3 -` reads stdin as its program and still asks. The
+# download and the pipe must also sit in one command list, on one line (no ; & or newline
+# between them), so a `curl` earlier in a script can't pair with an unrelated later pipe.
 remote_pipe_to_shell() {
-  printf '%s' "$1" | grep -Eq '(curl|wget|fetch)[^|]*\|[[:space:]]*((sudo|env|command|exec|nohup)[[:space:]]+)*([^[:space:]]*/)?(sh|bash|zsh|dash|ksh|python[0-9.]*|node|ruby|perl)([[:space:]]|$)'
+  local re w codepat
+  local -a tailwords
+  re=$'(curl|wget|fetch)[^|;&\n]*\\|[[:space:]]*((sudo|env|command|exec|nohup)[[:space:]]+)*([^[:space:]]*/)?(sh|bash|zsh|dash|ksh|python[0-9.]*|node|ruby|perl)([[:space:]]+[^|;&\n]*)?([|;&\n]|$)'
+  [[ "$1" =~ $re ]] || return 1
+  # which short flag carries the program depends on the interpreter: a shell takes only
+  # -c, while python/node/ruby/perl also take -e/-m (and clusters like perl -ne). `sh -e`
+  # is errexit, NOT a program, so it must stay in the asking set.
+  case "${BASH_REMATCH[5]}" in
+    sh | bash | zsh | dash | ksh) codepat='-*c*' ;;
+    *) codepat='-*[cem]*' ;;
+  esac
+  read -ra tailwords <<< "${BASH_REMATCH[6]}"
+  for w in ${tailwords+"${tailwords[@]}"}; do
+    case "$w" in
+      --) break ;;                                  # end of options; the rest are the piped program's args
+      *'>'* | *'<'*) break ;;                       # a redirection tail (| bash > install.log), not a program
+      --command* | --eval* | --module*) return 1 ;;
+      --*) continue ;;                              # a long option that carries no program
+      -*)
+        # shellcheck disable=SC2053   # $codepat is a glob on purpose
+        [[ "$w" == $codepat ]] && return 1
+        continue ;;
+      *) return 1 ;;                                # a script path: stdin is that script's data
+    esac
+  done
+  return 0
 }
 
 # Remove quoted regions (keep the quotes' delimiters gone AND their content gone) so
 # raw matching only sees UNQUOTED shell text.
 strip_quoted() {
-  local s="$1" out="" i ch quote
-  quote=
-  for ((i = 0; i < ${#s}; i++)); do
-    ch="${s:i:1}"
-    if [ -n "$quote" ]; then [ "$ch" = "$quote" ] && quote=; continue; fi
-    case "$ch" in "'"|'"'|'`') quote="$ch" ;; *) out+="$ch" ;; esac
+  local rest="$1" out="" chunk ch inner specials
+  specials=$'[\'"`]'
+  while [ -n "$rest" ]; do
+    chunk="${rest%%$specials*}"
+    if [ "$chunk" = "$rest" ]; then out+="$rest"; break; fi
+    out+="$chunk"; rest="${rest:${#chunk}}"
+    ch="${rest:0:1}"; rest="${rest:1}"
+    inner="${rest%%"$ch"*}"
+    if [ "$inner" = "$rest" ]; then rest=; else rest="${rest:$((${#inner} + 1))}"; fi
   done
   printf '%s' "$out"
 }
