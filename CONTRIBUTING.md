@@ -43,7 +43,8 @@ claim of effect needs a run behind it.
 ## Conventions
 
 - Conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`).
-- One concern per commit; explain the why in the body.
+- One concern per commit. The subject carries the change; add a one sentence
+  body only when the why is not readable from the diff.
 - Cross-plugin skill references are soft: guard them with "if installed".
 - No unsourced statistics in skills. See `evals/RESULTS.md` for the format a
   claim of effect needs.
