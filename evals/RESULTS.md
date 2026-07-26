@@ -11,7 +11,7 @@ were not committed for the pre-2026-07 waves (see the "Published artifacts" note
 in [`README.md`](./README.md)), so those numbers are audited by re-running the
 committed oracle on a fresh keyed run, not by inspecting archived transcripts.
 
-Last run: 2026-07-23 (deterministic spine; each real-agent study wave is dated in its section).
+Last run: 2026-07-26 (deterministic spine; each real-agent study wave is dated in its section).
 
 Two results frame the rest: process disciplines that today's harnesses don't
 enforce move behavior completely (test-first ordering: 0/36 → 36/36 across
@@ -30,14 +30,34 @@ scripts/validate.sh
 bash evals/run-all.sh --json results.jsonl
 ```
 
-Result (re-run 2026-07-23): **`validate.sh` passed 388/388 checks**, including
+Result (re-run 2026-07-26): **`validate.sh` passed 385/385 checks**, including
 shellcheck and native strict Claude manifest validation · **`run-all.sh` passed
-22/22, with 0 failed, 0 indeterminate, and 0 harness errors** (21 scenarios plus
+16/16, with 0 failed, 0 indeterminate, and 0 harness errors** (15 scenarios plus
 the `score.go` Fisher self-test). These counts are snapshots, not fixed targets:
 an earlier 2026-07-02 baseline was 137 checks, and the total moves as guards
 land. The `deny-destructive` guard additionally ships a **123-case** test suite
 (run via `validate.sh`). Every oracle was mutation-tested (fed a broken
 artifact) to confirm it can actually fail; these are real checks, not no-ops.
+
+**Scenario count fell on 2026-07-26, deliberately.** Six scenarios
+(`review-axes`, `skill-authoring-quality`, `planning-graph-guidance`,
+`debugging-loop-guidance`, `swarm-primitive-invariants`,
+`polyglot-baseline-lessons`) asserted only that particular phrases still
+appeared in shipped `SKILL.md` files, and a seventh (`wayfinding-contract`) was
+half prose markers and half real validator mutations. Those greps measured no
+behavior; they pinned wording, which taxed every de-prescription wave without
+catching a defect. The prose markers were removed and `wayfinding-contract` was
+trimmed to its executable half. A mutation-tested oracle over a shipped script
+is worth more than a dozen greps over prose the suite intends to keep
+shortening.
+
+Cross-file consistency that genuinely matters moved to `scripts/validate.sh`,
+where a failure names the file to fix. An independent cross-vendor review of
+this change caught that the first cut had not done that: dropping the
+`wayfinding` markers also dropped the only guard on its orchestrating route,
+and for an explicit-only skill that route is the sole way anything can reach
+it. That is now the explicit-only reachability check, mutation-tested by
+removing the route.
 
 ## 2. Real-agent skill effect-size study
 

@@ -241,6 +241,29 @@ else
   bad ".agents/skills directory missing"
 fi
 
+echo "== explicit-only skill reachability =="
+# A skill whose sidecar sets allow_implicit_invocation: false is never surfaced by
+# implicit discovery, so its ONLY route is another skill naming it. If that
+# reference disappears the skill silently becomes unreachable, which is a
+# functional regression rather than a wording change. Assert the reference exists;
+# say nothing about how it is phrased.
+eo_found=0
+while IFS= read -r sc; do
+  [ -n "$sc" ] || continue
+  grep -Eq '^[[:space:]]*allow_implicit_invocation:[[:space:]]*false[[:space:]]*$' "$sc" || continue
+  skdir="$(dirname "$(dirname "$sc")")"
+  name="$(basename "$skdir")"
+  plug="$(basename "$(dirname "$(dirname "$skdir")")")"
+  eo_found=1
+  # any OTHER shipped skill body naming it as <plugin>:<skill>
+  if [[ -n "$(grep -rIl --include=SKILL.md -e "$plug:$name" plugins 2>/dev/null | grep -v "^$skdir/SKILL.md$")" ]]; then
+    ok "explicit-only skill '$name' is reachable via a $plug:$name reference"
+  else
+    bad "explicit-only skill '$name' has no $plug:$name reference in any other skill: implicit discovery is off, so nothing can route to it"
+  fi
+done < <(find plugins -type f -path '*/skills/*/agents/openai.yaml' 2>/dev/null | sort)
+[[ $eo_found -eq 0 ]] && ok "no explicit-only skills to check"
+
 echo "== Codex skill metadata =="
 if [[ -x scripts/validate-codex-skill-metadata ]]; then
   if metadata_result="$(scripts/validate-codex-skill-metadata "$ROOT" 2>&1)"; then
