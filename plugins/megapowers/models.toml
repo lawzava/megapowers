@@ -7,7 +7,7 @@
 # at runtime; scripts/validate.sh fails on any drift between them.
 # Consumers: the megapowers SessionStart hook renders this into every session's
 # context (hooks/render-model-catalog), and mega-orchestration's delegate-resolve
-# and delegate-resolve reads it for lead, tiers, providers, and floor.
+# reads it for lead, tiers, providers, and floor.
 # Routing (roles, fallbacks, presets) stays in the multi-agent-delegation skill's
 # delegates.toml. A provider section written in a delegates.toml layer wins over
 # this catalog, but the session block renders from catalog layers only, so put
@@ -35,14 +35,14 @@ frontier = "lead, judge, verify, hard design calls"
 # The floor's effort half (tier:effort) and each provider's default `effort`
 # speak this scale; a provider's `efforts` array lists the subset it accepts.
 [efforts]
-scale = ["low", "medium", "high", "xhigh", "max"]
+scale = ["low", "medium", "high", "xhigh", "ultra"]
 
 [efforts.use]
 low    = "mechanical steps, relays, latency-sensitive work"
 medium = "routine implementation, cost-sensitive runs"
 high   = "delegate default: reviews, verification, primary work"
 xhigh  = "lead default; hardest agentic and judge work"
-max    = "correctness over cost; no shipped provider allows it"
+ultra  = "deliberate complex work; Codex only, via the complex profile"
 
 # --- Providers: how to reach each backend ---
 # `binary` is the CLI delegate-resolve probes with `command -v`. `reference` names
@@ -52,7 +52,7 @@ max    = "correctness over cost; no shipped provider allows it"
 # transcript marker.
 [providers.codex]
 effort  = "xhigh"  # lead default model_reasoning_effort; small scoped impl may run lower (see templates/codex-agents/)
-efforts = ["low", "medium", "high", "xhigh"]   # never max
+efforts = ["low", "medium", "high", "xhigh", "ultra"]  # ultra: complex profile only
 vendor  = "openai"
 binary  = "codex"
 channel = "native-or-plugin-or-mcp-or-cli"

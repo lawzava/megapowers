@@ -15,7 +15,8 @@ model = "gpt-5.6-terra"
 sandbox_mode = "workspace-write"
 
 # Deliberately below the codex provider's xhigh default in models.toml: small
-# scoped impl does not need lead effort (minimal|low|medium|high|xhigh; never max).
+# scoped impl does not need lead effort (minimal|low|medium|high|xhigh; ultra is
+# the complex profile only).
 model_reasoning_effort = "high"
 
 developer_instructions = """
