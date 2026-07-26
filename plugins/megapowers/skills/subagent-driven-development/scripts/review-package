@@ -7,6 +7,7 @@
 # Usage: review-package BASE HEAD [OUTFILE]
 # Default OUTFILE: <repo-root>/.megapowers/sdd/review-<base7>..<head7>.diff
 # (named per range, so a re-review after fixes gets a distinct fresh file).
+# Tested by tests/workspace-and-review-package.test.sh (run via scripts/validate.sh).
 set -euo pipefail
 
 if [ $# -lt 2 ] || [ $# -gt 3 ]; then

@@ -13,6 +13,7 @@
 # review-package cannot drift to different directories.
 #
 # Usage: sdd-workspace
+# Tested by tests/workspace-and-review-package.test.sh (run via scripts/validate.sh).
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)

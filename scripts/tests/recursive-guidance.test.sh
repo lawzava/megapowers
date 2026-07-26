@@ -43,7 +43,7 @@ for path in "${runtime_paths[@]}"; do
   [[ ! -e "$ROOT/$path" ]] || fail "runtime artifact still ships: $path"
 done
 
-expected_scripts=$'ownership-preflight\nreview-package\nsdd-workspace\ntask-brief\ntests/ownership-preflight.test.sh'
+expected_scripts=$'ownership-preflight\nreview-package\nsdd-workspace\ntask-brief\ntests/ownership-preflight.test.sh\ntests/workspace-and-review-package.test.sh'
 actual_scripts=$(
   cd "$ROOT/plugins/megapowers/skills/subagent-driven-development/scripts" || exit 1
   find . -type f -print | sed 's#^\./##' | sort
