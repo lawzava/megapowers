@@ -8,6 +8,17 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.7.1 - 2026-07-27
+
+### Changed
+
+- The baseline commit rule now bounds the message. `templates/CLAUDE.md`,
+  `templates/CODEX.md`, and `templates/CODEX-LEAD.md` say the subject line
+  carries the change and a body is one sentence, added only when the why is not
+  readable from the diff. `CONTRIBUTING.md` said "explain the why in the body"
+  with no length, which read as an instruction to restate the diff in
+  paragraphs.
+
 ## 0.7.0 - 2026-07-26
 
 The catalog ships three models instead of six, and claude leads.

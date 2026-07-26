@@ -63,6 +63,9 @@ the harness's own workflow runner over hand-managed delegation.
 - Branch per feature or fix. Never commit directly to `main`.
 - Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`),
   atomic: one logical change each.
+- The subject line carries the change. Add a body only when the why is not
+  readable from the diff, and cap it at one sentence. No paragraphs, no bullet
+  lists, no restating what the diff already shows.
 - Commit at the human's direction, not as a side effect of a skill step.
 - No attribution, co-author, or session-link trailers.
 - Stage explicit paths. Do not force-add ignored files or bypass hooks.
