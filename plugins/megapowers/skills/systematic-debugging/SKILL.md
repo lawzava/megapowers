@@ -64,9 +64,9 @@ If the correction changes code behavior, TDD still applies to every deterministi
 
 If the fix does not work, return to Phase 1 and re-analyze with the new information. After three failed fixes, stop treating it as a bug: fixes that keep exposing new coupling, demand large refactors, or push symptoms elsewhere point at the architecture. Question whether the pattern is fundamentally sound and discuss it with your human partner before any fourth attempt.
 
-## Rationalizations to Watch For
+## Signals You Are Guessing
 
-Thoughts like "quick fix for now, investigate later", "just try changing X", "it's probably X", "skip the test, I'll verify manually", or "one more attempt" are the signal that you are guessing, not debugging. Any of them means return to Phase 1. Partner messages such as "stop guessing", "is that not happening?", or a frustrated "we're stuck?" carry the same meaning: you assumed without verifying, so go back and gather evidence.
+"Quick fix for now", "just try changing X", "it's probably X", "one more attempt": each means guessing, not debugging, so return to Phase 1. Partner messages like "stop guessing" or "is that not happening?" say the same thing about an assumption you did not verify.
 
 ## When the Process Reveals No Root Cause
 

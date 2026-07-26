@@ -37,7 +37,7 @@ fi
 # shellcheck source=lib-json.sh
 . "${SCRIPT_DIR}/lib-json.sh"
 
-preface="megapowers workflow skills are available (planning, testing, debugging, review). Before acting on a request (including clarifying questions or exploring code), check whether a skill applies and, if so, follow it."
+preface="megapowers workflow skills are available (planning, testing, debugging, review). When one covers the task, follow it instead of improvising a parallel process."
 
 # Model catalog block: rendered live from models.toml layers so every session
 # knows what models exist and what each is for. Fail-open: absent or malformed

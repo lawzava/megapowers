@@ -24,7 +24,7 @@ Structure: a SKILL.md, plus supporting files only for reusable tools or referenc
 
 Frontmatter requires `name` and `description` (see [agentskills.io/specification](https://agentskills.io/specification)). Limits are per field: `name` max 64 characters, letters, numbers, and hyphens only; `description` max 1024 characters, under 500 where possible.
 
-The description is the trigger surface: an agent reads it to decide whether to load the skill. Write it in third person, start with "Use when", and describe only triggering conditions: concrete symptoms, situations, and error text, technology-agnostic unless the skill itself is technology-specific. Never summarize the skill's process or workflow. In testing, a description that summarized the workflow made agents follow the description and skip the body, one review instead of the skill's mandated two; rewriting it to triggers only restored full compliance.
+The description is the trigger surface: an agent reads it to decide whether to load the skill. Write it in third person, start with "Use when", and describe only triggering conditions: concrete symptoms, situations, and error text, technology-agnostic unless the skill itself is technology-specific. Never summarize the skill's process or workflow: an agent that reads the workflow in the description follows that summary and skips the body.
 
 ```yaml
 # Avoid: workflow summary agents will follow instead of reading the body
@@ -51,7 +51,7 @@ No behavioral guidance without a failing test first. If a change adds or alters 
 Classify the baseline failure before writing guidance; the form that fixes one failure type measurably backfires on another.
 
 - Agent skips a rule under pressure: prohibition plus rationalization counters and red flags (see Bulletproofing).
-- Output complies but has the wrong shape: a positive recipe stating what the output is, its parts in order. In head-to-head wording tests, the prohibition arm produced clearly more of the unwanted content than the recipe arm, with fully separated distributions, and trended worse than the no-guidance control.
+- Output complies but has the wrong shape: a positive recipe stating what the output is, its parts in order. A prohibition measurably underperforms a recipe here, and underperforms saying nothing at all.
 - Required element omitted: a structural slot in the template the agent fills, not a prose reminder nearby.
 - Behavior depends on a condition: a conditional keyed to an observable predicate, not an unconditional rule with exemption clauses.
 
@@ -59,7 +59,7 @@ No nuance clauses: appending one to a winning recipe degraded it from consistent
 
 ## Bulletproofing Discipline Skills
 
-Discipline skills must survive agents negotiating under pressure. State the rule, then name the specific workarounds it forecloses (keeping deleted code as reference, adapting it while writing tests, "I already manually tested it"). Cut off spirit-versus-letter arguments with a foundational principle: violating the letter of the rules is violating the spirit of the rules. Build a rationalization table from the verbatim excuses baseline runs produce, and a red-flags list agents can self-check against. This toolkit is for discipline failures only; applied to shaping problems it backfires, so use the forms above instead.
+Discipline skills must survive agents negotiating under pressure. State the rule, then name the specific workarounds it forecloses (keeping deleted code as reference, adapting it while writing tests). Add a red-flags list agents can self-check against, built from the verbatim excuses baseline runs produce. Keep it to what a baseline run actually surfaced: a speculative excuse list is guidance nobody needed and it costs the same tokens. This toolkit is for discipline failures only; applied to shaping problems it backfires, so use the forms above instead.
 
 ## Test Before Shipping
 

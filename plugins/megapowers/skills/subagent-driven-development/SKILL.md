@@ -125,7 +125,7 @@ The reviewer may report items it cannot verify from the diff, requirements that 
 
 ## Constructing Dispatch Prompts
 
-A dispatch describes one task, not the session's history. A fresh subagent needs its task, the interfaces it touches, and the global constraints; pasted prior-task summaries have bloated real dispatches to tens of thousands of characters of dead weight.
+A dispatch describes one task, not the session's history. A fresh subagent needs its task, the interfaces it touches, and the global constraints. Do not paste prior-task summaries.
 
 For reviewers:
 
@@ -139,7 +139,7 @@ For fixes:
 - A Specification Compliance Fail requires correction or explicit approval and
   must never be treated as Minor.
 - Every fix dispatch carries the implementer contract: the fixer re-runs the tests covering its change and reports the covering test files, the command run, and the output. Name the covering tests in the dispatch; a one-line fix does not need the whole suite. Dispatch the re-review only once all three pieces of evidence are present.
-- If the final whole-branch review returns findings, dispatch one fix subagent with the complete findings list, not one fixer per finding; per-finding fixers each rebuild context and re-run suites, and a real session's fix wave run that way cost more than all its tasks combined.
+- If the final whole-branch review returns findings, dispatch one fix subagent with the complete findings list, not one fixer per finding. Per-finding fixers each rebuild context and re-run the suites.
 
 ## File Handoffs
 
@@ -157,7 +157,7 @@ its path. Do not duplicate claims and evidence across chat and file.
 
 ## Durable Progress
 
-Conversation memory does not survive compaction; controllers that lost their place have re-dispatched entire completed task sequences, the single most expensive failure observed. The ledger at `.megapowers/sdd/progress.md` under the repo root is the recovery map.
+Conversation memory does not survive compaction, and a controller that loses its place re-dispatches completed tasks. The ledger at `.megapowers/sdd/progress.md` under the repo root is the recovery map.
 
 Roll the controller into a fresh context after 8 to 10 completed tasks, or
 earlier when another task would cross 80 percent of the context or cache

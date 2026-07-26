@@ -126,7 +126,7 @@ call to a primitive the runtime does not expose.
   vendors per subagent within one job.
 - **Disambiguation**: command names do not port across harnesses. Antigravity
   manages subagents through the Agent Manager; Claude Code's `/agents` is
-  unrelated (and no longer an interactive wizard as of v2.1.198).
+  unrelated.
 
 ## The absent-primitive rule
 

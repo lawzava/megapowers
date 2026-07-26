@@ -1,10 +1,9 @@
 # De-prescription rubric
 
 How to trim a skill for frontier models without losing what the evals prove
-matters. Written for the Fable 5 generation (its vendor guidance: instructions
-written for older models can degrade output; remove them where default
-behavior is now better). Applied wave by wave; see
-evals/RESULTS.md for the measured gates each wave passed.
+matters. Guidance written for an older model generation degrades output on a
+newer one, so remove it where default behavior is now better. Measured gates:
+evals/RESULTS.md.
 
 ## Remove
 
