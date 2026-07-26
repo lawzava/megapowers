@@ -12,8 +12,14 @@ command -v jq >/dev/null 2>&1 || exit 0
 stop_context_is_exempt "$input" && exit 0
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
-diff="$(git diff HEAD --binary --no-ext-diff 2>/dev/null)"
-untracked="$(git ls-files --others --exclude-standard 2>/dev/null)"
+# The gate is about changed logic, so it reads code paths only. Prose names these
+# categories constantly: a checklist that lists them, or a template telling an
+# agent to route such work for review, is not a change to that work. Scanning
+# documentation fired the gate on doc-only edits.
+prose=(':(top,exclude,glob)**/*.md' ':(top,exclude,glob)**/*.mdx'
+       ':(top,exclude,glob)**/*.markdown' ':(top,exclude,glob)**/*.rst')
+diff="$(git diff HEAD --binary --no-ext-diff -- ':/' "${prose[@]}" 2>/dev/null)"
+untracked="$(git ls-files --others --exclude-standard -- ':/' "${prose[@]}" 2>/dev/null)"
 [ -n "$diff" ] || [ -n "$untracked" ] || exit 0
 
 risky='authn|authz|authenticat|authoriz|oauth|jwt|saml|passwd|password|billing|payment|invoice|subscription|stripe|webhook|mutex|goroutine|semaphore|deadlock|concurren'
