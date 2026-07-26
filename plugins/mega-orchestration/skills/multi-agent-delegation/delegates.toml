@@ -1,5 +1,5 @@
 # megapowers delegate routing: which provider handles which role, and run presets.
-# Last reviewed: 2026-07-23 (routes age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-07-26 (routes age; scripts/check-freshness.sh guards this date).
 # The model CATALOG (lead, tiers, providers, floor) lives in models.toml at the
 # plugin root, layered the same way: project .megapowers/models.toml, then user
 # ~/.config/megapowers/models.toml, then the shipped copy. Edit an override layer,
@@ -14,20 +14,22 @@ browser_test  = ["computer_use"]
 visual_verify = ["vision"]
 
 # --- Roles: which provider handles what ---
+# Claude leads, so every role routes to Codex by default: the lead is the usual
+# artifact author, and a review that stays in-vendor is not a second opinion.
 # Visual/browser routing is a cost-adjusted call (bench check 2026-07-04, run
 # against the then-current GPT-5.5; the route moved to gpt-5.6-sol on 2026-07-10
 # without a re-bench). Codex leads computer-use work; visual_verify uses an
 # independent vision model to judge evidence from the separate browser driver.
 [roles]
-plan_review    = "claude"    # review a plan before implementing (the planning buddy)
+plan_review    = "codex"     # review a plan before implementing
 code_review    = "codex"     # review a diff
 small_impl     = "codex"     # well-scoped, small-sized implementation
 visual         = "codex"     # UI / visual work (native computer use)
 browser_test   = "codex"     # browser / end-to-end testing
-visual_verify  = "claude"    # vision model judges evidence captured by the separate Playwright driver
-verify         = "claude"    # cross-model-verification: adversarial refute pass (must differ from the author's vendor)
-judge          = "claude"    # best-of-n: blind judge when no oracle decides (prefer a vendor none of the authors used)
-council_member = "claude"    # council-adjudication: independent answer + blind ranking member
+visual_verify  = "codex"     # vision model judges evidence captured by the separate Playwright driver
+verify         = "codex"     # cross-model-verification: adversarial refute pass (must differ from the author's vendor)
+judge          = "codex"     # best-of-n: blind judge when no oracle decides (prefer a vendor none of the authors used)
+council_member = "codex"     # council-adjudication: independent answer + blind ranking member
 
 # --- Fallbacks: ordered cross-vendor chains for the different-vendor roles ---
 # delegate-resolve walks this chain and skips any provider named by
@@ -36,18 +38,20 @@ council_member = "claude"    # council-adjudication: independent answer + blind 
 # small_impl stays single-route
 # (it is not an independence role).
 [fallbacks]
-plan_review    = ["claude", "codex"]
+plan_review    = ["codex", "claude"]
 code_review    = ["codex", "claude"]
-visual_verify  = ["claude", "codex"]
-verify         = ["claude", "codex"]
-judge          = ["claude", "codex"]
-council_member = ["claude", "codex"]
+visual_verify  = ["codex", "claude"]
+verify         = ["codex", "claude"]
+judge          = ["codex", "claude"]
+council_member = ["codex", "claude"]
 
 # Role policy selects the model tier and reasoning effort. Provider defaults in
-# the catalog cover the lead and anything a role leaves unset.
+# the catalog cover the lead and anything a role leaves unset. Review and
+# judgement run frontier (gpt-5.6-sol); scoped implementation runs strong
+# (gpt-5.6-terra), which is cheaper and weaker by design.
 [role_tiers]
 plan_review    = "frontier"
-code_review    = "strong"
+code_review    = "frontier"
 small_impl     = "strong"
 visual         = "frontier"
 browser_test   = "frontier"

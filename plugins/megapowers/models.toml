@@ -1,5 +1,5 @@
 # megapowers model catalog: what orchestrates, what models exist, what each is for.
-# Last reviewed: 2026-07-23 (model IDs age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-07-26 (model IDs age; scripts/check-freshness.sh guards this date).
 # Edit an OVERRIDE LAYER, not this shipped file: a project .megapowers/models.toml or
 # user ~/.config/megapowers/models.toml wins per key and survives plugin updates.
 # Two identical copies ship (plugins/megapowers/models.toml and
@@ -12,24 +12,28 @@
 # delegates.toml. A provider section written in a delegates.toml layer wins over
 # this catalog, but the session block renders from catalog layers only, so put
 # provider data here.
+#
+# Three models ship, one per job. Anything else is an override layer's business.
+#   claude-opus-5   lead at high effort, teammate at medium
+#   gpt-5.6-sol     critic: plan review, code review, verify, judge, research
+#   gpt-5.6-terra   cheap executor: scoped implementation
 
 # --- Lead: what orchestrates ---
 # delegate-resolve --lead prints it. Artifact reviews use --author-vendor rather
 # than assuming the lead authored the artifact.
 [lead]
-provider = "codex"
+provider = "claude"
 tier     = "frontier"
 
 # --- Tiers: the vendor-neutral capability scale, weakest first ---
 [tiers]
-scale = ["fast", "strong", "frontier"]
+scale = ["strong", "frontier"]
 
 # What each tier is for. The session-start block teaches this to every session,
 # including native subagent model choice.
 [tiers.use]
-fast     = "mechanical fan-out, bulk reads, cheap transcription"
-strong   = "default implementer and reviewer; the ship floor"
-frontier = "lead, judge, verify, hard design calls"
+strong   = "teammate work and cheap execution; the ship floor"
+frontier = "lead, critic, judge, verify, hard design calls"
 
 # --- Efforts: the vendor-neutral spend scale, weakest first ---
 # The floor's effort half (tier:effort) and each provider's default `effort`
@@ -39,9 +43,9 @@ scale = ["low", "medium", "high", "xhigh", "ultra"]
 
 [efforts.use]
 low    = "mechanical steps, relays, latency-sensitive work"
-medium = "routine implementation, cost-sensitive runs"
-high   = "delegate default: reviews, verification, primary work"
-xhigh  = "lead default; hardest agentic and judge work"
+medium = "teammate default: ordinary in-session implementation"
+high   = "lead default, and every delegated role: review, verify, judge, execute"
+xhigh  = "escalation: only where high has demonstrably failed"
 ultra  = "deliberate complex work; Codex only, via the complex profile"
 
 # --- Providers: how to reach each backend ---
@@ -50,8 +54,28 @@ ultra  = "deliberate complex work; Codex only, via the complex profile"
 # directory (the reference files ship with that skill). `use` is shown in the
 # session block. Stop-hook approval reads a current structured receipt, never a
 # transcript marker.
+[providers.claude]
+effort  = "high"   # lead default; in-session teammate work runs medium
+efforts = ["low", "medium", "high", "xhigh"]  # the CLI --effort scale has no `ultra` rung
+vendor  = "anthropic"
+binary  = "claude"
+channel = "claude-cli"
+default_tier = "frontier"
+capabilities = ["code", "vision", "computer_use"]
+reference = "references/providers/claude.md"
+use     = "lead: orchestration, integration, in-session teammate work"
+notes   = "The lead runs as the session itself; the headless channel is for a delegate pass under a different lead. One-shot headless Claude: --bare with API keys, disposable config/cwd with OAuth."
+
+# One model, two spend bands; the role's tier picks which. Sonnet and Haiku are
+# never routed: anything claude does runs Opus 5.
+[providers.claude.tiers]
+frontier = "claude-opus-5"
+strong   = "claude-opus-5"
+
+# Second model vendor, so the cross-vendor roles have a real different-vendor route
+# when the lead (or an --exclude) rules out the primary.
 [providers.codex]
-effort  = "xhigh"  # lead default model_reasoning_effort; small scoped impl may run lower (see templates/codex-agents/)
+effort  = "high"   # every delegated role runs high; ultra is the complex profile only
 efforts = ["low", "medium", "high", "xhigh", "ultra"]  # ultra: complex profile only
 vendor  = "openai"
 binary  = "codex"
@@ -59,33 +83,13 @@ channel = "native-or-plugin-or-mcp-or-cli"
 default_tier = "frontier"
 capabilities = ["code", "vision", "computer_use"]
 reference = "references/providers/codex.md"
-use     = "lead: orchestration, code review, small impl, computer use"
+use     = "critic: plan and code review, verify, judge, research, computer use, scoped impl"
 notes   = "Native subagents inside Codex; codex-plugin-cc from Claude Code; codex exec / SDK / codex mcp-server elsewhere. Channel mechanics: see the reference file."
 
+# sol reviews and researches; terra executes what the lead scoped for it.
 [providers.codex.tiers]
 frontier = "gpt-5.6-sol"
 strong   = "gpt-5.6-terra"
-fast     = "gpt-5.6-luna"
-
-# Second model vendor, so the cross-vendor roles have a real different-vendor route
-# when the lead (or an --exclude) rules out the primary.
-[providers.claude]
-vendor  = "anthropic"
-effort  = "high"   # intended ceiling for Claude verify/judge; lead-vendor xhigh does not pass through
-efforts = ["low", "medium", "high"]
-binary  = "claude"
-channel = "claude-cli"
-default_tier = "frontier"
-capabilities = ["code", "vision", "computer_use"]
-reference = "references/providers/claude.md"
-use     = "planning buddy plus independent plan review, verification, and judging"
-notes   = "One-shot headless Claude: --bare with API keys, disposable config/cwd with OAuth; independent reviews declare every author vendor."
-
-# Frontier only by policy: sonnet and haiku are never routed; anything claude
-# does runs fable.
-[providers.claude.tiers]
-frontier = "claude-fable-5"
-strong   = "claude-fable-5"
 
 # --- Defaults: cross-cutting rules ---
 [defaults]
