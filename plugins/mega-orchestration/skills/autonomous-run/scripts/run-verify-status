@@ -19,23 +19,8 @@ scriptdir="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=run-lib.sh
 . "$scriptdir/run-lib.sh"
 
-# plan_digest <plan.md> — "<tag> <sha256>" per milestone (heading + acceptance
-# line(s), whitespace-normalized). Identical to run-init/run-derive-status so the
-# hashes match; compared against the frozen plan-digest to catch plan tampering.
-plan_digest() {
-  awk '
-    function norm(s) { gsub(/[ \t]+/, " ", s); sub(/^ +/, "", s); sub(/ +$/, "", s); return s }
-    /^## [A-Za-z][A-Za-z0-9_-]*:/ {
-      if (tag != "") print tag "\t" buf
-      tag = substr($0, 4, index($0, ":") - 4); buf = norm($0); next
-    }
-    /^## / { if (tag != "") print tag "\t" buf; tag = ""; buf = ""; next }
-    tag != "" && $0 ~ /^[ \t]*-?[ \t]*acceptance:/ { buf = buf " ][ " norm($0) }
-    END { if (tag != "") print tag "\t" buf }
-  ' "$1" | while IFS="$(printf '\t')" read -r t c; do
-    printf '%s %s\n' "$t" "$(printf '%s' "$c" | sha256sum | cut -d' ' -f1)"
-  done
-}
+# plan_digest lives in run-lib.sh; it compares the live plan against the frozen
+# fingerprint so a done-claim names the acceptance criteria it was judged against.
 
 [ $# -ge 1 ] || { echo "usage: run-verify-status <run-id>" >&2; exit 2; }
 id="$1"
@@ -134,15 +119,17 @@ case "$state" in
     fi
     # A done-claim must certify against a FROZEN plan. No plan-digest means the plan
     # was never frozen — the DEFAULT flow (init scaffolds a placeholder, you author
-    # plan.md in place, never --replan) takes no digest, so a later gut-the-plan edit
-    # would certify done silently with nothing to compare against. Refuse it.
+    # plan.md in place, never --replan) takes no digest, so a later plan rewrite would
+    # certify done with nothing to compare against. Refuse it.
     if [ ! -f "$dir/plan-digest" ]; then
       echo "run-verify-status: FAIL — STATE=$state but plan.md was never frozen (no plan-digest), so a done-claim cannot be certified against an untampered plan. Author plan.md, then run run-init $1 --replan to freeze the milestone digest before claiming done." >&2
       exit 1
     fi
-    # Tamper check: recompute the digest of the current plan and fail on any declared
+    # Drift check: recompute the digest of the current plan and fail on any declared
     # milestone that vanished or whose acceptance line changed since plan-digest was
-    # frozen — the gut-the-plan / weaken-acceptance certify-done attack.
+    # frozen. Long runs lose track of what they promised; this makes a mid-run plan
+    # edit visible at the moment of the done-claim instead of silently redefining
+    # success. A deliberate re-plan clears it via `run-init <id> --replan`.
     if [ -f "$dir/plan-digest" ] && [ -f "$dir/plan.md" ]; then
       current_digest="$(plan_digest "$dir/plan.md")"
       problems=""
@@ -153,7 +140,7 @@ case "$state" in
         elif [ "$chash" != "$shash" ]; then problems="$problems $stag(acceptance-changed)"; fi
       done < "$dir/plan-digest"
       if [ -n "$problems" ]; then
-        echo "run-verify-status: FAIL — plan.md diverged from the frozen milestone digest:$problems. A declared milestone was deleted or its acceptance line weakened after declaration. Restore it, or re-plan deliberately with run-init <id> --replan." >&2
+        echo "run-verify-status: FAIL — plan.md diverged from the frozen milestone digest:$problems. A declared milestone was deleted or its acceptance line changed after declaration. Restore it, or re-plan deliberately with run-init <id> --replan." >&2
         exit 1
       fi
     fi
