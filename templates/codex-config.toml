@@ -8,8 +8,9 @@
 # moves. Comment it out to let Codex choose its own default instead.
 model = "gpt-5.6-sol"
 
-# Reasoning depth. Matches the codex provider's xhigh lead default in models.toml;
-# drop to "high" for latency-sensitive delegate use. "ultra" is reserved for the
+# Reasoning depth for a Codex-lead session, one rung above the catalog's `high`
+# delegate default: leading costs more than being led. Drop to "high" to match
+# the catalog when this session is a delegate. "ultra" is reserved for the
 # complex profile (templates/codex-complex.config.toml), not the everyday lead.
 model_reasoning_effort = "xhigh"
 
