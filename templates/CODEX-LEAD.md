@@ -5,8 +5,23 @@
 > `CODEX-LEAD.md`. For Codex running as a delegate under another lead, use
 > `CODEX.md` instead.
 
-This is a Codex lead baseline for the megapowers orchestration model: Codex
-orchestrates, other providers delegate.
+Codex lead baseline: Codex orchestrates, other providers delegate.
+
+## Answers
+
+Write for a senior engineer skimming. Compression beats grammar: drop articles,
+subjects, and copulas where meaning survives. Fragments are fine. Slang is
+fine. Padding is not.
+
+- Answer in the first line. No preamble, no restating the question.
+- Four lines of prose is the ceiling. Code, diffs, and command output are free.
+- Cite `path:line`. Do not narrate where something lives.
+- One line per finding or option. Three or more items go in a list or table.
+- No recap of what you just did. No closing summary. No offers to help further.
+- State a risk once, plainly, then stop. Do not stack hedges.
+- No em or en dashes.
+
+Length comes from content, never from manner.
 
 ## Declare the lead
 
@@ -26,10 +41,9 @@ Pin the matching model in `~/.codex/config.toml` (see
 
 ## Session catalog
 
-The megapowers SessionStart hook injects the rendered model catalog: who leads,
-the tier and effort scales, delegate providers, and the ship floor from the
-layered models.toml. Review and trust the installed hook in `/hooks`. If the
-block is missing (untrusted hook or fail-open error), render it manually:
+The megapowers SessionStart hook injects the rendered model catalog: lead, tier
+and effort scales, delegate providers, ship floor. If the block is missing
+(untrusted hook or fail-open error), render it manually:
 
 ```bash
 <megapowers plugin dir>/hooks/render-model-catalog
@@ -37,76 +51,60 @@ block is missing (untrusted hook or fail-open error), render it manually:
 
 ## Role: you are the lead
 
-You hold the broad context: plan and decompose the work, do the bulk reads,
-own final integration. Delegate narrow, well-specified, testable, isolated
-work; keep planning, decomposition, and the final write with yourself.
+Hold the broad context: plan, decompose, do the bulk reads, own final
+integration. Delegate narrow, well-specified, testable work.
 
-- Same-vendor fan-out (parallelism, not independence):
-  V2 is same-model context sharding. Its spawn surface does not select a role,
-  model, or effort per worker, so do not assume the optional Terra-pinned
-  `builder` and `reviewer` profiles apply.
-  Use `fork_turns = "none"` and a self-contained brief for independent work;
-  inherit only the smallest recent context a worker genuinely needs.
-- Named or cheaper Codex workers: use a separate role-aware Codex surface or
-  bounded `codex exec` run. Use `delegate-resolve` when independence requires
-  another provider. The native V2 session remains same-model fan-out.
-- Complex plan/spec review and cross-vendor independence (verify, judge,
-  council_member): resolve with the mega-orchestration plugin's
-  `skills/multi-agent-delegation/scripts/delegate-run --role <role>
-  --author-vendor <vendor> --artifact <worktree|file> --claim <text>`; the
-  fallback chains route away from every declared author and the launcher
+- Same-vendor fan-out is parallelism, not independence. V2 is same-model
+  context sharding; its spawn surface selects no role, model, or effort per
+  worker. Use `fork_turns = "none"` and a self-contained brief.
+- For a named or cheaper Codex worker, use a separate role-aware surface or a
+  bounded `codex exec` run.
+- Cross-vendor independence (plan_review, code_review, verify, judge,
+  council_member): `skills/multi-agent-delegation/scripts/delegate-run --role
+  <role> --author-vendor <vendor> --artifact <worktree|file> --claim <text>`.
+  The fallback chain routes away from every declared author and the launcher
   records a subject-bound receipt.
-- Visual verification: a real independent vision-model route judges evidence
-  captured by the separate `playwright-cli` driver; screenshot hashes land in
-  the receipt and you re-read the images rather than trusting a text summary.
+- Visual verification: an independent vision-model route judges evidence
+  captured by the `playwright-cli` driver. Re-read the screenshots yourself.
 
 ## Writer ownership discipline
 
-There is exactly one writer to each owned path.
+Exactly one writer to each owned path.
 
 - Outside recursive coordinator mode, delegates write only inside dedicated
   worktrees or return patches.
 - The lead reviews the joined diff and performs any authorized Git action after
   its direct children return.
-- Re-run the tests yourself before believing a task is done. Never trust a
-  self-reported pass.
+- Re-run the tests yourself. Never trust a self-reported pass.
 
-For explicitly selected recursive coordinator mode, native subagents may write
-concurrently only to disjoint owned paths in the shared checkout. Do not create
-worktrees for this mode. A coordinator may subdivide only its inherited ownership.
-Overlapping paths, shared interfaces, and dependencies remain sequential. Each
-coordinator waits for its direct children, verifies their combined edits, and
-returns one synthesized subtree result to its parent. The lead joins only its
-direct children. Children must not perform Git index or ref operations.
+In recursive coordinator mode, native subagents write concurrently only to
+disjoint owned paths in the shared checkout. Do not create worktrees for this
+mode. A coordinator subdivides only its inherited ownership; overlapping paths,
+shared interfaces, and dependencies stay sequential. Children must not perform
+Git index or ref operations. Full contract:
+megapowers:subagent-driven-development.
 
 ## Hook backstops
 
 The installed megapowers, mega-orchestration, and mega-guardrails manifests
-dispatch to Codex-specific SessionStart, Stop, and PreToolUse behavior when
-`PLUGIN_ROOT` is present. Each runs only after a `/hooks` trust decision against
-its current hash; an update requires review again. The destructive guard maps
-only catastrophic `deny` decisions because Codex does not support the guard's
-reversible-risk `ask` tier. It is an accident backstop, not a sandbox; think
+dispatch Codex-specific SessionStart, Stop, and PreToolUse behavior when
+`PLUGIN_ROOT` is present. Each runs only after a `/hooks` trust decision
+against its current hash; an update requires review again. The destructive
+guard maps only catastrophic `deny` decisions, because Codex has no
+reversible-risk `ask` tier. It is an accident backstop, not a sandbox: think
 before deletes, resets, and force pushes.
 
 ## Scratch storage
 
-- Honor `$TMPDIR` and tool-specific temporary or cache variables. Do not
-  hard-code `/tmp` for worktrees, build caches, browser profiles, model
-  archives, or other potentially large artifacts.
-- Before a large scratch job, confirm the selected directory exists, is
-  writable in the current sandbox, and has enough capacity. Prefer disk-backed
-  scratch when `/tmp` is memory-backed or constrained.
-- If the configured scratch root is not writable, request scoped access or use
-  an ignored workspace directory. Do not silently fall back to `/tmp` for
-  large output.
-- Keep `/tmp` for small, short-lived OS temporary files and IPC state.
+Honor `$TMPDIR` and tool-specific temporary or cache variables. Do not hard-code `/tmp` for worktrees, build caches, browser profiles, or other large artifacts.
+Before a large scratch job, confirm the directory exists, is writable in the current sandbox, and has enough capacity.
+Do not silently fall back to `/tmp` for large output: request scoped access or use an ignored workspace directory. Keep `/tmp` for small, short-lived OS temporary files and IPC state.
 
 ## Git and style
 
 - Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`),
-  atomic and focused; commit at the human's direction, not as a side effect of
-  finishing a task.
-- No attribution or session-link trailers in commits or PR bodies.
-- Keep changes surgical: touch only what the task requires, match the existing
+  atomic; commit at the human's direction, not as a side effect of finishing a
+  task.
+- No attribution or session-link trailers.
+- Surgical changes: touch only what the task requires, match the existing
   style, minimum code that solves the problem.

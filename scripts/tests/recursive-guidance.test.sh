@@ -117,13 +117,14 @@ must_have "$PLANS" '**Parallel safety:**'
 must_have "$PLANS" '**Ownership:**'
 must_have "$PLANS" '**May decompose:**'
 
-must_have "$CODEX" 'For explicitly selected recursive coordinator mode, native subagents may write concurrently only to disjoint owned paths in the shared checkout.'
+# Templates pin the two load-bearing safety rules only. The full coordinator
+# contract lives in the SDD skill above, which is where an executor reads it;
+# restating it verbatim in a starter file bought duplication, not safety.
+must_have "$CODEX" 'disjoint owned paths in the shared checkout'
 must_have "$CODEX" 'Do not create worktrees for this mode.'
-must_have "$CODEX" 'Each coordinator waits for its direct children, verifies their combined edits, and returns one synthesized subtree result to its parent.'
-must_have "$CLAUDE" 'Recursive coordinator mode uses nested Agent calls, not agent teams.'
+must_have "$CLAUDE" 'nested Agent calls, not agent teams'
 must_have "$CLAUDE" 'Do not create worktrees for this mode.'
 must_have "$CLAUDE" 'Children must not perform Git index or ref operations.'
-must_have "$CLAUDE" 'Each coordinator waits for its direct children, verifies their combined edits, and returns one synthesized subtree result to its parent.'
 must_have "$PRIMITIVES" 'Recursive coordinator mode is guidance over native nested subagents.'
 must_have "$SUPPORT" 'Megapowers runs a plan preflight before dispatch'
 must_have "$SUPPORT" 'no registry, scheduler, or worktree manager participates.'

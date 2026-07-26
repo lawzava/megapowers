@@ -171,12 +171,12 @@ fi
 
 echo "== scratch storage guidance =="
 for template in templates/CODEX-LEAD.md templates/CODEX.md templates/CLAUDE.md; do
+  # Three semantic markers, not the paragraph verbatim: the rules have to be
+  # there, the wording is the template author's to tune.
   if grep -q '^## Scratch storage$' "$template" &&
      grep -qF "Honor \`\$TMPDIR\`" "$template" &&
      grep -qF 'writable in the current sandbox' "$template" &&
-     grep -qF 'has enough capacity' "$template" &&
-     grep -qF "Do not silently fall back to \`/tmp\` for" "$template" &&
-     grep -qF "Keep \`/tmp\` for small, short-lived OS temporary files and IPC state." "$template"; then
+     grep -qF "Do not silently fall back to \`/tmp\`" "$template"; then
     ok "$template has portable scratch storage guidance"
   else
     bad "$template must guide agents to a writable, capacity-checked \$TMPDIR"
