@@ -162,13 +162,16 @@ for the same assignment; start a fresh worker for a new problem. As observed in
 Codex 0.144.4, v2 does not enforce `agents.max_depth`, so the depth-five limit is
 a model-visible system policy, not a hard runtime cap.
 
-Keep the normal lead on `gpt-5.6-sol` at `xhigh`. The current bundled Sol model
-also supports `ultra`, which adds automatic task delegation. Named profiles
+Pin the Codex session model to `gpt-5.6-sol`. Under the shipped catalog Codex
+is the critic rather than the lead, and every delegated role runs at `high`;
+`xhigh` is the sensible setting only when you run Codex as the lead through an
+override layer (`templates/CODEX-LEAD.md`). The current bundled Sol model also
+supports `ultra`, which adds automatic task delegation. Named profiles
 live in separate `$CODEX_HOME/<name>.config.toml` files and are selected with
 `--profile`; do not put `[profiles.*]` tables in the main config. Copy
 `templates/codex-complex.config.toml` to `$CODEX_HOME/complex.config.toml` for
 deliberate complex work, then start it with `codex --profile complex`. Complex
-plan/spec review can still route independently to Fable. A Codex lead should
+plan/spec review can still route independently to Claude (Opus 5). A Codex lead should
 not register `codex mcp-server` under `[mcp_servers.codex]`: that channel is
 for another harness delegating into Codex, while native subagents are the
 direct path inside Codex.

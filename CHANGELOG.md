@@ -8,6 +8,32 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Changed
+
+- The catalog ships three models, one per job: `claude-opus-5` leads at `high`
+  effort and does in-session teammate work at `medium`, `gpt-5.6-sol` is the
+  critic (plan review, code review, verify, judge, research, computer use), and
+  `gpt-5.6-terra` is the cheap executor for scoped implementation. `claude-fable-5`
+  and `gpt-5.6-luna` are no longer routed; an override layer can bring either back.
+- **Breaking:** `[lead]` is now `claude` frontier, not `codex`. Running Codex as
+  the lead is an override layer, which is what `templates/CODEX-LEAD.md` already
+  documents. Nothing else about the routing contract changed.
+- Every delegated role routes to Codex by default, because the lead is now the
+  usual artifact author and an in-vendor review is not a second opinion. The
+  `[fallbacks]` chains still bounce back to Claude when Codex authored the
+  artifact. `code_review` moved from the `strong` tier to `frontier`: reviews and
+  judgement get Sol, and `small_impl` keeps `strong` for Terra.
+- The `fast` tier left the scale along with the `gpt-5.6-luna` mapping that
+  filled it. No role used it, and the `strong:low` floor already made it
+  unroutable.
+- The native Codex `reviewer` role moved to `gpt-5.6-sol`, following
+  `code_review` to the frontier tier; `builder` stays on `gpt-5.6-terra`.
+  `scripts/validate.sh` now pins each role to its own tier instead of checking
+  both against `strong`, which had masked the mismatch.
+- The Claude provider now declares `xhigh` alongside low/medium/high, matching
+  what the Anthropic models and the `--effort` flag actually accept. `ultra`
+  stays Codex-only: the Claude CLI has no equivalent rung.
+
 ## 0.6.1 - 2026-07-26
 
 Audit remediation: drop tests that pinned prose, close two coverage gaps, and
