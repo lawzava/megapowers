@@ -9,7 +9,8 @@
 model = "gpt-5.6-sol"
 
 # Reasoning depth. Matches the codex provider's xhigh lead default in models.toml;
-# drop to "high" for latency-sensitive delegate use. Never "max" by policy.
+# drop to "high" for latency-sensitive delegate use. "ultra" is reserved for the
+# complex profile (templates/codex-complex.config.toml), not the everyday lead.
 model_reasoning_effort = "xhigh"
 
 # Named profiles are separate `$CODEX_HOME/<name>.config.toml` files, not
