@@ -18,6 +18,38 @@ cd "$(git rev-parse --show-toplevel)"
   printf '\0untracked\0'
   while IFS= read -r -d '' path; do
     printf '%s\0' "$path"
-    git hash-object -- "$path"
+    # An untracked entry is not necessarily a readable regular file: device nodes,
+    # sockets, and dangling symlinks all appear here, and hash-object exits fatally
+    # on them. Bind their IDENTITY rather than their content: the symlink target,
+    # or the type and lstat metadata. A bare constant would be too coarse, since
+    # retargeting a dangling symlink in place, or swapping one non-regular kind for
+    # another at the same path, would leave the fingerprint unchanged and let an
+    # approval receipt survive a real change to the reviewed tree.
+    #
+    # -L MUST be tested before -f, because -f follows the link. Testing -f first
+    # binds a symlink to its TARGET'S CONTENT, so retargeting a link between two
+    # equal-content files would not move the fingerprint. Hashing the link target
+    # string also matches how git itself represents a tracked symlink.
+    if [ -L "$path" ]; then
+      printf 'symlink\0'
+      readlink -- "$path" 2>/dev/null || printf 'unreadable-link'
+      printf '\0'
+    elif [ -f "$path" ] && [ -r "$path" ]; then
+      git hash-object -- "$path"
+    else
+      printf 'nonregular\0'
+      # Type, size, device major/minor, mtime, and inode. Type plus size alone
+      # collides: an UNREADABLE regular file (mode 000) also lands here, and
+      # rewriting its contents at the same length would not move the fingerprint.
+      # mtime and inode close that. Use NANOSECOND mtime (%y / %Fm), not whole
+      # seconds: an in-place rewrite reuses the inode and usually lands in the
+      # same second, so a seconds-resolution stamp still collides. Erring toward
+      # invalidating a receipt is the right direction for a binding whose whole
+      # job is to expire.
+      stat -c '%F|%s|%t|%T|%y|%i' -- "$path" 2>/dev/null \
+        || stat -f '%HT|%z|%Hr|%Lr|%Fm|%i' -- "$path" 2>/dev/null \
+        || printf 'unstatable'
+      printf '\0'
+    fi
   done < <(git ls-files -z --others --exclude-standard | LC_ALL=C sort -z)
 } | git hash-object --stdin
