@@ -8,6 +8,8 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.6.1 - 2026-07-26
+
 Audit remediation: drop tests that pinned prose, close two coverage gaps, and
 stop three comments from claiming more than the code does.
 
