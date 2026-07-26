@@ -69,6 +69,8 @@ When in doubt, defer to the preset the lead named.
 
 - Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`),
   atomic. Commit only at the human's direction.
+- The subject line carries the change. Add a body only when the why is not
+  readable from the diff, and cap it at one sentence.
 - No attribution or session-link trailers.
 - Surgical changes: touch only what the task requires, match the existing
   style, minimum code that solves the problem.

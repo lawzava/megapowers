@@ -105,6 +105,8 @@ Do not silently fall back to `/tmp` for large output: request scoped access or u
 - Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`),
   atomic; commit at the human's direction, not as a side effect of finishing a
   task.
+- The subject line carries the change. Add a body only when the why is not
+  readable from the diff, and cap it at one sentence.
 - No attribution or session-link trailers.
 - Surgical changes: touch only what the task requires, match the existing
   style, minimum code that solves the problem.
