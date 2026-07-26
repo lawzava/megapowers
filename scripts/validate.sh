@@ -126,13 +126,20 @@ if [[ -n $codex_frontier_model ]] && grep -qF "model = \"$codex_frontier_model\"
 else
   bad "Codex config lead model must match the catalog frontier tier ($codex_frontier_model)"
 fi
+# Each native Codex role mirrors the delegates.toml role it stands in for, so it
+# is pinned to that role's tier: builder is small_impl (strong), reviewer is
+# code_review (frontier). Pinning both to one tier would hide a routing change.
 for role in builder reviewer; do
   root_role="templates/codex-agents/$role.toml"
   plugin_role="plugins/mega-orchestration/assets/codex-agents/$role.toml"
-  if [[ -n $codex_strong_model ]] && grep -qF "model = \"$codex_strong_model\"" "$root_role" 2>/dev/null; then
-    ok "Codex $role role matches the catalog strong tier ($codex_strong_model)"
+  case "$role" in
+    builder)  role_tier="strong";   role_model="$codex_strong_model" ;;
+    reviewer) role_tier="frontier"; role_model="$codex_frontier_model" ;;
+  esac
+  if [[ -n $role_model ]] && grep -qF "model = \"$role_model\"" "$root_role" 2>/dev/null; then
+    ok "Codex $role role matches the catalog $role_tier tier ($role_model)"
   else
-    bad "Codex $role role must match the catalog strong tier ($codex_strong_model)"
+    bad "Codex $role role must match the catalog $role_tier tier ($role_model)"
   fi
   if [[ -f $plugin_role ]] && cmp -s "$root_role" "$plugin_role"; then
     ok "Codex $role role ships with mega-orchestration"

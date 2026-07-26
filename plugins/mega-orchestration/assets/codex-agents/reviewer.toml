@@ -8,7 +8,9 @@
 
 name = "reviewer"
 description = "Reviews a diff or verifies a claim: looks and reports, changes nothing."
-model = "gpt-5.6-terra"
+# code_review resolves to the catalog's frontier tier: review and judgement get
+# the stronger model, scoped implementation gets the cheaper one (see builder).
+model = "gpt-5.6-sol"
 
 # read_only preset: the delegate cannot write the tree.
 sandbox_mode = "read-only"

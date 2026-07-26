@@ -121,7 +121,7 @@ baseline deliberately opts into the under-development `multi_agent_v2`
 surface. V2 is a same-model context-sharding surface: its native spawn call
 does not expose a per-spawn role, model, or effort selector, so workers inherit
 the active session model. It does not automatically select this repo's
-Terra-pinned `builder` or `reviewer` profiles.
+`builder` (Terra) or `reviewer` (Sol) profiles.
 
 `mega-orchestration` still packages those optional profiles under
 `assets/codex-agents/` for Codex surfaces that support named role selection.
@@ -162,13 +162,16 @@ for the same assignment; start a fresh worker for a new problem. As observed in
 Codex 0.144.4, v2 does not enforce `agents.max_depth`, so the depth-five limit is
 a model-visible system policy, not a hard runtime cap.
 
-Keep the normal lead on `gpt-5.6-sol` at `xhigh`. The current bundled Sol model
-also supports `ultra`, which adds automatic task delegation. Named profiles
+Pin the Codex session model to `gpt-5.6-sol`. Under the shipped catalog Codex
+is the critic rather than the lead, and every delegated role runs at `high`;
+`xhigh` is the sensible setting only when you run Codex as the lead through an
+override layer (`templates/CODEX-LEAD.md`). The current bundled Sol model also
+supports `ultra`, which adds automatic task delegation. Named profiles
 live in separate `$CODEX_HOME/<name>.config.toml` files and are selected with
 `--profile`; do not put `[profiles.*]` tables in the main config. Copy
 `templates/codex-complex.config.toml` to `$CODEX_HOME/complex.config.toml` for
 deliberate complex work, then start it with `codex --profile complex`. Complex
-plan/spec review can still route independently to Fable. A Codex lead should
+plan/spec review can still route independently to Claude (Opus 5). A Codex lead should
 not register `codex mcp-server` under `[mcp_servers.codex]`: that channel is
 for another harness delegating into Codex, while native subagents are the
 direct path inside Codex.
@@ -225,8 +228,8 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.6.1`, or, for Claude Code,
-  add `"ref": "v0.6.1"` to the `extraKnownMarketplaces` source (see
+  `codex plugin marketplace add lawzava/megapowers@v0.7.0`, or, for Claude Code,
+  add `"ref": "v0.7.0"` to the `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
 pin, remove the marketplace and re-add it at the new tag.
@@ -238,7 +241,7 @@ pin, remove the marketplace and re-add it at the new tag.
 Neither is an integrity pin (no sha in the ref), so a pin controls when you
 move, not cryptographic provenance. Release tags from `v0.1.3` on are
 GPG-signed and can be verified out of band (see SECURITY.md, Release
-integrity). Tags `v0.1.1` through `v0.6.1` are the release pin range once this
+integrity). Tags `v0.1.1` through `v0.7.0` are the release pin range once this
 version is published.
 
 ## Every other harness: the skills CLI
