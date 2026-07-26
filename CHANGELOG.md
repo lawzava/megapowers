@@ -8,6 +8,23 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.7.2 - 2026-07-27
+
+### Fixed
+
+- The destructive-command guard stopped asking about ordinary long commands.
+  Its parsers now consume runs of characters instead of one byte at a time and
+  run under `LC_ALL=C`, which cut a real 4.5k-char heredoc from ~750ms to
+  ~40ms, so the length cap that degrades to a confirmation prompt moved from
+  4000 to 16000 chars. In 1660 observed Bash calls the longest command was
+  5445 chars, so every one of them used to be a coin flip against the cap and
+  none of them reach it now.
+- `curl … | python3 -c '<script>'` no longer asks. Piping a download into an
+  interpreter that runs its own program (`-c`, `-e`, `-m`, or a script path)
+  passes the download as DATA, which is how you read a JSON API from the
+  shell. A bare `| bash`, `| bash -s -- --yes`, or `| python3 -` reads stdin as
+  its program and still asks.
+
 ## 0.7.1 - 2026-07-27
 
 ### Changed
