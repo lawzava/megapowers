@@ -12,11 +12,19 @@ claim of effect needs a run behind it.
    bash evals/run-all.sh    # behavioral: deterministic scenarios with the mock agent
    ```
 
-2. If you change behavioral guidance in a skill (a rule, prohibition,
-   recipe, or conditional meant to shape agent behavior), follow
-   `plugins/megapowers/skills/writing-skills`: baseline the failure first,
-   then write the guidance. Editorial changes (typos, links, rewording that
-   preserves meaning) need no pressure test.
+2. Match the evidence to the kind of change:
+
+   | Change | What it needs |
+   |---|---|
+   | **Adding** behavioral guidance (a rule, prohibition, recipe, conditional) | Baseline the failure first, then write the guidance. Follow `plugins/megapowers/skills/writing-skills`. |
+   | **Removing or compressing** guidance | The gates green, plus a sentence on why the model no longer needs it. No pressure test, unless the wording carries a published effect size in `evals/RESULTS.md`. |
+   | Editorial (typos, links, meaning-preserving rewording) | Nothing beyond the gates. |
+
+   Trims are welcome and do not need to clear the bar that additions do.
+   Guidance written for an older model generation degrades output on a newer
+   one, so a PR that deletes a rule the model now follows by default is a fix,
+   not a regression. `plugins/megapowers/skills/writing-skills/de-prescription-rubric.md`
+   is the standard for what comes out and what stays.
 
 3. If you add an eval oracle, mutation-test it: feed it a deliberately broken
    artifact and confirm it fails. An oracle that cannot fail is a no-op, and
@@ -64,3 +72,8 @@ certification.
 Small, verifiable improvements land fast. Large reworks should start as an
 issue describing the failure you observed (ideally with a baseline transcript
 or eval scenario) before the rewrite.
+
+Shipped guidance describes how the ecosystem works now. It is not a changelog:
+migration notes, superseded behavior, war stories that motivated a rule, and
+measurement provenance belong in `CHANGELOG.md` or `evals/RESULTS.md`, not in a
+skill body an agent loads. A PR that moves one of those out is welcome.
