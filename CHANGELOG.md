@@ -8,6 +8,55 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.6.0 - 2026-07-26
+
+De-prescription release. Shipped guidance is rewritten against current vendor
+context-engineering guidance for frontier models: fewer constraints, less
+repetition across surfaces, and no history in files an agent loads.
+
+### Added
+
+- A response-style contract at the top of every shipped instruction template.
+  Compression over grammar, answer in the first line, a four-line default prose
+  ceiling with code and command output free, no recap or closing summary. The
+  Codex delegate template carries the variant for output a lead reads.
+
+### Changed
+
+- `using-megapowers` no longer requires invoking a skill before any response,
+  including clarifying questions and code reads. A skill that covers the task
+  owns the procedure; mechanical edits, lookups, and conversation need none.
+  The SessionStart preface matches.
+- The rationalization sections in `test-driven-development` and
+  `systematic-debugging` are recognition lists rather than arguments, at roughly
+  half the length.
+- `verification-before-completion` scopes its acceptance evidence map to
+  multi-criterion or externally-verified work. The three-state ladder and the
+  evidence-before-claims gate stay unconditional.
+- Instruction templates drop the routing table that duplicated the skill listing
+  and the delegation config archaeology.
+- `validate.sh` asserts three semantic markers for scratch-storage guidance
+  rather than the paragraph verbatim, and the recursive-guidance contract pins
+  two safety rules per template instead of the full coordinator contract, which
+  lives in `subagent-driven-development`.
+- CONTRIBUTING sets a lower evidence bar for removing guidance than for adding
+  it, and states that migration notes, superseded behavior, war stories, and
+  measurement provenance belong in CHANGELOG.md or evals/RESULTS.md.
+
+### Fixed
+
+- The delegate nudge scanned documentation for its risk keywords, so prose that
+  named those categories tripped the gate on doc-only edits. It now reads code
+  paths only. Covered by `delegate-nudge-prose.test.sh`.
+
+### Removed
+
+- The dead `detect` provider key from both `models.toml` twins. No code read it.
+- Pre-0.3 override archaeology from `models.toml`, `delegates.toml`,
+  `delegate-resolve`, and the `multi-agent-delegation` body; a version-stamped
+  harness note; three war stories in `subagent-driven-development`; two
+  measurement anecdotes in `writing-skills`.
+
 ## 0.5.0 - 2026-07-23
 
 Reliability and efficiency release based on a cross-harness audit of live
