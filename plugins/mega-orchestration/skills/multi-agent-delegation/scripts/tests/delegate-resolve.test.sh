@@ -50,7 +50,7 @@ cat > "$TMP/proj/.megapowers/delegates.toml" <<'EOF'
 [providers.codex]
 binary = "sh"
 [providers.codex.tiers]
-strong = "project-override-model"
+frontier = "project-override-model"
 EOF
 out="$(cd "$TMP/proj" && "$DR" code_review --author-vendor anthropic 2>&1)"; rc=$?
 check_exit "project layer resolves" 0 "$rc"
@@ -79,7 +79,7 @@ cat > "$XDG_CONFIG_HOME/megapowers/delegates.toml" <<'EOF'
 [providers.codex]
 binary = "sh"
 [providers.codex.tiers]
-strong = "user-override-model"
+frontier = "user-override-model"
 EOF
 out="$(cd "$TMP/home" && "$DR" code_review --author-vendor anthropic 2>&1)"
 check "user layer overrides shipped" "MODEL=user-override-model" "$out"
@@ -275,7 +275,7 @@ cat > "$XDG_CONFIG_HOME/megapowers/models.toml" <<'EOF'
 [providers.codex]
 binary = "sh"
 [providers.codex.tiers]
-strong = "user-catalog-model"
+frontier = "user-catalog-model"
 EOF
 out="$(cd "$TMP/home" && "$DR" code_review --author-vendor anthropic 2>&1)"
 check "user catalog layer overrides shipped tier map" "MODEL=user-catalog-model" "$out"
@@ -309,12 +309,13 @@ binary = "sh"
 EOF
 for r in plan_review code_review; do
   out="$(cd "$TMP/codexlead" && "$DR" "$r" --author-vendor openai 2>&1)"; rc=$?
-  check_exit "$r --exclude-lead resolves under codex lead" 0 "$rc"
+  check_exit "$r resolves cross-vendor under codex lead" 0 "$rc"
   check "$r falls back cross-vendor under codex lead" "PROVIDER=claude" "$out"
 done
 
-# The reverse swap: under a claude lead, the claude-primary roles must walk
-# their chains to codex rather than dead-ending or resolving same-vendor.
+# The reverse swap: under a claude lead (the shipped default), an
+# anthropic-authored artifact must walk the chain to codex rather than
+# dead-ending or resolving same-vendor.
 mkdir -p "$TMP/claudelead/.megapowers"
 cat > "$TMP/claudelead/.megapowers/models.toml" <<'EOF'
 [lead]
@@ -327,7 +328,7 @@ binary = "sh"
 EOF
 for r in plan_review verify; do
   out="$(cd "$TMP/claudelead" && "$DR" "$r" --author-vendor anthropic 2>&1)"; rc=$?
-  check_exit "$r --exclude-lead resolves under claude lead" 0 "$rc"
+  check_exit "$r resolves cross-vendor under claude lead" 0 "$rc"
   check "$r falls back cross-vendor under claude lead" "PROVIDER=codex" "$out"
 done
 
@@ -525,7 +526,7 @@ check_exit "unknown role tier exits 2" 2 "$rc"
 out="$(cd "$TMP/author-policy" && "$DR" visual_verify --author-vendor openai 2>&1)"; rc=$?
 check_exit "visual_verify resolves" 0 "$rc"
 check "visual verifier is a model provider" "PROVIDER=claude" "$out"
-check "visual verifier has a model" "MODEL=claude-fable-5" "$out"
+check "visual verifier has a model" "MODEL=claude-opus-5" "$out"
 check "visual verifier has a tier" "TIER=frontier" "$out"
 check "visual verifier has an effort" "EFFORT=high" "$out"
 check "visual verifier carries Playwright driver" "DRIVER=playwright" "$out"
