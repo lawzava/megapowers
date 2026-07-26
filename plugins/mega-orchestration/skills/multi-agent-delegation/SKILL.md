@@ -61,8 +61,8 @@ for independent roles, `--exclude <vendor|provider>` to drop a backend,
 `--exclude-lead` as a compatibility exclusion, `--models <file>` to pin
 the catalog, `--lead` to print the declared orchestrator, `--where` to print
 the active config layers, `--check` to validate the table, `--list` and
-`--list-presets` to enumerate). It walks
-the role's fallback chain, skipping any provider that is excluded, disabled,
+`--list-presets` to enumerate, `--vendors` to print reachable vendors). It
+walks the role's fallback chain, skipping any provider that is excluded, disabled,
 missing a required capability, below the configured floor, or whose CLI is not
 installed, so a route never resolves to a runtime you do not have, and prints
 ROLE/PROVIDER/MODEL/TIER/EFFORT/CHANNEL/ENABLED/VENDOR/BINARY/FLOOR/NOTES,
@@ -75,6 +75,19 @@ an unknown role; 3 unknown role or no available route; 4 a single-route role
 whose only provider is disabled in config. Resolve through the helper so the
 route you act on is the route the config declares; a dead route surfaces
 before you dispatch, not after.
+
+Independence needs two reachable vendors. `<role> --vendors` prints the ones
+that role could actually resolve to, applying the same capability, tier,
+effort, and floor filters resolution uses; when it prints fewer than two, no
+`--author-vendor` choice can route away from the author and the role will exit
+3. Always pass the role when the answer decides whether a review can happen.
+Bare `--vendors` reports every installed provider, which is a weaker claim: a
+vendor the role does not route to cannot serve it.
+
+Fewer than two is a real limit, not a misconfiguration. Say the cross-vendor
+check did not run rather than reporting a review that never happened. The
+Stop-hook nudge reads the same role-scoped signal and asks for human sign-off
+instead of prescribing a command that cannot succeed.
 
 ## Routing Is Relative to the Lead
 
