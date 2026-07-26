@@ -207,6 +207,40 @@ while IFS= read -r sk; do
   if [[ -z $unknown ]]; then ok "skill $sk frontmatter portable"; else bad "skill $sk: unsupported frontmatter keys: $(printf '%s' "$unknown" | tr '\n' ' ')"; fi
 done < <(find plugins skills -name SKILL.md 2>/dev/null)
 
+echo "== .agents/skills discovery links =="
+# Codex, OpenCode, and Antigravity discover skills in a checkout through
+# .agents/skills/<name> symlinks. A skill added under plugins/ without its link
+# is invisible to those harnesses, which is how upgrading-megapowers went
+# missing. Exemptions are deliberate, one line each, with the reason.
+AGENTS_LINK_EXEMPT="wayfinding"   # explicit-only skill; stays out of implicit discovery
+if [[ -d .agents/skills ]]; then
+  al_bad=0
+  while IFS= read -r sk; do
+    [[ -z $sk ]] && continue
+    name="$(basename "$(dirname "$sk")")"
+    link=".agents/skills/$name"
+    if grep -qx -- "$name" <<<"$AGENTS_LINK_EXEMPT"; then
+      [[ -e $link ]] && { bad ".agents/skills: $name is exempt but linked anyway"; al_bad=1; }
+      continue
+    fi
+    if [[ ! -L $link ]]; then
+      bad ".agents/skills: no discovery symlink for skill '$name' (add: ln -s ../../${sk%/SKILL.md} $link)"
+      al_bad=1
+    elif [[ ! -f "$link/SKILL.md" ]]; then
+      bad ".agents/skills/$name is a dangling symlink"
+      al_bad=1
+    fi
+  done < <(find plugins -name SKILL.md 2>/dev/null | sort)
+  # and no orphan links pointing at skills that no longer exist
+  while IFS= read -r link; do
+    [[ -z $link ]] && continue
+    [[ -f "$link/SKILL.md" ]] || { bad ".agents/skills/$(basename "$link") does not resolve to a SKILL.md"; al_bad=1; }
+  done < <(find .agents/skills -maxdepth 1 -type l 2>/dev/null | sort)
+  [[ $al_bad -eq 0 ]] && ok "every shipped skill has a resolving .agents/skills link (exempt: $AGENTS_LINK_EXEMPT)"
+else
+  bad ".agents/skills directory missing"
+fi
+
 echo "== Codex skill metadata =="
 if [[ -x scripts/validate-codex-skill-metadata ]]; then
   if metadata_result="$(scripts/validate-codex-skill-metadata "$ROOT" 2>&1)"; then
@@ -384,7 +418,6 @@ for twin in dispatch.sh run-hook.cmd; do
   done < <(find plugins -type f -path "*/hooks/$twin" 2>/dev/null | sort)
   [[ -n $twin_ref && $twin_bad -eq 0 ]] && ok "hook twin $twin identical across plugins"
 done
-
 echo "== cross-manifest consistency =="
 # a plugin's version must agree across its Claude and Codex manifests
 for cl in plugins/*/.claude-plugin/plugin.json; do
