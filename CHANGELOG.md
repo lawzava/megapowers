@@ -8,6 +8,105 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+Audit remediation: drop tests that pinned prose, close two coverage gaps, and
+stop three comments from claiming more than the code does.
+
+### Added
+
+- `scripts/validate.sh` checks that every shipped skill has a resolving
+  `.agents/skills/<name>` symlink, with a one-line exemption list. Codex,
+  OpenCode, and Antigravity discover skills in a checkout through those links,
+  and nothing verified them, so `upgrading-megapowers` had been missing its
+  link and was invisible to those harnesses. Link added.
+- `delegate-resolve [<role>] --vendors` prints reachable vendors. With a role it
+  walks that role's candidate chain under the same capability, tier, effort, and
+  floor filters resolution uses; bare, it reports every installed provider.
+  Independence needs two, and the count is what tells a caller whether a
+  cross-vendor review is achievable. The role form exists because the machine
+  having two vendors does not mean the verify chain can reach both.
+- Execution coverage for `sdd-workspace` and `review-package`, the two shipped
+  SDD helpers that had none. The only prior reference asserted the directory
+  listing, so neither script was ever run by a test. 25 cases, mutation-tested.
+- An explicit-only skill reachability check in `scripts/validate.sh`: a skill
+  whose sidecar sets `allow_implicit_invocation: false` is never surfaced by
+  implicit discovery, so it must be named as `<plugin>:<skill>` by some other
+  shipped skill or nothing can route to it. Added after an independent review
+  observed that dropping the `wayfinding` prose markers had also dropped the
+  only guard on its orchestrating route, which is a functional invariant rather
+  than wording. Mutation-tested by removing that route.
+- `lib-toml.sh`, the restricted-TOML grammar shared by `render-model-catalog`
+  and `delegate-resolve`, which each carried their own copy of the same awk.
+  Ships as a byte-twin (plugins cannot locate each other at runtime) with a
+  drift check in `validate.sh`, matching how `dispatch.sh` and `models.toml`
+  are already handled.
+
+### Changed
+
+- The Stop-hook delegate nudge no longer prescribes a command that cannot
+  succeed. With fewer than two reachable vendors, `delegate-run --role verify`
+  exits 3 whatever `--author-vendor` is passed, so the gate still fires but
+  asks for human sign-off and says plainly that the automated cross-vendor
+  check did not run.
+- `[efforts] scale` gains `ultra` and drops `max`. `templates/codex-complex.config.toml`
+  ships `model_reasoning_effort = "ultra"`, which the catalog could not express,
+  while `max` was documented as a value no shipped provider allows and still
+  rendered into every session's catalog block.
+- `plan_digest()` moved into `run-lib.sh`, which all three callers already
+  source. It had been copy-pasted verbatim into `run-init`,
+  `run-derive-status`, and `run-verify-status` with a comment asking
+  maintainers to keep the copies in lockstep.
+- The autonomous-run milestone digest is described as drift detection rather
+  than tamper-proofing, in `SKILL.md` and in the scripts. It lives in the same
+  agent-writable directory it describes and `--replan` re-freezes it on
+  request, so it catches a silent mid-run redefinition of success, not a
+  determined actor. `SECURITY.md` already put that threat model out of scope.
+- The delegate nudge no longer scans its own source or `hooks/tests/`. Those
+  files must contain the risky keyword list verbatim (the pattern, the block
+  message naming the categories, and fixtures like `billing()` proving the gate
+  fires), so editing the guard always tripped the guard and the resulting review
+  request cited its own warning text as the risky change. Sibling hooks such as
+  `deny-destructive.sh` stay scanned.
+- `deny-destructive.sh` comments now match the code: quote-aware segmentation
+  is there for precision (so `echo "rm -rf /"` is not denied), and `bash -c`
+  recursion is there because nested accidents are real, not to win a race
+  against deliberate obfuscation.
+
+### Fixed
+
+- `review-diff-id` and `delegate-run` aborted the entire review on any untracked
+  entry that is not a readable regular file. A checkout with character devices
+  in the repository root, or a dangling symlink anywhere, killed the review
+  before it reached a model. Both now bind such an entry by identity (symlink
+  target, or type and `lstat` metadata) rather than reading it, so the
+  fingerprint still moves when one appears, disappears, or is retargeted in
+  place. Three passes were needed here: the first attempt bound only a constant;
+  the second still tested `-f` before `-L`, so a live symlink was bound to its
+  target's contents and retargeting it between equal-content files moved nothing;
+  the third found that an unreadable regular file (mode 000) also lands in this
+  branch, where type plus size collided on a same-size rewrite. Non-regular
+  entries now carry nanosecond mtime and inode, because an in-place rewrite
+  reuses the inode and usually lands within the same second.
+- The delegate nudge probed vendors globally rather than through the verify
+  chain, so a vendor that role cannot route to still counted as an independent
+  reviewer and the hook prescribed a launcher that would exit 3. It now probes
+  `verify --vendors`.
+- The delegate nudge mishandled a resolver reporting zero reachable vendors:
+  `grep -c .` prints `0` but exits 1, so the count was discarded and the strict
+  default left in place, prescribing a launcher that cannot resolve. Counted
+  with `awk` now, and covered by a zero-vendor test.
+
+### Removed
+
+- Six eval scenarios that asserted only that particular phrases still appeared
+  in shipped `SKILL.md` files: `review-axes`, `skill-authoring-quality`,
+  `planning-graph-guidance`, `debugging-loop-guidance`,
+  `swarm-primitive-invariants`, `polyglot-baseline-lessons`. They measured no
+  behavior and taxed every de-prescription wave without catching a defect.
+  `wayfinding-contract` kept its nine validator mutations and lost its ten
+  prose markers. The deterministic suite goes from 21 scenarios to 15 while
+  `validate.sh` goes from 393 to 385 checks; every remaining oracle runs a
+  shipped script or hook.
+
 ## 0.6.0 - 2026-07-26
 
 De-prescription release. Shipped guidance is rewritten against current vendor
