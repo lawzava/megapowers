@@ -16,27 +16,27 @@ delegation route it picks.
 
 The lead keeps the broad context, plans and decomposes the work, does cheap
 bulk reads, and owns final integration and commits. Narrow, specialized work
-goes to whichever model is best suited for it. Routing lives in two layered
-files. `models.toml` is the model catalog: who leads (`[lead]`), the
-vendor-neutral tier scale and per-tier purposes (`[tiers]`, `[tiers.use]`),
-the providers with their tier maps, capabilities, and channel data, and the
-ship floor (`[defaults]`). `delegates.toml` is the routing: which provider
-handles which role (`[roles]`, `[requires]`, `[fallbacks]`), the required tier
-and effort (`[role_tiers]`, `[role_efforts]`), author-vendor independence
-(`[independence]`), evidence drivers (`[drivers]`, `[role_drivers]`), and how
-each run preset behaves (`[presets]`). Both resolve the same way: a project
-`.megapowers/<file>` or user `~/.config/megapowers/<file>` layer overrides the
-shipped copy per key, so a new model release is one tier-map line in a file
-that survives plugin updates (`scripts/delegate-resolve --where` shows the
-active layers of both). Provider sections written in delegates.toml layers
-(pre-0.3 style) still parse and win over the catalog, so old override files
-keep working. Prefer migrating provider data to a models.toml layer: the
-always-loaded session block renders from catalog layers only, so a legacy
-delegates-layer override resolves correctly but is not reflected in that
-block, and partial overrides split across both stacks resolve per key, which
-can surprise. Edit an override layer to change routing; the skill, the
-delegate agents, and the session-start catalog block read the config live, so
-no code changes are needed.
+goes to whichever model is best suited for it.
+
+Routing lives in two layered files:
+
+- `models.toml`, the model catalog: who leads (`[lead]`), the vendor-neutral
+  tier scale and per-tier purposes (`[tiers]`, `[tiers.use]`), the providers
+  with their tier maps, capabilities, and channel data, and the ship floor
+  (`[defaults]`).
+- `delegates.toml`, the routing: which provider handles which role (`[roles]`,
+  `[requires]`, `[fallbacks]`), the required tier and effort (`[role_tiers]`,
+  `[role_efforts]`), author-vendor independence (`[independence]`), evidence
+  drivers (`[drivers]`, `[role_drivers]`), and how each run preset behaves
+  (`[presets]`).
+
+Both resolve the same way: a project `.megapowers/<file>` or user
+`~/.config/megapowers/<file>` layer overrides the shipped copy per key, so a new
+model release is one tier-map line in a file that survives plugin updates.
+`scripts/delegate-resolve --where` shows the active layers. Put provider data in
+a models.toml layer; the always-loaded session block renders from catalog layers
+only. Edit an override layer to change routing: the skill, the delegate agents,
+and the session-start catalog block read the config live.
 
 Each provider's `reference` key names that provider's channel mechanics and
 prompting guidance: references/providers/codex.md and
@@ -172,10 +172,7 @@ user plugins, hooks, memory, and project instructions, but enterprise-managed
 Claude configuration may still apply. Both paths are one-shot and receive a
 self-contained prompt.
 
-For a delegate call that runs long, the sanctioned async channel is MCP Tasks,
-the durable call-now/fetch-later extension; it is still finalizing, so reach
-for it only where a harness actually exposes it. This repo stays CLI-first for
-portability, which is why the routes above name CLIs rather than task servers.
-A2A, the cross-organization agent-to-agent protocol, is a deliberate
-non-target: megapowers routes work between models you run yourself, not across
-organizational trust boundaries.
+Routes name CLIs because CLI-first is what stays portable across harnesses. Use
+a harness-native async channel for a long-running delegate call where one
+exists. Megapowers routes work between models you run yourself, so nothing here
+crosses an organizational trust boundary.

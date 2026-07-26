@@ -37,9 +37,9 @@ If you wrote implementation code before the test, delete it and start fresh from
 5. Refactor: remove duplication, improve names, extract helpers, staying green throughout. Add no behavior, and leave code the change didn't touch alone; a bug fix does not need surrounding cleanup.
 6. Repeat: next failing test for the next behavior.
 
-## Pressure and Rationalizations
+## When Skipping Looks Reasonable
 
-Every argument for writing the code first ("too simple to test", "I'll test after to verify", "already manually tested", "this is urgent", "deleting hours of work is wasteful") fails the same way: a test written after the code passes immediately, and passing immediately proves nothing. You never saw it catch anything, and it is biased toward what you built rather than what was required. Needing to explore first is fine too: treat the exploration as a throwaway spike, then delete it and start from the test. When a test is hard to write, treat that as design feedback: hard to test usually means hard to use, so simplify the interface instead of skipping the test. If the codebase has no tests, you are improving it; add them as you go.
+Every argument for code-first ends the same way: a test written after the code passes immediately, and passing immediately proves nothing. You never watched it catch anything, and it is shaped by what you built rather than what was required. Exploring first is fine; treat the spike as throwaway, delete it, and start from the test. A test that is hard to write is design feedback, so simplify the interface rather than skip it.
 
 ## Bug Fixes
 

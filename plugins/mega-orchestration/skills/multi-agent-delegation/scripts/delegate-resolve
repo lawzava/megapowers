@@ -246,7 +246,7 @@ marray_val() {
 }
 
 # Catalog data (lead, tiers, providers, floor) resolves DELEGATES stack first
-# (legacy: inline provider sections and pre-0.3 override files win), then the
+# (an inline provider section in a routing layer wins), then the
 # catalog stack.
 cat_exists() { section_exists "$1" || msection_exists "$1"; }
 cat_val() {

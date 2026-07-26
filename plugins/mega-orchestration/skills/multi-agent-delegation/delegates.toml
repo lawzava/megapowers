@@ -4,8 +4,8 @@
 # plugin root, layered the same way: project .megapowers/models.toml, then user
 # ~/.config/megapowers/models.toml, then the shipped copy. Edit an override layer,
 # not a shipped file. scripts/delegate-resolve resolves both files together, and
-# provider sections written HERE (pre-0.3 style, in any layer) still parse and win
-# over the catalog, so old override files keep working.
+# a provider section written HERE wins over the catalog, but the session block
+# renders from catalog layers only, so put provider data in models.toml.
 
 # --- Requirements: capabilities a role's provider must declare ---
 [requires]
@@ -43,8 +43,8 @@ verify         = ["claude", "codex"]
 judge          = ["claude", "codex"]
 council_member = ["claude", "codex"]
 
-# Role policy selects the model tier and reasoning effort. Provider defaults
-# remain catalog metadata for the lead and for legacy v1 override files.
+# Role policy selects the model tier and reasoning effort. Provider defaults in
+# the catalog cover the lead and anything a role leaves unset.
 [role_tiers]
 plan_review    = "frontier"
 code_review    = "strong"

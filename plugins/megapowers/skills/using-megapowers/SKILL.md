@@ -8,9 +8,9 @@ If dispatched as a subagent for a specific task, ignore this skill and proceed.
 
 ## The Core Rule
 
-Invoke any relevant or requested skill before your first response or action,
-including clarifying questions or code reads. If one plausibly applies, open it;
-do not rely on memory. Before entering plan mode, brainstorm first.
+A skill that covers the task owns the procedure. Open it and follow it rather
+than working from your memory of what it says. A requested skill always loads.
+Mechanical edits, single-fact lookups, and ordinary conversation need none.
 
 Announce the outer workflow once, with its purpose and route. Nested skills are
 internal steps and need no separate announcement unless the route materially
