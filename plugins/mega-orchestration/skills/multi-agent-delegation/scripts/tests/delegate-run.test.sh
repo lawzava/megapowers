@@ -205,5 +205,67 @@ set -e
 want_rc 7 "$rc" "schema-invalid finding"
 [ ! -e "$TMP/invalid-finding.json" ] && ok || bad "schema-invalid finding wrote receipt"
 
+# A real working tree can hold untracked entries that are not readable regular
+# files. git surfaces dangling symlinks in `ls-files --others`, and both
+# `hash-object` (review-diff-id) and an unreadable device node (delegate-run's
+# package builder) exit fatally on them, which aborted the whole review. Verified
+# against a checkout with character devices in the repository root and a dangling
+# symlink here. Note git does NOT list fifos as untracked, and hashing one would
+# block forever, so a fifo is not the case to test.
+ln -sfn /nonexistent-target-xyz "$repo/dangling.link"
+set +e
+"$RUN" --role verify --author-vendor openai --artifact worktree \
+  --claim "non-regular untracked entries must not abort the package" \
+  --receipt "$TMP/nonregular.json" --config "$cfg" >/dev/null 2>"$TMP/nonregular.err"
+rc=$?
+set -e
+want_rc 0 "$rc" "dangling untracked symlink does not abort the review package"
+if grep -q 'fatal:' "$TMP/nonregular.err"; then
+  bad "dangling untracked symlink leaked a git fatal error"
+else
+  ok
+fi
+want_jq "$TMP/nonregular.json" '.subject.kind == "worktree-diff"' "receipt still written with a non-regular entry present"
+
+# The fingerprint must still MOVE when such an entry appears, or a stale receipt
+# would survive a real tree change.
+id_with="$("$DIFF_ID")"
+rm -f "$repo/dangling.link"
+id_without="$("$DIFF_ID")"
+[ "$id_with" != "$id_without" ] && ok || bad "diff id must change when a dangling untracked symlink appears"
+
+# Presence alone is too coarse. RETARGETING a dangling symlink in place changes the
+# tree without adding or removing an entry, so a fingerprint that binds only the
+# path would let an approval receipt survive it.
+ln -sfn /nonexistent-target-xyz "$repo/dangling.link"
+id_target_a="$("$DIFF_ID")"
+ln -sfn /nonexistent-target-abc "$repo/dangling.link"
+id_target_b="$("$DIFF_ID")"
+[ "$id_target_a" != "$id_target_b" ] && ok || bad "diff id must change when a dangling symlink is retargeted in place"
+rm -f "$repo/dangling.link"
+
+# The dangling case bypasses -f entirely. A LIVE symlink to a readable regular
+# file is the harder case: if -f is tested first it follows the link and hashes
+# the target's content, so retargeting between two equal-content files moves
+# nothing. Bind the link target itself.
+printf 'identical\n' > "$repo/target-a.txt"
+printf 'identical\n' > "$repo/target-b.txt"
+ln -sfn target-a.txt "$repo/live.link"
+id_live_a="$("$DIFF_ID")"
+ln -sfn target-b.txt "$repo/live.link"
+id_live_b="$("$DIFF_ID")"
+[ "$id_live_a" != "$id_live_b" ] && ok || bad "diff id must change when a live symlink is retargeted between equal-content files"
+rm -f "$repo/live.link" "$repo/target-a.txt" "$repo/target-b.txt"
+
+# An UNREADABLE regular file also lands in the non-regular branch. Binding type
+# plus size alone collides: rewriting its contents at the same length would leave
+# the fingerprint unchanged, so a receipt would outlive a real content change.
+printf 'AAAA' > "$repo/unreadable.bin"; chmod 000 "$repo/unreadable.bin"
+id_unread_a="$("$DIFF_ID")"
+chmod 644 "$repo/unreadable.bin"; printf 'BBBB' > "$repo/unreadable.bin"; chmod 000 "$repo/unreadable.bin"
+id_unread_b="$("$DIFF_ID")"
+chmod 644 "$repo/unreadable.bin"; rm -f "$repo/unreadable.bin"
+[ "$id_unread_a" != "$id_unread_b" ] && ok || bad "diff id must change when an unreadable regular file is rewritten at the same size"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

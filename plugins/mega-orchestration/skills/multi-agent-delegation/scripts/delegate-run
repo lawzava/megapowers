@@ -117,10 +117,26 @@ if [ "$subject_kind" = "worktree-diff" ]; then
     git -C "$subject_artifact" diff --binary --no-ext-diff
     echo
     echo "## Untracked files"
+    # A working tree can hold untracked entries that are not readable regular
+    # files: device nodes, sockets, dangling symlinks, root-owned drops. Diffing
+    # one fails fatally and would abort the whole review package, so skip them.
+    # Name each skip rather than dropping it silently: the reviewer must know the
+    # package is not the complete tree.
     while IFS= read -r -d '' file; do
+      path="$subject_artifact/$file"
+      if [ ! -f "$path" ]; then
+        echo
+        echo "### $file (skipped: not a regular file)"
+        continue
+      fi
+      if [ ! -r "$path" ]; then
+        echo
+        echo "### $file (skipped: not readable)"
+        continue
+      fi
       echo
       echo "### $file"
-      git diff --no-index --binary --no-ext-diff /dev/null "$subject_artifact/$file" || [ "$?" -eq 1 ]
+      git diff --no-index --binary --no-ext-diff /dev/null "$path" || [ "$?" -eq 1 ]
     done < <(git -C "$subject_artifact" ls-files --others --exclude-standard -z)
   } > "$review_package"
   review_target="Read the complete pending-tree review package at $review_package. It contains status, tracked/staged/unstaged diff, and untracked files."
