@@ -8,6 +8,10 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.7.0 - 2026-07-26
+
+The catalog ships three models instead of six, and claude leads.
+
 ### Changed
 
 - The catalog ships three models, one per job: `claude-opus-5` leads at `high`
