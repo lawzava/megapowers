@@ -2,12 +2,14 @@
 # Payload-size regression for the megapowers session-start hook. The SessionStart
 # injection must stay a lean nudge, not the whole skill re-pasted into every session
 # (and again after every /clear and compaction). Assert the emitted additionalContext
-# is under 350 words, that the dead-weight blocks are stripped (YAML frontmatter,
+# is under 385 words, that the dead-weight blocks are stripped (YAML frontmatter,
 # whose name+description already appear in the skills listing, and the "## Platform
 # Adaptation" section, which points other harnesses at their own reference files),
-# and that the workflow-critical Core Rule survives. Ceiling 350: measured 318 word
-# payload (base note plus the model-catalog block) plus about 10% headroom; the
-# block's byte budget is separately capped at 600B by validate.sh and the renderer
+# and that the workflow-critical Core Rule survives. Ceiling 385, raised from 350
+# in d0596cc when the model-catalog block grew: the comment and the failure message
+# were left at 350 for weeks while the assertion enforced 385, so a payload over the
+# documented ceiling read as passing. Keep all three numbers in step; the
+# block's byte budget is separately capped at 900B by validate.sh and the renderer
 # test. The communication-register rules must also survive (condensed in SKILL.md,
 # not stripped
 # by this hook): the maintainer requires them in every session. SKILL.md on disk stays
@@ -23,7 +25,7 @@ ctx="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev
 words="$(printf '%s' "$ctx" | wc -w | tr -d ' ')"
 
 if [ -n "$ctx" ] && [ "$ctx" != "null" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL hook emitted no additionalContext\n'; fi
-if [ "${words:-0}" -le 385 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL emitted payload %s words, want <=350\n' "$words"; fi
+if [ "${words:-0}" -le 385 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL emitted payload %s words, want <=385\n' "$words"; fi
 if printf '%s' "$ctx" | grep -q 'description:'; then fail=$((fail + 1)); printf '  FAIL YAML frontmatter leaked into payload\n'; else pass=$((pass + 1)); fi
 if printf '%s' "$ctx" | grep -q 'Platform Adaptation'; then fail=$((fail + 1)); printf '  FAIL Platform Adaptation section not stripped\n'; else pass=$((pass + 1)); fi
 if printf '%s' "$ctx" | grep -q 'Core Rule'; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL workflow-critical Core Rule missing from payload\n'; fi
