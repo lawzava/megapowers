@@ -1,5 +1,5 @@
 # megapowers model catalog: what orchestrates, what models exist, what each is for.
-# Last reviewed: 2026-07-26 (model IDs age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-07-30 (model IDs age; scripts/check-freshness.sh guards this date).
 # Edit an OVERRIDE LAYER, not this shipped file: a project .megapowers/models.toml or
 # user ~/.config/megapowers/models.toml wins per key and survives plugin updates.
 # Two identical copies ship (plugins/megapowers/models.toml and
@@ -13,10 +13,13 @@
 # this catalog, but the session block renders from catalog layers only, so put
 # provider data here.
 #
-# Three models ship, one per job. Anything else is an override layer's business.
-#   claude-opus-5   lead at high effort, teammate at medium
-#   gpt-5.6-sol     critic: plan review, code review, verify, judge, research
-#   gpt-5.6-terra   cheap executor: scoped implementation
+# One model per provider per tier. Anything else is an override layer's business.
+#   claude-opus-5     frontier: lead at high effort, hard design calls
+#   claude-sonnet-5   strong: in-session teammate work and cheap execution
+#   gpt-5.6-sol       frontier: plan review, code review, verify, judge, research
+#   gpt-5.6-terra     strong: scoped implementation
+#   kimi-k3           frontier: third-vendor independent review (ships disabled)
+#   kimi-k2.7-code    strong: third-vendor cheap execution (ships disabled)
 
 # --- Lead: what orchestrates ---
 # delegate-resolve --lead prints it. Artifact reviews use --author-vendor rather
@@ -66,11 +69,16 @@ reference = "references/providers/claude.md"
 use     = "lead: orchestration, integration, in-session teammate work"
 notes   = "The lead runs as the session itself; the headless channel is for a delegate pass under a different lead. One-shot headless Claude: --bare with API keys, disposable config/cwd with OAuth."
 
-# One model, two spend bands; the role's tier picks which. Sonnet and Haiku are
-# never routed: anything claude does runs Opus 5.
+# Two models, two tiers; the role's tier picks which. Sonnet 5 carries the strong
+# tier so "least capable model that can do the role" has somewhere cheaper to land:
+# Anthropic's 2026-07-24 guidance puts Sonnet 5 paired with a frontier advisor
+# within 10 percent of frontier quality at 63 percent of the price. Effort is the
+# other lever, and it crosses tiers: frontier at low effort can beat strong at
+# high effort, so raise the tier before raising effort on hard work. Haiku is
+# never routed.
 [providers.claude.tiers]
 frontier = "claude-opus-5"
-strong   = "claude-opus-5"
+strong   = "claude-sonnet-5"
 
 # Second model vendor, so the cross-vendor roles have a real different-vendor route
 # when the lead (or an --exclude) rules out the primary.
@@ -90,6 +98,38 @@ notes   = "Native subagents inside Codex; codex-plugin-cc from Claude Code; code
 [providers.codex.tiers]
 frontier = "gpt-5.6-sol"
 strong   = "gpt-5.6-terra"
+
+# Third model vendor, so independence survives one vendor being unreachable: with
+# only claude and codex, an anthropic-authored artifact has exactly one cross-vendor
+# route, and cross-model-verification cannot seat a panel of distinct vendors at all.
+# SHIPS DISABLED. enabled = false is not a placeholder for missing data: it is the
+# honest state until a channel is verified on the machine that routes to it. The
+# resolver skips a disabled candidate, so this section costs nothing and dispatches
+# nothing. Flipping it to true needs both a working `kimi` channel and a moonshot
+# adapter in delegate-run, which today dispatches on vendor and knows only
+# anthropic and openai. Until then a route here would fail inside a review gate,
+# which is worse than having one alternate vendor.
+[providers.moonshot]
+enabled = false
+effort  = "high"   # every delegated role runs high
+# Kimi K3 takes reasoning_effort low, high, or max (max is its own default). It has
+# no medium rung, and `ultra` is a Codex-only band, so this list is the honest
+# subset of the global scale: xhigh is how a route asks for reasoning_effort=max.
+efforts = ["low", "high", "xhigh"]
+vendor  = "moonshot"
+binary  = "kimi"
+channel = "kimi-cli-or-openai-compatible-api"
+default_tier = "frontier"
+capabilities = ["code", "vision"]   # native vision; computer use is not claimed
+reference = "references/providers/moonshot.md"
+use     = "third vendor: plan and code review, verify, judge, council"
+notes   = "Open-weights vendor, so the same model is reachable self-hosted or through a third-party host when the first-party API is not an option. Channel mechanics: see the reference file."
+
+# K3 reviews and judges; k2.7-code is the cheaper coding model. Context differs by
+# tier here, unlike the other providers: K3 holds 1M tokens, k2.7-code holds 256k.
+[providers.moonshot.tiers]
+frontier = "kimi-k3"
+strong   = "kimi-k2.7-code"
 
 # --- Defaults: cross-cutting rules ---
 [defaults]

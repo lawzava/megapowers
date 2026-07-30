@@ -51,5 +51,5 @@ Only where the skill is the natural home, one or two sentences:
 ## Never
 
 - Change frontmatter without rerunning the trigger-recall evaluation.
-- Change the register: declarative prose, no dash punctuation, none of the
-  banned vocabulary listed in CONTRIBUTING.md.
+- Change the register (using-megapowers, Communication) or reintroduce the
+  vocabulary humanizing-prose lists as tells.

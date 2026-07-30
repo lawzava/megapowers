@@ -2,16 +2,34 @@
 # Resolve and execute one read-only delegate review, then write a provenance-bound receipt.
 set -euo pipefail
 
+# REPLACEMENT OBJECTS, off for every git call. `git replace X Y` makes every
+# object read return Y where X was asked for without moving any ref, so
+# `git rev-parse HEAD` still prints X while `git diff HEAD` renders against Y.
+# The receipt binds subject.base to the HEAD ref OID, and without this a second
+# repository holding X plus a replacement to Y reproduces the same delta and
+# matches id, base and artifact although its real content is one nobody reviewed.
+# It is also what the reviewer READS, so leaving replacement on would hand the
+# reviewer the replaced rendering. review-diff-id carries the same export and the
+# full reasoning.
+export GIT_NO_REPLACE_OBJECTS=1
+
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 resolver="$here/delegate-resolve"
 diff_id_tool="$here/review-diff-id"
 verdict_schema="$here/../schemas/review-verdict-v1.json"
+# The subject fingerprint is computed HERE rather than by calling review-diff-id,
+# because the id and the bytes the reviewer reads have to come from one capture.
+# The stream format below is review-diff-id's, byte for byte, and it must stay
+# that way: the Stop hook fingerprints the live tree with review-diff-id and
+# compares it against the id written into the receipt. delegate-run.test.sh
+# asserts the two agree on every tree shape the pair is expected to survive.
 
 usage() {
-  echo "usage: delegate-run --role <role> --author-vendor <vendor>... --artifact <worktree|file> --claim <text> [--receipt <file>] [--screenshot <file>]... [--config <file>] [--models <file>]" >&2
+  echo "usage: delegate-run --role <role> --author-vendor <vendor>... --artifact <worktree|file> --claim <text> [--receipt <file>] [--screenshot <file>]... [--transcript-dir <dir>] [--config <file>] [--models <file>]" >&2
+  echo "       --transcript-dir retains this dispatch's prompt, review package, and raw provider output under <dir>. Discarded when omitted." >&2
 }
 
-role="" artifact="" claim="" receipt="" cfg="" models=""
+role="" artifact="" claim="" receipt="" cfg="" models="" transcript_dir=""
 author_vendors=()
 screenshots=()
 while [ $# -gt 0 ]; do
@@ -22,6 +40,7 @@ while [ $# -gt 0 ]; do
     --claim) [ $# -ge 2 ] || { usage; exit 2; }; claim="$2"; shift 2 ;;
     --receipt) [ $# -ge 2 ] || { usage; exit 2; }; receipt="$2"; shift 2 ;;
     --screenshot) [ $# -ge 2 ] || { usage; exit 2; }; screenshots+=("$2"); shift 2 ;;
+    --transcript-dir) [ $# -ge 2 ] || { usage; exit 2; }; transcript_dir="$2"; shift 2 ;;
     --config) [ $# -ge 2 ] || { usage; exit 2; }; cfg="$2"; shift 2 ;;
     --models) [ $# -ge 2 ] || { usage; exit 2; }; models="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -34,6 +53,25 @@ done
   exit 2
 }
 command -v jq >/dev/null 2>&1 || { echo "delegate-run: jq is required" >&2; exit 2; }
+
+# The role becomes a path component of the transcript slug below, so a config
+# defining a role name with a slash in it would escape the transcript directory.
+case "$role" in
+  *[!A-Za-z0-9_-]*)
+    echo "delegate-run: role must match [A-Za-z0-9_-]+: $role" >&2
+    exit 2
+    ;;
+esac
+
+# Fail on an unusable transcript directory now, not after the provider has already
+# been paid for a round.
+if [ -n "$transcript_dir" ]; then
+  mkdir -p "$transcript_dir" 2>/dev/null || {
+    echo "delegate-run: cannot create transcript directory: $transcript_dir" >&2
+    exit 2
+  }
+  transcript_dir="$(cd "$transcript_dir" && pwd)"
+fi
 
 hash_file() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -48,20 +86,39 @@ hash_file() {
 
 subject_kind="file"
 subject_artifact="$artifact"
+# The commit the pending delta is measured FROM. Empty for a file artifact, which
+# has no base. Filled from the snapshot capture below for a worktree, where it is
+# the other half of the subject's identity: the fingerprint covers the delta only,
+# so a delta plus a base names one tree and a delta alone names a shape that many
+# unrelated repositories share.
+subject_base=""
+# The SUPPLEMENTAL submodule fingerprint. Empty when the tree holds no gitlink,
+# which is also how a receipt written before this existed keeps matching an
+# ordinary repository. It sits beside subject.id and never inside it: folding
+# `--submodule=diff` into the id would move the id of every repository with a
+# submodule, and the Stop hook compares against ids the shipped algorithm makes.
+subject_submodules=""
 if [ "$artifact" = "worktree" ]; then
   subject_kind="worktree-diff"
   subject_artifact="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     echo "delegate-run: --artifact worktree requires a Git worktree" >&2
     exit 2
   }
-  subject_id="$("$diff_id_tool" "$subject_artifact")"
-  [ -n "$receipt" ] || receipt="$(git rev-parse --git-path megapowers-review-receipt.json)"
+  # Guarded like every other git call in this script: an unguarded one exits with
+  # git's own status under errexit, and a raw 128 is not in the exit map a caller
+  # branches on, so it reads as an unrecognized failure rather than as a named
+  # one.
+  [ -n "$receipt" ] || receipt="$(git rev-parse --git-path megapowers-review-receipt.json)" || {
+    echo "delegate-run: cannot locate the git directory to place the receipt in" >&2
+    exit 2
+  }
 else
   [ -f "$artifact" ] || { echo "delegate-run: artifact not found: $artifact" >&2; exit 2; }
   subject_artifact="$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")"
-  subject_id="$(hash_file "$subject_artifact")"
   [ -n "$receipt" ] || { echo "delegate-run: --receipt is required for a file artifact" >&2; exit 2; }
 fi
+# subject_id is deliberately NOT computed here. It is derived from the snapshot
+# below, which is also what the reviewer reads. See the capture block.
 
 if [ "$role" = "visual_verify" ] && [ "${#screenshots[@]}" -eq 0 ]; then
   echo "delegate-run: visual_verify requires at least one --screenshot" >&2
@@ -100,54 +157,737 @@ for author in "${author_vendors[@]}"; do
 done
 
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/megapowers-delegate.XXXXXX")"
-trap 'rm -rf "$tmpdir"' EXIT
+# Held only across the round ledger's read-modify-write. Released here too, so an
+# interrupt between acquire and release does not wedge the ledger for later runs.
+round_lock=""
+
+# Set once this dispatch has a round number. Until then there is no dispatch to
+# retain, so a refusal or an early argument error leaves the transcript dir alone.
+transcript_slug=""
+transcript_path=""
+# Read by the cleanup trap, which can fire long before reserve_round runs.
+round=""
+retain_transcript() {
+  [ -n "$transcript_dir" ] || return 0
+  [ -n "$transcript_path" ] || return 0
+  local dest="$transcript_path" src dst
+  # Retention is best effort, but silence is not: an absent or partial transcript
+  # is exactly what the operator must not discover later by finding nothing there.
+  mkdir -p "$dest" 2>/dev/null || {
+    echo "delegate-run: could not retain the transcript: cannot create $dest" >&2
+    return 0
+  }
+  # Copy an explicit allowlist. NEVER copy $tmpdir wholesale: on the OAuth route it
+  # holds the disposable Claude config home, which contains a real credential file.
+  while IFS='|' read -r src dst; do
+    [ -n "$src" ] || continue
+    [ -f "$tmpdir/$src" ] || continue
+    cp "$tmpdir/$src" "$dest/$dst" 2>/dev/null ||
+      echo "delegate-run: could not retain $dst in $dest" >&2
+  done <<'MAP'
+prompt.txt|prompt.txt
+route.txt|route.txt
+review-package.txt|review-package.txt
+snapshot/stream|subject-stream.bin
+raw.json|provider-raw.json
+verdict.json|verdict.json
+provider.err|provider.stderr
+provider.log|provider.stdout
+MAP
+}
+
+cleanup() {
+  # Retain before the scratch dir is destroyed, and from the trap rather than the
+  # happy path, so a failed dispatch is auditable too. That is when the transcript
+  # matters most, because a failure writes no receipt at all.
+  retain_transcript
+  [ -z "$round_lock" ] || rm -f "$round_lock"
+  round_lock=""
+  # Backstop for the reservation. The happy path resolves it as soon as the
+  # verdict is known; anything that died before that resolves as 'failed' here,
+  # which still consumed a round and must not let a later approve reset a count
+  # this dispatch is part of. Guarded on $round, because an exit before the round
+  # was reserved has nothing to resolve and resolve_round is not defined yet.
+  if [ -n "$round" ]; then
+    resolve_round failed ||
+      echo "delegate-run: could not close out round $round for role '$role' on '$round_key' in $rounds_ledger" >&2
+  fi
+  rm -rf "$tmpdir"
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 raw="$tmpdir/raw.json"
 normalized="$tmpdir/verdict.json"
 
+# ---------------------------------------------------------------------------
+# Canonical snapshot.
+#
+# The receipt's subject id and the bytes the reviewer reads MUST come from one
+# capture of the worktree. Fingerprinting the live tree and then building the
+# package from it is two reads of a mutable directory: change the tree to B
+# between them, let the package capture see B, restore A afterwards, and the
+# reviewer approves B while the receipt names A. The Stop hook then fingerprints
+# A, matches the receipt, and lets through a tree nobody reviewed. That is the
+# exact failure this whole mechanism exists to prevent, so nothing below reads
+# the worktree twice: every byte is captured once into $snap, and both the
+# readable package and the fingerprint are derived from those bytes.
+snap="$tmpdir/snapshot"
+# `objects` is a throwaway object store. Untracked blobs are written into it so
+# the CLEAN-FILTERED bytes the subject id names can be read back and shown to the
+# reviewer. It must not be the repository's own store: the launcher is a read-only
+# review and has no business leaving loose objects behind, and a read-only or
+# archived checkout would fail the write outright.
+mkdir -p "$snap/entries" "$snap/tree" "$snap/excluded-meta" "$snap/objects"
+cap_status="$snap/status.txt"
+cap_staged="$snap/staged.diff"
+cap_unstaged="$snap/unstaged.diff"
+cap_sorted="$snap/others.sorted"
+cap_err="$snap/capture.err"
+snap_stream="$snap/stream"
+pkg_untracked="$snap/untracked.txt"
+: > "$cap_err"
+: > "$snap/excluded"
+entry_count=0
+excluded_count=0
+
+# A section that cannot be captured is not a smaller review, it is no review:
+# git prints NOTHING and exits 128 when it cannot hash a path, so a partial
+# capture looks exactly like a clean tree. Refuse here, with the path git named,
+# and refuse BEFORE a round is reserved so a failure that dispatched nothing does
+# not consume one.
+capture_fail() {
+  echo "delegate-run: cannot capture the $1 of $subject_artifact, so neither a review package nor a subject id can be produced" >&2
+  sed -n '1,5p' "$cap_err" >&2 || true
+  echo "delegate-run: nothing was dispatched and no round was consumed. Make the path git named readable, or take it out of the worktree, then retry." >&2
+  exit 9
+}
+
+# Byte-identical to review-diff-id's emit_nonregular payload, including the
+# trailing newline `stat` writes and the newline-free 'unstatable' fallback. Type
+# plus size alone collides, so this also carries device numbers, NANOSECOND
+# mtime, and inode: an in-place rewrite reuses the inode and lands in the same
+# second, and a seconds-resolution stamp would let a receipt outlive it.
+stat_record() {
+  stat -c '%F|%s|%t|%T|%y|%i' -- "$1" 2>/dev/null \
+    || stat -f '%HT|%z|%Hr|%Lr|%Fm|%i' -- "$1" 2>/dev/null \
+    || printf 'unstatable'
+}
+
+# Read a snapshot field into a variable VERBATIM, trailing newlines included.
+#
+# `v="$(cat file)"` is what this replaces and it is not a style preference:
+# command substitution strips every trailing newline, and a filename may legally
+# end in one. With two untracked files named `late.go` and `late.go` followed by a
+# newline, the stripped read collapses the second onto the first, the package
+# prints one heading twice and shows the FIRST file's bytes under both, and the
+# reviewer never sees the second file at all while the subject id still binds it.
+# Approving that package authorizes content nobody read, which is the exact
+# failure the receipt exists to prevent.
+#
+# `read -r -d ''` stops at NUL. A path field holds no NUL (git's own -z framing
+# guarantees it), so the read consumes the whole file and returns non-zero only at
+# EOF, which is the normal case here rather than an error.
+read_field() {
+  [ -f "$2" ] || return 1
+  IFS= read -r -d '' "$1" < "$2" || :
+}
+
+# The same read, then drop ONE trailing newline: `git hash-object`, `readlink`,
+# and `stat` each terminate their output with exactly one, and that newline is
+# theirs rather than the value's. Anything beyond it belongs to the value (a
+# symlink target may itself end in a newline) and is kept.
+read_field_line() {
+  local __raw=""
+  read_field __raw "$2" || return 1
+  printf -v "$1" '%s' "${__raw%$'\n'}"
+}
+
+# Every step is checked with an explicit `|| return 1` rather than leaning on
+# errexit, because errexit is DISABLED inside a function invoked in a `|| ...`
+# list. Under errexit alone a failing `cat` here would not stop the function: it
+# would keep appending and produce a stream that is short but looks complete,
+# which is a forged id wearing a different shape.
+build_subject_stream() {
+  local i=0 j=0 rec kind p
+  printf 'staged\0' || return 1
+  cat "$cap_staged" || return 1
+  printf '\0unstaged\0' || return 1
+  cat "$cap_unstaged" || return 1
+  printf '\0untracked\0' || return 1
+  while [ "$i" -lt "$entry_count" ]; do
+    i=$((i + 1))
+    rec="$snap/entries/$i"
+    # `cat`, not `printf '%s' "$(cat ...)"`: command substitution strips trailing
+    # newlines and a filename may end in one.
+    cat "$rec/path" || return 1
+    printf '\0' || return 1
+    # `kind` is one of three literals this script wrote, so command substitution
+    # is lossless here. The path above is not, which is why it is cat'ed.
+    kind="$(cat "$rec/kind")" || return 1
+    case "$kind" in
+      symlink) printf 'symlink\0' || return 1; cat "$rec/meta" || return 1; printf '\0' || return 1 ;;
+      blob) cat "$rec/meta" || return 1 ;;
+      *) printf 'nonregular\0' || return 1; cat "$rec/meta" || return 1; printf '\0' || return 1 ;;
+    esac
+  done
+  if [ "$excluded_count" -gt 0 ]; then
+    printf '\0excluded\0' || return 1
+    while IFS= read -r -d '' p; do
+      j=$((j + 1))
+      printf '%s\0' "$p" || return 1
+      printf 'nonregular\0' || return 1
+      cat "$snap/excluded-meta/$j" || return 1
+      printf '\0' || return 1
+    done < "$snap/excluded"
+  fi
+}
+
+build_untracked_section() {
+  local i=0 rec rel kind meta
+  while [ "$i" -lt "$entry_count" ]; do
+    i=$((i + 1))
+    rec="$snap/entries/$i"
+    # Verbatim, including a trailing newline in the name. See read_field.
+    read_field rel "$rec/path" || return 1
+    kind="$(cat "$rec/kind")" || return 1
+    read_field_line meta "$rec/meta" || return 1
+    echo || return 1
+    case "$kind" in
+      symlink)
+        printf '### %s (symlink -> %s)\n' "$rel" "$meta" || return 1
+        ;;
+      blob)
+        printf '### %s (untracked, blob %s)\n' "$rel" "$meta" || return 1
+        # Diffed from the snapshot copy, never from the worktree: showing the
+        # reviewer a second read of the file is how the package and the id come
+        # apart. That copy now holds the blob's own bytes rather than the raw
+        # worktree bytes (see the capture loop), so what is printed here is
+        # literally the content `$meta` names. Status 1 is "differs", which is the
+        # whole point of the call.
+        # `--` before the operands, so a name beginning with a dash is a path and
+        # not an option. Without it git rejects the call, the section returns 1,
+        # and a legal filename takes the whole dispatch down.
+        ( cd "$snap/tree" && git diff --no-index --binary --no-ext-diff -- /dev/null "$rel" ) ||
+          [ "$?" -eq 1 ] || return 1
+        ;;
+      *)
+        # Name each skip rather than dropping it silently: the reviewer must know
+        # the package is not the complete tree. The identity string is what the
+        # fingerprint binds for this path.
+        printf '### %s (skipped: not a readable regular file; identity %s)\n' "$rel" "$meta" || return 1
+        ;;
+    esac
+  done
+}
+
+build_excluded_section() {
+  [ "$excluded_count" -gt 0 ] || return 0
+  local j=0 p meta
+  echo || return 1
+  echo "## Tracked paths excluded from the diff" || return 1
+  echo "git cannot diff these tracked paths because they exist but are not regular files. Their identity is bound into the subject id, so a change at one of them still stales this receipt." || return 1
+  while IFS= read -r -d '' p; do
+    j=$((j + 1))
+    read_field_line meta "$snap/excluded-meta/$j" || return 1
+    printf '### %s (excluded: not a regular file; identity %s)\n' "$p" "$meta" || return 1
+  done < "$snap/excluded"
+}
+
 if [ "$subject_kind" = "worktree-diff" ]; then
+  top="$subject_artifact"
   review_package="$tmpdir/review-package.txt"
+
+  # The base commit, read FIRST and as part of the same capture as everything
+  # below it. The fingerprint covers the pending delta and nothing else, so a
+  # delta on its own describes a shape rather than a tree: two unrelated
+  # repositories with the same staged and unstaged hunks fingerprint identically.
+  # Base plus delta determines the complete tracked content, so recording the base
+  # in the receipt is what makes the subject an actual tree.
+  #
+  # It goes in the RECEIPT and not into the fingerprint on purpose. review-diff-id
+  # must keep producing the id it produces today, because receipts already written
+  # came from that algorithm and the Stop hook compares against it.
+  #
+  # A repository with no commits has no HEAD, and the empty tree is the base git
+  # itself diffs the index against there, so it is the honest value rather than a
+  # placeholder. It is also the same in every empty repository, which is correct:
+  # with no commits the delta alone already determines the whole tree.
+  subject_base="$(git -C "$top" rev-parse --verify -q HEAD 2>>"$cap_err")" || subject_base=""
+  if [ -z "$subject_base" ]; then
+    subject_base="$(git -C "$top" hash-object -t tree /dev/null 2>>"$cap_err")" ||
+      capture_fail "base commit"
+  fi
+  [ -n "$subject_base" ] || capture_fail "base commit"
+
+  # Status first, and everything after it in one unbroken run of reads. It is
+  # orientation for the reviewer rather than part of the fingerprint (its content
+  # summarizes the diffs and the untracked listing that follow, every byte of
+  # which the id does cover), but it is still something the reviewer reads, so it
+  # must not describe a different tree from the sections below it. Its failure is
+  # deferred, because the pathspec that would fix it is only discovered from the
+  # unstaged diff below.
+  status_ok=1
+  git -C "$top" status --short > "$cap_status" 2>>"$cap_err" || status_ok=0
+
+  # NO pathspec, deliberately. `git diff --cached` compares HEAD to the index and
+  # never reads the worktree, so a non-regular path cannot make it abort, and
+  # applying the exclusion anyway would drop that path's INDEX content, which is
+  # arbitrary reviewable text.
+  git -C "$top" diff --cached --binary --no-ext-diff > "$cap_staged" 2>>"$cap_err" ||
+    capture_fail "staged diff"
+
+  diff_pathspec=()
+  if ! git -C "$top" diff --binary --no-ext-diff > "$cap_unstaged" 2>>"$cap_err"; then
+    # A tracked path that exists but is neither a regular file nor a directory is
+    # a character device, fifo, or socket: git has nothing to hash, writes
+    # nothing, and exits 128. The sandbox creates this routinely by bind mounting
+    # /dev/null over deny-listed paths, so an unmodified `git diff` here made the
+    # launcher exit 128 before dispatch, and the receipt the Stop hook demands
+    # could not be produced at all in exactly the condition it was written for.
+    # Drop those paths and bind their identity instead, which is what the hook and
+    # review-diff-id already do.
+    git -C "$top" ls-files -z --full-name -- ':/' > "$snap/tracked" 2>>"$cap_err" ||
+      capture_fail "tracked path listing"
+    diff_pathspec=(-- ':/')
+    while IFS= read -r -d '' p; do
+      # Symlinks stay in: git diffs the link target string, not the file behind
+      # it. Missing paths stay in: a deletion is a real change git reports without
+      # hashing. Unreadable REGULAR files stay in: they carry logic. Directories
+      # stay in: a tracked directory is a submodule gitlink whose diff is a commit
+      # pointer carrying arbitrary code, and its stat identity would not stand in
+      # for it because a gitlink moves without touching the directory's mtime.
+      if [ ! -L "$top/$p" ] && [ -e "$top/$p" ] && [ ! -f "$top/$p" ] && [ ! -d "$top/$p" ]; then
+        excluded_count=$((excluded_count + 1))
+        printf '%s\0' "$p" >> "$snap/excluded"
+        # `literal` is mandatory. Without it the name is matched with wildmatch,
+        # so a fifo called `x*.go` drops every path starting with `x` from the
+        # package AND from the fingerprint, and the name is picked by whoever adds
+        # the file.
+        diff_pathspec+=(":(top,exclude,literal)$p")
+        stat_record "$top/$p" > "$snap/excluded-meta/$excluded_count"
+      fi
+    done < "$snap/tracked"
+    [ "$excluded_count" -gt 0 ] || capture_fail "unstaged diff"
+    git -C "$top" diff --binary --no-ext-diff "${diff_pathspec[@]}" > "$cap_unstaged" 2>>"$cap_err" ||
+      capture_fail "unstaged diff"
+  fi
+
+  if [ "$status_ok" -eq 0 ]; then
+    [ "$excluded_count" -gt 0 ] || capture_fail "status summary"
+    git -C "$top" status --short -- "${diff_pathspec[@]:1}" > "$cap_status" 2>>"$cap_err" ||
+      capture_fail "status summary"
+  fi
+
+  # Scratch storage must stay out of `git ls-files --others`, which reports
+  # anything under the worktree. TMPDIR is normally elsewhere, but it can be set
+  # inside the checkout, and the random mktemp name would then change the id on
+  # every run. Compare RESOLVED paths: either end may be reached through a
+  # symlink, and git lists a link itself rather than what is behind it.
+  others_pathspec=()
+  tmp_phys="$(cd -P "$tmpdir" && pwd -P)" || capture_fail "scratch storage"
+  top_phys="$(cd -P "$top" && pwd -P)" || capture_fail "worktree root"
+  case "$tmp_phys/" in
+    "$top_phys"/*)
+      others_pathspec=(-- ':/' ":(top,exclude,literal)${tmp_phys#"$top_phys"/}")
+      ;;
+  esac
+  # `${a[@]+"${a[@]}"}`: expanding an empty array is an unbound variable under
+  # `set -u` in bash before 4.4, and macOS ships 3.2.
+  git -C "$top" ls-files -z --others --exclude-standard \
+    ${others_pathspec[@]+"${others_pathspec[@]}"} > "$snap/others" 2>>"$cap_err" ||
+    capture_fail "untracked listing"
+  LC_ALL=C sort -z < "$snap/others" > "$cap_sorted" || capture_fail "untracked listing"
+
+  while IFS= read -r -d '' rel; do
+    entry_count=$((entry_count + 1))
+    rec="$snap/entries/$entry_count"
+    mkdir -p "$rec" || capture_fail "untracked entry $rel"
+    printf '%s' "$rel" > "$rec/path"
+    # -L MUST be tested before -f, because -f follows the link. Testing -f first
+    # binds a symlink to its TARGET'S content, so retargeting a link between two
+    # equal-content files would not move the fingerprint.
+    if [ -L "$top/$rel" ]; then
+      printf 'symlink' > "$rec/kind"
+      readlink -- "$top/$rel" > "$rec/meta" 2>/dev/null || printf 'unreadable-link' > "$rec/meta"
+    elif [ -f "$top/$rel" ] && [ -r "$top/$rel" ]; then
+      printf 'blob' > "$rec/kind"
+      # `${rel%/*}`, not `$(dirname "$rel")`: command substitution strips trailing
+      # newlines, so a DIRECTORY whose name ends in one would be created under the
+      # wrong name and the copy below would fail on a legal path.
+      case "$rel" in
+        */*) mkdir -p "$snap/tree/${rel%/*}" || capture_fail "untracked entry $rel" ;;
+      esac
+      # THE single read of this file. The package shows this copy and the id
+      # hashes this copy, so the reviewer cannot be shown bytes the receipt does
+      # not name.
+      cp -- "$top/$rel" "$snap/tree/$rel" || capture_fail "untracked file $rel"
+      # --path is not decoration: `git hash-object <file>` picks its clean filter
+      # from the file's location, so hashing the copy without it skips a filter
+      # configured for this name and the id stops matching review-diff-id's.
+      #
+      # -w writes the blob, into the SCRATCH object store rather than the
+      # repository's, purely so the next command can read it back. The hash is
+      # determined by the content, so writing it changes no id.
+      GIT_OBJECT_DIRECTORY="$snap/objects" \
+        git -C "$top" hash-object -w --path "$rel" -- "$snap/tree/$rel" > "$rec/meta" 2>>"$cap_err" ||
+        capture_fail "untracked file $rel"
+      read_field_line blob "$rec/meta" || capture_fail "untracked file $rel"
+      # Replace the raw copy with the blob's own bytes. The clean filter runs
+      # between the worktree and the blob, so with `text`, `eol`, or a configured
+      # `filter.*.clean` attribute the raw bytes and the hashed bytes differ: the
+      # package would show the reviewer one thing while the subject id named
+      # another, and a later swap that the filter normalizes away would leave the
+      # id unmoved. Showing the filtered bytes makes the package and the id the
+      # same content by construction.
+      # shellcheck disable=SC2154  # blob is assigned by read_field_line via `printf -v`
+      GIT_OBJECT_DIRECTORY="$snap/objects" \
+        git -C "$top" cat-file blob "$blob" > "$snap/tree/$rel" 2>>"$cap_err" ||
+        capture_fail "untracked file $rel"
+    else
+      # A working tree can hold untracked entries that are not readable regular
+      # files: device nodes, sockets, dangling symlinks, root-owned drops. Bind
+      # the identity rather than the content, which there is none of to read.
+      printf 'nonregular' > "$rec/kind"
+      stat_record "$top/$rel" > "$rec/meta"
+    fi
+  done < "$cap_sorted"
+
+  # The submodule snapshot, captured ONCE: these bytes go into the review package
+  # and this same file is what the fingerprint hashes, so the reviewer cannot be
+  # shown submodule content the receipt does not name.
+  #
+  # Delegated to review-diff-id rather than rebuilt here, unlike the subject
+  # stream above. The subject stream is duplicated on purpose, because the id and
+  # the reviewer's bytes must come from ONE capture and the launcher owns that
+  # capture. Nothing is gained by duplicating this one: the launcher hashes the
+  # bytes it captured either way, and a hand-maintained second copy of the
+  # submodule walk is one more place for the two sides to drift apart on a shape
+  # neither suite happens to cover.
+  #
+  # This is also what refuses a tree whose index HIDES a modification: review-diff-id
+  # checks the assume-unchanged bit before it walks anything, on the superproject
+  # and on every submodule, and its message names the paths. cap_err carries it out
+  # through capture_fail.
+  [ -x "$diff_id_tool" ] || capture_fail "submodule snapshot: $diff_id_tool is not executable"
+  "$diff_id_tool" --submodule-section "$top" > "$snap/submodules" 2>>"$cap_err" ||
+    capture_fail "submodule snapshot"
+  if [ -s "$snap/submodules" ]; then
+    subject_submodules="$(git -C "$top" hash-object --stdin < "$snap/submodules")" ||
+      capture_fail "submodule snapshot"
+    [ -n "$subject_submodules" ] || capture_fail "submodule snapshot"
+  fi
+
+  # Re-read the base and refuse if it moved. Every section above measures a delta
+  # FROM the base read at the top, so a commit landing partway through produces a
+  # package whose earlier sections and later sections describe different trees
+  # while one base is recorded for both. Binding a base that only half the package
+  # applies to is the same defect as fingerprinting a tree the reviewer did not
+  # read, one level up. The window is narrow but it is the window this binding
+  # opens, so close it here rather than leave it to be found later.
+  base_after="$(git -C "$top" rev-parse --verify -q HEAD 2>>"$cap_err")" || base_after=""
+  [ -n "$base_after" ] || base_after="$(git -C "$top" hash-object -t tree /dev/null 2>>"$cap_err")"
+  [ "$base_after" = "$subject_base" ] ||
+    capture_fail "pending tree: HEAD moved from $subject_base to $base_after during the capture, so no single base describes it"
+
+  build_untracked_section > "$pkg_untracked" || capture_fail "untracked section"
+
+  # Refuse before any provider is dispatched. `--artifact worktree` captures only
+  # uncommitted work, so a change that is already committed produces a package of
+  # bare headings. Reviewing that costs a full round and can only report that the
+  # artifact was empty. Substance, not size, is the test: a one line pending diff
+  # or a single untracked file is small but real, and still dispatches.
+  if [ ! -s "$cap_status" ] && [ ! -s "$cap_staged" ] &&
+     [ ! -s "$cap_unstaged" ] && [ ! -s "$pkg_untracked" ]; then
+    echo "delegate-run: the review package for $subject_artifact is empty: no pending status, no staged or unstaged diff, and no untracked files. Refusing to dispatch a review of nothing." >&2
+    echo "delegate-run: '--artifact worktree' captures only uncommitted work, so work that is already committed looks like this. To review a committed range instead, write it to a file (git diff BASE...HEAD > range.diff) and pass '--artifact range.diff --receipt FILE'." >&2
+    exit 8
+  fi
+
+  build_subject_stream > "$snap_stream" || capture_fail "subject fingerprint"
+  # `git -C "$top"`, so a repository configured for sha256 objects produces the
+  # same id review-diff-id would.
+  subject_id="$(git -C "$top" hash-object --stdin < "$snap_stream")" ||
+    capture_fail "subject fingerprint"
+  [ -n "$subject_id" ] || capture_fail "subject fingerprint"
+
   {
     echo "## Git status"
-    git -C "$subject_artifact" status --short
+    cat "$cap_status"
     echo
     echo "## Staged diff (HEAD to index)"
-    git -C "$subject_artifact" diff --cached --binary --no-ext-diff
+    cat "$cap_staged"
     echo
     echo "## Unstaged diff (index to worktree)"
-    git -C "$subject_artifact" diff --binary --no-ext-diff
+    cat "$cap_unstaged"
     echo
     echo "## Untracked files"
-    # A working tree can hold untracked entries that are not readable regular
-    # files: device nodes, sockets, dangling symlinks, root-owned drops. Diffing
-    # one fails fatally and would abort the whole review package, so skip them.
-    # Name each skip rather than dropping it silently: the reviewer must know the
-    # package is not the complete tree.
-    while IFS= read -r -d '' file; do
-      path="$subject_artifact/$file"
-      if [ ! -f "$path" ]; then
-        echo
-        echo "### $file (skipped: not a regular file)"
-        continue
-      fi
-      if [ ! -r "$path" ]; then
-        echo
-        echo "### $file (skipped: not readable)"
-        continue
-      fi
+    cat "$pkg_untracked"
+    build_excluded_section
+    if [ -s "$snap/submodules" ]; then
       echo
-      echo "### $file"
-      git diff --no-index --binary --no-ext-diff /dev/null "$path" || [ "$?" -eq 1 ]
-    done < <(git -C "$subject_artifact" ls-files --others --exclude-standard -z)
-  } > "$review_package"
-  review_target="Read the complete pending-tree review package at $review_package. It contains status, tracked/staged/unstaged diff, and untracked files."
+      echo "# Submodules"
+      echo "A gitlink diffs above as a bare 'Subproject commit <sha>' line, and untracked content inside a submodule does not appear above at all. This section is the content behind those pointers: the staged pointer move, the worktree content, and the submodule's own untracked files, recursively. It is bound by subject.submodules rather than by subject.id, and it is part of what an approve covers."
+      cat "$snap/submodules"
+    fi
+  } > "$review_package" || capture_fail "review package"
+  review_target="Read the pending-tree review package at $review_package. It contains status, tracked/staged/unstaged diff, untracked files, and the content of any submodule, as git reports them. That package is an immutable snapshot taken at dispatch and it is exactly what this receipt's subject id and submodule fingerprint bind, so base the verdict on it rather than on a re-read of the live worktree. What git does not surface is outside the binding: ignored paths and content behind a clean filter."
 else
-  review_target="Read the artifact file at $subject_artifact."
+  snap_artifact="$snap/artifact/$(basename "$subject_artifact")"
+  mkdir -p "$(dirname "$snap_artifact")"
+  # Same invariant as the worktree path: hash the copy the reviewer is pointed
+  # at, not the mutable original.
+  cp -- "$subject_artifact" "$snap_artifact" || capture_fail "artifact"
+  subject_id="$(hash_file "$snap_artifact")"
+  review_target="Read the artifact captured at $snap_artifact. It is an immutable copy of $subject_artifact taken at dispatch and it is exactly what this receipt's subject id binds."
 fi
+
+# Reserve this dispatch's round number before the provider is invoked. The count
+# is of DISPATCHES against one role plus BRANCH, not of receipts: a round that
+# burned reviewer time and then failed still happened, and a caller capping the
+# loop has to see it. A refusal above never reaches this point, so it costs no
+# round. An approve clears the entry (see resolve_round), so the number means
+# consecutive rounds on this branch that did not reach approve.
+#
+# The key is deliberately NOT the subject fingerprint. Keying on the fingerprint
+# made the counter blind to the loop it exists to measure: the author fixes
+# something between rounds, the fingerprint moves, and the seventh round reports 1.
+# `subject.id` in the receipt stays the fingerprint; that is the provenance binding
+# to the reviewed tree and it is a different job from counting churn.
+rounds_schema="megapowers.review-rounds.v2"
+rounds_ledger=""
+round_key=""
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  rounds_ledger="$(git rev-parse --git-path megapowers-review-rounds.json)" || {
+    echo "delegate-run: cannot locate the git directory to place the round ledger in" >&2
+    exit 2
+  }
+  # `symbolic-ref` rather than `rev-parse --abbrev-ref`, which returns the literal
+  # string HEAD for every detached checkout and would pool unrelated detached
+  # sessions into one counter. Fall back to the checked-out commit: stable across
+  # the working-tree edits a review loop actually makes, and distinct per checkout.
+  # An author who commits mid-loop while detached does restart the count, which is
+  # a narrower loss than every detached session sharing one number.
+  round_key="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  if [ -z "$round_key" ]; then
+    head_sha="$(git rev-parse --short=12 HEAD 2>/dev/null || true)"
+    round_key="detached-${head_sha:-unknown}"
+  fi
+else
+  # A file artifact can be reviewed outside a repository. Keep the ledger beside
+  # the receipt so the count still persists across rounds. There is no branch out
+  # here, and the ledger is already scoped to the receipt's directory.
+  rounds_ledger="$(dirname "$receipt")/megapowers-review-rounds.json"
+  round_key="no-branch"
+fi
+
+# Both writers, reserve_round and clear_round, go through these. The reset is a
+# ledger write like any other and must not be the one that can clobber the file.
+ledger_lock() {
+  local lock="$rounds_ledger.lock" attempts=0 holder=""
+  mkdir -p "$(dirname "$rounds_ledger")" || {
+    echo "delegate-run: cannot create the round ledger directory: $(dirname "$rounds_ledger")" >&2
+    return 1
+  }
+  # Take the lock by creating a file with O_EXCL, which bash's noclobber does.
+  # Two dispatches handed one round number produce two receipts that each
+  # understate the loop, so this primitive has to be exact.
+  #
+  # `mkdir` is the more familiar shell mutex and it is NOT exact here. Racing six
+  # processes for 400 directories on this host granted 412 of them, reproducibly,
+  # on tmpfs and on ext, inside and outside the sandbox. The identical race over
+  # an O_EXCL file granted exactly 400. flock(1) is not an option either: it does
+  # not ship on macOS.
+  #
+  # Also deliberately NOT reclaiming a lock whose recorded pid looks dead.
+  # Reading the pid and then deleting the lock are two steps, so the holder can
+  # finish and exit in between, and the delete then destroys the NEXT holder's
+  # live lock and admits two writers. Fail closed and name the lock instead:
+  # recoverable by hand, and never silently wrong.
+  until (set -C; printf '%s\n' "$$" > "$lock") 2>/dev/null; do
+    # An unwritable ledger directory fails here identically to a taken lock, and
+    # `mkdir -p` above succeeds on an existing read-only directory so nothing
+    # catches it earlier. Waiting 10 seconds and then blaming a lock that does not
+    # exist sends the operator after the wrong thing.
+    [ -e "$lock" ] || {
+      echo "delegate-run: cannot write the round ledger at $rounds_ledger" >&2
+      return 1
+    }
+    attempts=$((attempts + 1))
+    [ "$attempts" -le 200 ] || {
+      holder="$(cat "$lock" 2>/dev/null || true)"
+      echo "delegate-run: the round ledger at $rounds_ledger stayed locked for 10 seconds by pid ${holder:-unknown}" >&2
+      echo "delegate-run: if no other delegate-run is active, a previous one was killed while holding it. Remove '$lock' and retry." >&2
+      return 1
+    }
+    sleep 0.05
+  done
+  round_lock="$lock"
+}
+
+ledger_unlock() {
+  [ -z "$round_lock" ] || rm -f "$round_lock"
+  round_lock=""
+}
+
+# Prints the ledger object to carry forward, or '{}' when there is nothing usable.
+# Returns 1 only when the file exists and cannot be trusted at all.
+read_ledger() {
+  local raw
+  [ -f "$rounds_ledger" ] || { printf '{}'; return 0; }
+  # Do NOT fall back to '{}' on a ledger that does not parse. The write path is
+  # atomic and validated, so an unparseable ledger was damaged from outside, and
+  # reading it as no prior rounds reserves round 1 again and stamps a false round 1
+  # on the seventh dispatch. Note an EMPTY file is the case that matters and it is
+  # the one `jq -c .` alone misses: on empty input jq exits 0 and prints nothing,
+  # which then reads back as no rounds. -e catches it, along with a truncated write
+  # and a bare `null`.
+  raw="$(jq -ce . "$rounds_ledger" 2>/dev/null)" || raw=""
+  [ -n "$raw" ] || {
+    echo "delegate-run: the round ledger at $rounds_ledger is not readable JSON, so the round count cannot be trusted" >&2
+    echo "delegate-run: inspect it, or remove it to restart the count from 1." >&2
+    return 1
+  }
+  if [ "$(printf '%s' "$raw" | jq -r '.schema // ""')" != "$rounds_schema" ]; then
+    # v1 keyed rounds on the diff fingerprint. Nothing maps a fingerprint back to a
+    # branch, so migrating those entries would be inventing data, and reading them
+    # under the new key would be worse. Discard them and say so out loud: the cost
+    # is one branch in flight restarting its count, once.
+    echo "delegate-run: the round ledger at $rounds_ledger predates $rounds_schema, so its counts are discarded and this branch restarts at round 1" >&2
+    printf '{}'
+    return 0
+  fi
+  printf '%s' "$raw"
+}
+
+# Installs $1 as the ledger atomically, or refuses. Installing a truncated ledger
+# is worse than refusing: an unusable file reads back as no prior rounds, so the
+# next dispatch reserves round 1 again and its receipt claims round 1 for the
+# seventh review. errexit is off in these functions because their callers invoke
+# them as `f || ...`, so every step is checked by hand. A killed writer can exit 0
+# having emitted a prefix, which is nonempty and still unusable.
+write_ledger() {
+  local tmp_ledger="$rounds_ledger.tmp.$$"
+  printf '%s' "$1" | jq . > "$tmp_ledger" || { rm -f "$tmp_ledger"; return 1; }
+  [ -s "$tmp_ledger" ] || { rm -f "$tmp_ledger"; return 1; }
+  jq -e --arg schema "$rounds_schema" '.schema == $schema' "$tmp_ledger" >/dev/null 2>&1 ||
+    { rm -f "$tmp_ledger"; return 1; }
+  mv "$tmp_ledger" "$rounds_ledger" || { rm -f "$tmp_ledger"; return 1; }
+}
+
+# Writes the reserved number to $round_file rather than to stdout: a command
+# substitution would run this in a subshell, where the acquired lock could not be
+# published to the cleanup trap that has to release it.
+round_file="$tmpdir/round.txt"
+reserve_round() {
+  local prior next updated
+  ledger_lock || return 1
+  prior="$(read_ledger)" || { ledger_unlock; return 1; }
+  next="$(printf '%s' "$prior" | jq -r --arg role "$role" --arg key "$round_key" \
+    '((.rounds[$role][$key] // 0) | if type == "number" then . else 0 end) + 1')"
+  case "$next" in
+    ''|*[!0-9]*) ledger_unlock; return 1 ;;
+  esac
+  # `open` records the reservation until its verdict is known. Reserving
+  # atomically is not enough on its own: two dispatches can COMPLETE out of
+  # order, and an approve that lands after a later needs_attention would
+  # otherwise delete the whole branch key and restart the count at 1 although
+  # the newest dispatch did not approve. See resolve_round.
+  updated="$(printf '%s' "$prior" | jq -c --arg schema "$rounds_schema" \
+    --arg role "$role" --arg key "$round_key" --argjson n "$next" \
+    --arg updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+      .schema = $schema
+      | .rounds = ((.rounds // {}) | .[$role] = ((.[$role] // {}) | .[$key] = $n))
+      | .open = ((.open // {}) | .[$role] = ((.[$role] // {}) | .[$key] = (((.[$key] // []) - [$n]) + [$n])))
+      | .updated_at = $updated
+    ')" || { ledger_unlock; return 1; }
+  write_ledger "$updated" || { ledger_unlock; return 1; }
+  ledger_unlock
+  printf '%s\n' "$next" > "$round_file"
+}
+
+# Close out this dispatch's reservation with the verdict it reached: approve,
+# needs_attention, or failed for anything that never got that far.
+#
+# An approve ends the loop, so the next review of this role on this branch starts
+# a fresh count. ONLY approve resets: a needs_attention verdict and a failed
+# dispatch both consumed a round and must keep counting, or a cap on consecutive
+# rounds would never trip.
+#
+# The reset is deliberately NOT "this dispatch approved". Concurrent dispatches
+# on one branch are a documented pattern (cross-model-verification step 4 runs a
+# panel of verifiers and says a panel is ONE round), and a lens that approves
+# while its siblings are still running must not clear a count the others are
+# measuring against. So the window is the set of reservations open at once: the
+# count resets only when the last of them closes AND every verdict in that window
+# was approve. One refutation from any lens keeps the count, which is the panel's
+# own rule. A window that ends unapproved just starts a fresh one, so a serial
+# needs_attention then a serial approve still resets.
+#
+# Fails closed: an outstanding reservation blocks the reset, so a dispatch killed
+# outright leaves the count climbing rather than clearing. That trips the round
+# cap early and asks a human, which is the safe direction; the ledger can be
+# removed to restart the count.
+round_resolved=""
+resolve_round() {
+  local verdict="$1" prior updated
+  [ -n "$round" ] || return 0
+  [ -z "$round_resolved" ] || return 0
+  ledger_lock || return 1
+  prior="$(read_ledger)" || { ledger_unlock; return 1; }
+  updated="$(printf '%s' "$prior" | jq -c --arg schema "$rounds_schema" \
+    --arg role "$role" --arg key "$round_key" --argjson n "$round" \
+    --arg verdict "$verdict" --arg updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+      .schema = $schema
+      | .open = ((.open // {}) | .[$role] = ((.[$role] // {}) | .[$key] = ((.[$key] // []) - [$n])))
+      | .unapproved = ((.unapproved // {}) | .[$role] = ((.[$role] // {})
+          | .[$key] = ((.[$key] == true) or ($verdict != "approve"))))
+      | if ((.open[$role][$key] // []) | length) == 0
+        then (if (.unapproved[$role][$key] // false) then . else .rounds[$role] |= del(.[$key]) end)
+             | .open[$role] |= del(.[$key])
+             | .unapproved[$role] |= del(.[$key])
+        else .
+        end
+      | .updated_at = $updated
+    ')" || { ledger_unlock; return 1; }
+  write_ledger "$updated" || { ledger_unlock; return 1; }
+  ledger_unlock
+  round_resolved="$verdict"
+}
+
+reserve_round || {
+  echo "delegate-run: refusing to dispatch without a correct round number" >&2
+  exit 2
+}
+round="$(cat "$round_file" 2>/dev/null || true)"
+case "$round" in
+  ''|*[!0-9]*)
+    echo "delegate-run: could not reserve a round number from $rounds_ledger" >&2
+    exit 2
+    ;;
+esac
+
+# One directory per dispatch. Role plus subject identity plus round is NOT unique
+# for all time now that an approve resets the count: re-reviewing an unchanged tree
+# after an approve produces round 1 twice. Pick the first free name rather than
+# overwriting the evidence the flag exists to keep.
+transcript_slug="$role-${subject_id:0:12}-round$round"
+transcript_path=""
+if [ -n "$transcript_dir" ]; then
+  transcript_path="$transcript_dir/$transcript_slug"
+  tslot=2
+  while [ -e "$transcript_path" ]; do
+    transcript_path="$transcript_dir/$transcript_slug.$tslot"
+    tslot=$((tslot + 1))
+  done
+fi
+printf '%s\n' "$route" > "$tmpdir/route.txt"
 
 prompt="$(printf '%s\n\n%s\n\n%s\n' \
   "<task>Adversarially review this artifact. Claim to refute: $claim</task>" \
   "<verification>$review_target Cite inspected paths in evidence.commands and screenshot paths in evidence.screenshots. Return only the requested JSON object.</verification>" \
   "<output_contract>Use the Megapowers review verdict v1 schema. APPROVE only when no critical or major finding remains.</output_contract>")"
+printf '%s\n' "$prompt" > "$tmpdir/prompt.txt"
 
 case "$vendor" in
   anthropic)
@@ -160,7 +900,12 @@ case "$vendor" in
     done
     # Claude's structured-output surface accepts the object-schema subset but
     # rejects the draft metadata URI used by standalone JSON Schema validators.
-    schema_compact="$(jq -c 'del(."$schema", .title)' "$verdict_schema")"
+    # `.allOf` goes too: it carries the approve-versus-severity conditional as
+    # if/then, which strict structured-output modes reject outright. The
+    # conditional stays in the schema file for validators, and the launcher
+    # enforces it below on whatever the provider returns, which is the only place
+    # it can be a provenance invariant rather than a request.
+    schema_compact="$(jq -c 'del(."$schema", .title, .allOf)' "$verdict_schema")"
     claude_args=(-p "$prompt" --model "$model" --effort "$effort"
       --allowedTools "Read,Glob,Grep" --output-format json --json-schema "$schema_compact")
     claude_config=""
@@ -207,12 +952,17 @@ case "$vendor" in
         exit 6
       }
     done
+    # Same reason as the Claude route: strip the if/then conditional before it
+    # reaches a strict structured-output validator. Everything else is passed
+    # through unchanged.
+    provider_schema="$tmpdir/verdict-schema.json"
+    jq 'del(.allOf)' "$verdict_schema" > "$provider_schema"
     set +e
     printf '%s' "$prompt" | MEGAPOWERS_ROLE="$role" MEGAPOWERS_PRESET=read_only MEGAPOWERS_EXACT_OUTPUT=1 \
       "$binary" exec --ephemeral --ignore-user-config --skip-git-repo-check \
       -C "$(pwd)" --sandbox read-only --model "$model" \
       --config "model_reasoning_effort=\"$effort\"" \
-      --output-schema "$verdict_schema" --output-last-message "$raw" - \
+      --output-schema "$provider_schema" --output-last-message "$raw" - \
       >"$tmpdir/provider.log" 2>"$tmpdir/provider.err"
     provider_rc=$?
     set -e
@@ -252,6 +1002,21 @@ jq -e '
   exit 7
 }
 
+# The verdict and the findings must agree, and this is the only place that can
+# make them. The prompt asks for approve only when nothing critical or major
+# remains, but a prompt is a request: a model that returns approve alongside a
+# critical finding gets an approval receipt written for it, and the Stop hook
+# trusts `result.verdict` on its own, so the gate opens on a tree the reviewer
+# said was broken. Refuse the result instead of recording it. Encoded in
+# schemas/review-verdict-v1.json as well, for anything that validates a verdict
+# object outside this launcher.
+if jq -e '.verdict == "approve" and any(.findings[]; .severity == "critical" or .severity == "major")' \
+   "$normalized" >/dev/null 2>&1; then
+  echo "delegate-run: the reviewer returned 'approve' alongside a critical or major finding, which review-verdict-v1 forbids. No approval receipt is written for a self-contradicting verdict." >&2
+  jq -r '.findings[] | select(.severity == "critical" or .severity == "major") | "  \(.severity): \(.file):\(.lines) \(.finding)"' "$normalized" >&2 || true
+  exit 7
+fi
+
 authors_json="$(printf '%s\n' "${author_vendors[@]}" | jq -Rsc 'split("\n") | map(select(length > 0)) | unique')"
 screens_json='[]'
 if [ "${#screenshots[@]}" -gt 0 ]; then
@@ -271,11 +1036,20 @@ jq -n \
   --arg id "$subject_id" --arg claim "$claim" --arg provider "$provider" \
   --arg vendor "$vendor" --arg model "$model" --arg tier "$tier" --arg effort "$effort" \
   --arg created "$created_at" --argjson authors "$authors_json" \
+  --argjson round "$round" --arg base "$subject_base" --arg submodules "$subject_submodules" \
   --argjson result "$(cat "$normalized")" --argjson screenshots "$screens_json" \
   '{
-    schema:"megapowers.review-receipt.v1",
+    schema:"megapowers.review-receipt.v2",
     role:$role,
-    subject:{kind:$kind,artifact:$artifact,id:$id,claim:$claim},
+    # `base` only for a worktree, which is the only subject that HAS one. A file
+    # artifact is hashed whole, so its id already names the complete content.
+    # `submodules` only when the tree HAS a gitlink. Absent and empty mean the
+    # same thing to the Stop hook, which is what keeps a repository without
+    # submodules matching a receipt written before this field existed.
+    subject:({kind:$kind,artifact:$artifact,id:$id,claim:$claim}
+             + (if $base == "" then {} else {base:$base} end)
+             + (if $submodules == "" then {} else {submodules:$submodules} end)),
+    round:$round,
     author_vendors:$authors,
     reviewer:{provider:$provider,vendor:$vendor,model:$model,tier:$tier,effort:$effort},
     independent:true,
@@ -286,4 +1060,25 @@ jq -n \
 mv "$tmp_receipt" "$receipt"
 
 cat "$receipt"
-[ "$(jq -r '.result.verdict' "$receipt")" = "approve" ] || exit 5
+
+verdict="$(jq -r '.result.verdict' "$receipt")"
+
+# The summary goes to stderr, not stdout: stdout is the bare receipt JSON and a
+# caller may pipe it straight into jq.
+{
+  echo "=== VERDICT ==="
+  echo "verdict: $verdict"
+  echo "round:   $round (consecutive dispatch $round of role '$role' on '$round_key' without an approve)"
+  echo "receipt: $receipt"
+  [ -z "$transcript_path" ] || echo "transcript: $transcript_path"
+} >&2
+
+# The review itself succeeded and the receipt is written, so a failure to close
+# out the reservation is not worth failing the run over. It is worth saying: the
+# next round on this branch will keep counting from here.
+resolve_round "$verdict" || {
+  echo "delegate-run: reviewed, but round $round for role '$role' on '$round_key' could not be closed out in $rounds_ledger" >&2
+  echo "delegate-run: the next round on this branch will continue from $round instead of restarting at 1." >&2
+}
+
+[ "$verdict" = "approve" ] || exit 5

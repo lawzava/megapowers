@@ -2,6 +2,9 @@
   "hooks": {
     "SessionStart": [
       { "matcher": "startup|clear|compact", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh session-start codex-session-catalog.sh", "async": false } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh skill-router.sh", "async": false } ] }
     ]
   }
 }

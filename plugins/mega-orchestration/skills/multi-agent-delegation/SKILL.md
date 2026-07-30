@@ -39,8 +39,9 @@ only. Edit an override layer to change routing: the skill, the delegate agents,
 and the session-start catalog block read the config live.
 
 Each provider's `reference` key names that provider's channel mechanics and
-prompting guidance: references/providers/codex.md and
-references/providers/claude.md. Browser automation is a driver, not a model
+prompting guidance: references/providers/codex.md,
+references/providers/claude.md, and references/providers/moonshot.md. Browser
+automation is a driver, not a model
 provider; its mechanics live in references/providers/browser.md. Read the
 resolved provider and driver references before dispatching.
 
@@ -111,12 +112,122 @@ worktree|FILE --claim TEXT`. It resolves and executes the safe provider adapter,
 requires the verdict schema, computes the complete worktree or file identity,
 and atomically writes a provenance receipt. The receipt is evidence only for
 that exact subject identity; any tracked, staged, unstaged, or untracked change
-invalidates it. Exit 0 means approved, 5 means a valid needs-attention verdict,
-6 a provider failure, and 7 invalid provider output.
+invalidates it.
+
+The exit map is the contract to branch on: 0 approved, 2 a usage or setup error,
+3 no route resolved, 5 a valid needs-attention verdict, 6 a provider failure, 7
+invalid provider output, 8 refused to dispatch because the review package holds
+no substantive content, and 9 the review package could not be captured. The
+launcher never exits with a raw git status: a tree git cannot read arrives as 9,
+naming the path, not as 128.
+
+Exit 9 means a section of the pending tree stayed unreadable even after paths
+git cannot hash were excluded, so there is no package to review and no id to
+bind one to. Like 8 it happens before a round is reserved and before any
+provider is reached, so it consumes nothing and produces no receipt. Unlike 8 it
+is not about the tree being empty: fix or remove the path the message names,
+then retry. A tracked path that is a character device, fifo, or socket is
+handled rather than fatal, which is the ordinary sandbox case, so a 9 usually
+means an unreadable regular file.
+
+Exit 8 is not a provider problem and not worth retrying as one: with
+`--artifact worktree` it almost always means the work is already committed, so
+nothing is pending to review. Treating it as a 6 sends you debugging a healthy
+provider.
+
+`receipt.round` counts how many consecutive dispatches of this role on this branch
+have not reached approve. It counts dispatches, not receipts, so a round that
+burned reviewer time and then failed still counts, and it is what a caller caps a
+review loop on. An approve resets it; a needs-attention verdict and a failed
+dispatch do not. Deliberately keyed on the branch and not on the artifact
+fingerprint: the author fixes something between rounds, so a fingerprint-keyed
+count would report 1 forever and never reveal the loop. A detached HEAD keys on the
+checked-out commit, and outside a repository the count is scoped to the receipt's
+directory. `subject.id` remains the fingerprint, which is a different job: it binds
+the receipt to the exact tree reviewed and any change at all invalidates it.
+
+Stdout is the receipt JSON and nothing else, so it pipes straight into jq. The
+`=== VERDICT ===` block goes to stderr, carrying the verdict, the round with the
+branch it counts against, the receipt path, and the transcript path when one was
+kept. Read that block rather than re-deriving it from the receipt.
+
+`--transcript-dir DIR` keeps this dispatch's prompt, review package, and raw
+provider output under `DIR/<role>-<subject>-round<N>`, one directory per dispatch,
+including a dispatch that fails and writes no receipt. Since an approve resets the
+round, that name can repeat; a repeat gets a numeric suffix rather than overwriting
+the earlier transcript. Omitted, everything is discarded, which is the default.
 
 The launcher validates `schemas/review-verdict-v1.json` and emits
-`schemas/review-receipt-v1.json`. Its executable regression contract is
+`schemas/review-receipt-v2.json`. Its executable regression contract is
 `scripts/tests/delegate-run.test.sh`.
+
+`subject.id` fingerprints the pending tree so a verdict binds to the exact state
+that was reviewed. It covers the pending delta: staged, unstaged, and untracked
+content, plus the identity of any path git cannot hash. A delta on its own is a
+shape rather than a tree, and unrelated repositories carrying the same pending
+hunks fingerprint identically.
+
+`subject.base` is the other half. It records the commit the delta was measured
+from (the empty tree in a repository with no commits), and base plus delta
+determines the complete tracked content. That is what makes a receipt say "this
+change, on this tree" instead of "this diff, somewhere". The Stop hook checks
+both, so an unrelated checkout cannot inherit a receipt by carrying the same
+pending change, and neither can a different repository placed at the reviewed
+path.
+
+`subject.submodules` covers what neither of the other two can see. A gitlink
+diffs as a bare `Subproject commit <sha>` line, its worktree adds at most a
+`-dirty` suffix, and under the default configuration an untracked file inside a
+submodule reaches the superproject diff nowhere at all. So the review package
+carries a submodule section, recursively: the staged pointer move, the worktree
+content via `--submodule=diff`, and the submodule's own untracked files. That
+section is what `subject.submodules` fingerprints, and the Stop hook recomputes it
+with `scripts/review-diff-id --submodules`. It sits beside `subject.id` and never
+inside it, because a receipt is compared against the id the shipped algorithm
+produces and folding submodule content in would move the id of every repository
+that has one. A tree with no gitlink carries no such field, and absent and empty
+mean the same thing to the hook.
+
+Every git read on this path runs with replacement objects disabled. `git replace
+X Y` makes object reads return Y where X was asked for without moving any ref, so
+`git rev-parse HEAD` keeps printing X while `git diff HEAD` renders against Y: a
+repository holding X plus a replacement reproduces an approved delta on a base
+nobody reviewed, and `subject.base` cannot tell. Disabling replacement fixes what
+is read rather than detecting afterwards that the reviewer was shown a tree that
+does not exist. An ordinary repository has no `refs/replace`, so no id moves.
+
+A tree whose index HIDES a modification is refused rather than reviewed.
+`git update-index --assume-unchanged P` stops git stat'ing P, so an edit to it
+lands in no diff, no status, and no fingerprint. The launcher exits 9 naming the
+path and the Stop hook blocks with a reason no receipt can clear. The neighbouring
+skip-worktree bit is not refused with it, because sparse checkout sets it on every
+path outside the cone; content decides, so a bit set over a path that still matches
+the index costs nothing and a materialized changed one is caught either way.
+
+Receipts are v2. A `megapowers.review-receipt.v1` receipt records no base, so it
+cannot say which tree state its reviewer read and there is no way to recover
+that after the fact; the Stop hook rejects it and says so in the block reason.
+`schemas/review-receipt-v1.json` is kept only to describe receipts already on
+disk.
+
+Everything the reviewer is shown is the content the id names. Untracked files are
+shown as their clean-filtered blob rather than their raw worktree bytes, because
+`git hash-object` runs the filter chosen by the path and the id binds what comes
+out of it. Under a `text`, `eol`, or `filter.*.clean` attribute the two differ,
+and showing one while binding the other means approving bytes the receipt does
+not cover.
+
+Two programs compute it in the same format. `scripts/review-diff-id` fingerprints
+a live worktree, which is what the Stop hook uses to test a receipt against the
+tree in front of it; its executable regression contract is
+`scripts/tests/review-diff-id.test.sh`. The launcher does not call it. It derives
+the id from the same immutable snapshot it builds the review package out of,
+because reading the tree once for the id and again for the package lets the two
+name different trees: change the tree between the reads and restore it after, and
+the receipt names a tree nobody reviewed while the hook still accepts it. The
+consequence is that the format is duplicated and the two must stay byte
+identical, which `delegate-run.test.sh` pins by asserting the launcher's id
+equals `review-diff-id`'s across the tree shapes the pair is expected to survive.
 
 ## Role Defaults
 
