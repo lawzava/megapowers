@@ -39,10 +39,19 @@ case "$receipt" in
   *) fail=$((fail + 1)); printf '  FAIL receipt path is not worktree-local: %s\n' "$receipt" ;;
 esac
 id="$("$DIFF_ID")"
-jq -cn --arg id "$id" '{
-  schema:"megapowers.review-receipt.v1",
+# The absolute worktree root, exactly as delegate-run records it. Inside a linked
+# worktree that is the worktree path, not the main checkout, so the receipt binds
+# where it was produced. A fixture writing "." here would assert a shape the
+# launcher never emits, and a relative artifact is portable to every repository at
+# once, which is precisely what the gate rejects.
+root="$(git rev-parse --show-toplevel)"
+# The base the delta is measured from. A receipt without it says "this diff,
+# somewhere" and the gate rejects it.
+base="$(git rev-parse --verify -q HEAD)"
+jq -cn --arg id "$id" --arg root "$root" --arg base "$base" '{
+  schema:"megapowers.review-receipt.v2",
   role:"verify",
-  subject:{kind:"worktree-diff",artifact:".",id:$id,claim:"billing is correct"},
+  subject:{kind:"worktree-diff",artifact:$root,id:$id,base:$base,claim:"billing is correct"},
   author_vendors:["openai"],
   reviewer:{provider:"claude",vendor:"anthropic",model:"review",tier:"frontier",effort:"high"},
   independent:true,

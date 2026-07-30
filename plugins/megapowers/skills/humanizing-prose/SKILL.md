@@ -15,10 +15,8 @@ and name must survive the edit untouched.
 
 ## Dashes
 
-No em or en dashes. Before returning final text, scan it for `—` and `–` (and
-` -- ` doing dash work); any hit means the draft is not done. Replace each
-with a period and a new sentence, a comma, a colon, or parentheses, or
-restructure the sentence.
+The highest-frequency tell. The rule and its replacements live in
+using-megapowers, Communication.
 
 ## Deflate the sales register
 

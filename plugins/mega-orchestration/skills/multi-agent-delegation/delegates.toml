@@ -1,5 +1,5 @@
 # megapowers delegate routing: which provider handles which role, and run presets.
-# Last reviewed: 2026-07-26 (routes age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-07-30 (routes age; scripts/check-freshness.sh guards this date).
 # The model CATALOG (lead, tiers, providers, floor) lives in models.toml at the
 # plugin root, layered the same way: project .megapowers/models.toml, then user
 # ~/.config/megapowers/models.toml, then the shipped copy. Edit an override layer,
@@ -37,18 +37,34 @@ council_member = "codex"     # council-adjudication: independent answer + blind 
 # review roles carry chains so they resolve away from every artifact author;
 # small_impl stays single-route
 # (it is not an independence role).
+#
+# Order is deliberate: moonshot sits ahead of claude on every independence role so
+# a chain that loses codex reaches a third vendor before it reaches the vendor that
+# most often wrote the artifact. Chain length is not the same as reachable length:
+# claude is the lead's vendor, so --author-vendor anthropic skips it, and moonshot
+# ships with enabled false in the catalog, so it is skipped. Anthropic-authored
+# work therefore still has exactly ONE reachable alternate (codex) until the
+# moonshot channel is verified and enabled. Ordering it now means enabling the
+# catalog entry is the only remaining step. visual_verify keeps its two-entry chain
+# on purpose: moonshot does declare the vision capability that role requires, but
+# judging screenshot evidence has not been benched on it, and an unbenched vision
+# route is a worse second opinion than a benched one.
+# What is still missing before moonshot can be enabled, and the channel mechanics:
+# references/providers/moonshot.md.
 [fallbacks]
-plan_review    = ["codex", "claude"]
-code_review    = ["codex", "claude"]
+plan_review    = ["codex", "moonshot", "claude"]
+code_review    = ["codex", "moonshot", "claude"]
 visual_verify  = ["codex", "claude"]
-verify         = ["codex", "claude"]
-judge          = ["codex", "claude"]
-council_member = ["codex", "claude"]
+verify         = ["codex", "moonshot", "claude"]
+judge          = ["codex", "moonshot", "claude"]
+council_member = ["codex", "moonshot", "claude"]
 
 # Role policy selects the model tier and reasoning effort. Provider defaults in
 # the catalog cover the lead and anything a role leaves unset. Review and
-# judgement run frontier (gpt-5.6-sol); scoped implementation runs strong
-# (gpt-5.6-terra), which is cheaper and weaker by design.
+# judgement run frontier; scoped implementation runs strong, which is cheaper and
+# weaker by design. The tier names are vendor-neutral: which model each one means
+# depends on the provider the chain lands on (on today's codex route, frontier is
+# gpt-5.6-sol and strong is gpt-5.6-terra).
 [role_tiers]
 plan_review    = "frontier"
 code_review    = "frontier"

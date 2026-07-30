@@ -30,7 +30,9 @@ Senior engineer's register for anything a human or agent reads:
 
 - Lead with the conclusion, then important detail.
 - Use short declarative sentences, no filler or drama.
-- No dash punctuation.
+- No dash punctuation (`—`, `–`, spaced `--`). Use a comma, colon, parentheses,
+  new sentence, or rewrite. Scan before sending.
+- Backtick a character you discuss, not use: tooling cannot tell them apart.
 - For takeover, state goal, current state, and next step. Use a short list or
   table for enumerables.
 
