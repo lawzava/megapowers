@@ -8,6 +8,79 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.7.3 - 2026-07-30
+
+### Fixed
+
+- The risky-logic gate could report a clean tree it never read. `git diff`
+  prints nothing and exits 128 when a tracked path is not a regular file, and
+  the hook read the empty output as an empty diff. The sandbox creates that
+  condition routinely by bind mounting `/dev/null` over deny-listed paths, so a
+  tracked `.env.example` was enough. The status is now captured, non-regular
+  paths are excluded with `literal` pathspec magic and the diff retried, and an
+  uncomputable diff blocks with a diagnostic instead of passing.
+- A tracked non-regular path whose name contained a glob metacharacter hid other
+  files from the same gate. Without `literal`, a fifo named `x*.go` dropped every
+  path starting with `x` from the diff the gate reads, and the name is chosen by
+  whoever adds the file.
+- The review receipt identified a change set rather than a change set on a base
+  in a repository, so a receipt was portable between checkouts that shared a
+  pending delta. Receipts are now `megapowers.review-receipt.v2` and bind
+  `subject.base`; v1 receipts without it are refused rather than honored.
+- The receipt fingerprint could be computed from a truncated stream, which made
+  unrelated repositories share one id. It now builds to a file, propagates every
+  status, and emits nothing rather than a partial hash when it cannot compute.
+- `delegate-run` fingerprinted the subject before capturing the review package,
+  so the tree could change between the two. Both now derive from one snapshot.
+- On a tracked non-regular path the gate demanded a receipt that `delegate-run`
+  could not produce, exiting with a raw git 128 that appeared in no exit map.
+  Package capture uses the same exclusion logic, and an uncapturable package is
+  exit 9 naming the path.
+- `approve` was accepted alongside critical findings. The verdict schema now
+  couples them, so the invariant is enforced rather than requested.
+- Submodule pointer changes and `assume-unchanged` edits bypassed the risky
+  scan entirely. Both are now gated, with a supplemental `subject.submodules`
+  binding that leaves `subject.id` byte-identical.
+- Replacement objects defeated base binding. Every git call in the gate, the
+  launcher and the fingerprint now runs with `GIT_NO_REPLACE_OBJECTS=1`.
+- Deleting a stale plugin cache version silently killed hooks in every session
+  still pinned to it. `upgrading-megapowers` documents the ordering: upgrade,
+  restart sessions, then delete.
+
+### Added
+
+- `skill-router.sh`, a `UserPromptSubmit` hook naming the one applicable skill
+  when its trigger phrase is typed. Across eleven audited sessions there were
+  four skill invocations, and the SessionStart reminder was in context for every
+  missed one. Silence is the default: measured 0 matches on 92 ordinary prompts.
+- `scripts/session-metrics`, which reports per-session and aggregate model
+  latency, tool wall clock, batching and backgrounding from the transcript
+  store, so a claim about session speed can be checked and can regress.
+- A supplemental `subject.submodules` receipt field, and `--transcript-dir` on
+  `delegate-run` so a cross-vendor review leaves a durable record.
+- Moonshot as a third catalog vendor, shipped disabled, so cross-vendor
+  independence is not a single point of failure once a channel is configured.
+
+### Changed
+
+- The prose register is enforced mechanically on written markdown and stated
+  once instead of in four skills. `MEGAPOWERS_PROSE_REGISTER=off` disables it.
+- The `strong` tier resolves to Sonnet 5 rather than collapsing onto the
+  frontier model, so cheap work can route cheap.
+- The five longest skills moved 234 lines of reference material into sibling
+  files against 2 lines deleted.
+
+### Known limitations
+
+- The gate reads what `git diff` reports. Content it does not surface is outside
+  the binding: ignored paths, bytes behind a clean filter, and source rendered
+  binary by a committed `.gitattributes` rule. The last of these silences the
+  risky-token scan and predates this release.
+- The receipt is an unsigned local file, so anything able to write it can mint
+  an approval. This is an accident backstop, not a security boundary.
+- `assume-unchanged` is unusable with the gate by design, since the bit exists
+  to make a local edit indistinguishable from no edit.
+
 ## 0.7.2 - 2026-07-27
 
 ### Fixed
