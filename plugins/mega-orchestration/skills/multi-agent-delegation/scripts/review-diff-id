@@ -2,54 +2,515 @@
 # Fingerprint the complete pending worktree state for a review receipt.
 set -euo pipefail
 
+# REPLACEMENT OBJECTS, off for every git call this tool makes. `git replace X Y`
+# installs a ref under refs/replace that makes every object read return Y where X
+# was asked for, and it does NOT move the ref: `git rev-parse HEAD` still prints
+# X while `git diff HEAD` renders against Y. The receipt binds `subject.base` to
+# the HEAD ref OID, so without this a second repository can hold X plus a
+# replacement to Y, reproduce the same pending delta on top of Y, and match the
+# id, the base and the artifact path although its actual tracked content is one
+# the reviewer never saw.
+#
+# Chosen over binding `HEAD^{tree}` alongside the ref OID, which the same
+# construction also defeats detection-wise but only AFTER the fact: with
+# replacement live, the diff handed to the reviewer is itself the replaced
+# rendering, so the review is of a tree that does not exist. Turning replacement
+# off fixes what is read rather than noticing later that it was wrong. It is also
+# free for the compatibility oracle: an ordinary repository has no refs/replace,
+# so every git call behaves identically and the id does not move (asserted in the
+# suite against both a synthetic tree and this repository).
+#
+# The env var rather than a `--no-replace-objects` flag on each call: there are
+# more than a dozen git invocations across this tool, the launcher and the Stop
+# hook, and a flag added to all but one of them is the drift that reopens the
+# hole in silence. Exported, so a child git inherits it too.
+export GIT_NO_REPLACE_OBJECTS=1
+
+# `--submodules` prints the SUPPLEMENTAL submodule fingerprint instead of the
+# subject id, and `--submodule-section` prints the bytes that fingerprint covers.
+# Supplemental is exact: neither one changes the subject id by a byte, because
+# receipts already written came from that algorithm and the Stop hook compares
+# against it. See build_submodule_section.
+mode="id"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --submodules) mode="submodules"; shift ;;
+    --submodule-section) mode="section"; shift ;;
+    --) shift; break ;;
+    -*)
+      echo "review-diff-id: unknown option: $1" >&2
+      echo "usage: review-diff-id [--submodules|--submodule-section] [<repo>]" >&2
+      exit 2
+      ;;
+    *) break ;;
+  esac
+done
+
 repo="${1:-.}"
-cd "$repo"
+cd "$repo" 2>/dev/null || {
+  echo "review-diff-id: cannot enter: $repo" >&2
+  exit 2
+}
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   echo "review-diff-id: not inside a Git worktree: $repo" >&2
   exit 2
 }
 cd "$(git rev-parse --show-toplevel)"
 
-{
-  printf 'staged\0'
-  git diff --cached --binary --no-ext-diff
-  printf '\0unstaged\0'
-  git diff --binary --no-ext-diff
-  printf '\0untracked\0'
-  while IFS= read -r -d '' path; do
-    printf '%s\0' "$path"
-    # An untracked entry is not necessarily a readable regular file: device nodes,
-    # sockets, and dangling symlinks all appear here, and hash-object exits fatally
-    # on them. Bind their IDENTITY rather than their content: the symlink target,
-    # or the type and lstat metadata. A bare constant would be too coarse, since
-    # retargeting a dangling symlink in place, or swapping one non-regular kind for
-    # another at the same path, would leave the fingerprint unchanged and let an
-    # approval receipt survive a real change to the reviewed tree.
-    #
-    # -L MUST be tested before -f, because -f follows the link. Testing -f first
-    # binds a symlink to its TARGET'S CONTENT, so retargeting a link between two
-    # equal-content files would not move the fingerprint. Hashing the link target
-    # string also matches how git itself represents a tracked symlink.
-    if [ -L "$path" ]; then
-      printf 'symlink\0'
-      readlink -- "$path" 2>/dev/null || printf 'unreadable-link'
-      printf '\0'
-    elif [ -f "$path" ] && [ -r "$path" ]; then
-      git hash-object -- "$path"
-    else
-      printf 'nonregular\0'
-      # Type, size, device major/minor, mtime, and inode. Type plus size alone
-      # collides: an UNREADABLE regular file (mode 000) also lands here, and
-      # rewriting its contents at the same length would not move the fingerprint.
-      # mtime and inode close that. Use NANOSECOND mtime (%y / %Fm), not whole
-      # seconds: an in-place rewrite reuses the inode and usually lands in the
-      # same second, so a seconds-resolution stamp still collides. Erring toward
-      # invalidating a receipt is the right direction for a binding whose whole
-      # job is to expire.
-      stat -c '%F|%s|%t|%T|%y|%i' -- "$path" 2>/dev/null \
-        || stat -f '%HT|%z|%Hr|%Lr|%Fm|%i' -- "$path" 2>/dev/null \
-        || printf 'unstatable'
-      printf '\0'
+# Scratch storage must stay out of `git ls-files --others`: that listing reports
+# anything under the worktree, so scratch inside it lands in its own untracked
+# section and the random mktemp name changes the id on every run. The git
+# directory is USUALLY outside the worktree and therefore unreported, so prefer
+# it, but that is a tendency and not a guarantee: `--separate-git-dir` or
+# `GIT_DIR` can place it inside the worktree under a name other than `.git`,
+# where git reports it like any other untracked directory. It can also be
+# read-only, on an archived or read-only-mounted checkout, where the legacy
+# algorithm needed no scratch at all and computed fine. So fall back to TMPDIR
+# when the git directory is not writable, and, wherever the scratch lands,
+# exclude it from the untracked enumeration whenever it resolves inside the
+# worktree.
+top="$PWD"
+gitdir="$(git rev-parse --absolute-git-dir)"
+work=""
+if [ -w "$gitdir" ]; then
+  work="$(mktemp -d "$gitdir/review-diff-id.XXXXXX" 2>/dev/null)" || work=""
+fi
+if [ -z "$work" ]; then
+  work="$(mktemp -d 2>/dev/null)" || {
+    echo "review-diff-id: cannot create scratch storage" >&2
+    exit 3
+  }
+fi
+trap 'rm -rf "$work"' EXIT
+
+# Compare RESOLVED paths: either end may be reached through a symlink, and a
+# scratch directory that only looks inside the worktree through one is not
+# reported by git anyway (git lists the link itself, not what is behind it).
+others_pathspec=()
+work_phys="$(cd -P "$work" && pwd -P)" || {
+  echo "review-diff-id: cannot resolve scratch storage: $work" >&2
+  exit 3
+}
+top_phys="$(cd -P "$top" && pwd -P)" || {
+  echo "review-diff-id: cannot resolve the worktree root: $top" >&2
+  exit 3
+}
+case "$work_phys/" in
+  "$top_phys"/*)
+    # `literal`, for the same reason as the tracked exclusions below: the mktemp
+    # suffix is arbitrary and a worktree path may contain glob metacharacters.
+    others_pathspec=(-- ':/' ":(top,exclude,literal)${work_phys#"$top_phys"/}")
+    ;;
+esac
+
+# Bind the IDENTITY of a path that is not a readable regular file and so cannot
+# be hashed. Reached from the untracked loop below for an unreadable regular
+# file, and from the excluded-tracked list for a device node, fifo, or socket:
+# `git ls-files --others` never reports those kinds at all, so only a TRACKED
+# path arrives here as one. A bare constant would be too coarse, since swapping
+# one non-regular kind for another at the same path would leave the fingerprint
+# unchanged and let an approval receipt survive a real change to the reviewed
+# tree.
+emit_nonregular() {
+  printf 'nonregular\0' || return 1
+  # Type, size, device major/minor, mtime, and inode. Type plus size alone
+  # collides: an UNREADABLE regular file (mode 000) also lands here, and
+  # rewriting its contents at the same length would not move the fingerprint.
+  # mtime and inode close that. Use NANOSECOND mtime (%y / %Fm), not whole
+  # seconds: an in-place rewrite reuses the inode and usually lands in the same
+  # second, so a seconds-resolution stamp still collides. Erring toward
+  # invalidating a receipt is the right direction for a binding whose whole job
+  # is to expire.
+  stat -c '%F|%s|%t|%T|%y|%i' -- "$1" 2>/dev/null \
+    || stat -f '%HT|%z|%Hr|%Lr|%Fm|%i' -- "$1" 2>/dev/null \
+    || printf 'unstatable' || return 1
+  printf '\0' || return 1
+}
+
+# Paths whose modification the INDEX hides from every diff, and therefore from
+# this fingerprint.
+#
+# `git update-index --assume-unchanged P` tells git to trust the index entry for
+# P and stop stat'ing the worktree. An edit to P then shows in no `git diff`, no
+# `git status`, no untracked listing and no id: the whole tool reports the tree as
+# it was. That is exactly the state a stale approval receipt survives.
+#
+# The neighbouring skip-worktree bit is NOT the same thing and must not be
+# refused with it: sparse checkout sets skip-worktree on every path outside the
+# cone, and a blanket refusal would make this tool useless on a sparse checkout.
+# `git ls-files -v` separates them, uppercase 'S' for skip-worktree and a
+# LOWERCASE tag for assume-unchanged ('s' means both bits on one path).
+#
+# Content, not the bit, is the trigger. A bit that is set on a path whose worktree
+# content still matches the index hides nothing right now, and this runs again on
+# every dispatch and every stop, so an edit made later is caught then. Refusing on
+# the bit alone would block every stop in a repository that merely uses the
+# feature, which is noise that gets the whole gate worked around.
+#
+# Writes one NUL-terminated path per hidden change to stdout. Empty means none.
+hidden_index_changes() {
+  local top="$1" list="$2" entry tag rest path idx work sparse assume
+  sparse="$(git -C "$top" config --bool core.sparseCheckout 2>/dev/null || true)"
+  # PREFILTER first. A NUL-delimited bash read loop over a whole index is about
+  # half a second on twenty thousand paths, and almost every repository carries no
+  # index flag at all. `git ls-files` C-quotes a name holding a newline, so a
+  # newline-delimited listing puts every entry on exactly one line and grep can
+  # decide at C speed whether a precise pass is worth running, with no false
+  # negatives. The NUL form below stays the only thing that parses a path.
+  #
+  # `--full-name` in both: without it names come back relative to the current
+  # directory, and only what sits under it is listed at all.
+  git -C "$top" ls-files -s -v --full-name -- ':/' > "$list.lines" || return 1
+  LC_ALL=C grep -qE '^[^H] ' "$list.lines" || return 0
+  # ONE index pass for the flag and the blob both. `-s -v -z` prints
+  # `<tag> <mode> <sha> <stage>\t<path>\0`, so the index entry this path is
+  # supposed to match comes back without a second `ls-files` per flagged path.
+  git -C "$top" ls-files -s -v -z --full-name -- ':/' > "$list" || return 1
+  while IFS= read -r -d '' entry; do
+    # NUL terminated, so a path holding spaces or newlines survives intact.
+    tag="${entry%% *}"
+    rest="${entry#* }"
+    path="${rest#*$'\t'}"
+    case "$tag" in
+      s) assume=1 ;;            # both bits
+      [a-z]) assume=1 ;;        # assume-unchanged only
+      S) assume=0 ;;            # skip-worktree only
+      *) continue ;;            # 'H' and the rest: git watches the worktree
+    esac
+    if [ ! -e "$top/$path" ] && [ ! -L "$top/$path" ]; then
+      # Absent. Normal for skip-worktree, which is how sparse checkout removes a
+      # path from disk, so allow it when either the skip-worktree bit is set and
+      # sparse checkout is on, or the bit is set on a repository that is sparse.
+      # With assume-unchanged alone and no sparse checkout, an absent path is a
+      # DELETION that no diff reports.
+      if [ "$assume" -eq 0 ] || [ "$tag" = "s" ]; then
+        [ "$sparse" = "true" ] || printf '%s\0' "$path" || return 1
+      else
+        printf '%s\0' "$path" || return 1
+      fi
+      continue
     fi
-  done < <(git ls-files -z --others --exclude-standard | LC_ALL=C sort -z)
-} | git hash-object --stdin
+    if [ -L "$top/$path" ] || [ ! -f "$top/$path" ] || [ ! -r "$top/$path" ]; then
+      # A symlink, a directory, a device node, or an unreadable file under one of
+      # these bits cannot be compared against the index entry at all, so whether
+      # it hides a change is unknown. Report it: unknown must not read as clean.
+      printf '%s\0' "$path" || return 1
+      continue
+    fi
+    # `<mode> <sha> <stage>\t<path>`: drop the mode, keep the object name.
+    idx="${rest#* }"
+    idx="${idx%% *}"
+    # `--path`, so a clean filter configured for this name runs the way it ran
+    # when the index entry was written. Without it a repository with `text` or
+    # `eol` set reports every such path as hidden.
+    work="$(git -C "$top" hash-object --path "$path" -- "$top/$path" 2>/dev/null)" || work=""
+    if [ -z "$idx" ] || [ -z "$work" ] || [ "$idx" != "$work" ]; then
+      printf '%s\0' "$path" || return 1
+    fi
+  done < "$list"
+}
+
+# Refuse rather than fingerprint a tree with a hidden modification in it. An id
+# computed over a diff the index suppressed names the tree as it was, not as it
+# is, which is the one thing this tool must never do. Callers treat a non-zero
+# status as "unknown".
+refuse_hidden_index_changes() {
+  local top="$1" label="$2" list="$3" names="" p
+  hidden_index_changes "$top" "$list.raw" > "$list" || {
+    echo "review-diff-id: cannot read the index flags of $label" >&2
+    exit 3
+  }
+  [ -s "$list" ] || return 0
+  while IFS= read -r -d '' p; do names="$names $p"; done < "$list"
+  echo "review-diff-id: the index hides worktree changes at$names in $label, so no diff and no fingerprint can see them" >&2
+  echo "review-diff-id: clear the bit with 'git update-index --no-assume-unchanged <path>' (or --no-skip-worktree) and retry." >&2
+  exit 3
+}
+
+# The SUPPLEMENTAL submodule snapshot: the bytes, and only then their hash.
+#
+# A gitlink diffs as `Subproject commit <sha>` and, when the submodule worktree is
+# dirty, a `-dirty` suffix. Both are flags rather than content, so the reviewer
+# reads SHAs and the Stop hook's risky-token scan matches nothing at a neutral
+# path like vendor/lib: the gate never fires on a submodule at all. Untracked
+# content inside a submodule is worse than that, because a superproject
+# `git diff HEAD` reports it NOWHERE, not even as a pointer line.
+#
+# So capture the content with `--submodule=diff`, plus the submodule's own
+# untracked files, recursively. This is deliberately NOT folded into the subject
+# id: `--submodule=diff` would move the id of every repository that has a
+# submodule, and receipts are compared against ids the shipped algorithm
+# produced. Alongside, never inside.
+#
+# The section is both what the reviewer is shown and what the fingerprint hashes,
+# so the launcher captures it ONCE and hashes those same bytes. There is no
+# second read for the package to disagree with.
+stat_record() {
+  stat -c '%F|%s|%t|%T|%y|%i' -- "$1" 2>/dev/null \
+    || stat -f '%HT|%z|%Hr|%Lr|%Fm|%i' -- "$1" 2>/dev/null \
+    || printf 'unstatable'
+}
+
+build_submodule_section() {
+  local top="$1" prefix="$2" depth="$3"
+  local idx="$work/gitlinks.$depth" entry p disp sub head f sub_top sub_phys
+  # A depth cap, because a submodule may be a checkout of the superproject and
+  # nothing in git forbids that shape. Refusing beats recursing forever.
+  [ "$depth" -lt 8 ] || {
+    echo "review-diff-id: submodules nested deeper than 8 levels at $prefix" >&2
+    return 1
+  }
+  git -C "$top" ls-files -s -z > "$idx" || return 1
+  while IFS= read -r -d '' entry; do
+    # `<mode> <sha> <stage>\t<path>`. Mode 160000 is a gitlink.
+    case "$entry" in "160000 "*) ;; *) continue ;; esac
+    p="${entry#*$'\t'}"
+    disp="$prefix$p"
+    sub="$top/$p"
+    # The NUL after the path is not decoration. This section is hashed, and a
+    # submodule path may contain a newline, so a newline-delimited heading would
+    # let two different trees render byte-identical text. The NUL renders as
+    # nothing in a terminal and makes the framing unambiguous.
+    printf '## submodule %s\0\n' "$disp" || return 1
+    if [ ! -d "$sub" ]; then
+      printf 'state: absent from the worktree\n' || return 1
+      continue
+    fi
+    # `rev-parse --show-toplevel` compared against the gitlink path, NOT
+    # `rev-parse --git-dir`. An uninitialized submodule is an empty directory
+    # inside the superproject's worktree, so --git-dir there walks UP and answers
+    # with the SUPERPROJECT's git directory: the check passes, every read below
+    # reports the superproject's own state as the submodule's, and the recursion
+    # descends into the superproject again until the depth cap stops it.
+    sub_top="$(git -C "$sub" rev-parse --show-toplevel 2>/dev/null)" || sub_top=""
+    sub_top="$(cd "$sub_top" 2>/dev/null && pwd -P)" || sub_top=""
+    sub_phys="$(cd "$sub" 2>/dev/null && pwd -P)" || sub_phys=""
+    if [ -z "$sub_top" ] || [ -z "$sub_phys" ] || [ "$sub_top" != "$sub_phys" ]; then
+      # Present but not its own repository. NORMALLY an empty directory, which is
+      # what `git submodule update --init` has not run yet looks like.
+      #
+      # It is not safe to stop at that, because git refuses to look inside a
+      # gitlink path at all: `ls-files --others` does not descend into it, status
+      # says nothing, and no diff mentions it. Anything dropped in here is
+      # invisible to every other read in this tool AND to the superproject's own
+      # untracked scan, so it would be content in the worktree that no fingerprint
+      # covers and no reviewer is shown. Walk it directly.
+      printf 'state: present but not an initialized submodule\n' || return 1
+      find "$sub" -mindepth 1 -print0 2>/dev/null | LC_ALL=C sort -z > "$work/subraw.$depth" ||
+        return 1
+      while IFS= read -r -d '' f; do
+        printf '#### %s\0\n' "${f#"$sub/"}" || return 1
+        if [ -L "$f" ]; then
+          printf 'symlink -> ' || return 1
+          readlink -- "$f" 2>/dev/null || printf 'unreadable-link\n' || return 1
+        elif [ -d "$f" ]; then
+          printf 'directory\n' || return 1
+        elif [ -f "$f" ] && [ -r "$f" ]; then
+          ( cd "$sub" && git diff --no-index --binary --no-ext-diff -- /dev/null "${f#"$sub/"}" ) ||
+            [ "$?" -eq 1 ] || return 1
+        else
+          printf 'not a readable regular file; identity %s\n' "$(stat_record "$f")" || return 1
+        fi
+      done < "$work/subraw.$depth"
+      continue
+    fi
+    head="$(git -C "$sub" rev-parse --verify -q HEAD 2>/dev/null)" || head=""
+    printf 'state: initialized\nHEAD: %s\n' "${head:-none}" || return 1
+    refuse_hidden_index_changes "$sub" "submodule $disp" "$work/subflags.$depth"
+    # `--ignore-submodules=none` on the COMMAND LINE, not as `-c
+    # diff.ignoreSubmodules=none`. `submodule.<name>.ignore` lives in the
+    # checked-in .gitmodules and beats the `diff.ignoreSubmodules` variable, so a
+    # repository that ships `ignore = all` suppresses its own submodule from every
+    # diff, pointer bump included. Only the option form overrides it, and this
+    # binding must not be something the reviewed repository gets to switch off.
+    printf '### pointer, HEAD to index\n' || return 1
+    git -C "$top" diff --cached --submodule=diff --ignore-submodules=none --no-ext-diff \
+      -- ":(top,literal)$p" || return 1
+    printf '### content, index to worktree\n' || return 1
+    git -C "$top" diff --submodule=diff --ignore-submodules=none --no-ext-diff \
+      -- ":(top,literal)$p" || return 1
+    printf '### untracked inside the submodule\n' || return 1
+    # `--exclude-standard` honors the submodule's own ignore rules, which is the
+    # same boundary the superproject's untracked listing draws.
+    git -C "$sub" ls-files -z --others --exclude-standard > "$work/subothers.$depth" || return 1
+    LC_ALL=C sort -z < "$work/subothers.$depth" > "$work/subsorted.$depth" || return 1
+    while IFS= read -r -d '' f; do
+      printf '#### %s\0\n' "$f" || return 1
+      # -L before -f, for the reason the untracked loop above gives: -f follows
+      # the link, so testing it first would bind a symlink to its target's bytes.
+      if [ -L "$sub/$f" ]; then
+        printf 'symlink -> ' || return 1
+        readlink -- "$sub/$f" 2>/dev/null || printf 'unreadable-link\n' || return 1
+      elif [ -f "$sub/$f" ] && [ -r "$sub/$f" ]; then
+        # Status 1 is "differs", which is the whole point of the call. `--` so a
+        # name beginning with a dash is a path rather than an option.
+        ( cd "$sub" && git diff --no-index --binary --no-ext-diff -- /dev/null "$f" ) ||
+          [ "$?" -eq 1 ] || return 1
+      else
+        printf 'not a readable regular file; identity %s\n' "$(stat_record "$sub/$f")" || return 1
+      fi
+    done < "$work/subsorted.$depth"
+    build_submodule_section "$sub" "$disp/" "$((depth + 1))" || return 1
+  done < "$idx"
+}
+
+# Build the whole fingerprint stream to a file and hash it only once it is
+# known complete. Hashing a live pipeline is what made this forgeable: git
+# writes NOTHING and exits 128 when it hits a tracked path it cannot hash, so
+# `git diff | git hash-object --stdin` hashed the prefix already written and
+# returned a real-looking id for a tree it never read.
+#
+# Every step is checked with an explicit `|| return 1` rather than leaning on
+# errexit, because errexit is DISABLED inside a function invoked in a
+# `|| rc=$?` list. Under errexit alone a failing diff here would not stop the
+# function: it would keep appending and produce a stream that is short but
+# looks complete, which is the original defect wearing a different shape.
+build_stream() {
+  printf 'staged\0' || return 1
+  # NO pathspec here, deliberately. `git diff --cached` compares HEAD to the
+  # index and never reads the worktree, so a non-regular path cannot make it
+  # abort and the exclusion below is never needed. Applying it anyway would drop
+  # that path's INDEX content, which is arbitrary reviewable text, from the
+  # fingerprint: two trees with different staged bytes at a deny-listed path
+  # would share an id, and `git add` is not the only way to stage one.
+  git diff --cached --binary --no-ext-diff || return 1
+  printf '\0unstaged\0' || return 1
+  git diff --binary --no-ext-diff "$@" || return 1
+  printf '\0untracked\0' || return 1
+  # Via files, not process substitution: a pipeline inside `< <(...)` reports no
+  # status, so a truncated listing would silently shorten the untracked section.
+  # `${a[@]+"${a[@]}"}`: expanding an empty array is an unbound variable under
+  # `set -u` in bash before 4.4, and macOS ships 3.2. No pathspec at all in the
+  # ordinary case, so the listing stays byte-identical to the legacy algorithm.
+  git ls-files -z --others --exclude-standard \
+    ${others_pathspec[@]+"${others_pathspec[@]}"} > "$work/others" || return 1
+  LC_ALL=C sort -z < "$work/others" > "$work/sorted" || return 1
+  while IFS= read -r -d '' path; do
+    printf '%s\0' "$path" || return 1
+    # -L MUST be tested before -f, because -f follows the link. Testing -f
+    # first binds a symlink to its TARGET'S CONTENT, so retargeting a link
+    # between two equal-content files would not move the fingerprint. Hashing
+    # the link target string also matches how git represents a tracked symlink.
+    if [ -L "$path" ]; then
+      printf 'symlink\0' || return 1
+      readlink -- "$path" 2>/dev/null || printf 'unreadable-link' || return 1
+      printf '\0' || return 1
+    elif [ -f "$path" ] && [ -r "$path" ]; then
+      git hash-object -- "$path" || return 1
+    else
+      emit_nonregular "$path" || return 1
+    fi
+  done < "$work/sorted"
+  # Tracked paths dropped from the diff pathspec below. Excluding one keeps the
+  # fingerprint computable, but it also removes that path from the stream, so
+  # two trees differing only there would share an id. Bind its identity the
+  # same way an untracked non-regular path is bound. Emitted only when there is
+  # something to exclude, so an ordinary tree's stream stays byte-identical to
+  # what earlier receipts were written against.
+  if [ "${#excluded[@]}" -gt 0 ]; then
+    printf '\0excluded\0' || return 1
+    for path in "${excluded[@]}"; do
+      printf '%s\0' "$path" || return 1
+      emit_nonregular "$path" || return 1
+    done
+  fi
+}
+
+# Before anything is computed, in every mode: a hidden modification makes the
+# subject id AND the submodule snapshot describe a tree that is not there.
+refuse_hidden_index_changes "$top_phys" "the worktree" "$work/flags"
+
+if [ "$mode" != "id" ]; then
+  build_submodule_section "$top_phys" "" 0 > "$work/submodules" 2> "$work/suberr" || {
+    echo "review-diff-id: cannot capture the submodule snapshot: $(head -3 "$work/suberr" 2>/dev/null | tr '\n' ' ' || true)" >&2
+    exit 3
+  }
+  if [ "$mode" = "section" ]; then
+    cat "$work/submodules"
+    exit 0
+  fi
+  # NOTHING, not a hash of nothing, when the repository has no gitlink. A caller
+  # compares this against the receipt field, and empty on both sides is how a
+  # repository without submodules keeps matching a receipt that predates this.
+  [ -s "$work/submodules" ] || exit 0
+  git hash-object --stdin < "$work/submodules" || {
+    echo "review-diff-id: cannot hash the submodule snapshot" >&2
+    exit 3
+  }
+  exit 0
+fi
+
+excluded=()
+rc=0
+build_stream > "$work/stream" 2> "$work/err" || rc=$?
+
+if [ "$rc" -ne 0 ]; then
+  # A tracked path that exists but is neither a regular file nor a directory is
+  # a character device, fifo, or socket, so it has no content to diff: drop it
+  # from the pathspec and recompute. The sandbox creates this routinely by bind
+  # mounting /dev/null over deny-listed paths, which turns a tracked file like
+  # .env.example into a character device, so failing outright here would make
+  # the tool useless where it is needed most. Symlinks stay in (git diffs the
+  # link target string, not the file behind it), and so do paths missing from
+  # the worktree, because a deletion is a real change git reports without
+  # hashing anything. An unreadable REGULAR file also stays in: it can carry
+  # logic, so excluding it would hand back an id for a tree this tool never
+  # read. DIRECTORIES stay in too: a tracked path that is a directory is a
+  # submodule gitlink, git diffs it as a commit pointer without reading the tree
+  # behind it, and that pointer carries arbitrary code. Its stat identity would
+  # not stand in for it either, since a gitlink moves without touching the
+  # directory's mtime.
+  #
+  # Enumerate with --full-name: `:(top,...)` resolves against the repository
+  # root, while plain `git ls-files` prints paths relative to the working
+  # directory. cwd is the toplevel here, so the names line up with the pathspecs
+  # and with the -e/-f tests below. Via a file, not process substitution, for
+  # the same reason as the untracked listing above.
+  git ls-files -z --full-name -- ':/' > "$work/tracked" 2>/dev/null || {
+    echo "review-diff-id: cannot enumerate tracked paths" >&2
+    exit 3
+  }
+  while IFS= read -r -d '' p; do
+    if [ ! -L "$p" ] && [ -e "$p" ] && [ ! -f "$p" ] && [ ! -d "$p" ]; then
+      excluded+=("$p")
+    fi
+  done < "$work/tracked"
+  if [ "${#excluded[@]}" -gt 0 ]; then
+    pathspec=(-- ':/')
+    for p in "${excluded[@]}"; do
+      # `literal` is mandatory, not tidiness. Without it the path is matched
+      # with wildmatch, so a metacharacter in a tracked name excludes UNRELATED
+      # files: a fifo named `x*.txt` drops every path starting with `x`, and `*`
+      # crosses directory separators, so `xdir/deep/payload.txt` goes too. Those
+      # paths never reach `excluded`, so the identity section above does not
+      # cover them either and their worktree content leaves the fingerprint
+      # entirely. The name is attacker-controlled: anyone who can add a file to
+      # the repository picks a glob over whatever they want left unreviewed.
+      # `literal` is also the semantics the surrounding code already assumes,
+      # since `excluded` holds verbatim `git ls-files` names tested with `-e`
+      # and `-f`.
+      pathspec+=(":(top,exclude,literal)$p")
+    done
+    rc=0
+    build_stream "${pathspec[@]}" > "$work/stream" 2> "$work/err" || rc=$?
+  fi
+fi
+
+if [ "$rc" -ne 0 ]; then
+  # No id at all rather than one that names the wrong tree. The id is exactly
+  # what the Stop hook trusts, so emitting any value for a tree that could not
+  # be read in full is the whole defect: an approve receipt written under those
+  # conditions authorizes trees nobody reviewed. Callers must treat a non-zero
+  # status as "unknown", never as "unchanged".
+  # `|| true`: errexit is live here, so a failing head would exit with ITS
+  # status instead of the documented 3. The detail is a courtesy, not the
+  # contract.
+  detail="$(head -3 "$work/err" 2>/dev/null | tr '\n' ' ' || true)"
+  echo "review-diff-id: cannot fingerprint the worktree: $detail" >&2
+  exit 3
+fi
+
+git hash-object --stdin < "$work/stream" || {
+  echo "review-diff-id: cannot hash the worktree fingerprint" >&2
+  exit 3
+}
