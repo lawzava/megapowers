@@ -27,23 +27,12 @@ Run IDs are lowercase kebab case (`a-z`, `0-9`, and single hyphens), for
 example `release-check`. Every run helper rejects other forms before touching
 the run directory.
 
-| File | Contract |
-|---|---|
-| `charter.md` | The frozen spec: goal, explicit done-when acceptance criteria, autonomy level, blast-radius limits, and external stop budgets (time, step, or token caps) declared up front. Written once, never edited; a changed goal is a new run. |
-| `plan.md` | Milestones, each with its own acceptance check, preferably an executable oracle. Update as milestones complete; do not rewrite history. |
-| `runbook.md` | The operating loop: how to pick the next unmet milestone, when to stop, what to do on failure. |
-| `journal.md` | Append-only audit trail of every action, decision, and result. Never rewritten. |
-| `status` | Machine-readable `KEY=value` lines the loop and any hook read: STATE, CURSOR, LEVEL, LAST_VERIFY, PLAN_WARNINGS. Derived, never hand-written; the pointer, not the history. |
-| `evidence.md` | Literal acceptance map: implementation target, local oracle, required external, UX, or database oracle, earned state, and evidence. |
-
-Milestone format matters because status derivation parses it: headings are
-`## <tag>: <name>` where `<tag>` matches `[A-Za-z][A-Za-z0-9_-]*` (one token,
-then a colon; `## M2: rollout`, not `## Phase 2: rollout`), and each acceptance
-check sits on a line starting with
-`- acceptance:`. A heading that does not parse drops out of done-derivation, so
-`scripts/run-derive-status` counts it into `PLAN_WARNINGS` and refuses `done`
-while any remain. An acceptance check written any other way escapes the digest
-freeze, so it can change mid-run without the done-claim noticing.
+[references/file-contract.md](references/file-contract.md) is the per-file
+contract: what each of `charter.md`, `plan.md`, `runbook.md`, `journal.md`,
+`status`, and `evidence.md` holds, the `## <tag>: <name>` and `- acceptance:`
+milestone grammar `run-derive-status` parses, and the `plan-digest` fingerprint
+that fails a done-claim when a declared milestone or its acceptance line
+changed. Read it before authoring `charter.md` or `plan.md`.
 
 ## Where the charter comes from
 
@@ -172,16 +161,9 @@ declarative, self-contained.
 
 - The frozen charter and append-only journal are what let the run be trusted
   and replayed. Do not tidy them.
-- Declared milestones are fingerprinted: `run-init` snapshots each milestone
-  heading and its acceptance line into `plan-digest`. Thereafter
-  `run-verify-status` fails a done-claim (and `run-derive-status` refuses
-  `done`) if a declared milestone vanishes or its acceptance line changes. To
-  change the plan deliberately, re-run `--replan`, which re-snapshots and
-  journals a decision; the charter still never changes. This is drift
-  detection, not a security control: a long run forgets what it promised, and
-  the fingerprint makes a mid-run redefinition of success explicit rather than
-  silent. Anything that can edit the plan can also re-baseline the digest, so
-  it stops accidents and self-deception, not a determined actor.
+- Declared milestones are fingerprinted against `plan-digest`, so a vanished
+  milestone or a changed acceptance line fails the done-claim until you re-run
+  `--replan` (references/file-contract.md, Milestone digest).
 - Irreversible actions go through staging appropriate to the autonomy level;
   the effect broker, when present, is the mechanism.
 - On Claude Code, the `run-loop.sh` Stop hook blocks a premature stop while a
