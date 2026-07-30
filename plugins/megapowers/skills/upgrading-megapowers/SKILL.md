@@ -26,7 +26,7 @@ Classify every installed plugin:
 - Fork: propose an upstream integration; never overwrite local work.
 - Duplicate or unknown source: report it. Cleanup is a separate opt-in change.
 
-“Latest” means latest stable unless the user names a version, ref, branch, or prerelease.
+"Latest" means latest stable unless the user names a version, ref, branch, or prerelease.
 
 ## 3. Compare and propose
 
@@ -35,7 +35,7 @@ Separate the plan into:
 1. **Upgrades:** already-installed plugins with an applicable target.
 2. **Available additions:** bundles not installed and not overlapping any visible installed plugin, skill, or component.
 
-Rank additions relevant first using repository evidence: language manifests and source, frontend files or design work, and orchestration needs. Offer `show all` for the full catalog. Describe newly included skills inside an upgraded bundle as part of that upgrade, not as separate installs. Say “available but not installed” unless release history proves when a bundle was introduced.
+Rank additions relevant first using repository evidence: language manifests and source, frontend files or design work, and orchestration needs. Offer `show all` for the full catalog. Describe newly included skills inside an upgraded bundle as part of that upgrade, not as separate installs. Say "available but not installed" unless release history proves when a bundle was introduced.
 
 Report visible overlap as a same-source duplicate or cross-source conflict, not an addition.
 Do not install an overlapping bundle while both registrations would remain active. If the user explicitly wants it, propose a migration that selects the one registration to keep and lists any disable or removal as an opt-in write.
@@ -68,8 +68,17 @@ Re-read actual state. Confirm the approved plugin set, enabled state, versions o
 
 On partial failure, stop before optional additions. Inspect again and report **applied, failed, and not attempted** actions. Give the safest recovery step. Never claim rollback, loading, or success without observing it.
 
+## 6. Clean up stale plugin cache versions
+
+A running session resolves plugin hooks through the versioned cache path (`cache/<plugin>/<version>`) captured at session start. Deleting an old version disables every hook in every session still pinned to it, with no warning beyond a non-zero hook status.
+
+Deleting a stale version is safe only when no session is still running on it. Order matters: upgrade, restart every open session, then delete stale directories. Deleting before every session has restarted is the failure mode: it silently kills that session's hooks, guard and delegate nudge alike, for the rest of its life.
+
+Detection: a hook attachment reporting `Plugin directory does not exist` for a versioned cache path means this happened. It affects only the sessions still pinned to the deleted version, not the machine as a whole. Restart the affected session to recover.
+
 ## Common mistakes
 
 - Refreshing a marketplace before the approval gate because it seems harmless. It is still a write.
 - Calling every uninstalled bundle newly introduced. Availability does not prove release timing.
 - Assuming a failed update restored the old version. Only observed state supports that claim.
+- Deleting a stale plugin cache version before every session on it has restarted. See "Clean up stale plugin cache versions" above.
