@@ -1,0 +1,357 @@
+#!/usr/bin/env bash
+# session-metrics: turn "sessions feel slow" into a number.
+#
+#   scripts/session-metrics [--since ISO8601] [--project DIR] [--json] [--include-all]
+#
+# Reads Claude Code transcripts (~/.claude/projects/<slug>/<session-uuid>.jsonl,
+# JSON Lines) and reports, per session and pooled across sessions: span,
+# assistant turns, model latency (median, p90, total), tool wall clock by
+# tool, Bash p90, the batched-tool-call ratio, the backgrounded-Bash ratio,
+# skill invocations, and hook failures. This is a report, not a gate: it
+# exits 0 whenever it can read the transcript store, and never writes
+# anything under the store.
+#
+# --since ISO8601   only include sessions whose last matched record is at or
+#                    after this timestamp.
+# --project DIR      only scan the transcript directory for this working
+#                    directory (matched by the same slugification Claude Code
+#                    uses: every non-alphanumeric character becomes '-').
+# --json             machine-readable output instead of the text report.
+# --include-all      also include sidechain sessions and non-cli entrypoint
+#                    sessions (SDK spawns), which are excluded by default so
+#                    they do not distort the aggregate.
+#
+# Transcript root defaults to $HOME/.claude/projects; override with
+# SESSION_METRICS_ROOT (tests point this at a fixture directory).
+#
+# entrypoint and isSidechain are session-level properties that only appear on
+# some records within a file. Each session's value is resolved once, from
+# whichever record in the file carries it (default "cli" and "false" when no
+# record carries it), and the whole session is included or excluded on that
+# basis. Filtering record by record would keep the records that happen to
+# lack the field while dropping the ones that carry it, leaving a phantom
+# partial session behind instead of excluding it entirely.
+#
+# A session with zero assistant turns after filtering is omitted rather than
+# printed as a row of "n/a": it carries no information.
+#
+# Claude Code does not write one record per model response. It splits a single
+# response into one record per content block (each thinking block, the text
+# block, and every tool_use block gets its own record), and the sibling records
+# all carry the same message.id. So a type=="assistant" record is a block, not a
+# turn, and counting records overstates model responses by more than a factor of
+# two (42575 records against 19580 responses over this author's own store).
+# Anything that means "per model response" therefore groups assistant records by
+# message.id first. Sibling records are always adjacent in the assistant
+# subsequence and always in timestamp order, so a group is a contiguous run.
+#
+# Metric definitions:
+#
+# - Assistant turns: count of model responses, i.e. groups of consecutive
+#   assistant records sharing a message.id. A record with no message.id is its
+#   own group (the conservative reading: never merge records that might belong
+#   to different responses).
+# - Model latency: for each model response, the gap between the timestamp of
+#   the last type=="user" record preceding it and the timestamp of its first
+#   record. The preceding user record is the tool_result or human prompt that
+#   completed the model's input, so this is composing time up to the first
+#   streamed block, and it excludes tool execution. When no user record
+#   separates a response from the one before it, the previous response's last
+#   record is used instead; a negative gap (sub-second record write-order
+#   jitter) is treated as zero.
+# - Tool wall clock: for each tool_use block, the gap between its parent
+#   assistant record's timestamp and the timestamp of the matching
+#   tool_result (paired by id). A gap at or above one hour (GAP_CAP_SECONDS
+#   below) is treated as an approval-wait or session-idle artifact rather
+#   than execution time, since no synchronous tool call legitimately runs
+#   that long, and is excluded from the wall-clock total and the Bash p90;
+#   the excluded count is still reported so nothing is silently dropped.
+# - Batched-tool-call ratio: model responses issuing more than one tool_use
+#   block, over model responses issuing at least one. The blocks are summed
+#   across the response's records, since one response normally spreads its
+#   tool_use blocks over several records.
+# - Backgrounded-Bash ratio: Bash tool_use blocks with
+#   input.run_in_background true, over all Bash tool_use blocks.
+# - Hook failures: attachment records whose attachment.durationMs is present
+#   and whose payload carries a non-zero exitCode or the text "Plugin
+#   directory does not exist".
+set -uo pipefail
+
+GAP_CAP_SECONDS=3600
+
+usage() {
+  sed -n '2,77p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+SINCE=""
+PROJECT_DIR=""
+JSON=0
+INCLUDE_ALL=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --since) SINCE="${2:-}"; shift 2 ;;
+    --project) PROJECT_DIR="${2:-}"; shift 2 ;;
+    --json) JSON=1; shift ;;
+    --include-all) INCLUDE_ALL=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "session-metrics: unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+command -v jq >/dev/null 2>&1 || { echo "session-metrics: jq is required" >&2; exit 0; }
+
+TRANSCRIPT_ROOT="${SESSION_METRICS_ROOT:-$HOME/.claude/projects}"
+if [ ! -d "$TRANSCRIPT_ROOT" ]; then
+  echo "session-metrics: no transcript store at $TRANSCRIPT_ROOT" >&2
+  exit 0
+fi
+
+since_epoch="null"
+if [ -n "$SINCE" ]; then
+  epoch="$(date -d "$SINCE" +%s 2>/dev/null || date -j -f '%Y-%m-%dT%H:%M:%SZ' "$SINCE" +%s 2>/dev/null || date -j -f '%Y-%m-%d' "$SINCE" +%s 2>/dev/null)"
+  if [ -z "$epoch" ]; then
+    echo "session-metrics: unparseable --since value: $SINCE" >&2
+    exit 2
+  fi
+  since_epoch="$epoch"
+fi
+
+slugify() { printf '%s' "$1" | sed -E 's/[^A-Za-z0-9]/-/g'; }
+
+if [ -n "$PROJECT_DIR" ]; then
+  search_root="$TRANSCRIPT_ROOT/$(slugify "$PROJECT_DIR")"
+  find_args=(-mindepth 1 -maxdepth 1)
+else
+  search_root="$TRANSCRIPT_ROOT"
+  find_args=(-mindepth 2 -maxdepth 2)
+fi
+
+if [ ! -d "$search_root" ]; then
+  echo "session-metrics: no sessions under $search_root" >&2
+  exit 0
+fi
+
+mapfile -t FILES < <(find "$search_root" "${find_args[@]}" -type f -name '*.jsonl' 2>/dev/null | sort)
+
+# --- per-session extraction -------------------------------------------------
+# Emits one compact JSON object per session (its scalar span/turn fields plus
+# the raw arrays the combine pass pools for the aggregate row). A session
+# excluded entirely by the isSidechain/entrypoint/--since filters emits
+# nothing.
+read -r -d '' EXTRACT_JQ <<'JQ'
+def parse_ts:
+  . as $s
+  | ($s | sub("\\.[0-9]+Z$"; "Z")) as $whole
+  | ($whole | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime) as $sec
+  | ($s | if test("\\.[0-9]+Z$") then (capture("\\.(?<f>[0-9]+)Z$").f | ("0." + .) | tonumber) else 0 end) as $frac
+  | $sec + $frac;
+
+( . ) as $all
+| ( [ $all[] | .entrypoint | select(. != null) ] | first ) as $session_entrypoint
+| ( [ $all[] | .isSidechain | select(. != null) ] | first ) as $session_is_sidechain
+| ( if $include_all then $all
+    elif (($session_entrypoint // "cli") == "cli") and (($session_is_sidechain // false) != true) then $all
+    else []
+    end
+  ) as $recs
+| if ($recs | length) == 0 then empty else
+( [ $recs[] | select(.timestamp != null) ] ) as $timed
+| if ($timed | length) == 0 then empty else
+# Position-tagged user and assistant records. The index is over $timed, so it
+# orders assistant groups against the user records that separate them even
+# though attachment and other record types sit between.
+( [ $timed | to_entries[]
+    | select(.value.type == "user" or .value.type == "assistant")
+    | {i: .key, type: .value.type, ts: (.value.timestamp | parse_ts),
+       gid: (.value.message.id // ("__nomsgid-" + (.key | tostring))),
+       ntu: ([.value.message.content[]? | select(.type == "tool_use")] | length)}
+  ] ) as $seq
+# One model response per group of assistant records sharing a message.id.
+| ( [ $seq[] | select(.type == "assistant") ]
+    | group_by(.gid) | map(sort_by(.i)) | sort_by(.[0].i) ) as $groups
+| ( [ range(0; ($groups | length)) as $k
+      | ($groups[$k][0].i) as $cur_start
+      | (if $k == 0 then -1 else $groups[$k-1][-1].i end) as $prev_end
+      | ( [ $seq[] | select(.type == "user" and .i > $prev_end and .i < $cur_start) | .ts ]
+          | max ) as $input_ready
+      | ( if $input_ready != null then $input_ready
+          elif $k > 0 then $groups[$k-1][-1].ts
+          else null end ) as $base
+      | select($base != null)
+      | (($groups[$k][0].ts - $base) | if . < 0 then 0 else . end)
+    ] ) as $latencies
+| ( [ $recs[] | select(.type == "assistant")
+      | .timestamp as $ts
+      | .message.content[]? | select(.type == "tool_use")
+      | {id, name, start: ($ts | parse_ts), rib: (.input.run_in_background == true)}
+    ] ) as $starts
+| ( [ $recs[] | select(.type == "user")
+      | .timestamp as $ts
+      | .message.content[]? | select(.type == "tool_result")
+      | {id: .tool_use_id, end: ($ts | parse_ts)}
+    ] ) as $ends
+| ( $ends | map({(.id): .end}) | add // {} ) as $endmap
+| ( [ $starts[] | . as $s | ($endmap[$s.id]) as $e | select($e != null) | {name: $s.name, wall: ($e - $s.start)} ] ) as $pairs
+| ( [ $pairs[] | select(.wall < $gap_cap) ] ) as $kept
+| ( [ $pairs[] | select(.wall >= $gap_cap) ] | length ) as $excluded
+# tool_use blocks per model response, summed across the response's records.
+| ( [ $groups[] | ([.[].ntu] | add) ] ) as $tucounts
+| ( [ $starts[] | select(.name == "Bash") ] ) as $bash_calls
+| ( [ $recs[] | select(.type == "attachment") | select(.attachment.durationMs != null)
+      | select(
+          (.attachment.exitCode != null and .attachment.exitCode != 0)
+          or (
+            ( [ .attachment.stdout, .attachment.stderr,
+                (.attachment.content // "" | if type == "array" then join(" ") else tostring end) ]
+              | join(" ") )
+            | contains("Plugin directory does not exist")
+          )
+        )
+    ] | length ) as $hook_failures
+| {
+    session_id: ($recs[0].sessionId // "unknown"),
+    project_cwd: (([$timed[] | select(.cwd != null) | .cwd] | first) // ""),
+    span_start: $timed[0].timestamp,
+    span_start_epoch: ($timed[0].timestamp | parse_ts),
+    span_end: $timed[-1].timestamp,
+    span_end_epoch: ($timed[-1].timestamp | parse_ts),
+    assistant_turns: ($groups | length),
+    latencies: $latencies,
+    tool_wall: $kept,
+    tool_wall_excluded: $excluded,
+    turn_tool_counts: $tucounts,
+    bash_backgrounded: ([$bash_calls[] | select(.rib)] | length),
+    bash_total: ($bash_calls | length),
+    skill_invocations: ([$starts[] | select(.name == "Skill")] | length),
+    hook_failures: $hook_failures
+  }
+| select($since_epoch == null or .span_end_epoch >= $since_epoch)
+| select(.assistant_turns > 0)
+end
+end
+JQ
+
+# Extracted per-session objects are appended to an NDJSON scratch file rather
+# than threaded through --argjson: a session's raw latency/tool-wall arrays
+# can be large, and repeatedly round-tripping a growing JSON blob through
+# argv blows past the OS argument-length limit on a big transcript store.
+scratch_dir="$(mktemp -d "${TMPDIR:-/tmp}/session-metrics.XXXXXX")"
+trap 'rm -rf "$scratch_dir"' EXIT
+ndjson="$scratch_dir/sessions.ndjson"
+: > "$ndjson"
+
+for f in "${FILES[@]:-}"; do
+  [ -n "$f" ] || continue
+  jq -R -c 'fromjson? // empty' "$f" 2>/dev/null \
+    | jq -c -s \
+        --argjson include_all "$([ "$INCLUDE_ALL" -eq 1 ] && echo true || echo false)" \
+        --argjson gap_cap "$GAP_CAP_SECONDS" \
+        --argjson since_epoch "$since_epoch" \
+        "$EXTRACT_JQ" 2>/dev/null \
+    >> "$ndjson"
+done
+
+sessions_json="$(jq -c -s '.' "$ndjson")"
+
+# --- combine: per-session view plus one pooled aggregate --------------------
+read -r -d '' COMBINE_JQ <<'JQ'
+def pct(p):
+  sort as $s
+  | ($s | length) as $n
+  | if $n == 0 then null
+    else ($s[(($n * p | floor) as $i | if $i >= $n then $n - 1 else $i end)])
+    end;
+
+def r2: (. * 100 | round) / 100;
+
+def by_tool_breakdown:
+  group_by(.name)
+  | map({key: .[0].name, value: {count: length, total_h: ((map(.wall) | add) / 3600 | r2)}})
+  | from_entries;
+
+def view($lat; $wall; $excluded; $tuc; $bg; $bash_total; $skill; $hook; $turns):
+  {
+    assistant_turns: $turns,
+    model_latency: {
+      median_s: ($lat | pct(0.5) | if . == null then null else r2 end),
+      p90_s: ($lat | pct(0.9) | if . == null then null else r2 end),
+      total_h: (($lat | add // 0) / 3600 | r2)
+    },
+    tool_wall_clock: {
+      total_h: (([$wall[].wall] | add // 0) / 3600 | r2),
+      excluded_long_gaps: $excluded,
+      by_tool: ($wall | by_tool_breakdown)
+    },
+    bash_p90_s: ([$wall[] | select(.name == "Bash") | .wall] | pct(0.9) | if . == null then null else r2 end),
+    batched_tool_call_ratio: (
+      ($tuc | map(select(. > 0)) | length) as $t
+      | if $t == 0 then null else (($tuc | map(select(. > 1)) | length) / $t | r2) end
+    ),
+    backgrounded_bash_ratio: (if $bash_total == 0 then null else ($bg / $bash_total | r2) end),
+    skill_invocations: $skill,
+    hook_failures: $hook
+  };
+
+. as $sessions
+| ($sessions | map(
+    {
+      session_id, project_cwd, span_start, span_end
+    } + view(.latencies; .tool_wall; .tool_wall_excluded; .turn_tool_counts;
+             .bash_backgrounded; .bash_total; .skill_invocations; .hook_failures;
+             .assistant_turns)
+  )) as $per_session
+| {
+    sessions: $per_session,
+    aggregate: (
+      ($sessions | map(.latencies[])) as $all_lat
+      | ($sessions | map(.tool_wall[])) as $all_wall
+      | ($sessions | map(.tool_wall_excluded) | add // 0) as $all_excluded
+      | ($sessions | map(.turn_tool_counts[])) as $all_tuc
+      | ($sessions | map(.bash_backgrounded) | add // 0) as $agg_bg
+      | ($sessions | map(.bash_total) | add // 0) as $agg_bash_total
+      | ($sessions | map(.skill_invocations) | add // 0) as $agg_skill
+      | ($sessions | map(.hook_failures) | add // 0) as $agg_hook
+      | ($sessions | map(.assistant_turns) | add // 0) as $agg_turns
+      | ($sessions | map(.span_start_epoch) | min) as $agg_start_epoch
+      | ($sessions | map(.span_end_epoch) | max) as $agg_end_epoch
+      | (if $agg_start_epoch == null then null
+         else ($sessions | map(select(.span_start_epoch == $agg_start_epoch)) | .[0].span_start) end
+        ) as $agg_span_start
+      | (if $agg_end_epoch == null then null
+         else ($sessions | map(select(.span_end_epoch == $agg_end_epoch)) | .[0].span_end) end
+        ) as $agg_span_end
+      | {session_count: ($sessions | length), span_start: $agg_span_start, span_end: $agg_span_end}
+        + view($all_lat; $all_wall; $all_excluded; $all_tuc; $agg_bg; $agg_bash_total; $agg_skill; $agg_hook; $agg_turns)
+    )
+  }
+JQ
+
+report_json="$(printf '%s' "$sessions_json" | jq -c "$COMBINE_JQ")"
+
+if [ "$JSON" -eq 1 ]; then
+  printf '%s\n' "$report_json" | jq .
+  exit 0
+fi
+
+if [ "$(printf '%s' "$sessions_json" | jq 'length')" -eq 0 ]; then
+  echo "session-metrics: no sessions matched under $search_root"
+  exit 0
+fi
+
+printf '%s\n' "$report_json" | jq -r '
+  def show(x; unit): if x == null then "n/a" else "\(x)\(unit)" end;
+  def line(o):
+    "  span: \(o.span_start) to \(o.span_end)\n" +
+    "  assistant turns: \(o.assistant_turns)\n" +
+    "  model latency: median \(show(o.model_latency.median_s; "s")), p90 \(show(o.model_latency.p90_s; "s")), total \(o.model_latency.total_h)h\n" +
+    "  tool wall clock: total \(o.tool_wall_clock.total_h)h (excluded \(o.tool_wall_clock.excluded_long_gaps) long-gap calls)\n" +
+    "    by tool: " + ((o.tool_wall_clock.by_tool | to_entries | map("\(.key) \(.value.total_h)h/\(.value.count)") | join(", ")) // "none") + "\n" +
+    "  bash p90: \(show(o.bash_p90_s; "s"))\n" +
+    "  batched-tool-call ratio: \(show(o.batched_tool_call_ratio; ""))\n" +
+    "  backgrounded-bash ratio: \(show(o.backgrounded_bash_ratio; ""))\n" +
+    "  skill invocations: \(o.skill_invocations)\n" +
+    "  hook failures: \(o.hook_failures)\n";
+  (.sessions[] | "session \(.session_id) (\(.project_cwd))\n" + line(.)),
+  ("=== aggregate (\(.aggregate.session_count) sessions) ===\n" + line(.aggregate))
+'
