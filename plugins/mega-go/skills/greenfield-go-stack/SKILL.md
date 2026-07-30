@@ -60,96 +60,18 @@ come from the baseline middleware and minimal images, not bolted on later.
 - For idiomatic errors / interfaces / functional options / concurrency, use the
   `golang-patterns` skill — don't restate it here.
 
-## Fiber middleware baseline (perf + security out of the box)
+## Reference recipes
 
-Wire these in order on every app. CORS is explicit origins, never `*`.
+Read the file for the layer you are wiring:
 
-```go
-app.Use(recover.New())
-app.Use(requestid.New())
-app.Use(logger.New())                              // early: a request rejected by
-                                                   // a later middleware (429, CORS)
-                                                   // still gets logged
-app.Use(helmet.New())                              // security headers
-app.Use(cors.New(cors.Config{AllowOrigins: origins})) // explicit, not "*"
-app.Use(compress.New())
-app.Use(etag.New())
-app.Use(limiter.New(limiter.Config{               // explicit budget — the zero
-    Max:        120,                               // value (~5/min) breaks real
-    Expiration: 1 * time.Minute,                   // pages (each pulls many assets)
-}))
-```
-
-The limiter keys on `c.IP()` by default. Behind a reverse proxy every request
-arrives from the proxy's IP, so **all users share one bucket** unless you make
-Fiber trust the forwarded client IP. Set that on the app config, not the
-middleware:
-
-```go
-app := fiber.New(fiber.Config{
-    ProxyHeader:             fiber.HeaderXForwardedFor,
-    EnableTrustedProxyCheck: true,
-    TrustedProxies:          []string{"10.0.0.0/8"}, // your proxy's CIDR
-})
-```
-
-Only enable this when you actually sit behind a trusted proxy — trusting
-`X-Forwarded-For` from untrusted clients lets them spoof their IP and evade the
-limiter.
-
-**Do not put `cache.New()` in the global chain.** Fiber's cache keys on request
-path by default, with no user/session in the key — so on an app with auth + SSR it
-serves one user's rendered `GET /dashboard` to the next user for the whole TTL: a
-cross-user data leak. Response-cache only *explicitly public, non-personalized* routes,
-and only with a key that includes everything that varies the response:
-
-```go
-public := app.Group("/assets") // or a public, auth-free route group
-public.Use(cache.New(cache.Config{
-    Expiration:   10 * time.Minute,
-    CacheControl: true,
-    // KeyGenerator MUST include anything that changes the body (path is not enough
-    // once cookies/headers/query vary the response). Never mount this on authed routes.
-}))
-```
-For authenticated pages, rely on `etag` + per-handler `Cache-Control` instead of a
-shared response cache.
-
-## SQLite + Bun (CGO-free)
-
-Use `modernc.org/sqlite` so the binary is fully static and builds on minimal
-Wolfi/static images. Bun over a `database/sql` handle with `sqlitedialect`.
-Set pragmas on open: `_pragma=journal_mode(WAL)`, `_pragma=foreign_keys(ON)`,
-`_pragma=busy_timeout(5000)`.
-
-Test databases:
-
-```go
-// Import the pure-Go driver: _ "modernc.org/sqlite" (registers as "sqlite").
-// Do NOT use "sqlite3" (mattn/go-sqlite3) — it needs CGO and breaks
-// CGO_ENABLED=0 static builds.
-func testDB(t *testing.T) *sql.DB {
-    t.Helper()
-    db, err := sql.Open("sqlite", ":memory:")
-    if err != nil {
-        t.Fatalf("failed to open test db: %v", err)
-    }
-    // A ":memory:" database is private to a single connection, and database/sql
-    // is a lazy pool: without this, each pooled connection gets its OWN empty
-    // database, so a table created on one connection is missing on the next.
-    // Pinning the pool to one connection makes the whole test share one
-    // in-memory DB. Caveat: with a single connection, while a tx is open
-    // (db.Begin) that tx holds the only connection — route ALL work through
-    // the tx until Commit/Rollback; a concurrent db.Query on the pool would
-    // block waiting for it. If a test genuinely needs multiple live
-    // connections, use a shared-cache DSN instead
-    // ("file:testdb?mode=memory&cache=shared") and keep >=1 conn open so the
-    // in-memory DB isn't dropped.
-    db.SetMaxOpenConns(1)
-    t.Cleanup(func() { db.Close() })
-    return db
-}
-```
+- [references/fiber-baseline.md](references/fiber-baseline.md): the ordered
+  middleware chain, explicit rate-limit budget, trusted-proxy config for
+  `c.IP()`, and why a global `cache.New()` leaks one user's rendered page to the
+  next.
+- [references/sqlite-bun.md](references/sqlite-bun.md): pure-Go driver choice,
+  open pragmas, and the single-connection in-memory test database.
+- [references/docker-wolfi.md](references/docker-wolfi.md): the multi-stage
+  `CGO_ENABLED=0` build on a Wolfi base.
 
 ## gRPC + SSR split
 
@@ -166,36 +88,15 @@ func testDB(t *testing.T) *sql.DB {
   as the production-stable fallback. The old MailChannels free integration is
   deprecated; do not use it.
 
-## Docker / Wolfi
-
-Multi-stage: build on `golang` with `CGO_ENABLED=0`, run on
-`cgr.dev/chainguard/wolfi-base` (or `static`). Non-root, healthcheck. Use
-`docker compose` for local (app + sidecars).
-
-```dockerfile
-FROM golang:1-bookworm AS build
-WORKDIR /src
-COPY go.* ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /app ./cmd/server
-
-FROM cgr.dev/chainguard/wolfi-base
-RUN apk add --no-cache ca-certificates
-COPY --from=build /app /app
-USER nonroot
-ENTRYPOINT ["/app"]
-```
-
 ## Bootstrap order
 
 1. `go mod init`; scaffold golang-standards layout.
 2. `.golangci.yml` (Uber style); make lint a CI gate.
-3. Fiber app + middleware baseline above.
+3. Fiber app + middleware baseline (references/fiber-baseline.md).
 4. `templ` + `templui init`; Tailwind.
-5. SQLite (`modernc.org/sqlite`) + Bun; migrations.
+5. SQLite (`modernc.org/sqlite`) + Bun; migrations (references/sqlite-bun.md).
 6. Add only the needed integrations: Clerk / Stripe / gRPC / Cloudflare email.
-7. Dockerfile (Wolfi) + `docker compose`.
+7. Dockerfile (Wolfi) + `docker compose` (references/docker-wolfi.md).
 
 ## Caveats
 

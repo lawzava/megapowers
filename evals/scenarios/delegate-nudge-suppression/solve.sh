@@ -22,13 +22,18 @@ verdict() {
   if printf '%s' "$1" | grep -q '"decision":"block"'; then echo NAG; else echo ALLOW; fi
 }
 write_receipt() {
-  local result="$1" id receipt
+  local result="$1" id receipt root base
   id="$("$diff_id")"
   receipt="$(git rev-parse --git-path megapowers-review-receipt.json)"
-  jq -cn --arg id "$id" --arg result "$result" '{
-    schema:"megapowers.review-receipt.v1",
+  # Absolute root and base commit, exactly as delegate-run records them. A
+  # relative artifact is portable to every repository at once and a receipt with
+  # no base names a diff rather than a tree; the gate rejects both.
+  root="$(git rev-parse --show-toplevel)"
+  base="$(git rev-parse HEAD)"
+  jq -cn --arg id "$id" --arg result "$result" --arg root "$root" --arg base "$base" '{
+    schema:"megapowers.review-receipt.v2",
     role:"verify",
-    subject:{kind:"worktree-diff",artifact:".",id:$id,claim:"billing change is correct"},
+    subject:{kind:"worktree-diff",artifact:$root,id:$id,base:$base,claim:"billing change is correct"},
     author_vendors:["openai"],
     reviewer:{provider:"claude",vendor:"anthropic",model:"claude-fable-5",tier:"frontier",effort:"high"},
     independent:true,
