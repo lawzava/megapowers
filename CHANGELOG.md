@@ -8,6 +8,64 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.8.0 - 2026-07-31
+
+### Added
+
+- Delegate routes carry `DISPATCH`. `native` means the route landed on the
+  provider the calling session already is, so it belongs on that harness's own
+  subagent, team, or workflow surface; `CHANNEL` and `BINARY` describe the
+  cross-runtime path and apply to `cli` only. Calling your own CLI spawns a cold
+  session, discards the context that made delegating worthwhile, and bills twice.
+- `--author-model <id>` and `--author-provider <name>` name an artifact's author
+  by model id or backend and let the resolver derive the vendor. A harness always
+  knows the model it runs; it does not necessarily know the vendor name this
+  catalog files that model under, and a BYO-model runtime (OpenCode, Cursor CLI,
+  pi) has no fixed vendor to hardcode at all.
+- `--caller-model <id>` and `--caller-provider <name>` name the session that is
+  RUNNING. They feed native-dispatch detection only and never enter the exclusion
+  set, `AUTHOR_VENDORS`, or a receipt, so declaring a caller cannot make a review
+  look independent. Pass one when reviewing another agent's work: the author is
+  excluded, the route comes back to you, and that is a native dispatch.
+- A `[roles]` value of `self` routes to the caller's own provider. `small_impl`
+  ships that way: a scoped implementation carries no independence requirement, so
+  spending a third-party call on it buys nothing. `visual` and `browser_test`
+  still leave the vendor for capability and cost, which the shipped guidance now
+  states rather than implying a blanket in-vendor default.
+
+### Fixed
+
+- A native route required the provider's CLI to be installed, so a harness with
+  no `claude` binary anywhere on PATH got no route at all for work it could
+  obviously run on its own subagent. Reachability is now decided per candidate
+  before the `command -v` check, on both the resolution and `--vendors` paths.
+- `--author-vendor` accepts a provider name but excluded only that provider, so a
+  sibling backend of the same vendor stayed eligible to review its own author's
+  work. Author tokens are normalized to a vendor before exclusion, and a token
+  naming neither a declared vendor nor a provider is refused rather than
+  excluding nobody.
+- Author exclusion applied to every role, so telling a harness to identify itself
+  cost it its own vendor on roles that never asked for a second opinion. It now
+  follows `[independence]`. A legacy table (no `[independence]` section and no use
+  of the sentinel) keeps excluding unconditionally.
+- A model id declared by providers of two different vendors could exclude the
+  wrong vendor. Such an id is refused at resolution and reported by `--check`.
+  One vendor behind several providers leaves independence intact but no longer
+  guesses a backend for a `self` role.
+- Identity is unique-or-refused per flag occurrence: every occurrence constrains
+  the answer and they intersect, so contradictory identities are refused instead
+  of resolved by precedence, and two ambiguous ids overlapping in one provider
+  resolve to it.
+- `delegate-run` trusted caller-supplied author vendors when a route omitted
+  `AUTHOR_VENDORS`. It now discards its own input first, rejects a malformed or
+  blank field, and verifies the reviewer CLI exists before dispatch: an
+  independent review runs as an isolated one-shot session by design, so it always
+  needs a reachable CLI and can never act on a native route.
+- A role that is both `self`-routed and `[independence]`-bound is refused at
+  resolution, not only by `--check`. A catalog that already declares
+  `[providers.self]` keeps that provider's meaning on every path, reported by
+  `--check`, so no existing route is silently redirected.
+
 ## 0.7.3 - 2026-07-30
 
 ### Fixed
@@ -779,7 +837,7 @@ loss beyond the two removals called out below.
   (claude-fable-5, gpt-5.5), the pre-trim systematic-debugging wording's
   flaky-test regression on claude-fable-5 improved from 25% to 75% clean, and
   a documented claude-haiku-4-5 cost is recorded; full tables and protocol in
-  `evals/RESULTS.md` §6.
+  `evals/RESULTS.md` section 6.
 
 ## 0.1.4 - 2026-07-07
 
