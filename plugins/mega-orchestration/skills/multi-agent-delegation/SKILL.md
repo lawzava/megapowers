@@ -349,6 +349,23 @@ field to branch on:
 - `DISPATCH=cli`: the route crosses to another provider. Use `CHANNEL`/`BINARY`
   and the resolved provider's reference file.
 
+`CALLER` says how that was decided. `declared` means you named yourself (or, on a
+`self` role, named the author, who is the caller). `assumed-lead` means nobody
+did, so `native` rests on the catalog `[lead]` default and the resolver says so on
+stderr. That distinction matters on a machine where more than one harness leads:
+an undeclared non-lead session reading `native` would run its own subagent
+against another vendor's model, believing it was home. Declare yourself and the
+question does not arise.
+
+`AUTHOR_VENDOR` is repeated once per author and is authoritative. The joined
+`AUTHOR_VENDORS` remains for consumers written against the older contract; prefer
+the repeated form, which needs no delimiter and so cannot split a vendor name or
+hide a blank identity inside a joined string.
+
+`ALTERNATES` appears on independence roles and counts the vendors that could
+still serve the role with the authors excluded. `ALTERNATES=1` means the next
+outage takes independent review with it.
+
 Per-harness native primitives are mapped in
 `mega-orchestration:orchestrating`'s `references/harness-primitives.md`. The
 resolver decides this by comparing the resolved provider against the RUNNING

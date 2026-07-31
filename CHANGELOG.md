@@ -8,6 +8,49 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+## 0.8.1 - 2026-07-31
+
+### Added
+
+- Routes carry `CALLER`, either `declared` or `assumed-lead`. `DISPATCH=native`
+  asserts the resolved provider is the calling session, and when nobody declared
+  one that rested silently on the catalog `[lead]`. A non-lead session reading
+  `native` would run its own subagent against another vendor's model believing it
+  was home. The assumption is now stated on the route and warned about on stderr.
+- `AUTHOR_VENDOR` is emitted once per author and is authoritative; `delegate-run`
+  prefers it. Recovering an identity no longer means splitting a delimiter, so a
+  vendor name cannot be cut in half and a blank identity cannot hide inside a
+  joined string. The joined `AUTHOR_VENDORS` remains for older consumers.
+- Independence routes carry `ALTERNATES`, the number of vendors that could still
+  serve the role with the authors excluded. `ALTERNATES=1` says the next outage
+  takes independent review with it, which is the shipped state until a third
+  vendor is reachable.
+
+### Fixed
+
+- Reachability (section present, enabled, native or CLI installed) had been
+  written twice, once for resolution and once for the `--vendors` probe, and the
+  two drifted three times. It is now one function returning distinct statuses so
+  each caller keeps its own policy: resolution still treats a missing section as
+  fatal and preserves the exit-4 single-route contract for a disabled provider,
+  while the probes skip. A test matrix pins `--vendors` to list the vendor the
+  same role resolves to, including where the provider CLI is absent.
+- `ALTERNATES` counted any reachable provider, including ones the role would
+  reject for capability, tier, effort, or floor, which would report a spare route
+  that does not exist. It now applies the same eligibility the probe does.
+- `delegate-run` chose the author encoding by how many values it decoded rather
+  than whether the repeated form was present, so a route could declare the
+  authoritative encoding, deliver only empty records, and silently fall through
+  to the joined one. Presence now decides and an empty record is refused.
+
+### Known
+
+- A chain candidate with no model at the role's tier is fatal in resolution but
+  skipped by `--vendors`, so the probe can report a vendor resolution refuses to
+  use. Both behaviours predate this release; the tests pin them so the
+  inconsistency is visible. Reconciling it moves an exit code, so it is not done
+  here.
+
 ## 0.8.0 - 2026-07-31
 
 ### Added

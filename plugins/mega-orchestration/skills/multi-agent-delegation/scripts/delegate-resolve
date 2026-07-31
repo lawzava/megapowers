@@ -536,13 +536,90 @@ resolve_self_target_or_die() {  # $1=role ; sets self_target_out, or exits 2
   exit 2
 }
 
-# The provider the running session IS, which is what makes a route native. Declared
-# caller wins; for a self role the author is the caller by definition; otherwise the
-# session is assumed to be the catalog [lead].
-running_provider() {  # $1=1 when the role is self-routed
-  if [ -n "$caller_declared" ]; then printf '%s\n' "$caller_declared"; return 0; fi
-  if [ "$1" -eq 1 ] && [ -n "$self_provider" ]; then printf '%s\n' "$self_provider"; return 0; fi
-  cat_val lead provider
+# The provider the running session IS, which is what makes a route native, plus how
+# we know. `native` asserts the resolved provider IS the caller; when nobody declared
+# one that assertion rests on the [lead] default, and a session that is NOT the lead
+# would run its own subagent against another vendor's model believing it was home.
+# Sets globals rather than printing: a caller would have to capture stdout in a
+# subshell, and the provenance would not survive it.
+set_running_provider() {  # $1=1 when the role is self-routed
+  if [ -n "$caller_declared" ]; then
+    running_p="$caller_declared"; caller_provenance="declared"; return 0
+  fi
+  # For a self role the author IS the caller, so an author declaration is a caller one.
+  if [ "$1" -eq 1 ] && [ -n "$self_provider" ]; then
+    running_p="$self_provider"; caller_provenance="declared"; return 0
+  fi
+  running_p="$(cat_val lead provider)"; caller_provenance="assumed-lead"
+}
+
+# Reachability, shared by resolution and the --vendors probe. These two loops have
+# drifted apart three times (self targeting, this CLI gate, self_target's status), so
+# the half they must agree on lives in one place. Policy checks (capability, tier,
+# effort, floor) stay per-loop on purpose: resolution treats a mismatch as fatal and
+# the probe treats it as "not reachable", and collapsing that would change one of them.
+# Distinct statuses so each caller applies its own policy to one shared judgement:
+# resolution treats a missing section as fatal and tracks "disabled" for its exit-4
+# contract, while the probes just skip. Returning a single boolean is what let these
+# semantics get redefined per loop in the first place.
+candidate_reachable() {  # $1=provider $2=running provider
+  local p="$1" rp="$2" en bin              # 0 usable, 2 no section, 3 disabled, 4 CLI absent
+  cat_exists "providers.$p" || return 2
+  en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
+  [ "$en" = "false" ] && return 3
+  # `binary` is the CROSS-RUNTIME entry point, so it gates a cli dispatch only. A
+  # candidate that IS the caller runs on the harness's own subagent surface, which is
+  # present by definition; demanding its CLI would strand every BYO-model harness.
+  [ -n "$rp" ] && [ "$p" = "$rp" ] && return 0
+  bin="$(cat_val "providers.$p" binary)"
+  if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then return 4; fi
+  return 0
+}
+
+# Can this provider actually SERVE the role: capability, tier, effort, ship floor.
+# Shared by the --vendors probe and the ALTERNATES count, because "how many vendors
+# could take over" is worthless if it counts providers the role would reject.
+#
+# Resolution does NOT call this. It applies the same rules with per-check policy: a
+# missing tier mapping or an unsupported effort is fatal there, while a floor
+# violation is a skip, and each carries its own message. Flattening that to one
+# boolean would lose the distinction the exit map depends on. That makes this a drift
+# boundary. delegate-resolve.test.sh pins resolution, --vendors and ALTERNATES to the
+# same verdict for a CAPABILITY rejection, and pins the one place they disagree: a
+# chain candidate with no model at the role's tier is fatal in resolution and merely
+# skipped by the probes, so --vendors can report a vendor resolution refuses to use.
+# That predates this helper and is not fixed here; changing it moves an exit code.
+candidate_serves_role() {  # $1=provider $2=req $3=tier $4=effort $5=floor_tier_idx $6=floor_eff_idx $7=effort_scale
+  local p="$1" req_="$2" tier_="$3" eff_="$4" fti="$5" fei="$6" escale="$7"
+  local caps rc_ ptier peff pidx peidx
+  if [ -n "$req_" ]; then
+    caps="$(cat_array "providers.$p" capabilities)"
+    while IFS= read -r rc_; do
+      [ -n "$rc_" ] || continue
+      printf '%s\n' "$caps" | grep -qx -- "$rc_" || return 1
+    done <<< "$req_"
+  fi
+  if [ -n "$tier_" ]; then
+    [ -n "$(cat_val "providers.$p.tiers" "$tier_")" ] || return 1
+    ptier="$tier_"
+  else
+    ptier="$(cat_val "providers.$p" default_tier)"
+  fi
+  if [ -n "$eff_" ]; then
+    printf '%s\n' "$(cat_array "providers.$p" efforts)" | grep -qx -- "$eff_" || return 1
+    peff="$eff_"
+  else
+    peff="$(cat_val "providers.$p" effort)"
+  fi
+  if [ -n "$fti" ] && [ -n "$ptier" ]; then
+    pidx="$(tier_index "$ptier")"
+    { [ -n "$pidx" ] && [ "$pidx" -ge "$fti" ]; } || return 1
+  fi
+  if [ -n "$fei" ] && [ -n "$peff" ]; then
+    peidx="$(printf '%s\n' "$escale" | grep -nx -- "$peff" | cut -d: -f1)"
+    { [ -n "$peidx" ] && [ "$peidx" -ge "$fei" ]; } || return 1
+  fi
+  return 0
 }
 
 # Suspending the author exclusion for a role that is ALSO independence-bound would
@@ -763,7 +840,7 @@ if [ "$vendors" -eq 1 ]; then
     vr_floor="$(cat_val defaults floor)"
     vr_scale="$scale_list"
     vr_eff_scale="$(cat_array efforts scale)"
-    vr_running_p="$(running_provider "$vr_role_is_self")"
+    set_running_provider "$vr_role_is_self"; vr_running_p="$running_p"
     vr_floor_idx=""; vr_floor_eff_idx=""
     if [ -n "$vr_floor" ] && [ -n "$vr_scale" ]; then
       vr_floor_idx="$(tier_index "${vr_floor%%:*}")"
@@ -776,44 +853,12 @@ if [ "$vendors" -eq 1 ]; then
     fi
     while IFS= read -r p; do
       [ -n "$p" ] || continue
-      cat_exists "providers.$p" || continue
-      en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
-      [ "$en" = "false" ] && continue
-      # Same reachability rule resolution uses, and it has to stay the same: this
-      # probe decides whether a review can happen at all, so a native route that
-      # resolves must not disappear here for want of a CLI it never calls.
-      vr_native=0
-      if [ -n "$vr_running_p" ] && [ "$p" = "$vr_running_p" ]; then vr_native=1; fi
-      bin="$(cat_val "providers.$p" binary)"
-      if [ "$vr_native" -eq 0 ] && [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi
-      if [ -n "$vr_req" ]; then
-        caps="$(cat_array "providers.$p" capabilities)"; capmiss=0
-        while IFS= read -r rc_; do
-          [ -n "$rc_" ] || continue
-          printf '%s\n' "$caps" | grep -qx -- "$rc_" || { capmiss=1; break; }
-        done <<< "$vr_req"
-        [ "$capmiss" -eq 1 ] && continue
-      fi
-      if [ -n "$vr_tier" ]; then
-        [ -n "$(cat_val "providers.$p.tiers" "$vr_tier")" ] || continue
-        ptier="$vr_tier"
-      else
-        ptier="$(cat_val "providers.$p" default_tier)"
-      fi
-      if [ -n "$vr_effort" ]; then
-        printf '%s\n' "$(cat_array "providers.$p" efforts)" | grep -qx -- "$vr_effort" || continue
-        peff="$vr_effort"
-      else
-        peff="$(cat_val "providers.$p" effort)"
-      fi
-      if [ -n "$vr_floor_idx" ] && [ -n "$ptier" ]; then
-        pidx="$(tier_index "$ptier")"
-        { [ -n "$pidx" ] && [ "$pidx" -ge "$vr_floor_idx" ]; } || continue
-      fi
-      if [ -n "$vr_floor_eff_idx" ] && [ -n "$peff" ]; then
-        peidx="$(printf '%s\n' "$vr_eff_scale" | grep -nx -- "$peff" | cut -d: -f1)"
-        { [ -n "$peidx" ] && [ "$peidx" -ge "$vr_floor_eff_idx" ]; } || continue
-      fi
+      # Exactly the reachability resolution uses, from one definition: this probe
+      # decides whether a review can happen at all, so a route that resolves must not
+      # disappear here, and one that cannot resolve must not be counted.
+      candidate_reachable "$p" "$vr_running_p" || continue
+      candidate_serves_role "$p" "$vr_req" "$vr_tier" "$vr_effort" \
+        "$vr_floor_idx" "$vr_floor_eff_idx" "$vr_eff_scale" || continue
       v="$(cat_val "providers.$p" vendor)"
       [ -n "$v" ] && printf '%s\n' "$v"
     done <<< "$vr_candidates" | awk '!seen[$0]++'
@@ -1031,26 +1076,28 @@ if [ -n "$floor" ]; then
 fi
 req="$(array_val requires "$role")"
 
-running_p="$(running_provider "$role_is_self")"
+set_running_provider "$role_is_self"
 selected=""; selected_model=""; selected_tier=""; selected_effort=""; selected_native=0; only_disabled=1
 while IFS= read -r p; do
   [ -n "$p" ] || continue
-  cat_exists "providers.$p" || {
+  # One judgement, this loop's policy. A missing section is fatal here and merely
+  # skipped by the probes; "disabled" has to stay distinguishable to keep the exit-4
+  # single-route contract, which is exactly what a boolean would have flattened.
+  #
+  # Status 2 is handled BEFORE exclusion on purpose: a routed provider that has no
+  # section is a broken table whether or not this call happens to exclude it, and
+  # checking exclusion first would make that fatal depend on who the author is.
+  candidate_reachable "$p" "$running_p"; reach_st=$?
+  if [ "$reach_st" -eq 2 ]; then
     echo "delegate-resolve: role '$role' routes to provider '$p', but no [providers.$p] section exists in ${layers[*]}" >&2
     exit 2
-  }
+  fi
   if excluded "$p"; then only_disabled=0; continue; fi
-  en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
-  [ "$en" = "false" ] && continue                    # disabled -> try the next candidate
+  [ "$reach_st" -eq 3 ] && continue                  # disabled -> only_disabled stays set
   only_disabled=0
-  # `binary` is the CROSS-RUNTIME entry point, so it only gates a cli dispatch. A
-  # candidate that IS the caller runs on the harness's own subagent surface, which is
-  # present by definition, and demanding its CLI would strand every BYO-model harness:
-  # an OpenCode or Cursor session running an Anthropic model has no `claude` binary.
+  [ "$reach_st" -eq 0 ] || continue                  # absent CLI on a cli route -> next
   candidate_native=0
   if [ -n "$running_p" ] && [ "$p" = "$running_p" ]; then candidate_native=1; fi
-  bin="$(cat_val "providers.$p" binary)"
-  if [ "$candidate_native" -eq 0 ] && [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi   # absent -> next
   if [ -n "$req" ]; then
     caps="$(cat_array "providers.$p" capabilities)"
     capmiss=0
@@ -1172,9 +1219,37 @@ notes="$(cat_val "providers.$selected" notes)"
 dispatch="cli"
 [ "$selected_native" -eq 1 ] && dispatch="native"
 
+# How many OTHER vendors could still serve an independence role once the authors are
+# excluded. One means the next outage takes independent review with it, and a caller
+# only learns that from a probe it has no reason to run. Say it on the route instead.
+alternates=""
+if [ -n "$independence" ]; then
+  # Same eligibility the probe applies. Counting a provider the role would reject
+  # would overstate the number of vendors that could actually take over, which is the
+  # one thing this field exists to report honestly.
+  alt_floor_eff_idx=""
+  if [ -n "$floor" ] && [ -n "$effort_scale" ]; then
+    alt_fe="${floor#*:}"
+    [ "$alt_fe" != "$floor" ] && [ -n "$alt_fe" ] &&
+      alt_floor_eff_idx="$(printf '%s\n' "$effort_scale" | grep -nx -- "$alt_fe" | cut -d: -f1)"
+  fi
+  alternates="$(
+    while IFS= read -r ap_; do
+      [ -n "$ap_" ] || continue
+      excluded "$ap_" && continue
+      candidate_reachable "$ap_" "$running_p" || continue
+      candidate_serves_role "$ap_" "$req" "$role_tier" "$role_effort" \
+        "$floor_idx" "$alt_floor_eff_idx" "$effort_scale" || continue
+      av_="$(cat_val "providers.$ap_" vendor)"
+      printf '%s\n' "${av_:-$ap_}"
+    done <<< "$candidates" | awk '!seen[$0]++' | grep -c .
+  )"
+fi
+
 echo "ROLE=$role"
 echo "PROVIDER=$selected"
 echo "DISPATCH=$dispatch"
+echo "CALLER=$caller_provenance"
 echo "MODEL=${model:-}"
 [ -n "$tier" ] && echo "TIER=$tier"
 [ -n "$effort" ] && echo "EFFORT=$effort"
@@ -1183,9 +1258,20 @@ echo "ENABLED=true"
 [ -n "$vendor" ] && echo "VENDOR=$vendor"
 [ -n "$binv" ] && echo "BINARY=$binv"
 [ -n "$floor" ] && echo "FLOOR=$floor"
+[ -n "$alternates" ] && echo "ALTERNATES=$alternates"
+# Repeated fields are authoritative: a consumer recovers each identity without parsing
+# a delimiter, so a vendor name can never be split or a blank component hidden by it.
+# The joined field stays for consumers written against the older contract.
+for av_out in ${author_vendors[@]+"${author_vendors[@]}"}; do echo "AUTHOR_VENDOR=$av_out"; done
 [ "${#author_vendors[@]}" -gt 0 ] && echo "AUTHOR_VENDORS=$(IFS=,; printf '%s' "${author_vendors[*]}")"
 [ -n "$driver" ] && echo "DRIVER=$driver"
 [ -n "$driver_binary" ] && echo "DRIVER_BINARY=$driver_binary"
 [ -n "$driver_channel" ] && echo "DRIVER_CHANNEL=$driver_channel"
 [ -n "$notes" ] && echo "NOTES=$notes"
+# `native` tells a session to run the work on its own subagent surface. If nobody
+# declared a caller that rests on the [lead] default, and a session that is not the
+# lead would do exactly that against another vendor's model, believing it was home.
+if [ "$dispatch" = "native" ] && [ "$caller_provenance" = "assumed-lead" ]; then
+  echo "delegate-resolve: no caller declared, so 'native' assumes this session is the [lead] provider '$selected'; pass --caller-model if it is not" >&2
+fi
 exit 0   # explicit: the last `[ -n ... ] && echo` returns 1 when a field is empty
