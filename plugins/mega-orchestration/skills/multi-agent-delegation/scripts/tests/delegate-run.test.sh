@@ -241,6 +241,114 @@ rc=$?
 set -e
 want_rc 2 "$rc" "a route omitting AUTHOR_VENDORS is refused"
 
+# Repeated fields are authoritative. Make the two encodings disagree: the repeated one
+# names the reviewer's own vendor, which must trip the independence self-check, while
+# the joined one names a different vendor that would sail past it.
+cat > "$stub_dir/delegate-resolve" <<'EOF'
+#!/usr/bin/env bash
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "CHANNEL=test"
+echo "ENABLED=true"
+echo "VENDOR=anthropic"
+echo "BINARY=$FAKE_BINARY"
+echo "AUTHOR_VENDOR=anthropic"
+echo "AUTHOR_VENDORS=openai"
+exit 0
+EOF
+chmod +x "$stub_dir/delegate-resolve"
+set +e
+FAKE_BINARY="$fake" "$stub_dir/delegate-run" --role verify --author-vendor openai --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$TMP/receipt-repeated.json" --config "$cfg" >/dev/null 2>"$TMP/run-repeated.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "the repeated author field is preferred over the joined one"
+grep -q 'author vendor' "$TMP/run-repeated.err" && ok || bad "preferring the repeated field must trip the independence self-check"
+[ ! -e "$TMP/receipt-repeated.json" ] && ok || bad "a self-review must not write a receipt"
+
+# A resolver that predates the repeated form still works through the joined fallback.
+cat > "$stub_dir/delegate-resolve" <<'EOF'
+#!/usr/bin/env bash
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "CHANNEL=test"
+echo "ENABLED=true"
+echo "VENDOR=anthropic"
+echo "BINARY=$FAKE_BINARY"
+echo "AUTHOR_VENDORS=anthropic"
+exit 0
+EOF
+chmod +x "$stub_dir/delegate-resolve"
+set +e
+FAKE_BINARY="$fake" "$stub_dir/delegate-run" --role verify --author-vendor openai --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$TMP/receipt-legacy.json" --config "$cfg" >/dev/null 2>"$TMP/run-legacy.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "the joined field still governs when no repeated field is present"
+grep -q 'author vendor' "$TMP/run-legacy.err" && ok || bad "the fallback must fail on the self-review, not on a parse"
+grep -q 'empty AUTHOR_VENDOR' "$TMP/run-legacy.err" && bad "a route with no repeated field must not report an empty record" || ok
+
+# A declared repeated form that yields nothing is a broken route, not a reason to fall
+# back to the joined one: presence decides, not count.
+cat > "$stub_dir/delegate-resolve" <<'EOF'
+#!/usr/bin/env bash
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "CHANNEL=test"
+echo "ENABLED=true"
+echo "VENDOR=anthropic"
+echo "BINARY=$FAKE_BINARY"
+echo "AUTHOR_VENDOR="
+echo "AUTHOR_VENDORS=openai"
+exit 0
+EOF
+chmod +x "$stub_dir/delegate-resolve"
+set +e
+FAKE_BINARY="$fake" "$stub_dir/delegate-run" --role verify --author-vendor openai --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$TMP/receipt-emptyrec.json" --config "$cfg" >/dev/null 2>"$TMP/run-emptyrec.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "an empty repeated record is refused"
+grep -q 'empty AUTHOR_VENDOR' "$TMP/run-emptyrec.err" && ok || bad "an empty repeated record must say so"
+[ ! -e "$TMP/receipt-emptyrec.json" ] && ok || bad "an empty repeated record must not write a receipt"
+
+# One valid plus one empty is still incomplete provenance.
+cat > "$stub_dir/delegate-resolve" <<'EOF'
+#!/usr/bin/env bash
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "CHANNEL=test"
+echo "ENABLED=true"
+echo "VENDOR=anthropic"
+echo "BINARY=$FAKE_BINARY"
+echo "AUTHOR_VENDOR=openai"
+echo "AUTHOR_VENDOR="
+exit 0
+EOF
+chmod +x "$stub_dir/delegate-resolve"
+set +e
+FAKE_BINARY="$fake" "$stub_dir/delegate-run" --role verify --author-vendor openai --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$TMP/receipt-partial.json" --config "$cfg" >/dev/null 2>"$TMP/run-partial.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "a valid record beside an empty one is refused"
+
 # An independent review runs as an isolated one-shot session ON PURPOSE, so this
 # launcher always needs a reachable CLI. A resolver that skipped its own reachability
 # check (which it does for a native route) must not leave that unverified here: the

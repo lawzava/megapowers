@@ -1461,5 +1461,217 @@ sed 's/^code_review = "self"$/code_review = "alpha"/' "$TMP/legacy-self.toml" > 
 out="$("$DR" code_review --config "$TMP/legacy-plain.toml" --models "$TMP/empty-catalog.toml" --author-vendor acme 2>&1)"; rc=$?
 check_exit "a legacy table still excludes its author unconditionally" 3 "$rc"
 
+# --- route provenance, loop agreement, encoding, independence fragility ----------
+# `native` asserts the resolved provider IS the caller. When no caller was declared
+# that assertion rests on the [lead] assumption, and a session that is NOT the lead
+# would run its own subagent against another vendor's model believing it was home.
+# The route has to say which of the two it is.
+out="$("$DR" small_impl "${SELF[@]}" --caller-model alpha-frontier 2>&1)"
+check "a declared caller is reported as declared" "CALLER=declared" "$out"
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier 2>&1)"
+check "a self role's author counts as a declared caller" "CALLER=declared" "$out"
+out="$("$DR" small_impl "${SELF[@]}" 2>&1)"
+check "an undeclared caller is reported as assumed" "CALLER=assumed-lead" "$out"
+check "the assumed route still resolves" "PROVIDER=alpha" "$out"
+err="$("$DR" small_impl "${SELF[@]}" 2>&1 >/dev/null)"
+check "an assumed native route says so on stderr" "no caller declared" "$err"
+
+# A cross-runtime route is not affected by the assumption either way.
+out="$("$DR" code_review "${SELF[@]}" --author-model alpha-frontier --caller-model alpha-frontier 2>&1)"
+check "a cli route still reports caller provenance" "CALLER=declared" "$out"
+
+# THE invariant the two candidate loops kept breaking: --vendors must list the vendor
+# that the same role actually resolves to. Every past divergence (self target, the
+# CLI gate, self_target status) violated exactly this and no test caught it.
+for probe in "small_impl --author-model alpha-frontier" \
+             "small_impl --author-model beta-frontier" \
+             "small_impl" \
+             "static_own --author-model alpha-frontier" \
+             "code_review --author-model alpha-frontier"; do
+  # shellcheck disable=SC2086
+  r_out="$("$DR" $probe "${SELF[@]}" 2>/dev/null)"; r_rc=$?
+  # Every probe here is expected to resolve; skipping a failure would let the
+  # agreement claim pass while resolution was broken.
+  check_exit "agreement probe resolves: $probe" 0 "$r_rc"
+  r_vendor="$(printf '%s\n' "$r_out" | sed -n 's/^VENDOR=//p')"
+  # shellcheck disable=SC2086
+  v_out="$("$DR" --vendors $probe "${SELF[@]}" 2>/dev/null)"
+  if printf '%s\n' "$v_out" | grep -qFx -- "$r_vendor"; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1)); printf '  FAIL --vendors omits the vendor "%s" resolves to (%s)\n' "$probe" "$r_vendor"
+  fi
+done
+
+# Same invariant where the CLI is absent, which is where the loops last diverged.
+for probe in "small_impl --author-model alpha-frontier" "static_own --author-model alpha-frontier"; do
+  # shellcheck disable=SC2086
+  r_vendor="$("$DR" $probe "${ABS[@]}" 2>/dev/null | sed -n 's/^VENDOR=//p')"
+  # shellcheck disable=SC2086
+  v_out="$("$DR" --vendors $probe "${ABS[@]}" 2>/dev/null)"
+  if [ -n "$r_vendor" ] && printf '%s\n' "$v_out" | grep -qFx -- "$r_vendor"; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1)); printf '  FAIL --vendors disagrees with resolution for "%s" on an absent CLI\n' "$probe"
+  fi
+done
+
+# Author provenance is emitted as repeated fields, so a consumer never parses a
+# delimiter. The joined field stays for compatibility.
+out="$("$DR" judge "${SELF[@]}" --author-model alpha-frontier --author-model beta-frontier 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ]; then
+  n="$(printf '%s\n' "$out" | grep -c '^AUTHOR_VENDOR=')"
+  check_exit "each author vendor is its own field" 2 "$n"
+  check "the joined field remains for compatibility" "AUTHOR_VENDORS=" "$out"
+else
+  pass=$((pass + 2))   # no third vendor to judge with here; covered on the shipped catalog
+fi
+out="$("$DR" code_review "${SELF[@]}" --author-model alpha-frontier 2>&1)"
+check "a single author is a repeated field too" "AUTHOR_VENDOR=acme" "$out"
+
+# Independence that hangs on ONE reachable alternate is a single point of failure.
+# Say so on the route, where a caller sees it, not only in a probe nobody runs.
+out="$("$DR" code_review "${SELF[@]}" --author-model alpha-frontier 2>&1)"
+check "an independence route reports its alternate count" "ALTERNATES=1" "$out"
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier 2>&1)"
+case "$out" in
+  *ALTERNATES=*) fail=$((fail + 1)); echo "  FAIL a non-independence role has no alternates to report" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+
+# A vendor that is reachable but cannot SERVE the role is not an alternate. Counting
+# it would report a spare route that does not exist, which is the one thing this
+# number must never do. `gamma` is reachable and a distinct vendor, but the role needs
+# a capability it does not declare.
+cat > "$TMP/alternates.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[providers.author]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+capabilities = ["code", "vision"]
+[providers.author.tiers]
+frontier = "author-1"
+[providers.real]
+vendor  = "globex"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+capabilities = ["code", "vision"]
+[providers.real.tiers]
+frontier = "real-1"
+[providers.gamma]
+vendor  = "initech"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+capabilities = ["code"]
+[providers.gamma.tiers]
+frontier = "gamma-1"
+[defaults]
+floor = "strong:low"
+[requires]
+visual_verify = ["vision"]
+[roles]
+visual_verify = "author"
+# The INELIGIBLE candidate precedes the valid one on purpose: with the good provider
+# first, resolution never evaluates the rejection and the agreement claim is vacuous.
+[fallbacks]
+visual_verify = ["author", "gamma", "real"]
+[role_tiers]
+visual_verify = "frontier"
+[role_efforts]
+visual_verify = "high"
+[independence]
+visual_verify = "author_vendor"
+EOF
+out="$("$DR" visual_verify --config "$TMP/alternates.toml" --models "$TMP/empty-catalog.toml" --author-vendor acme 2>&1)"; rc=$?
+check_exit "the capability-filtered role resolves" 0 "$rc"
+check "it routes to the capable alternate" "PROVIDER=real" "$out"
+check "alternates exclude a vendor that cannot serve the role" "ALTERNATES=1" "$out"
+
+# Resolution keeps its own eligibility block because its failures are per-check fatal
+# or skip, which the probes deliberately flatten to "unusable". That difference is
+# intentional, but it is also a drift boundary: a rule added to one and not the others
+# would let --vendors and ALTERNATES promise a route resolution rejects. Pin the
+# agreement instead of assuming it.
+ALT=(--config "$TMP/alternates.toml" --models "$TMP/empty-catalog.toml")
+v_out="$("$DR" --vendors visual_verify "${ALT[@]}" --author-vendor acme 2>/dev/null)"
+case "$v_out" in
+  *initech*) fail=$((fail + 1)); echo "  FAIL --vendors counts a vendor that cannot serve the role" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+check "--vendors keeps the vendor that can serve it" "globex" "$v_out"
+
+# Same agreement for a TIER mismatch rather than a capability one: gamma declares the
+# capability but has no model at the tier the role requires.
+sed 's/^capabilities = \["code"\]$/capabilities = ["code", "vision"]/' "$TMP/alternates.toml" > "$TMP/alternates-tier.toml"
+python3 - "$TMP/alternates-tier.toml" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p).read()
+s = s.replace('[providers.gamma.tiers]\nfrontier = "gamma-1"',
+              '[providers.gamma.tiers]\nstrong = "gamma-1"')
+open(p, 'w').write(s)
+PY
+FLOOR_CFG=(--config "$TMP/alternates-tier.toml" --models "$TMP/empty-catalog.toml")
+# KNOWN DIVERGENCE, pinned rather than assumed away. A chain candidate that has no
+# model at the role's tier is FATAL in resolution (a precise config error) but merely
+# unreachable to --vendors, which skips it. So the probe can report two vendors on a
+# config where resolution exits 2, meaning it promises a route that cannot be taken.
+# Both behaviours predate this change; this asserts what they actually are so the
+# inconsistency is visible and cannot drift further unnoticed.
+r_out="$("$DR" visual_verify "${FLOOR_CFG[@]}" --author-vendor acme 2>&1)"; r_rc=$?
+check_exit "a tier-less chain candidate is fatal in resolution" 2 "$r_rc"
+check "the fatal names the tier it cannot serve" "no model mapping" "$r_out"
+v_out="$("$DR" --vendors visual_verify "${FLOOR_CFG[@]}" --author-vendor acme 2>/dev/null)"
+case "$v_out" in
+  *initech*) fail=$((fail + 1)); echo "  FAIL --vendors counts a tier-ineligible vendor" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+check "--vendors still reports the vendor that can serve the role" "globex" "$v_out"
+
+# A routed provider with no section is a broken table regardless of who the author is,
+# so exclusion must not be able to turn that fatal into a silent skip.
+cat > "$TMP/missing-excluded.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[providers.real]
+vendor  = "globex"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.real.tiers]
+frontier = "real-1"
+[defaults]
+floor = "strong:low"
+[roles]
+code_review = "ghost"
+[fallbacks]
+code_review = ["ghost", "real"]
+[role_tiers]
+code_review = "frontier"
+[role_efforts]
+code_review = "high"
+[independence]
+code_review = "author_vendor"
+EOF
+out="$("$DR" code_review --config "$TMP/missing-excluded.toml" --models "$TMP/empty-catalog.toml" --author-vendor globex --exclude ghost 2>&1)"; rc=$?
+check_exit "an excluded routed provider with no section is still fatal" 2 "$rc"
+check "the missing-section error names the provider" "ghost" "$out"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
