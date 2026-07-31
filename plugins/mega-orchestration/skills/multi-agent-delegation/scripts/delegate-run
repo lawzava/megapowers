@@ -25,17 +25,21 @@ verdict_schema="$here/../schemas/review-verdict-v1.json"
 # asserts the two agree on every tree shape the pair is expected to survive.
 
 usage() {
-  echo "usage: delegate-run --role <role> --author-vendor <vendor>... --artifact <worktree|file> --claim <text> [--receipt <file>] [--screenshot <file>]... [--transcript-dir <dir>] [--config <file>] [--models <file>]" >&2
+  echo "usage: delegate-run --role <role> (--author-vendor <vendor> | --author-model <id> | --author-provider <name>)... --artifact <worktree|file> --claim <text> [--receipt <file>] [--screenshot <file>]... [--transcript-dir <dir>] [--config <file>] [--models <file>]" >&2
   echo "       --transcript-dir retains this dispatch's prompt, review package, and raw provider output under <dir>. Discarded when omitted." >&2
 }
 
 role="" artifact="" claim="" receipt="" cfg="" models="" transcript_dir=""
 author_vendors=()
+author_models=()
+author_providers=()
 screenshots=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --role) [ $# -ge 2 ] || { usage; exit 2; }; role="$2"; shift 2 ;;
     --author-vendor) [ $# -ge 2 ] || { usage; exit 2; }; author_vendors+=("$2"); shift 2 ;;
+    --author-model) [ $# -ge 2 ] || { usage; exit 2; }; author_models+=("$2"); shift 2 ;;
+    --author-provider) [ $# -ge 2 ] || { usage; exit 2; }; author_providers+=("$2"); shift 2 ;;
     --artifact) [ $# -ge 2 ] || { usage; exit 2; }; artifact="$2"; shift 2 ;;
     --claim) [ $# -ge 2 ] || { usage; exit 2; }; claim="$2"; shift 2 ;;
     --receipt) [ $# -ge 2 ] || { usage; exit 2; }; receipt="$2"; shift 2 ;;
@@ -48,7 +52,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$role" ] && [ -n "$artifact" ] && [ -n "$claim" ] && [ "${#author_vendors[@]}" -gt 0 ] || {
+# Authorship may be declared as a vendor or as a model id the resolver maps to one.
+# A BYO-model harness knows only the latter, so requiring the vendor name would put
+# independent review out of reach for it.
+[ -n "$role" ] && [ -n "$artifact" ] && [ -n "$claim" ] &&
+  { [ "${#author_vendors[@]}" -gt 0 ] || [ "${#author_models[@]}" -gt 0 ] || [ "${#author_providers[@]}" -gt 0 ]; } || {
   usage
   exit 2
 }
@@ -126,7 +134,11 @@ if [ "$role" = "visual_verify" ] && [ "${#screenshots[@]}" -eq 0 ]; then
 fi
 
 resolve_args=("$role")
-for vendor in "${author_vendors[@]}"; do resolve_args+=(--author-vendor "$vendor"); done
+for vendor in ${author_vendors[@]+"${author_vendors[@]}"}; do resolve_args+=(--author-vendor "$vendor"); done
+for amodel in ${author_models[@]+"${author_models[@]}"}; do resolve_args+=(--author-model "$amodel"); done
+for aprov in ${author_providers[@]+"${author_providers[@]}"}; do resolve_args+=(--author-provider "$aprov"); done
+# Caller identity is deliberately NOT forwarded: this launcher always crosses into a
+# one-shot CLI session, so a native route it could not use is not worth resolving.
 [ -n "$cfg" ] && resolve_args+=(--config "$cfg")
 [ -n "$models" ] && resolve_args+=(--models "$models")
 set +e
@@ -149,6 +161,48 @@ binary="$(route_val BINARY)"
   echo "delegate-run: resolved route omitted provider provenance" >&2
   exit 2
 }
+# This launcher always crosses into a one-shot session, deliberately: an independent
+# review must not inherit the author's plugins, hooks, memory, or project
+# instructions. So it always needs a reachable CLI, including on a DISPATCH=native
+# route, where the resolver skips its own reachability check because a native route
+# is meant to run on the harness's own subagent surface instead of a CLI. Verify it
+# here rather than discovering it as a provider failure mid-dispatch.
+command -v "$binary" >/dev/null 2>&1 || {
+  echo "delegate-run: reviewer CLI '$binary' for provider '$provider' is not installed; an independent review runs as an isolated one-shot session and cannot use a native in-harness route" >&2
+  exit 2
+}
+# The resolver echoes every author vendor it applied, including the ones it derived
+# from --author-model. Adopt that list so the independence self-check below and the
+# receipt both record who actually authored the artifact, not just how it was named.
+# This fails closed: the caller's own input is discarded first, so a route that omits
+# the field cannot leave unverified caller input standing in for resolver provenance.
+resolved_authors="$(route_val AUTHOR_VENDORS)"
+# Validate the raw field before decoding: `read -a` discards trailing empty fields,
+# so "openai," would decode to one good identity and hide that a second was blank.
+case "$resolved_authors" in
+  ,*|*,|*,,*)
+    echo "delegate-run: resolved route reported a malformed AUTHOR_VENDORS field: '$resolved_authors'" >&2
+    exit 2 ;;
+esac
+author_vendors=()
+[ -n "$resolved_authors" ] && IFS=',' read -r -a author_vendors <<< "$resolved_authors"
+[ "${#author_vendors[@]}" -gt 0 ] || {
+  echo "delegate-run: resolved route omitted the author vendors it applied" >&2
+  exit 2
+}
+# Length is not emptiness: a field of separators decodes to blank identities, which
+# would compare unequal to every real vendor and pass the check below vacuously.
+for author in "${author_vendors[@]}"; do
+  case "$author" in
+    ""|*[!$' \t']*) : ;;   # empty is caught here; anything with a non-blank char is real
+    *) echo "delegate-run: resolved route reported a whitespace-only author vendor" >&2
+       exit 2 ;;
+  esac
+  [ -n "$author" ] || {
+    echo "delegate-run: resolved route reported a blank author vendor" >&2
+    exit 2
+  }
+done
 for author in "${author_vendors[@]}"; do
   [ "$author" != "$vendor" ] || {
     echo "delegate-run: resolver returned author vendor '$vendor' for independent review" >&2

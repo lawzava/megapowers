@@ -58,7 +58,11 @@ setting are compared by tier only.
 
 `scripts/delegate-resolve <role>` resolves the config executably (`--preset
 <name>` for presets, `--author-vendor <vendor>` once per artifact-author vendor
-for independent roles, `--exclude <vendor|provider>` to drop a backend,
+for independent roles, `--author-model <id>` to name an author by model id and
+let the resolver derive the vendor, `--author-provider <name>` to name the
+author's own backend when an id is not unique, `--caller-model <id>` /
+`--caller-provider <name>` to say which session is RUNNING (native dispatch only,
+never exclusion), `--exclude <vendor|provider>` to drop a backend,
 `--exclude-lead` as a compatibility exclusion, `--models <file>` to pin
 the catalog, `--lead` to print the declared orchestrator, `--where` to print
 the active config layers, `--check` to validate the table, `--list` and
@@ -104,7 +108,65 @@ this is executable, not advisory. Pass every artifact author using repeatable
 the fallback chain past every matching vendor. `--exclude-lead` does not prove
 authorship and cannot satisfy this policy. If no independent provider is
 available, resolution fails rather than handing the work back to an author's
-vendor. small_impl stays single-route because it is not an independence role.
+vendor.
+
+small_impl defaults to `self`: the caller's own provider, taken from
+`--author-model`/`--author-vendor` or the catalog `[lead]`. It ships that way
+because a scoped implementation has no independence requirement, so leaving the
+vendor for it spends a third-party call and buys nothing. A role cannot be both
+`self` and `[independence]`-bound; `--check` rejects that combination.
+
+`visual` and `browser_test` are the exception in the other direction: they name a
+provider for capability and cost (the computer-use bench), not for independence,
+so they can leave the caller's vendor without an independence policy behind them.
+Read `[roles]` rather than inferring a role's vendor from whether it is listed
+under `[independence]`.
+
+Announce your own identity rather than assuming it. A harness always knows the
+model id it is running, so `--author-model claude-opus-5` works from any session
+without hardcoding a vendor name per harness. This matters for BYO-model runtimes
+(OpenCode, Cursor CLI, pi), which have no fixed vendor: their vendor is whichever
+model is configured, so it can only be reported at runtime, never declared in a
+config file.
+
+An id is only an identity while it is unique. Open-weights models are reachable
+through more than one host, so the same id can appear under several providers:
+
+- Different vendors: `--author-model` is refused (exit 2), because excluding
+  either one would leave the artifact's actual author eligible to review it.
+  `--check` reports it wherever it appears in the catalog.
+- One vendor, several providers: independence is unaffected, so review roles
+  resolve normally. A `self` role is refused, because it promises the caller's
+  own backend and the id does not say which one. `--author-provider <name>`
+  names it and still contributes that provider's vendor to the exclusion set.
+
+Identity splits along two axes. **Who wrote the artifact** (`--author-*`) drives
+exclusion and receipt provenance. **Who is running** (`--caller-model` /
+`--caller-provider`) drives native dispatch only, never exclusion, so declaring
+the caller can never make a review look independent. The two coincide for a
+`self` role and differ for every review of someone else's work: the author is
+excluded while the route lands on the caller, which is a native dispatch. With no
+caller declared the session is assumed to be the catalog `[lead]`.
+
+The author flags answer two different questions, and only one of them wants a
+single answer:
+
+- **Who must be excluded** (every independence role). Repeating the flags is how
+  you declare several artifact authors, which is what `judge` is for: each one
+  contributes a vendor and all of them are excluded. Multiple identities are
+  normal here and are never a conflict.
+- **Who is calling** (a `self` role). There is one caller, so every flag
+  occurrence is read as an assertion about it and they intersect. Several ids
+  naming the same provider (a lead and its subagent on different tiers of one
+  backend) answer the question; occurrences that share no provider are refused as
+  contradictory, and an intersection still holding two is refused as ambiguous.
+
+Authorship is always a vendor claim, whatever you name it with. `--author-vendor`
+accepts a provider name for convenience and normalizes it to that provider's
+vendor before excluding, so naming one backend excludes its siblings too. A value
+matching no declared vendor or provider is rejected (exit 2) rather than treated
+as an exclusion of nobody: a placeholder author is how a review comes back
+"independent" without having excluded anyone.
 
 For read-only independent review, prefer
 `scripts/delegate-run --role ROLE --author-vendor VENDOR --artifact
@@ -234,10 +296,11 @@ equals `review-diff-id`'s across the tree shapes the pair is expected to survive
 Current assignments live in `[roles]`; the rationale and its date sit in the
 comment above that table in delegates.toml. The stable shape:
 
-- plan_review, code_review, and small_impl fit a provider that handles
-  well-specified, testable, isolated work with a clear acceptance test and a
-  bounded module, plus the independent adversarial pass on risky code
-  (billing, auth, concurrency). Word the dispatch per the resolved provider's
+- plan_review and code_review fit a provider that handles the independent
+  adversarial pass on risky code (billing, auth, concurrency). small_impl wants
+  the same shape of work, well-specified and testable against a clear acceptance
+  test in a bounded module, but resolves in-vendor because nothing about it
+  requires a second opinion. Word the dispatch per the resolved provider's
   reference file (`references/providers/`): a contract-shaped prompt with an
   output schema beats added reasoning.
 - visual and browser_test route to a computer-use capable provider (the
@@ -274,6 +337,37 @@ lead re-runs the tests before believing a task is done.
 
 ## Channels
 
+`DISPATCH` on a resolved route says which kind of call to make, and it is the
+field to branch on:
+
+- `DISPATCH=native`: the route landed on your OWN provider. Run it with the
+  harness's own primitive (Claude Code subagents or a saved workflow, Codex
+  native subagents, whatever the runtime gives you). `CHANNEL` and `BINARY`
+  describe the cross-runtime path and do not apply. Invoking your own CLI here
+  would spawn a cold session, throw away the context that made delegating worth
+  doing, and bill for it twice.
+- `DISPATCH=cli`: the route crosses to another provider. Use `CHANNEL`/`BINARY`
+  and the resolved provider's reference file.
+
+Per-harness native primitives are mapped in
+`mega-orchestration:orchestrating`'s `references/harness-primitives.md`. The
+resolver decides this by comparing the resolved provider against the RUNNING
+session, so pass `--caller-model <your model id>` whenever you are not the
+catalog lead. Reviewing another agent's work is the case that needs it: without
+it the artifact's provider would be mistaken for the running one, and your own
+route would be treated as foreign.
+
+Declaring yourself is safe on any config that declares the policy, which is every
+config that ships here. Author exclusion applies to roles carrying an
+`[independence]` entry, so identifying yourself does not cost you your own vendor
+on a role that never asked for a second opinion.
+
+The exception is a legacy table: a config with no `[independence]` section that
+also never uses the `self` sentinel predates per-role policy, and there author
+exclusion stays unconditional, so declaring yourself does exclude your vendor
+everywhere. Using `self` anywhere proves a config is not one of those. `--exclude`
+stays the policy-free way to drop a backend on any config.
+
 Prefer the native orchestration surface of the tool you are already in; when
 crossing runtimes, use the public CLI or SDK path first. Per-provider channel
 mechanics (auth and sandbox caveats, thread resume, MCP fallbacks) live in the
@@ -296,7 +390,9 @@ user plugins, hooks, memory, and project instructions, but enterprise-managed
 Claude configuration may still apply. Both paths are one-shot and receive a
 self-contained prompt.
 
-Routes name CLIs because CLI-first is what stays portable across harnesses. Use
-a harness-native async channel for a long-running delegate call where one
+Routes name CLIs because CLI-first is what stays portable across harnesses, but
+that portability is for CROSSING runtimes. Inside your own, the harness's teams,
+subagents, and workflows are the better instrument and `DISPATCH=native` says so.
+Use a harness-native async channel for a long-running delegate call where one
 exists. Megapowers routes work between models you run yourself, so nothing here
 crosses an organizational trust boundary.

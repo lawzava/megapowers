@@ -30,11 +30,24 @@
 # Resolution walks the role's fallback chain (or its single [roles] provider when it
 # has none), skipping any candidate that is --excluded, disabled, or whose CLI is not
 # installed (checked with `command -v <binary>`: a route to an absent CLI is a
-# fabricated primitive). The first usable candidate wins.
+# fabricated primitive). The first usable candidate wins. It prints DISPATCH=native
+# when the winner IS the caller, meaning run this with the harness's own subagent or
+# workflow rather than shelling out to your own CLI.
+#
+# A role whose [roles] value is `self` resolves to the CALLER's own provider instead:
+# --author-model / --author-vendor when given, else the catalog [lead]. That is the
+# default for roles with no [independence] policy, so an ordinary delegated step costs
+# no third-party call. Independence roles keep their cross-vendor chains.
+#
+# DISPATCH says HOW to run the resolved route: `native` when it landed on the caller's
+# own provider, where the harness's own subagent/team/workflow is the right
+# instrument and CHANNEL/BINARY do not apply, or `cli` when it crosses runtimes.
 #
 # Usage:
 #   delegate-resolve <role> [--config <file>] [--models <file>]
-#                    [--author-vendor <vendor>]... [--exclude <vendor|provider>]... [--list]
+#                    [--author-vendor <vendor>]... [--author-model <id>]...
+#                    [--author-provider <name>]...
+#                    [--exclude <vendor|provider>]... [--list]
 #   delegate-resolve --preset <name> [--config <file>]
 #   delegate-resolve --list-presets [--config <file>]
 #   delegate-resolve [<role>] --vendors [--config <file>]  # reachable vendors, one/line
@@ -53,11 +66,11 @@ shipped="$here/../delegates.toml"   # scripts/../delegates.toml
 . "$here/lib-toml.sh"
 
 usage() {
-  echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--author-vendor <vendor>]... [--exclude <vendor|provider>]... [--list]" >&2
+  echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--author-vendor <vendor>]... [--author-model <id>]... [--author-provider <name>]... [--exclude <vendor|provider>]... [--list]" >&2
   echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --vendors | --where | --lead | --check" >&2
 }
 
-role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; vendors=0; cfg=""; mcfg=""; excludes=(); author_vendors=()
+role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; vendors=0; cfg=""; mcfg=""; excludes=(); author_vendors=(); author_models=(); author_providers=(); caller_models=(); caller_providers=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
@@ -68,6 +81,14 @@ while [ $# -gt 0 ]; do
               excludes+=("$2"); shift 2 ;;
     --author-vendor) [ $# -ge 2 ] || { echo "delegate-resolve: --author-vendor needs a vendor name" >&2; usage; exit 2; }
               author_vendors+=("$2"); shift 2 ;;
+    --author-model) [ $# -ge 2 ] || { echo "delegate-resolve: --author-model needs a model id" >&2; usage; exit 2; }
+              author_models+=("$2"); shift 2 ;;
+    --author-provider) [ $# -ge 2 ] || { echo "delegate-resolve: --author-provider needs a provider name" >&2; usage; exit 2; }
+              author_providers+=("$2"); shift 2 ;;
+    --caller-model) [ $# -ge 2 ] || { echo "delegate-resolve: --caller-model needs a model id" >&2; usage; exit 2; }
+              caller_models+=("$2"); shift 2 ;;
+    --caller-provider) [ $# -ge 2 ] || { echo "delegate-resolve: --caller-provider needs a provider name" >&2; usage; exit 2; }
+              caller_providers+=("$2"); shift 2 ;;
     --preset) [ $# -ge 2 ] || { echo "delegate-resolve: --preset needs a name" >&2; usage; exit 2; }
               preset="$2"; shift 2 ;;
     --list) list=1; shift ;;
@@ -257,6 +278,301 @@ provider_model() {  # $1=provider ; prints "model<TAB>tier"
 scale_list="$(cat_array tiers scale)"   # empty on v1 configs
 tier_index() { printf '%s\n' "$scale_list" | grep -nx -- "$1" | cut -d: -f1; }
 
+# --- who is asking -------------------------------------------------------------------
+# A harness always knows the model id it is running; it does not necessarily know
+# the vendor name this catalog files that model under, and a BYO-model harness
+# (OpenCode, Cursor CLI, pi) has no fixed vendor to hardcode at all. --author-model
+# derives the vendor, so an instruction file says "pass your model id" once instead
+# of pinning a vendor per harness. Both schemas are searched: a tier entry and v1's
+# bare `model` key.
+providers_for_model() {  # $1=model id -> every provider declaring it, one per line
+  local want="$1" p t m
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    m="$(cat_val "providers.$p" model)"
+    if [ "$m" = "$want" ]; then printf '%s\n' "$p"; continue; fi
+    while IFS= read -r t; do
+      [ -n "$t" ] || continue
+      m="$(cat_val "providers.$p.tiers" "$t")"
+      [ "$m" = "$want" ] && { printf '%s\n' "$p"; break; }
+    done <<< "$scale_list"
+  done <<< "$(providers_list)"
+}
+
+vendors_of_providers() {  # stdin: provider names -> their distinct vendors
+  local p v
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    v="$(cat_val "providers.$p" vendor)"
+    printf '%s\n' "${v:-$p}"
+  done | awk '!seen[$0]++'
+}
+
+# self_provider is the caller's own provider: the target for a `self`-routed role,
+# and the thing an independence role routes AWAY from. An author model contributes
+# its vendor to author_vendors, so independence behaves identically either way.
+self_provider=""; self_ambiguous=""; self_identity_conflict=""
+# Each identity FLAG OCCURRENCE is one assertion about the single caller a `self`
+# role has, so every occurrence narrows the answer and they all intersect. A flag
+# whose token is ambiguous contributes a disjunction (the caller is one of these),
+# which is why intersecting occurrences can resolve what none of them resolves alone.
+self_candidates=""; self_sources=0; self_declared=""
+dedupe_lines() { printf '%s\n' "$1" | grep . | awk '!seen[$0]++'; }
+add_identity_set() {  # $1=providers this occurrence allows, $2=how it was declared
+  local set_; set_="$(dedupe_lines "$1")"
+  [ -n "$set_" ] || return 0
+  self_declared="$self_declared${self_declared:+, }$2"
+  if [ "$self_sources" -eq 0 ]; then
+    self_candidates="$set_"
+  else
+    self_candidates="$(printf '%s\n' "$self_candidates" | grep -Fxf <(printf '%s\n' "$set_"))"
+  fi
+  self_sources=$((self_sources + 1))
+  [ -n "$(printf '%s\n' "$self_candidates" | grep .)" ] || self_identity_conflict="yes"
+}
+
+# --author-vendor takes a vendor OR a provider name, but authorship is a VENDOR
+# claim: excluding only the named provider would leave a sibling provider of the same
+# vendor eligible to review its own author's work. Normalize to the vendor up front,
+# so both the exclusion set and the echoed AUTHOR_VENDORS speak vendors.
+# A provider name and a vendor name share this flag's namespace, so one token can hit
+# both. Preferring either silently would normalize to the wrong vendor and leave the
+# intended author eligible, so a token that means two different vendors is refused;
+# --author-provider addresses the provider namespace on its own.
+vendor_for_author_token() {  # $1=vendor or provider name -> vendor; 1 none, 2 shadowed
+  local tok="$1" p v as_provider="" as_vendor=""
+  if cat_exists "providers.$tok"; then
+    v="$(cat_val "providers.$tok" vendor)"
+    as_provider="${v:-$tok}"
+  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    [ "$(cat_val "providers.$p" vendor)" = "$tok" ] && { as_vendor="$tok"; break; }
+  done <<< "$(providers_list)"
+  if [ -n "$as_provider" ] && [ -n "$as_vendor" ] && [ "$as_provider" != "$as_vendor" ]; then
+    return 2
+  fi
+  [ -n "$as_provider" ] && { printf '%s\n' "$as_provider"; return 0; }
+  [ -n "$as_vendor" ] && { printf '%s\n' "$as_vendor"; return 0; }
+  return 1
+}
+if [ "${#author_vendors[@]}" -gt 0 ]; then
+  normalized_authors=()
+  for av in "${author_vendors[@]}"; do
+    [ -n "$av" ] || { echo "delegate-resolve: --author-vendor cannot be empty" >&2; exit 2; }
+    nv="$(vendor_for_author_token "$av")"; tok_rc=$?   # this script runs without errexit
+    case "$tok_rc" in
+      2) echo "delegate-resolve: --author-vendor '$av' names both a provider (vendor '$(cat_val "providers.$av" vendor)') and a vendor: say which with --author-provider, or name the vendor that is not also a provider" >&2
+         exit 2 ;;
+      # An identity that names nothing excludes nobody, which would let a review look
+      # independent while routing straight back to the author. Treat it as the typo it is.
+      1) echo "delegate-resolve: --author-vendor '$av' names no vendor or provider in the catalog: it would exclude nothing" >&2
+         exit 2 ;;
+    esac
+    normalized_authors+=("$nv")
+  done
+  author_vendors=("${normalized_authors[@]}")
+fi
+explicit_author_vendors=(${author_vendors[@]+"${author_vendors[@]}"})
+
+for am in ${author_models[@]+"${author_models[@]}"}; do
+  [ -n "$am" ] || { echo "delegate-resolve: --author-model cannot be empty" >&2; exit 2; }
+  am_providers="$(providers_for_model "$am")"
+  [ -n "$am_providers" ] || {
+    echo "delegate-resolve: --author-model '$am' matches no model in any [providers.*] tier map or model key" >&2
+    exit 2
+  }
+  # Open-weights models are reachable through more than one host, so one id can sit
+  # under several providers. That is harmless while they share a vendor. Across
+  # vendors the id no longer identifies an author: excluding the wrong one would let
+  # the artifact's actual author be selected as its own reviewer, so refuse rather
+  # than pick. --author-vendor is the unambiguous way to say it.
+  am_vendors="$(printf '%s\n' "$am_providers" | vendors_of_providers)"
+  if [ "$(printf '%s\n' "$am_vendors" | grep -c .)" -gt 1 ]; then
+    echo "delegate-resolve: --author-model '$am' is declared by more than one vendor ($(printf '%s' "$am_vendors" | tr '\n' ' ')): it cannot identify the author, so pass --author-vendor instead" >&2
+    exit 2
+  fi
+  author_vendors+=("$am_vendors")
+  # One vendor reachable through two hosts leaves independence intact (either match
+  # excludes the same vendor) but does NOT say which backend the caller is, so this
+  # occurrence contributes all of them and the intersection decides.
+  add_identity_set "$am_providers" "--author-model $am"
+done
+# An author may also name its provider outright. This still contributes that
+# provider's VENDOR to the exclusion set, so disambiguating self-routing cannot
+# weaken an independence role the way a bare provider name in --author-vendor would.
+for ap in ${author_providers[@]+"${author_providers[@]}"}; do
+  [ -n "$ap" ] || { echo "delegate-resolve: --author-provider cannot be empty" >&2; exit 2; }
+  cat_exists "providers.$ap" || {
+    echo "delegate-resolve: --author-provider '$ap' has no [providers.$ap] section" >&2
+    exit 2
+  }
+  apv="$(cat_val "providers.$ap" vendor)"
+  author_vendors+=("${apv:-$ap}")
+  add_identity_set "$ap" "--author-provider $ap"
+done
+
+# A `self` role has exactly ONE caller, so the declared identity has to name exactly
+# one provider. Each flag that was passed CONSTRAINS the answer rather than
+# overriding the others: naming a provider disambiguates a shared model id precisely
+# because that provider is one of the id's candidates, so the answer is their
+# intersection. Precedence instead would silently discard whichever claim lost, and
+# taking the first of an ambiguous set would route a self role to a sibling backend.
+for eav in ${explicit_author_vendors[@]+"${explicit_author_vendors[@]}"}; do
+  add_identity_set "$(
+    while IFS= read -r p_; do
+      [ -n "$p_" ] || continue
+      # `vendor` is optional; a provider without one is identified by its own name,
+      # exactly as vendors_of_providers and vendor_for_author_token treat it.
+      pv_="$(cat_val "providers.$p_" vendor)"
+      [ "${pv_:-$p_}" = "$eav" ] && printf '%s\n' "$p_"
+    done <<< "$(providers_list)"
+  )" "--author-vendor $eav"
+done
+
+# AUTHOR_VENDORS joins these with commas in a line-oriented format, and consumers
+# split that field to recover the identities. A vendor whose name contains a comma is
+# therefore unrepresentable: emitting it would hand a consumer two vendors that are
+# not the one excluded, silently weakening a check meant to fail closed.
+for av in ${author_vendors[@]+"${author_vendors[@]}"}; do
+  case "$av" in
+    *,*) echo "delegate-resolve: vendor '$av' contains a comma, which the AUTHOR_VENDORS field cannot represent: rename it in the catalog" >&2
+         exit 2 ;;
+  esac
+done
+
+# WHO IS RUNNING is a different question from WHO WROTE IT, and they coincide only for
+# a self role. Reviewing another agent's work is the ordinary case: the author is
+# excluded while the route lands on the caller, which is a native dispatch. Deriving
+# nativeness from the author would mark the ARTIFACT's provider native and the running
+# session foreign, then drop the session's own route when its CLI is missing. Caller
+# identity never enters the exclusion set or the receipt: it says where work runs.
+caller_declared=""; caller_conflict=""
+caller_candidates=""; caller_sources=0
+add_caller_set() {  # $1=providers this occurrence allows
+  local set_; set_="$(dedupe_lines "$1")"
+  [ -n "$set_" ] || return 0
+  if [ "$caller_sources" -eq 0 ]; then
+    caller_candidates="$set_"
+  else
+    caller_candidates="$(printf '%s\n' "$caller_candidates" | grep -Fxf <(printf '%s\n' "$set_"))"
+  fi
+  caller_sources=$((caller_sources + 1))
+  [ -n "$(printf '%s\n' "$caller_candidates" | grep .)" ] || caller_conflict="yes"
+}
+for cm in ${caller_models[@]+"${caller_models[@]}"}; do
+  [ -n "$cm" ] || { echo "delegate-resolve: --caller-model cannot be empty" >&2; exit 2; }
+  cm_providers="$(providers_for_model "$cm")"
+  [ -n "$cm_providers" ] || {
+    echo "delegate-resolve: --caller-model '$cm' matches no model in any [providers.*] tier map or model key" >&2
+    exit 2
+  }
+  add_caller_set "$cm_providers"
+done
+for cp in ${caller_providers[@]+"${caller_providers[@]}"}; do
+  [ -n "$cp" ] || { echo "delegate-resolve: --caller-provider cannot be empty" >&2; exit 2; }
+  cat_exists "providers.$cp" || {
+    echo "delegate-resolve: --caller-provider '$cp' has no [providers.$cp] section" >&2
+    exit 2
+  }
+  add_caller_set "$cp"
+done
+caller_candidates="$(dedupe_lines "$caller_candidates")"
+if [ -n "$caller_conflict" ]; then
+  echo "delegate-resolve: the declared caller identities share no provider, so they cannot describe one running session" >&2
+  exit 2
+fi
+case "$(printf '%s\n' "$caller_candidates" | grep -c .)" in
+  0) : ;;
+  1) caller_declared="$caller_candidates" ;;
+  *) echo "delegate-resolve: the declared caller identity names more than one provider ($(printf '%s' "$caller_candidates" | tr '\n' ' ')): name the running session's backend with --caller-provider" >&2
+     exit 2 ;;
+esac
+
+self_candidates="$(dedupe_lines "$self_candidates")"
+if [ -z "$self_identity_conflict" ]; then
+  case "$(printf '%s\n' "$self_candidates" | grep -c .)" in
+    0) : ;;                                 # no identity declared: [lead] answers
+    1) self_provider="$self_candidates" ;;
+    *) self_ambiguous="$(printf '%s' "$self_candidates" | tr '\n' ' ')" ;;
+  esac
+fi
+
+# `self` keeps a role inside the caller's own vendor. Resolution order: the author
+# the caller declared, then the catalog [lead] for a session that declared none.
+# Returns 2 when the declared identity names more than one provider: falling back to
+# [lead] there would silently route to a DIFFERENT backend than the one asking, which
+# is exactly what `self` promises not to do.
+# A self role's author IS its caller, so a declared caller constrains the answer here
+# rather than overriding it: short-circuiting to the caller would route to one provider
+# while recording another as the author, and would let a broken author identity through.
+self_target() {
+  [ -n "$self_identity_conflict" ] && return 3
+  if [ -z "$self_provider" ] && [ -n "$self_ambiguous" ]; then return 2; fi
+  if [ -n "$caller_declared" ] && [ -n "$self_provider" ] && [ "$caller_declared" != "$self_provider" ]; then
+    return 4
+  fi
+  local t="${caller_declared:-${self_provider:-$(cat_val lead provider)}}"
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
+}
+
+# Every path that needs a self target goes through here, so the diagnostic and the
+# exit code cannot drift between them. All of these are bad INPUT, never an
+# unavailable route: reporting them as exit 3 would read as "no route", which callers
+# are told to accept by saying the check did not run, so a typo would skip a review.
+# Sets self_target_out rather than printing, because a caller would have to capture
+# stdout in a command substitution and `exit` there would only kill that subshell.
+resolve_self_target_or_die() {  # $1=role ; sets self_target_out, or exits 2
+  local st
+  self_target_out="$(self_target)"; st=$?
+  [ "$st" -eq 0 ] && return 0
+  case "$st" in
+    4) echo "delegate-resolve: role '$1' routes to 'self', but the declared caller ('$caller_declared') is not the declared author ('$self_provider'): a self role runs where its author is, so these cannot differ" >&2 ;;
+    3) echo "delegate-resolve: role '$1' routes to 'self', but the declared author identities ($self_declared) share no provider, so they cannot describe one caller" >&2 ;;
+    2) echo "delegate-resolve: role '$1' routes to 'self', but the declared author identity names more than one provider ($self_ambiguous): name the caller's own backend with --author-provider" >&2 ;;
+    *) echo "delegate-resolve: role '$1' routes to 'self' but no --author-model/--author-vendor was given and no [lead] provider is declared" >&2 ;;
+  esac
+  exit 2
+}
+
+# The provider the running session IS, which is what makes a route native. Declared
+# caller wins; for a self role the author is the caller by definition; otherwise the
+# session is assumed to be the catalog [lead].
+running_provider() {  # $1=1 when the role is self-routed
+  if [ -n "$caller_declared" ]; then printf '%s\n' "$caller_declared"; return 0; fi
+  if [ "$1" -eq 1 ] && [ -n "$self_provider" ]; then printf '%s\n' "$self_provider"; return 0; fi
+  cat_val lead provider
+}
+
+# Suspending the author exclusion for a role that is ALSO independence-bound would
+# route a review straight back to its author. Every path that resolves a `self` role
+# calls this first, so no resolver entry point can report such a role as usable.
+# The one place that decides whether a role's `self` value is the sentinel. A catalog
+# that already declares [providers.self] keeps that provider's meaning, and every path
+# has to agree: a route that means one thing to resolution and another to --vendors or
+# --check is worse than either reading on its own.
+role_routes_self() {  # $1=role
+  [ "$(section_val roles "$1")" = "self" ] || return 1
+  cat_exists "providers.self" && return 1
+  return 0
+}
+config_uses_self_sentinel() {
+  local lr
+  while IFS= read -r lr; do
+    [ -n "$lr" ] || continue
+    role_routes_self "$lr" && return 0
+  done <<< "$(list_roles)"
+  return 1
+}
+
+reject_self_independence() {  # $1=role
+  role_routes_self "$1" || return 0
+  [ -n "$(section_val independence "$1")" ] || return 0
+  echo "delegate-resolve: role '$1' routes to 'self' but is [independence]-bound: staying in-vendor cannot satisfy an author-bound policy, so fix the config before dispatching" >&2
+  exit 2
+}
+
 # --- --check mode ------------------------------------------------------------------
 if [ "$check" -eq 1 ]; then
   errs=0
@@ -265,7 +581,16 @@ if [ "$check" -eq 1 ]; then
     [ -n "$r" ] || continue
     p="$(section_val roles "$r")"
     [ -n "$p" ] || continue
-    cat_exists "providers.$p" || note "role '$r' routes to missing provider '$p'"
+    # A `self` role has no static provider, so the schema checks below run against
+    # the [lead] provider: the target for a session that declares no author.
+    p_check="$p"
+    if role_routes_self "$r"; then
+      p_check="$(cat_val lead provider)"
+      [ -n "$p_check" ] || note "role '$r' routes to 'self' but no [lead] provider is declared as its fallback"
+      [ -z "$(section_val independence "$r")" ] || note "role '$r' is both 'self'-routed and [independence]-bound: staying in-vendor cannot satisfy an author-bound policy"
+      [ -z "$(fallbacks_of "$r")" ] || note "role '$r' is 'self'-routed and cannot also declare [fallbacks]"
+    fi
+    [ -z "$p_check" ] || cat_exists "providers.$p_check" || note "role '$r' routes to missing provider '$p_check'"
     while IFS= read -r fp; do
       [ -n "$fp" ] || continue
       cat_exists "providers.$fp" || note "fallback for '$r' names missing provider '$fp'"
@@ -279,7 +604,7 @@ if [ "$check" -eq 1 ]; then
           [ -n "$rp" ] || continue
           [ -n "$(cat_val "providers.$rp.tiers" "$rt")" ] || note "provider '$rp' has no tier '$rt' required by role '$r'"
         done <<< "$(fallbacks_of "$r")"
-        [ -n "$(fallbacks_of "$r")" ] || [ -n "$(cat_val "providers.$p.tiers" "$rt")" ] || note "provider '$p' has no tier '$rt' required by role '$r'"
+        [ -n "$(fallbacks_of "$r")" ] || [ -z "$p_check" ] || [ -n "$(cat_val "providers.$p_check.tiers" "$rt")" ] || note "provider '$p_check' has no tier '$rt' required by role '$r'"
       fi
     fi
     if section_exists role_efforts; then
@@ -287,7 +612,7 @@ if [ "$check" -eq 1 ]; then
       [ -n "$re" ] || note "role '$r' has no [role_efforts] entry"
       [ -z "$re" ] || printf '%s\n' "$(cat_array efforts scale)" | grep -qx -- "$re" || note "role '$r' effort '$re' not in [efforts] scale"
       if [ -n "$re" ]; then
-        rproviders="$(fallbacks_of "$r")"; [ -n "$rproviders" ] || rproviders="$p"
+        rproviders="$(fallbacks_of "$r")"; [ -n "$rproviders" ] || rproviders="$p_check"
         while IFS= read -r rp; do
           [ -n "$rp" ] || continue
           printf '%s\n' "$(cat_array "providers.$rp" efforts)" | grep -qx -- "$re" || note "provider '$rp' does not support effort '$re' required by role '$r'"
@@ -300,6 +625,57 @@ if [ "$check" -eq 1 ]; then
       [ -n "$(section_val "drivers.$drv" binary)" ] || note "driver '$drv' has no binary"
     fi
   done <<< "$(list_roles)"
+  # A model id declared by providers of two different vendors cannot identify an
+  # author, so --author-model has to refuse it at resolution. Surface that here, where
+  # the catalog is being edited, rather than only inside a review gate at dispatch.
+  # A duplicate under ONE vendor is only a problem where a role routes to `self`,
+  # which is the only thing that needs to know WHICH backend the caller is.
+  # A role whose value is literally `self` is shadowed when a provider by that name
+  # exists; report that separately from the sentinel actually being in play, or the
+  # two conditions mask each other.
+  has_raw_self=0
+  while IFS= read -r sr; do
+    [ -n "$sr" ] || continue
+    [ "$(section_val roles "$sr")" = "self" ] && { has_raw_self=1; break; }
+  done <<< "$(list_roles)"
+  has_self_role=0
+  config_uses_self_sentinel && has_self_role=1
+  if [ "$has_raw_self" -eq 1 ] && cat_exists "providers.self"; then
+    note "a [providers.self] section exists, so roles routing to 'self' mean THAT provider and the self-routing sentinel is unavailable in this config"
+  fi
+  if [ "$has_self_role" -eq 1 ] && ! section_exists independence; then
+    note "roles route to 'self' but no [independence] table exists, so no role in this config can require a different-vendor reviewer"
+  fi
+  while IFS= read -r cm; do
+    [ -n "$cm" ] || continue
+    cmp_="$(providers_for_model "$cm")"
+    cmv="$(printf '%s\n' "$cmp_" | vendors_of_providers)"
+    if [ "$(printf '%s\n' "$cmv" | grep -c .)" -gt 1 ]; then
+      note "model '$cm' is declared by more than one vendor ($(printf '%s' "$cmv" | tr '\n' ' ')): --author-model cannot identify an author with it"
+    elif [ "$has_self_role" -eq 1 ] && [ "$(printf '%s\n' "$cmp_" | grep -c .)" -gt 1 ]; then
+      note "model '$cm' is declared by more than one provider ($(printf '%s' "$cmp_" | tr '\n' ' ')): --author-model cannot pick a backend for a 'self'-routed role, so its caller must pass --author-provider"
+    fi
+  done <<< "$(
+    while IFS= read -r cp; do
+      [ -n "$cp" ] || continue
+      cat_val "providers.$cp" model
+      while IFS= read -r ct; do
+        [ -n "$ct" ] || continue
+        cat_val "providers.$cp.tiers" "$ct"
+      done <<< "$scale_list"
+    done <<< "$(providers_list)" | grep . | awk '!seen[$0]++'
+  )"
+  # A vendor name with a comma cannot survive the AUTHOR_VENDORS encoding, so it
+  # would break identity recovery for every consumer of a resolved route.
+  while IFS= read -r cvp; do
+    [ -n "$cvp" ] || continue
+    # A vendorless provider is identified by its own name, so that is the value the
+    # field would have to carry: check the EFFECTIVE vendor, as the helpers do.
+    cvv="$(cat_val "providers.$cvp" vendor)"
+    case "${cvv:-$cvp}" in
+      *,*) note "provider '$cvp' effective vendor '${cvv:-$cvp}' contains a comma, which the AUTHOR_VENDORS field cannot represent" ;;
+    esac
+  done <<< "$(providers_list)"
   lp="$(cat_val lead provider)"
   if [ -n "$lp" ] && ! cat_exists "providers.$lp"; then note "[lead] provider '$lp' missing"; fi
   if [ -n "$lp" ] && cat_exists "providers.$lp"; then
@@ -370,14 +746,24 @@ if [ "$vendors" -eq 1 ]; then
   if [ -n "$role" ]; then
     vr_primary="$(section_val roles "$role")"
     [ -n "$vr_primary" ] || { echo "delegate-resolve: no route for role '$role'" >&2; exit 3; }
-    vr_candidates="$(fallbacks_of "$role")"
-    [ -n "$vr_candidates" ] || vr_candidates="$vr_primary"
+    vr_role_is_self=0
+    if role_routes_self "$role"; then
+      vr_role_is_self=1
+      reject_self_independence "$role"
+      # A self role reaches exactly one vendor by construction: the caller's own.
+      resolve_self_target_or_die "$role"; vr_primary="$self_target_out"
+      vr_candidates="$vr_primary"
+    else
+      vr_candidates="$(fallbacks_of "$role")"
+      [ -n "$vr_candidates" ] || vr_candidates="$vr_primary"
+    fi
     vr_tier="$(section_val role_tiers "$role")"
     vr_effort="$(section_val role_efforts "$role")"
     vr_req="$(array_val requires "$role")"
     vr_floor="$(cat_val defaults floor)"
     vr_scale="$scale_list"
     vr_eff_scale="$(cat_array efforts scale)"
+    vr_running_p="$(running_provider "$vr_role_is_self")"
     vr_floor_idx=""; vr_floor_eff_idx=""
     if [ -n "$vr_floor" ] && [ -n "$vr_scale" ]; then
       vr_floor_idx="$(tier_index "${vr_floor%%:*}")"
@@ -393,8 +779,13 @@ if [ "$vendors" -eq 1 ]; then
       cat_exists "providers.$p" || continue
       en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
       [ "$en" = "false" ] && continue
+      # Same reachability rule resolution uses, and it has to stay the same: this
+      # probe decides whether a review can happen at all, so a native route that
+      # resolves must not disappear here for want of a CLI it never calls.
+      vr_native=0
+      if [ -n "$vr_running_p" ] && [ "$p" = "$vr_running_p" ]; then vr_native=1; fi
       bin="$(cat_val "providers.$p" binary)"
-      if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi
+      if [ "$vr_native" -eq 0 ] && [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi
       if [ -n "$vr_req" ]; then
         caps="$(cat_array "providers.$p" capabilities)"; capmiss=0
         while IFS= read -r rc_; do
@@ -497,6 +888,20 @@ if [ -z "$primary" ]; then
   exit 3
 fi
 
+# A `self` role stays in the caller's own vendor. This is the default for work with
+# no independence requirement: leaving the vendor there buys nothing and spends a
+# third-party call. Roles that DO carry an [independence] policy keep their chains.
+# `self` is a sentinel, but a config that already declares a provider by that name
+# keeps its original meaning: reinterpreting an existing route would silently send it
+# somewhere else. --check reports the collision so the author knows the sentinel is
+# unavailable in that catalog.
+role_is_self=0
+if role_routes_self "$role"; then
+  reject_self_independence "$role"
+  role_is_self=1
+  resolve_self_target_or_die "$role"; primary="$self_target_out"
+fi
+
 # Schema v2 role policy selects the tier and effort for this work. A config
 # that declares either policy table must cover every role it routes, otherwise
 # a missing key would silently fall back to an unrelated provider default.
@@ -534,7 +939,26 @@ if [ -n "$independence" ] && [ "${#author_vendors[@]}" -eq 0 ]; then
   echo "delegate-resolve: independent role '$role' requires --author-vendor <vendor>" >&2
   exit 2
 fi
-if [ "${#author_vendors[@]}" -gt 0 ]; then
+# Author exclusion is what [independence] asks for, and only that. Every harness is
+# told to declare who it is on every call so routing can tell a native dispatch from
+# a cross-runtime one, so identifying yourself must not quietly cost you your own
+# vendor on a role that never demanded a second opinion. `--exclude` remains the
+# policy-free way to drop a backend.
+#
+# A config with NO [independence] table at all predates that table, and its author
+# exclusion was unconditional. Keep it that way: reading a missing policy as "no
+# policy" would silently weaken independence on exactly the configs that cannot say
+# they wanted it. Using the `self` sentinel anywhere proves a config is NOT one of
+# those, so there a missing table means what it says: no role declares independence.
+apply_author_exclusion=0
+if [ "$role_is_self" -eq 0 ]; then
+  if [ -n "$independence" ]; then
+    apply_author_exclusion=1
+  elif ! section_exists independence && ! config_uses_self_sentinel; then
+    apply_author_exclusion=1
+  fi
+fi
+if [ "$apply_author_exclusion" -eq 1 ] && [ "${#author_vendors[@]}" -gt 0 ]; then
   for av in "${author_vendors[@]}"; do
     [ -n "$av" ] || { echo "delegate-resolve: --author-vendor cannot be empty" >&2; exit 2; }
     excludes+=("$av")
@@ -564,8 +988,13 @@ if [ -n "$driver" ]; then
 fi
 
 # candidate chain: the role's [fallbacks] (in order) or just its single provider.
-candidates="$(fallbacks_of "$role")"
-[ -n "$candidates" ] || candidates="$primary"
+# A self role has no chain by definition: the caller's own provider or nothing.
+if [ "$role_is_self" -eq 1 ]; then
+  candidates="$primary"
+else
+  candidates="$(fallbacks_of "$role")"
+  [ -n "$candidates" ] || candidates="$primary"
+fi
 
 # a candidate is excluded when its provider name OR its vendor is in --exclude.
 excluded() {  # $1=provider
@@ -602,7 +1031,8 @@ if [ -n "$floor" ]; then
 fi
 req="$(array_val requires "$role")"
 
-selected=""; selected_model=""; selected_tier=""; selected_effort=""; only_disabled=1
+running_p="$(running_provider "$role_is_self")"
+selected=""; selected_model=""; selected_tier=""; selected_effort=""; selected_native=0; only_disabled=1
 while IFS= read -r p; do
   [ -n "$p" ] || continue
   cat_exists "providers.$p" || {
@@ -613,8 +1043,14 @@ while IFS= read -r p; do
   en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
   [ "$en" = "false" ] && continue                    # disabled -> try the next candidate
   only_disabled=0
+  # `binary` is the CROSS-RUNTIME entry point, so it only gates a cli dispatch. A
+  # candidate that IS the caller runs on the harness's own subagent surface, which is
+  # present by definition, and demanding its CLI would strand every BYO-model harness:
+  # an OpenCode or Cursor session running an Anthropic model has no `claude` binary.
+  candidate_native=0
+  if [ -n "$running_p" ] && [ "$p" = "$running_p" ]; then candidate_native=1; fi
   bin="$(cat_val "providers.$p" binary)"
-  if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi   # absent -> next
+  if [ "$candidate_native" -eq 0 ] && [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi   # absent -> next
   if [ -n "$req" ]; then
     caps="$(cat_array "providers.$p" capabilities)"
     capmiss=0
@@ -687,6 +1123,7 @@ while IFS= read -r p; do
   selected_model="$candidate_model"
   selected_tier="$candidate_tier"
   selected_effort="$candidate_effort"
+  selected_native="$candidate_native"
   break
 done <<< "$candidates"
 
@@ -726,8 +1163,18 @@ vendor="$(cat_val "providers.$selected" vendor)"
 binv="$(cat_val "providers.$selected" binary)"
 notes="$(cat_val "providers.$selected" notes)"
 
+# How to reach the resolved provider, which is not the same question as which
+# provider it is. When the route lands on the CALLER's own provider, the harness
+# already has a first-class way to run this work (subagent, team, workflow); calling
+# your own CLI would spawn a cold session, drop the context that made delegating
+# worthwhile, and pay twice for it. CHANNEL/BINARY describe the cross-runtime path
+# and apply only when DISPATCH=cli.
+dispatch="cli"
+[ "$selected_native" -eq 1 ] && dispatch="native"
+
 echo "ROLE=$role"
 echo "PROVIDER=$selected"
+echo "DISPATCH=$dispatch"
 echo "MODEL=${model:-}"
 [ -n "$tier" ] && echo "TIER=$tier"
 [ -n "$effort" ] && echo "EFFORT=$effort"
