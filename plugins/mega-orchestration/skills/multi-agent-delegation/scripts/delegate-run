@@ -176,16 +176,36 @@ command -v "$binary" >/dev/null 2>&1 || {
 # receipt both record who actually authored the artifact, not just how it was named.
 # This fails closed: the caller's own input is discarded first, so a route that omits
 # the field cannot leave unverified caller input standing in for resolver provenance.
-resolved_authors="$(route_val AUTHOR_VENDORS)"
-# Validate the raw field before decoding: `read -a` discards trailing empty fields,
-# so "openai," would decode to one good identity and hide that a second was blank.
-case "$resolved_authors" in
-  ,*|*,|*,,*)
-    echo "delegate-run: resolved route reported a malformed AUTHOR_VENDORS field: '$resolved_authors'" >&2
-    exit 2 ;;
-esac
+#
+# Prefer the repeated AUTHOR_VENDOR fields: one identity per line needs no delimiter,
+# so a vendor name cannot be split and a blank component cannot hide inside a joined
+# string. The comma-joined AUTHOR_VENDORS is the fallback for a resolver predating
+# the repeated form, and it keeps the delimiter validation that form makes unnecessary.
 author_vendors=()
-[ -n "$resolved_authors" ] && IFS=',' read -r -a author_vendors <<< "$resolved_authors"
+# PRESENCE of the repeated form decides which encoding governs, not how many values it
+# yielded. Counting instead would let a route declare the authoritative form, deliver
+# nothing but empty records, and silently fall through to the joined one.
+repeated_raw="$(printf '%s\n' "$route" | grep '^AUTHOR_VENDOR=' || true)"
+if [ -n "$repeated_raw" ]; then
+  while IFS= read -r one_line; do
+    one_author="${one_line#AUTHOR_VENDOR=}"
+    [ -n "$one_author" ] || {
+      echo "delegate-run: resolved route reported an empty AUTHOR_VENDOR record" >&2
+      exit 2
+    }
+    author_vendors+=("$one_author")
+  done <<< "$repeated_raw"
+else
+  resolved_authors="$(route_val AUTHOR_VENDORS)"
+  # `read -a` discards trailing empty fields, so "openai," would decode to one good
+  # identity and hide that a second was blank. Validate before decoding.
+  case "$resolved_authors" in
+    ,*|*,|*,,*)
+      echo "delegate-run: resolved route reported a malformed AUTHOR_VENDORS field: '$resolved_authors'" >&2
+      exit 2 ;;
+  esac
+  [ -n "$resolved_authors" ] && IFS=',' read -r -a author_vendors <<< "$resolved_authors"
+fi
 [ "${#author_vendors[@]}" -gt 0 ] || {
   echo "delegate-run: resolved route omitted the author vendors it applied" >&2
   exit 2
