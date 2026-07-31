@@ -70,7 +70,9 @@ code_review = "codex"
 [fallbacks]
 code_review = []
 EOF
-out="$(cd "$TMP/emptyfallback" && "$DR" code_review --author-vendor other --exclude codex 2>&1)"; rc=$?
+# The author must be a vendor the catalog declares; a placeholder would exclude
+# nobody. The subject here is the empty fallback array, not the author.
+out="$(cd "$TMP/emptyfallback" && "$DR" code_review --author-vendor anthropic --exclude codex 2>&1)"; rc=$?
 check_exit "empty project fallback array replaces shipped chain" 3 "$rc"
 
 # User layer: wins over shipped, loses to project.
@@ -488,11 +490,18 @@ check "missing author policy is explicit" "--author-vendor" "$out"
 out="$(cd "$TMP/author-policy" && "$DR" judge --author-vendor openai --author-vendor anthropic 2>&1)"; rc=$?
 check_exit "all author vendors excluded leaves no judge" 3 "$rc"
 
+# small_impl ships `self`, so it follows the caller instead of leaving the vendor:
+# no author declared means the catalog [lead], and the role policy still applies.
 out="$(cd "$TMP/author-policy" && "$DR" small_impl 2>&1)"; rc=$?
 check_exit "small_impl resolves with role policy" 0 "$rc"
-check "small_impl selects strong model" "MODEL=gpt-5.6-terra" "$out"
+check "small_impl without an author follows the lead" "MODEL=claude-sonnet-5" "$out"
 check "small_impl tier is strong" "TIER=strong" "$out"
 check "small_impl effort is high" "EFFORT=high" "$out"
+
+out="$(cd "$TMP/author-policy" && "$DR" small_impl --author-model gpt-5.6-sol 2>&1)"; rc=$?
+check_exit "small_impl resolves for a non-lead caller" 0 "$rc"
+check "small_impl selects the caller's own strong model" "MODEL=gpt-5.6-terra" "$out"
+check "small_impl stays in the caller's vendor" "VENDOR=openai" "$out"
 
 # A v2 provider cannot bypass the ship floor by omitting or inventing a tier.
 cat > "$TMP/missing-tier.toml" <<'EOF'
@@ -597,6 +606,860 @@ sed '/^\[providers.beta\]$/,/^strong = "beta-1"$/d' "$TMP/vendors.toml" > "$TMP/
 out="$("$DR" --vendors --config "$TMP/one-vendor.toml" --models "$TMP/empty-catalog.toml" 2>&1)"
 n="$(printf '%s\n' "$out" | grep -c .)"
 check_exit "one reachable vendor reports a count of 1" 1 "$n"
+
+# --- --author-model and self-routing ------------------------------------------------
+# A BYO-model harness (OpenCode, Cursor, pi) knows the model id it is running, not
+# the vendor name megapowers files it under. --author-model derives the vendor so
+# the harness never hardcodes one. `self` routes a non-independence role back to
+# that same provider instead of leaving the vendor by default.
+cat > "$TMP/self.toml" <<'EOF'
+[lead]
+provider = "alpha"
+tier     = "frontier"
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[providers.alpha]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.alpha.tiers]
+strong   = "alpha-strong"
+frontier = "alpha-frontier"
+[providers.beta]
+vendor  = "globex"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.beta.tiers]
+strong   = "beta-strong"
+frontier = "beta-frontier"
+[defaults]
+floor = "strong:low"
+[roles]
+code_review = "beta"
+small_impl  = "self"
+static_own  = "alpha"
+[fallbacks]
+code_review = ["beta", "alpha"]
+[role_tiers]
+code_review = "frontier"
+small_impl  = "strong"
+static_own  = "strong"
+[role_efforts]
+code_review = "high"
+small_impl  = "high"
+static_own  = "high"
+[independence]
+code_review = "author_vendor"
+EOF
+SELF=(--config "$TMP/self.toml" --models "$TMP/empty-catalog.toml")
+
+out="$("$DR" code_review "${SELF[@]}" --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "--author-model satisfies an independence role" 0 "$rc"
+check "--author-model routes away from the derived vendor" "PROVIDER=beta" "$out"
+check "--author-model reports the derived vendor" "AUTHOR_VENDORS=acme" "$out"
+
+out="$("$DR" code_review "${SELF[@]}" --author-model beta-frontier 2>&1)"
+check "--author-model derives the other vendor" "PROVIDER=alpha" "$out"
+
+out="$("$DR" code_review "${SELF[@]}" --author-model strong-alpha-typo 2>&1)"; rc=$?
+check_exit "unknown --author-model is a usage error" 2 "$rc"
+check "unknown --author-model names the model" "strong-alpha-typo" "$out"
+
+out="$("$DR" code_review "${SELF[@]}" --author-model 2>&1)"; rc=$?
+check_exit "--author-model needs an argument" 2 "$rc"
+
+# v1 configs map the bare `model` key, so derivation must cover them too. A config
+# with no [independence] table predates per-role policy, so its author exclusion stays
+# unconditional: the alternative would silently weaken independence on legacy tables.
+out="$("$DR" code_review --config "$TMP/single.toml" --author-model alpha-1 2>&1)"; rc=$?
+check_exit "--author-model derives from a v1 model key" 3 "$rc"
+out="$("$DR" code_review --config "$TMP/single.toml" --author-vendor acme 2>&1)"; rc=$?
+check_exit "a config with no [independence] table still excludes its author" 3 "$rc"
+
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "self role resolves" 0 "$rc"
+check "self role stays with the author's provider" "PROVIDER=alpha" "$out"
+check "self role still applies the role tier" "MODEL=alpha-strong" "$out"
+
+out="$("$DR" small_impl "${SELF[@]}" --author-model beta-frontier 2>&1)"
+check "self role follows the author, not the lead" "PROVIDER=beta" "$out"
+check "self role tier applies to the other provider too" "MODEL=beta-strong" "$out"
+
+# A route to the caller's OWN provider must not read as "shell out to yourself". The
+# harness has a native subagent for that, and spawning a fresh CLI session would
+# throw away the context that makes it worth delegating in the first place.
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier 2>&1)"
+check "a self route dispatches natively" "DISPATCH=native" "$out"
+out="$("$DR" small_impl "${SELF[@]}" 2>&1)"
+check "a lead-fallback self route dispatches natively" "DISPATCH=native" "$out"
+
+# Crossing to another provider is what a CLI channel is for.
+out="$("$DR" code_review "${SELF[@]}" --author-model alpha-frontier 2>&1)"
+check "a cross-provider route dispatches by CLI" "DISPATCH=cli" "$out"
+
+# The rule follows the resolved provider, not the `self` keyword: a statically routed
+# role that lands on the caller's own provider is equally a native dispatch.
+out="$("$DR" static_own "${SELF[@]}" --author-model alpha-frontier 2>&1)"
+check "a static route back to the caller dispatches natively" "DISPATCH=native" "$out"
+# Nativeness follows the RUNNING session, so saying a different session is running is
+# what makes the same static route cross a runtime.
+out="$("$DR" static_own "${SELF[@]}" --caller-model beta-frontier 2>&1)"
+check "the same static route from another caller dispatches by CLI" "DISPATCH=cli" "$out"
+
+# Declaring who you are is now the universal instruction, so it must be safe to do it
+# everywhere. Author exclusion is what [independence] asks for, and a role that never
+# asked must not lose its own vendor just because the caller identified itself.
+out="$("$DR" static_own "${SELF[@]}" --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "identifying yourself does not exclude you from a non-independence role" 0 "$rc"
+check "the non-independence role still resolves to the caller" "PROVIDER=alpha" "$out"
+
+# The independence roles are unaffected: exclusion is exactly what they declare.
+out="$("$DR" code_review "${SELF[@]}" --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "an independence role still excludes its author" 0 "$rc"
+check "the independence role routes away from the author" "PROVIDER=beta" "$out"
+
+# --exclude stays the explicit, policy-free way to drop a backend.
+out="$("$DR" static_own "${SELF[@]}" --author-model alpha-frontier --exclude alpha 2>&1)"; rc=$?
+check_exit "--exclude still drops a backend for a non-independence role" 3 "$rc"
+
+out="$("$DR" small_impl "${SELF[@]}" 2>&1)"; rc=$?
+check_exit "self role without an author falls back to [lead]" 0 "$rc"
+check "self role falls back to the lead provider" "PROVIDER=alpha" "$out"
+check "self role lead fallback still honors the role tier" "MODEL=alpha-strong" "$out"
+
+# An explicit --exclude is a caller decision and outranks self-routing; only the
+# author-derived exclusion is suspended for a self role.
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier --exclude alpha 2>&1)"; rc=$?
+check_exit "explicit --exclude still blocks a self role" 3 "$rc"
+
+out="$("$DR" small_impl "${SELF[@]}" --author-vendor globex 2>&1)"; rc=$?
+check_exit "--author-vendor also selects the self provider" 0 "$rc"
+check "self role accepts a vendor name as the author" "PROVIDER=beta" "$out"
+
+out="$("$DR" --vendors small_impl "${SELF[@]}" --author-model beta-frontier 2>&1)"; rc=$?
+check_exit "--vendors resolves a self role" 0 "$rc"
+check "--vendors on a self role reports the author's vendor" "globex" "$out"
+n="$(printf '%s\n' "$out" | grep -c .)"
+check_exit "a self role reaches exactly one vendor" 1 "$n"
+
+out="$("$DR" --check "${SELF[@]}" 2>&1)"; rc=$?
+check_exit "--check accepts a self role" 0 "$rc"
+
+# An open-weights model is reachable through more than one host, so one model id can
+# legitimately appear under two providers. When those providers differ in vendor, the
+# id no longer identifies an author: picking either one would exclude a vendor the
+# artifact's real author may not belong to, and the actual author could then be
+# selected as its own reviewer. Refuse instead of guessing.
+cat > "$TMP/ambiguous.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[providers.firsthost]
+vendor  = "moonshot"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.firsthost.tiers]
+frontier = "shared-weights-1"
+[providers.secondhost]
+vendor  = "reseller"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.secondhost.tiers]
+frontier = "shared-weights-1"
+[defaults]
+floor = "strong:low"
+[roles]
+verify = "firsthost"
+[fallbacks]
+verify = ["firsthost", "secondhost"]
+[role_tiers]
+verify = "frontier"
+[role_efforts]
+verify = "high"
+[independence]
+verify = "author_vendor"
+EOF
+AMB=(--config "$TMP/ambiguous.toml" --models "$TMP/empty-catalog.toml")
+
+out="$("$DR" verify "${AMB[@]}" --author-model shared-weights-1 2>&1)"; rc=$?
+check_exit "a model id spanning two vendors is refused" 2 "$rc"
+check "the ambiguity error names the model" "shared-weights-1" "$out"
+check "the ambiguity error names both vendors" "moonshot" "$out"
+check "the ambiguity error names the second vendor" "reseller" "$out"
+check "the ambiguity error offers the unambiguous flag" "--author-vendor" "$out"
+
+# --author-vendor is unambiguous by construction, so the same config still resolves.
+out="$("$DR" verify "${AMB[@]}" --author-vendor moonshot 2>&1)"; rc=$?
+check_exit "--author-vendor still resolves on an ambiguous catalog" 0 "$rc"
+check "--author-vendor routes away from the named vendor" "VENDOR=reseller" "$out"
+
+out="$("$DR" --check "${AMB[@]}" 2>&1)"; rc=$?
+check_exit "--check reports a cross-vendor duplicate model id" 1 "$rc"
+check "--check names the ambiguous model id" "shared-weights-1" "$out"
+
+# An author's own provider can be named directly. Unlike passing a provider name to
+# --author-vendor, this still contributes the provider's VENDOR to the exclusion set,
+# so disambiguating self-routing cannot quietly weaken an independence role.
+out="$("$DR" verify "${AMB[@]}" --author-provider firsthost 2>&1)"; rc=$?
+check_exit "--author-provider resolves an independence role" 0 "$rc"
+check "--author-provider excludes the provider's whole vendor" "VENDOR=reseller" "$out"
+check "--author-provider reports the derived vendor" "AUTHOR_VENDORS=moonshot" "$out"
+
+out="$("$DR" verify "${AMB[@]}" --author-provider nosuchprovider 2>&1)"; rc=$?
+check_exit "unknown --author-provider is a usage error" 2 "$rc"
+
+# Two providers, ONE vendor: independence is unaffected (the vendor is the same
+# either way), but `self` no longer knows WHICH backend the caller is, and guessing
+# can route to a sibling or report no route when the caller's own CLI is present.
+cat > "$TMP/same-vendor-dup.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[providers.firsthost]
+vendor  = "moonshot"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.firsthost.tiers]
+strong   = "shared-weights-small"
+frontier = "shared-weights-1"
+[providers.secondhost]
+vendor  = "moonshot"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.secondhost.tiers]
+strong   = "shared-weights-small"
+frontier = "shared-weights-1"
+[lead]
+provider = "firsthost"
+tier     = "frontier"
+[defaults]
+floor = "strong:low"
+[roles]
+verify     = "firsthost"
+small_impl = "self"
+[fallbacks]
+verify = ["firsthost", "secondhost"]
+[role_tiers]
+verify     = "frontier"
+small_impl = "strong"
+[role_efforts]
+verify     = "high"
+small_impl = "high"
+[independence]
+verify = "author_vendor"
+EOF
+DUP=(--config "$TMP/same-vendor-dup.toml" --models "$TMP/empty-catalog.toml")
+
+out="$("$DR" verify "${DUP[@]}" --author-model shared-weights-1 2>&1)"; rc=$?
+check_exit "one vendor behind a duplicated model id still resolves independence" 3 "$rc"
+
+out="$("$DR" small_impl "${DUP[@]}" --author-model shared-weights-1 2>&1)"; rc=$?
+check_exit "an ambiguous author provider is refused for a self role" 2 "$rc"
+check "the self ambiguity error names both providers" "secondhost" "$out"
+check "the self ambiguity error offers the unambiguous flag" "--author-provider" "$out"
+
+out="$("$DR" small_impl "${DUP[@]}" --author-provider secondhost 2>&1)"; rc=$?
+check_exit "--author-provider disambiguates a self role" 0 "$rc"
+check "--author-provider selects the caller's own backend" "PROVIDER=secondhost" "$out"
+
+# --author-vendor accepts a provider name for convenience, but authorship is a VENDOR
+# claim: excluding only the named provider would leave a sibling of the same vendor
+# eligible to review its own author's work.
+out="$("$DR" verify "${DUP[@]}" --author-vendor firsthost 2>&1)"; rc=$?
+check_exit "a provider name as author excludes its whole vendor" 3 "$rc"
+
+out="$("$DR" verify "${AMB[@]}" --author-vendor firsthost 2>&1)"; rc=$?
+check_exit "a provider name as author still resolves across vendors" 0 "$rc"
+check "a provider name as author routes to the other vendor" "VENDOR=reseller" "$out"
+check "a provider name as author is recorded as its vendor" "AUTHOR_VENDORS=moonshot" "$out"
+
+# An author identity that names nothing is a typo, not an empty exclusion. Silently
+# excluding no one is the worst outcome: the review appears independent and is not.
+out="$("$DR" verify "${AMB[@]}" --author-vendor nosuchvendor 2>&1)"; rc=$?
+check_exit "an unknown --author-vendor is a usage error" 2 "$rc"
+check "the unknown author error names the value" "nosuchvendor" "$out"
+
+out="$("$DR" small_impl "${DUP[@]}" --author-vendor nosuchvendor 2>&1)"; rc=$?
+check_exit "an unknown --author-vendor never falls back to [lead]" 2 "$rc"
+
+# The ambiguity only matters where a role actually routes to self, so --check reports
+# it there and stays quiet on a catalog that never self-routes.
+out="$("$DR" --check "${DUP[@]}" 2>&1)"; rc=$?
+check_exit "--check reports a self-routing ambiguity" 1 "$rc"
+check "--check names the ambiguous model for self-routing" "shared-weights-1" "$out"
+
+sed 's/vendor  = "reseller"/vendor  = "moonshot"/' "$TMP/ambiguous.toml" > "$TMP/dup-no-self.toml"
+out="$("$DR" --check --config "$TMP/dup-no-self.toml" --models "$TMP/empty-catalog.toml" 2>&1)"; rc=$?
+check_exit "--check accepts a same-vendor duplicate with no self role" 0 "$rc"
+
+# A provider NAME and a vendor NAME live in one flag's namespace, so they can collide:
+# resolving the provider first would silently normalize to the wrong vendor and leave
+# the intended author eligible. Refuse when the two namespaces disagree.
+cat > "$TMP/shadowed.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[providers.acme]
+vendor  = "reseller"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.acme.tiers]
+frontier = "acme-1"
+[providers.other]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.other.tiers]
+frontier = "other-1"
+[defaults]
+floor = "strong:low"
+[roles]
+verify = "acme"
+[fallbacks]
+verify = ["acme", "other"]
+[role_tiers]
+verify = "frontier"
+[role_efforts]
+verify = "high"
+[independence]
+verify = "author_vendor"
+EOF
+out="$("$DR" verify --config "$TMP/shadowed.toml" --models "$TMP/empty-catalog.toml" --author-vendor acme 2>&1)"; rc=$?
+check_exit "an author token that is both a provider and a vendor is refused" 2 "$rc"
+check "the shadowing error names the token" "acme" "$out"
+check "the shadowing error offers the unambiguous flag" "--author-provider" "$out"
+
+# --author-provider is namespace-unambiguous, so it still works on that catalog.
+out="$("$DR" verify --config "$TMP/shadowed.toml" --models "$TMP/empty-catalog.toml" --author-provider acme 2>&1)"; rc=$?
+check_exit "--author-provider resolves a shadowed name" 0 "$rc"
+check "--author-provider picks the provider namespace" "AUTHOR_VENDORS=reseller" "$out"
+
+# A self role has exactly one caller. Several declared identities pointing at
+# different providers cannot say which one is asking, so refuse instead of taking
+# the first or the last.
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier --author-model beta-frontier 2>&1)"; rc=$?
+check_exit "two author models cannot identify one caller" 2 "$rc"
+out="$("$DR" small_impl "${SELF[@]}" --author-provider alpha --author-provider beta 2>&1)"; rc=$?
+check_exit "two author providers cannot identify one caller" 2 "$rc"
+out="$("$DR" small_impl "${SELF[@]}" --author-vendor acme --author-vendor globex 2>&1)"; rc=$?
+check_exit "two author vendors cannot identify one caller" 2 "$rc"
+
+# The question a self role asks is WHICH PROVIDER is calling, so two model ids from
+# one provider are not a conflict: they have exactly one correct answer. A lead and
+# its subagent declaring different tiers of the same backend is the ordinary case.
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-strong --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "two models from one provider identify that provider" 0 "$rc"
+check "two models from one provider resolve to it" "PROVIDER=alpha" "$out"
+
+# Identity flags constrain each other rather than override each other. Naming a
+# provider is how a caller disambiguates a shared model id, which works because the
+# provider is one of that id's candidates; a provider that is NOT among them
+# contradicts the model claim, and precedence would silently discard one of the two.
+out="$("$DR" small_impl "${SELF[@]}" --author-provider alpha --author-model beta-frontier 2>&1)"; rc=$?
+check_exit "a provider contradicting a model is refused" 2 "$rc"
+check "the conflict error says the identities disagree" "alpha" "$out"
+
+out="$("$DR" small_impl "${SELF[@]}" --author-vendor acme --author-model beta-frontier 2>&1)"; rc=$?
+check_exit "a vendor contradicting a model is refused" 2 "$rc"
+
+out="$("$DR" small_impl "${SELF[@]}" --author-vendor acme --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "agreeing vendor and model identities resolve" 0 "$rc"
+check "agreeing identities resolve to the shared provider" "PROVIDER=alpha" "$out"
+
+out="$("$DR" small_impl "${DUP[@]}" --author-model shared-weights-1 --author-provider secondhost 2>&1)"; rc=$?
+check_exit "a provider inside the model's candidates disambiguates it" 0 "$rc"
+check "the disambiguated self role uses the named backend" "PROVIDER=secondhost" "$out"
+
+# Every OCCURRENCE is a separate assertion about the one caller, so they all
+# intersect. Two contradictory providers stay contradictory no matter what a
+# narrowing flag of another type would allow.
+out="$("$DR" small_impl "${SELF[@]}" --author-provider alpha --author-provider beta --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "a third flag cannot rescue two contradictory providers" 2 "$rc"
+
+# The mirror case: two ambiguous model ids that overlap in exactly one provider do
+# identify the caller, and unioning them would wrongly report ambiguity.
+cat > "$TMP/overlap.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[providers.h1]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.h1.tiers]
+strong   = "h1-s"
+frontier = "mA"
+[providers.h2]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.h2.tiers]
+strong   = "mB"
+frontier = "mA"
+[providers.h3]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.h3.tiers]
+strong   = "mB"
+frontier = "h3-f"
+[defaults]
+floor = "strong:low"
+[roles]
+small_impl = "self"
+[role_tiers]
+small_impl = "strong"
+[role_efforts]
+small_impl = "high"
+EOF
+out="$("$DR" small_impl --config "$TMP/overlap.toml" --models "$TMP/empty-catalog.toml" --author-model mA --author-model mB 2>&1)"; rc=$?
+check_exit "two ambiguous ids overlapping in one provider identify it" 0 "$rc"
+check "the overlapping identity resolves to the shared provider" "PROVIDER=h2" "$out"
+
+out="$("$DR" small_impl --config "$TMP/overlap.toml" --models "$TMP/empty-catalog.toml" --author-model mA 2>&1)"; rc=$?
+check_exit "one ambiguous id alone is still refused" 2 "$rc"
+
+# Repeating ONE identity is not a conflict, and multiple authors stay legal for the
+# independence roles that exist to collect them.
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "the same author twice is not ambiguous" 0 "$rc"
+check "the repeated author still resolves to itself" "PROVIDER=alpha" "$out"
+out="$("$DR" code_review "${SELF[@]}" --author-model alpha-frontier --author-model beta-frontier 2>&1)"; rc=$?
+check_exit "multiple authors remain legal for an independence role" 3 "$rc"
+
+# A role cannot be both self-routed and independence-bound. --check reports it, but
+# resolution must refuse it too: a caller that never runs --check would otherwise get
+# a review routed straight back to its author.
+cat > "$TMP/self-independence.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[lead]
+provider = "alpha"
+tier     = "frontier"
+[providers.alpha]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.alpha.tiers]
+strong   = "alpha-strong"
+frontier = "alpha-frontier"
+[defaults]
+floor = "strong:low"
+[roles]
+code_review = "self"
+[role_tiers]
+code_review = "frontier"
+[role_efforts]
+code_review = "high"
+[independence]
+code_review = "author_vendor"
+EOF
+out="$("$DR" code_review --config "$TMP/self-independence.toml" --models "$TMP/empty-catalog.toml" --author-vendor acme 2>&1)"; rc=$?
+check_exit "resolution refuses a self-routed independence role" 2 "$rc"
+check "the self-independence error explains the conflict" "independence" "$out"
+
+# Same conflict, other resolver path: --vendors must not report the author's vendor
+# as reachable for a role that can never legally resolve.
+out="$("$DR" --vendors code_review --config "$TMP/self-independence.toml" --models "$TMP/empty-catalog.toml" --author-vendor acme 2>&1)"; rc=$?
+check_exit "--vendors refuses a self-routed independence role" 2 "$rc"
+
+# `vendor` is optional: a provider without one is identified by its own name, and
+# every identity helper has to agree on that or a self role silently reaches [lead].
+cat > "$TMP/vendorless.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[lead]
+provider = "leadhost"
+tier     = "frontier"
+[providers.leadhost]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.leadhost.tiers]
+strong   = "lead-strong"
+frontier = "lead-frontier"
+[providers.bare]
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.bare.tiers]
+strong   = "bare-strong"
+frontier = "bare-frontier"
+[defaults]
+floor = "strong:low"
+[roles]
+small_impl = "self"
+[role_tiers]
+small_impl = "strong"
+[role_efforts]
+small_impl = "high"
+EOF
+out="$("$DR" small_impl --config "$TMP/vendorless.toml" --models "$TMP/empty-catalog.toml" --author-vendor bare 2>&1)"; rc=$?
+check_exit "a vendorless provider can still identify the caller" 0 "$rc"
+check "a vendorless provider resolves to itself, not the lead" "PROVIDER=bare" "$out"
+check "a vendorless self route uses the role tier" "MODEL=bare-strong" "$out"
+
+# AUTHOR_VENDORS is a comma-joined field in a line-oriented format, so a vendor whose
+# name contains a comma cannot be represented in it. Consumers split that field to
+# recover the identities, and a silent split would hand them two vendors that are not
+# the one that was excluded. Refuse the unrepresentable value instead.
+cat > "$TMP/comma-vendor.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[providers.commahost]
+vendor  = "foo,bar"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.commahost.tiers]
+frontier = "comma-1"
+[providers.plainhost]
+vendor  = "plain"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.plainhost.tiers]
+frontier = "plain-1"
+[defaults]
+floor = "strong:low"
+[roles]
+verify = "plainhost"
+[fallbacks]
+verify = ["plainhost", "commahost"]
+[role_tiers]
+verify = "frontier"
+[role_efforts]
+verify = "high"
+[independence]
+verify = "author_vendor"
+EOF
+CV=(--config "$TMP/comma-vendor.toml" --models "$TMP/empty-catalog.toml")
+out="$("$DR" verify "${CV[@]}" --author-vendor 'foo,bar' 2>&1)"; rc=$?
+check_exit "an unrepresentable vendor name is refused" 2 "$rc"
+check "the unrepresentable vendor error names the field" "AUTHOR_VENDORS" "$out"
+
+out="$("$DR" --check "${CV[@]}" 2>&1)"; rc=$?
+check_exit "--check reports a comma-bearing vendor" 1 "$rc"
+
+# A vendorless provider is identified by its own NAME, so --check tests the effective
+# vendor. That path cannot be reached through the name itself: a comma is not a legal
+# character in a section name, so the parse guard refuses the config outright. This
+# pins that reason, which is what keeps the effective-vendor check total.
+sed 's/^\[providers.commahost\]$/[providers.comma,host]/' "$TMP/comma-vendor.toml" > "$TMP/comma-name.toml"
+out="$("$DR" --check --config "$TMP/comma-name.toml" --models "$TMP/empty-catalog.toml" 2>&1)"; rc=$?
+check_exit "a comma in a provider name is a parse error" 2 "$rc"
+check "the parse error names the offending line" "parse error" "$out"
+
+# `binary` is the CROSS-RUNTIME entry point, so it gates a cli dispatch and nothing
+# else. A native route runs on the harness's own surface, which is present by
+# definition: a session IS the provider. Requiring its CLI would strand exactly the
+# BYO-model harnesses this is for, since an OpenCode or Cursor session running an
+# Anthropic model has no `claude` binary anywhere on PATH.
+sed 's|^binary  = "sh"$|binary  = "definitely-not-an-installed-binary-xyz"|' "$TMP/self.toml" > "$TMP/self-absent.toml"
+ABS=(--config "$TMP/self-absent.toml" --models "$TMP/empty-catalog.toml")
+out="$("$DR" small_impl "${ABS[@]}" --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "a native route does not need the provider CLI" 0 "$rc"
+check "the native route still resolves the caller" "PROVIDER=alpha" "$out"
+check "the native route is marked native" "DISPATCH=native" "$out"
+
+# The same absent binary still kills a cross-runtime route, which genuinely needs it.
+out="$("$DR" code_review "${ABS[@]}" --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "a cli route still needs the provider CLI" 3 "$rc"
+
+# WHO WROTE IT and WHO IS RUNNING are different questions, and they only coincide for
+# a self role. Reviewing someone else's work is the ordinary multi-agent case: the
+# author is excluded, and the route lands on the CALLER, which is a native dispatch.
+out="$("$DR" code_review "${SELF[@]}" --author-model beta-frontier --caller-model alpha-frontier 2>&1)"; rc=$?
+check_exit "reviewing another author's work resolves" 0 "$rc"
+check "the review routes away from the author" "PROVIDER=alpha" "$out"
+check "a route landing on the caller is native" "DISPATCH=native" "$out"
+
+# ...and that native route must survive an absent CLI, exactly as a self route does.
+out="$("$DR" code_review "${ABS[@]}" --author-model beta-frontier --caller-model alpha-frontier 2>&1)"; rc=$?
+check_exit "a native review route needs no CLI" 0 "$rc"
+check "the native review route still resolves" "PROVIDER=alpha" "$out"
+
+# With no caller declared, the session is assumed to be the catalog [lead].
+out="$("$DR" code_review "${SELF[@]}" --author-model beta-frontier 2>&1)"; rc=$?
+check_exit "an undeclared caller falls back to the lead" 0 "$rc"
+check "the lead-assumed caller yields a native route" "DISPATCH=native" "$out"
+
+# For a SELF role the author and the caller are the same session by definition, so
+# declaring them as different providers is contradictory input, not a preference.
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier --caller-model beta-frontier 2>&1)"; rc=$?
+check_exit "a self role refuses a caller that is not the author" 2 "$rc"
+check "the self mismatch error names both providers" "beta" "$out"
+
+# ...and a declared caller must not paper over a broken author identity either.
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier --author-model beta-frontier --caller-model alpha-frontier 2>&1)"; rc=$?
+check_exit "a declared caller does not rescue a conflicting author" 2 "$rc"
+
+# Agreeing on the same provider is fine, including via different tiers of it.
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier --caller-model alpha-strong 2>&1)"; rc=$?
+check_exit "a self role accepts a caller that is the author" 0 "$rc"
+check "the agreeing self role resolves to that provider" "PROVIDER=alpha" "$out"
+
+# Bad identity input is a usage error on EVERY path. --vendors reporting it as exit 3
+# would read as "no route available", which is the degraded state callers are told to
+# accept by saying the check did not run, so a typo would silently skip a review.
+out="$("$DR" --vendors small_impl "${SELF[@]}" --author-model alpha-frontier --caller-model beta-frontier 2>&1)"; rc=$?
+check_exit "--vendors reports a caller/author mismatch as a usage error" 2 "$rc"
+check "--vendors explains the mismatch" "not the declared author" "$out"
+out="$("$DR" --vendors small_impl "${SELF[@]}" --author-model alpha-frontier --author-model beta-frontier 2>&1)"; rc=$?
+check_exit "--vendors reports a conflicting author as a usage error" 2 "$rc"
+out="$("$DR" --vendors small_impl "${DUP[@]}" --author-model shared-weights-1 2>&1)"; rc=$?
+check_exit "--vendors reports an ambiguous author as a usage error" 2 "$rc"
+check "--vendors offers the disambiguating flag" "--author-provider" "$out"
+
+# The caller is one process, so its identity is unique-or-refused like the author's.
+out="$("$DR" code_review "${SELF[@]}" --author-model beta-frontier --caller-provider alpha --caller-provider beta 2>&1)"; rc=$?
+check_exit "two caller providers cannot identify one session" 2 "$rc"
+out="$("$DR" code_review "${SELF[@]}" --author-model beta-frontier --caller-model nosuch-model 2>&1)"; rc=$?
+check_exit "an unknown caller model is a usage error" 2 "$rc"
+
+# Declaring the caller must not touch the exclusion set: it says where work RUNS, not
+# who wrote the artifact, so it can never make a review look independent.
+out="$("$DR" code_review "${SELF[@]}" --author-model alpha-frontier --caller-model alpha-frontier 2>&1)"; rc=$?
+check_exit "caller identity does not satisfy independence" 0 "$rc"
+check "the author is still excluded when it is also the caller" "PROVIDER=beta" "$out"
+check "a route away from the caller is a cli dispatch" "DISPATCH=cli" "$out"
+check "only the author appears in the receipt provenance" "AUTHOR_VENDORS=acme" "$out"
+
+# The absent-CLI matrix covers normal resolution of a STATIC native route too, not
+# just the sentinel, so a command -v ordering regression cannot hide behind `sh`.
+out="$("$DR" static_own "${ABS[@]}" --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "a static native route resolves with an absent CLI" 0 "$rc"
+check "the static native route picks the caller" "PROVIDER=alpha" "$out"
+check "the static native route is marked native" "DISPATCH=native" "$out"
+
+# --vendors is the probe callers use to decide whether a review can happen at all, so
+# it has to see the same routes resolution does. A native route that resolves must not
+# vanish here just because the provider's CLI is missing.
+out="$("$DR" --vendors small_impl "${ABS[@]}" --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "--vendors sees a native route with an absent CLI" 0 "$rc"
+check "--vendors reports the native route's vendor" "acme" "$out"
+out="$("$DR" --vendors static_own "${ABS[@]}" --author-model alpha-frontier 2>&1)"; rc=$?
+check_exit "--vendors sees a static native route with an absent CLI" 0 "$rc"
+check "--vendors reports the static native route's vendor" "acme" "$out"
+
+# ...and still drops a candidate that genuinely needs the missing CLI. --vendors is
+# author-agnostic by design (the COUNT is what says whether independence is
+# achievable), so the caller's own vendor is listed and the cross-runtime one is not:
+# one vendor, which correctly reports that no independent review can resolve here.
+out="$("$DR" --vendors code_review "${ABS[@]}" --author-model alpha-frontier 2>&1)"
+check "--vendors keeps the native candidate" "acme" "$out"
+case "$out" in
+  *globex*) fail=$((fail + 1)); echo "  FAIL --vendors must drop a cli candidate whose CLI is absent" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+n="$(printf '%s\n' "$out" | grep -c .)"
+check_exit "absent cross-runtime CLIs leave too few vendors for independence" 1 "$n"
+
+# `self` is a sentinel, but a config that already had a provider by that name keeps
+# its meaning: reinterpreting an existing route would silently change where it goes.
+cat > "$TMP/provider-named-self.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[providers.self]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.self.tiers]
+strong   = "self-strong"
+frontier = "self-frontier"
+[providers.other]
+vendor  = "globex"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.other.tiers]
+strong   = "other-strong"
+frontier = "other-frontier"
+[defaults]
+floor = "strong:low"
+[roles]
+small_impl = "self"
+[role_tiers]
+small_impl = "strong"
+[role_efforts]
+small_impl = "high"
+EOF
+PNS=(--config "$TMP/provider-named-self.toml" --models "$TMP/empty-catalog.toml")
+out="$("$DR" small_impl "${PNS[@]}" --author-model other-frontier 2>&1)"; rc=$?
+check_exit "a provider actually named self still routes" 0 "$rc"
+check "the provider named self wins over the sentinel" "MODEL=self-strong" "$out"
+check "that route crosses runtimes like any other" "DISPATCH=cli" "$out"
+out="$("$DR" --check "${PNS[@]}" 2>&1)"; rc=$?
+check_exit "--check reports the shadowed self sentinel" 1 "$rc"
+check "--check says the sentinel is unavailable" "unavailable" "$out"
+# ...and says nothing else. A shadowed route is an ordinary provider route, so it
+# needs no [lead] fallback and none of the sentinel-only diagnostics apply.
+case "$out" in
+  *"no [lead] provider"*) fail=$((fail + 1)); echo "  FAIL a shadowed route must not require a [lead] fallback" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+case "$out" in
+  *"different-vendor reviewer"*) fail=$((fail + 1)); echo "  FAIL a shadowed route must not report the sentinel's missing-independence note" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+
+# The shadow has to hold on EVERY path, not just normal resolution. This config has no
+# [independence] table and never uses the sentinel (the value names a real provider),
+# so it is a legacy table: author exclusion stays unconditional.
+out="$("$DR" small_impl "${PNS[@]}" --author-vendor acme 2>&1)"; rc=$?
+check_exit "a shadowed self config keeps unconditional author exclusion" 3 "$rc"
+
+# --vendors must read the same route as resolution, not substitute the caller.
+out="$("$DR" --vendors small_impl "${PNS[@]}" --author-model other-frontier 2>&1)"; rc=$?
+check_exit "--vendors resolves a shadowed self route" 0 "$rc"
+check "--vendors reports the shadowed provider's vendor" "acme" "$out"
+n="$(printf '%s\n' "$out" | grep -c .)"
+check_exit "--vendors does not add the caller to a shadowed route" 1 "$n"
+
+# An explicit [independence] entry on a shadowed route is a normal cross-vendor
+# review, not the refused self-plus-independence combination.
+sed 's/^\[roles\]$/[independence]\nsmall_impl = "author_vendor"\n[roles]/' "$TMP/provider-named-self.toml" > "$TMP/shadow-independence.toml"
+out="$("$DR" small_impl --config "$TMP/shadow-independence.toml" --models "$TMP/empty-catalog.toml" --author-vendor globex 2>&1)"; rc=$?
+check_exit "a shadowed route with an independence entry still resolves" 0 "$rc"
+check "the shadowed independence route routes away from the author" "PROVIDER=self" "$out"
+
+# A shadowed route is an ordinary provider route, so it may declare fallbacks like
+# any other. Only the sentinel forbids them, and that diagnostic must not reach here.
+sed 's/^\[role_tiers\]$/[fallbacks]\nsmall_impl = ["self", "other"]\n[role_tiers]/' "$TMP/provider-named-self.toml" > "$TMP/shadow-fallback.toml"
+out="$("$DR" --check --config "$TMP/shadow-fallback.toml" --models "$TMP/empty-catalog.toml" 2>&1)"
+case "$out" in
+  *"cannot also declare [fallbacks]"*) fail=$((fail + 1)); echo "  FAIL a shadowed route may declare fallbacks" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+check "the shadowed fixture still reports the unavailable sentinel" "unavailable" "$out"
+
+# The backend-ambiguity diagnostic is sentinel-only too: a duplicated model under one
+# vendor cannot confuse a route that names its provider outright.
+sed 's/^frontier = "other-frontier"$/frontier = "self-frontier"/' "$TMP/provider-named-self.toml" > "$TMP/shadow-dup.toml"
+out="$("$DR" --check --config "$TMP/shadow-dup.toml" --models "$TMP/empty-catalog.toml" 2>&1)"
+case "$out" in
+  *"cannot pick a backend"*) fail=$((fail + 1)); echo "  FAIL a shadowed route is never backend-ambiguous" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+out="$("$DR" small_impl --config "$TMP/shadow-fallback.toml" --models "$TMP/empty-catalog.toml" --author-model other-frontier 2>&1)"; rc=$?
+check_exit "a shadowed route with fallbacks resolves" 0 "$rc"
+
+# ...and --check must not call that combination a self-plus-independence conflict:
+# the role routes to an ordinary provider that happens to be named `self`.
+out="$("$DR" --check --config "$TMP/shadow-independence.toml" --models "$TMP/empty-catalog.toml" 2>&1)"
+case "$out" in
+  *"'self'-routed and [independence]-bound"*) fail=$((fail + 1)); echo "  FAIL a shadowed route with [independence] is not a self conflict" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+
+# Using the `self` sentinel proves a config is not a legacy table, so a missing
+# [independence] section there means what it says: no role declares independence.
+# The routing is explicit and is honored, but --check says plainly that no role in
+# this config can require a different-vendor reviewer.
+cat > "$TMP/legacy-self.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "high"]
+[lead]
+provider = "alpha"
+tier     = "frontier"
+[providers.alpha]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "high"]
+default_tier = "frontier"
+[providers.alpha.tiers]
+strong   = "alpha-strong"
+frontier = "alpha-frontier"
+[defaults]
+floor = "strong:low"
+[roles]
+code_review = "self"
+[role_tiers]
+code_review = "strong"
+[role_efforts]
+code_review = "high"
+EOF
+LS=(--config "$TMP/legacy-self.toml" --models "$TMP/empty-catalog.toml")
+out="$("$DR" code_review "${LS[@]}" --author-vendor acme 2>&1)"; rc=$?
+check_exit "an explicit self route is honored without an [independence] table" 0 "$rc"
+check "the explicit self route stays in-vendor" "PROVIDER=alpha" "$out"
+out="$("$DR" --check "${LS[@]}" 2>&1)"; rc=$?
+check_exit "--check flags self-routing with no [independence] table" 1 "$rc"
+check "--check explains what that config cannot require" "different-vendor" "$out"
+
+# A config that never uses the sentinel IS a legacy table, and there a missing
+# [independence] section keeps author exclusion unconditional.
+sed 's/^code_review = "self"$/code_review = "alpha"/' "$TMP/legacy-self.toml" > "$TMP/legacy-plain.toml"
+out="$("$DR" code_review --config "$TMP/legacy-plain.toml" --models "$TMP/empty-catalog.toml" --author-vendor acme 2>&1)"; rc=$?
+check_exit "a legacy table still excludes its author unconditionally" 3 "$rc"
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

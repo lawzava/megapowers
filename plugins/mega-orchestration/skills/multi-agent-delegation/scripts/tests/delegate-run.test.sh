@@ -137,6 +137,18 @@ efforts = ["high"]
 capabilities = ["code", "vision"]
 [providers.reviewer.tiers]
 frontier = "fake-frontier"
+# The author's own provider. Never a candidate here (verify is single-route to
+# reviewer); it exists so --author-model has a model id to map back to a vendor.
+[providers.authorside]
+vendor = "openai"
+binary = "sh"
+channel = "test"
+default_tier = "frontier"
+effort = "high"
+efforts = ["high"]
+capabilities = ["code"]
+[providers.authorside.tiers]
+frontier = "fake-author-model"
 [roles]
 verify = "reviewer"
 visual_verify = "reviewer"
@@ -177,6 +189,143 @@ want_jq "$receipt" '.reviewer.vendor == "anthropic" and .reviewer.model == "fake
 want_jq "$receipt" '.independent == true and .result.verdict == "approve"' "independent approval"
 want_jq "$FAKE_SCHEMA_LOG" 'has("$schema") | not' "Claude schema omits unsupported draft metadata"
 [ ! -e "$repo/should-not-run" ] && ok || bad "claim shell metacharacters executed"
+
+# A harness that knows only its model id must still be able to run an independent
+# review, and the receipt must record the vendor that was derived from it.
+receipt_am="$TMP/receipt-author-model.json"
+set +e
+"$RUN" --role verify --author-model fake-author-model --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$receipt_am" --config "$cfg" >/dev/null 2>"$TMP/run-am.err"
+rc=$?
+set -e
+want_rc 0 "$rc" "--author-model runs an independent review"
+want_jq "$receipt_am" '.author_vendors == ["openai"]' "receipt binds the vendor derived from --author-model"
+want_jq "$receipt_am" '.independent == true' "derived authorship still proves independence"
+
+# An id no provider declares is a usage error, not a silently unbound review.
+set +e
+"$RUN" --role verify --author-model no-such-model --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$TMP/receipt-unknown.json" --config "$cfg" >/dev/null 2>"$TMP/run-unknown.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "unknown --author-model is refused"
+[ ! -e "$TMP/receipt-unknown.json" ] && ok || bad "a refused dispatch must not write a receipt"
+
+# Author provenance comes from the resolver, not from what the caller typed. A route
+# that omits AUTHOR_VENDORS must stop the dispatch rather than let caller input stand
+# in for it. Stub the resolver next to a copy of the launcher: no production seam.
+stub_dir="$TMP/stub-scripts"
+cp -r "$(dirname "$RUN")" "$stub_dir"
+cat > "$stub_dir/delegate-resolve" <<'EOF'
+#!/usr/bin/env bash
+# A route that resolves but never says which authors it excluded.
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "CHANNEL=test"
+echo "ENABLED=true"
+echo "VENDOR=anthropic"
+echo "BINARY=$FAKE_BINARY"
+exit 0
+EOF
+chmod +x "$stub_dir/delegate-resolve"
+set +e
+FAKE_BINARY="$fake" "$stub_dir/delegate-run" --role verify --author-vendor openai --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$TMP/receipt-noauthors.json" --config "$cfg" >/dev/null 2>"$TMP/run-noauthors.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "a route omitting AUTHOR_VENDORS is refused"
+
+# An independent review runs as an isolated one-shot session ON PURPOSE, so this
+# launcher always needs a reachable CLI. A resolver that skipped its own reachability
+# check (which it does for a native route) must not leave that unverified here: the
+# launcher would otherwise try to exec a binary that is not installed.
+cat > "$stub_dir/delegate-resolve" <<'EOF'
+#!/usr/bin/env bash
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "DISPATCH=native"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "CHANNEL=test"
+echo "ENABLED=true"
+echo "VENDOR=anthropic"
+echo "BINARY=definitely-not-an-installed-binary-xyz"
+echo "AUTHOR_VENDORS=openai"
+exit 0
+EOF
+chmod +x "$stub_dir/delegate-resolve"
+set +e
+"$stub_dir/delegate-run" --role verify --author-vendor openai --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$TMP/receipt-nocli.json" --config "$cfg" >/dev/null 2>"$TMP/run-nocli.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "a route whose CLI is absent is refused before dispatch"
+grep -q 'not installed' "$TMP/run-nocli.err" && ok || bad "an absent reviewer CLI must say so"
+[ ! -e "$TMP/receipt-nocli.json" ] && ok || bad "an absent reviewer CLI must not write a receipt"
+# A field of separators alone decodes to empty identities. Length is not emptiness:
+# the check has to look at what it actually recovered.
+cat > "$stub_dir/delegate-resolve" <<'EOF'
+#!/usr/bin/env bash
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "CHANNEL=test"
+echo "ENABLED=true"
+echo "VENDOR=anthropic"
+echo "BINARY=$FAKE_BINARY"
+echo "AUTHOR_VENDORS=,"
+exit 0
+EOF
+chmod +x "$stub_dir/delegate-resolve"
+set +e
+FAKE_BINARY="$fake" "$stub_dir/delegate-run" --role verify --author-vendor openai --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$TMP/receipt-emptyauthors.json" --config "$cfg" >/dev/null 2>"$TMP/run-emptyauthors.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "AUTHOR_VENDORS holding only separators is refused"
+[ ! -e "$TMP/receipt-emptyauthors.json" ] && ok || bad "an empty decoded identity must not write a receipt"
+
+# `read -a` drops trailing empty fields, so a blank component can survive decoding.
+# The raw field has to be rejected before it is split.
+for malformed in 'openai,' ',openai' 'openai,,anthropic' ' ' 'openai, ,anthropic'; do
+  cat > "$stub_dir/delegate-resolve" <<EOF
+#!/usr/bin/env bash
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "CHANNEL=test"
+echo "ENABLED=true"
+echo "VENDOR=anthropic"
+echo "BINARY=\$FAKE_BINARY"
+echo "AUTHOR_VENDORS=$malformed"
+exit 0
+EOF
+  chmod +x "$stub_dir/delegate-resolve"
+  set +e
+  FAKE_BINARY="$fake" "$stub_dir/delegate-run" --role verify --author-vendor openai --artifact worktree \
+    --claim 'billing remains idempotent' \
+    --receipt "$TMP/receipt-malformed.json" --config "$cfg" >/dev/null 2>"$TMP/run-malformed.err"
+  rc=$?
+  set -e
+  want_rc 2 "$rc" "malformed AUTHOR_VENDORS '$malformed' is refused"
+  [ ! -e "$TMP/receipt-malformed.json" ] && ok || bad "malformed AUTHOR_VENDORS '$malformed' must not write a receipt"
+  rm -f "$TMP/receipt-malformed.json"
+done
+grep -q 'omitted the author vendors' "$TMP/run-noauthors.err" && ok || bad "omitted author provenance must say so"
+[ ! -e "$TMP/receipt-noauthors.json" ] && ok || bad "a route omitting AUTHOR_VENDORS must not write a receipt"
 
 unset ANTHROPIC_API_KEY
 mkdir -p "$TMP/oauth-home/.claude"

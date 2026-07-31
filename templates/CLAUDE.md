@@ -45,10 +45,37 @@ floor at start, so model choices need no skill invocation.
 project `.megapowers/models.toml` or user `~/.config/megapowers/models.toml`
 override layer, which survives plugin updates.
 
+You lead in your own model space. `small_impl` resolves to `self`, your own
+provider, so ordinary delegated implementation makes no third-party call.
+Identify yourself with `--author-model <your model id>` and let the resolver
+derive the vendor; do not hardcode a vendor name. Declaring yourself is safe on
+every call here: author exclusion applies only to roles carrying an
+`[independence]` entry. (Unconditional exclusion applies only to a legacy config
+with neither an `[independence]` section nor any unshadowed `self` route; the
+shipped one has the section.) Two roles leave your vendor for
+capability and cost rather than independence, `visual` and `browser_test`; check
+`[roles]` rather than assuming.
+
+A route with `DISPATCH=native` landed on your own provider. Run it with the
+harness's own primitive, a subagent or a saved workflow, not by invoking the
+`claude` CLI on yourself: that spawns a cold session, discards the context that
+made delegating worthwhile, and pays twice. `CHANNEL` and `BINARY` are for
+`DISPATCH=cli`, where the route actually crosses to another runtime.
+
+`--author-*` says who wrote the artifact and drives exclusion. `--caller-model`
+says who is RUNNING and drives native dispatch only, so it can never make a
+review look independent. Pass it when reviewing someone else's work: the author
+is excluded, the route comes back to you, and that is a native dispatch.
+
 Delegates write only inside worktrees or return patches. The lead owns review,
 integration, and Git. Run the tests yourself; never trust a self-reported pass.
-Independence is per artifact author: resolve with `--author-vendor <vendor>`,
-not `--exclude-lead`, so a review routes away from whoever actually wrote it.
+Independence is per artifact author: resolve with `--author-model` or
+`--author-vendor`, not `--exclude-lead`, so a review routes away from whoever
+actually wrote it. The independence roles (plan_review, code_review,
+visual_verify, verify, judge, council_member) fire on risky logic: auth, billing,
+concurrency, security, data integrity.
+When `<role> --vendors` reports fewer than two, say the cross-vendor check did
+not run rather than reporting a review that never happened.
 
 Recursive coordinator mode uses nested Agent calls, not agent teams. Children
 get disjoint paths in the shared checkout; overlapping work stays sequential. Do
