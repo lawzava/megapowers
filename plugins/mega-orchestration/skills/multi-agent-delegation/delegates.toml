@@ -14,8 +14,24 @@ browser_test  = ["computer_use"]
 visual_verify = ["vision"]
 
 # --- Roles: which provider handles what ---
-# Claude leads, so every role routes to Codex by default: the lead is the usual
-# artifact author, and a review that stays in-vendor is not a second opinion.
+# Two classes live here, and only one of them has a reason to leave the vendor.
+#
+# Independence roles route to Codex because a review that stays in-vendor is not a
+# second opinion: same pretraining lineage, same alignment tuning, same blind spots.
+# Those roles carry an [independence] entry below and resolve against the artifact's
+# author, not against whoever the catalog calls the lead.
+#
+# small_impl defaults to `self`: the caller's own provider (--author-model /
+# --author-vendor, else the catalog [lead]). A scoped implementation gains nothing
+# from a different vendor, so spending a third-party call on it is waste. Such a
+# route resolves with DISPATCH=native, meaning run it on the harness's own subagent
+# or workflow surface; shelling out to your own CLI is the wrong instrument.
+#
+# visual and browser_test are the third case: they name a provider for capability
+# and cost, not independence, so they DO leave the caller's vendor without an
+# [independence] entry behind them. Do not read this table as "independence roles
+# leave the vendor, everything else stays": read the row.
+#
 # Visual/browser routing is a cost-adjusted call (bench check 2026-07-04, run
 # against the then-current GPT-5.5; the route moved to gpt-5.6-sol on 2026-07-10
 # without a re-bench). Codex leads computer-use work; visual_verify uses an
@@ -23,7 +39,7 @@ visual_verify = ["vision"]
 [roles]
 plan_review    = "codex"     # review a plan before implementing
 code_review    = "codex"     # review a diff
-small_impl     = "codex"     # well-scoped, small-sized implementation
+small_impl     = "self"      # well-scoped, small-sized implementation: no independence requirement
 visual         = "codex"     # UI / visual work (native computer use)
 browser_test   = "codex"     # browser / end-to-end testing
 visual_verify  = "codex"     # vision model judges evidence captured by the separate Playwright driver
@@ -34,9 +50,10 @@ council_member = "codex"     # council-adjudication: independent answer + blind 
 # --- Fallbacks: ordered cross-vendor chains for the different-vendor roles ---
 # delegate-resolve walks this chain and skips any provider named by
 # --author-vendor or --exclude, disabled, or whose binary is not installed. The
-# review roles carry chains so they resolve away from every artifact author;
-# small_impl stays single-route
-# (it is not an independence role).
+# review roles carry chains so they resolve away from every artifact author.
+# small_impl has no chain because `self` has nowhere to fall back TO: the caller's
+# own provider or no route. It is not an independence role, so a chain would only
+# smuggle a third-party call into work that never needed one.
 #
 # Order is deliberate: moonshot sits ahead of claude on every independence role so
 # a chain that loses codex reaches a third vendor before it reaches the vendor that

@@ -54,6 +54,25 @@ and effort scales, delegate providers, ship floor. If the block is missing
 Hold the broad context: plan, decompose, do the bulk reads, own final
 integration. Delegate narrow, well-specified, testable work.
 
+You lead in your own model space. `small_impl` resolves to `self`, your own
+provider, so ordinary delegated implementation makes no third-party call.
+Identify yourself with `--author-model <your model id>` and let the resolver
+derive the vendor rather than hardcoding one. Declaring yourself is safe on every
+call here: author exclusion applies only to roles carrying an `[independence]`
+entry. (Unconditional exclusion applies only to a legacy config with neither an
+`[independence]` section nor any unshadowed `self` route; the shipped one has the
+section.)
+`visual` and `browser_test` route by capability and cost, not independence; from
+a Codex lead they land in-vendor anyway, but read `[roles]` rather than assuming.
+
+A route with `DISPATCH=native` landed on your own provider. Use native subagents
+for it rather than a `codex exec` call back into yourself; `CHANNEL` and `BINARY`
+apply to `DISPATCH=cli`, where the route crosses to another runtime.
+
+`--author-*` says who wrote the artifact and drives exclusion. `--caller-model`
+says who is RUNNING and drives native dispatch only, so it never affects
+independence. Pass it when reviewing someone else's work.
+
 - Same-vendor fan-out is parallelism, not independence. V2 is same-model
   context sharding; its spawn surface selects no role, model, or effort per
   worker. Use `fork_turns = "none"` and a self-contained brief.
@@ -63,7 +82,9 @@ integration. Delegate narrow, well-specified, testable work.
   council_member): `skills/multi-agent-delegation/scripts/delegate-run --role
   <role> --author-vendor <vendor> --artifact <worktree|file> --claim <text>`.
   The fallback chain routes away from every declared author and the launcher
-  records a subject-bound receipt.
+  records a subject-bound receipt. These roles are the only ones that leave your
+  vendor by default, and they fire on risky logic: auth, billing, concurrency,
+  security, data integrity.
 - Visual verification: an independent vision-model route judges evidence
   captured by the `playwright-cli` driver. Re-read the screenshots yourself.
 
