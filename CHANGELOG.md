@@ -8,6 +8,27 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Added
+
+- `templates/settings.example.json` turns off harness surfaces the plugins
+  already cover: `disableWorkflows`, `includeGitInstructions`, `disableArtifact`,
+  `disableClaudeAiConnectors`, per-skill `skillOverrides` for the bundled skills,
+  and the `Explore`/`Plan` agent types. Worth 7,818 tokens of system prompt on
+  every turn, measured, with the feature each one costs written down in
+  [docs/setup.md](docs/setup.md#optional-templates).
+- `upgrading-megapowers` covers the instruction files and settings baselines, not
+  just plugin versions. No plugin ships `templates/`, so the skill had nothing to
+  compare against and reported the only observable it had. It now fetches the
+  baselines at the installed and target versions, reports what the baseline
+  itself changed in between, and classifies each candidate file as absent,
+  unrelated, or adopted first, because a file meant to be edited always differs
+  from the shipped copy and that difference is not a finding. Adoption is
+  inferred from the installed plugin version and the skill says so; a failed
+  fetch reports that the check did not run rather than an empty drift set.
+- The settings comparison flags a `sandbox.credentials` block still using the
+  pre-0.8.2 bare-string form, which parses as invalid and takes every sibling key
+  in that settings source with it.
+
 ### Fixed
 
 - `templates/settings.example.json` listed `sandbox.credentials` as bare path and
@@ -19,15 +40,6 @@ field by design (their schema allows only name and description). Format:
   The published reference describes invalid entries as stripped individually, so
   the blast radius may be version specific; the malformed shape is a bug either
   way.
-
-### Added
-
-- `templates/settings.example.json` turns off harness surfaces the plugins
-  already cover: `disableWorkflows`, `includeGitInstructions`, `disableArtifact`,
-  `disableClaudeAiConnectors`, per-skill `skillOverrides` for the bundled skills,
-  and the `Explore`/`Plan` agent types. Worth 7,818 tokens of system prompt on
-  every turn, measured, with the feature each one costs written down in
-  [docs/setup.md](docs/setup.md#optional-templates).
 
 ## 0.8.1 - 2026-07-31
 

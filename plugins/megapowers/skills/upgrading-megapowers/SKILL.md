@@ -16,6 +16,14 @@ Identify the harness and every visible Megapowers source. Record installed and e
 
 Inspect available plugins and upstream release metadata without changing local state when the channel permits it. If provenance is ambiguous or managed files have local edits, stop before any write and show the conflict.
 
+Plugins are half the install. The instruction files and settings baselines drift too, and nothing on the machine records which version of them the user took, so inspect them in the same pass. Candidates: `~/.claude/CLAUDE.md`, the project `CLAUDE.md`, and `~/.claude/settings.json` on Claude Code; `~/.codex/AGENTS.md` and `~/.codex/config.toml` on Codex; a project `AGENTS.md` on either. Classify each before comparing anything:
+
+- **Absent:** offer the current baseline as a fresh adoption, not as drift.
+- **Unrelated:** it exists but shares no baseline section headings. Say the baseline is not adopted here and move on. Do not diff it and do not raise it again.
+- **Adopted:** it shares baseline headings. Compare the baseline against itself across versions, never against the user's file. These files are meant to be edited, so "differs from the shipped copy" is the normal state and carries no information.
+
+The comparison is between the baseline at the installed version and the baseline at the target version. Nothing on the machine states when the user actually adopted, so that `from` ref is an inference from the installed plugin version. Say so in the report. It is wrong in both directions: someone who adopted last week but installed a year ago sees changes they already have, and someone who never adopted sees a diff for a file they do not run. [The channel reference](references/channels.md) has the fetch commands.
+
 ## 2. Classify
 
 Classify every installed plugin:
@@ -34,6 +42,9 @@ Separate the plan into:
 
 1. **Upgrades:** already-installed plugins with an applicable target.
 2. **Available additions:** bundles not installed and not overlapping any visible installed plugin, skill, or component.
+3. **Baseline drift:** adopted instruction files and settings whose shipped baseline changed between the installed and target versions.
+
+Report drift as what the baseline changed, section by section, with the inferred `from` ref named. The user decides what to merge into a file they own. Settings compare key by key rather than as text, because that file is merged, not copied: report baseline keys their file lacks, keys whose baseline value changed, and any `sandbox.credentials` entry still using the pre-0.8.2 bare-string form, which parses as invalid and silently voids every other key in that settings source. Never propose `permissions.allow` entries, which widen what the agent may do without asking.
 
 Rank additions relevant first using repository evidence: language manifests and source, frontend files or design work, and orchestration needs. Offer `show all` for the full catalog. Describe newly included skills inside an upgraded bundle as part of that upgrade, not as separate installs. Say "available but not installed" unless release history proves when a bundle was introduced.
 
@@ -49,6 +60,9 @@ Example approval shape:
 ```text
 Upgrade: <installed plugin>, <current> to <target policy or ref>
 Add: <explicitly selected bundle, or none>
+Baselines: <file>: <what the baseline changed>, assuming adoption at <from ref>
+           <file>: not adopted here
+           <or: drift check did not run, and why>
 Preserve: <source, scope, pin policy>
 Warnings: <local edits, duplicates, hooks, restart, or none>
 Writes: <marketplace refresh and exact plugin operations>
@@ -60,7 +74,7 @@ Proceed?
 
 After approval, refresh the selected source and upgrade the installed set first. Re-inspect and verify those upgrades before installing any selected additions.
 
-Do not silently change pins or sources, remove duplicates, discard edits, edit settings, trust hooks, or add plugins. Use `effect-broker` for external effects when available, but do not require that optional plugin.
+Do not silently change pins or sources, remove duplicates, discard edits, edit settings, trust hooks, or add plugins. A baseline edit is a write like any other: apply only the specific additions the user selected, into a file they own, leaving their own text alone. Never overwrite an instruction file with the baseline. Use `effect-broker` for external effects when available, but do not require that optional plugin.
 
 ## 5. Verify
 
@@ -78,6 +92,8 @@ Detection: a hook attachment reporting `Plugin directory does not exist` for a v
 
 ## Common mistakes
 
+- Reporting no baseline drift when the fetch failed. An empty result and an unreachable network look identical in the output and only one of them is good news. Say the check did not run.
+- Treating a difference between the user's instruction file and the shipped baseline as drift. Those files are meant to diverge. Only a change in the baseline between two versions is a finding.
 - Refreshing a marketplace before the approval gate because it seems harmless. It is still a write.
 - Calling every uninstalled bundle newly introduced. Availability does not prove release timing.
 - Assuming a failed update restored the old version. Only observed state supports that claim.
