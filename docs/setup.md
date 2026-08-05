@@ -452,6 +452,17 @@ Plugins are versioned (see each `.claude-plugin/plugin.json` /
 `.codex-plugin/plugin.json` and the root `CHANGELOG.md`). Read the changelog
 before updating; behavioral guidance can change between versions.
 
+Plugins are only half of it. The instruction and settings baselines in
+`templates/` change between releases too, and nothing on your machine records
+which version of them you took, so drift there is invisible unless something
+goes looking. `upgrading-megapowers` does: it fetches the baselines at your
+installed version and at the target, reports what the baseline itself changed
+in between, and leaves the merging to you. It infers your adoption point from
+the installed plugin version, which is wrong if you adopted the templates at a
+different time than you installed the plugins, so it states that assumption
+rather than presenting the delta as fact. Offline, the check cannot run and the
+skill says so instead of reporting nothing found.
+
 If the core plugin is installed, ask the agent to use `upgrading-megapowers`.
 It inspects the active channel, preserves pins and scopes, proposes installed
 updates plus relevant optional additions, asks once before writes, and verifies

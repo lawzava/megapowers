@@ -99,6 +99,30 @@ For an explicit pin, fetch and select only the approved tag or ref while remaini
 
 Inspect status, remotes, current branch, divergence, and local changes. Propose merge or rebase based on the fork's existing policy. After approval, work on a feature branch, fetch the named upstream, integrate the approved stable tag or branch, and run the fork's validators. Never reset, overwrite, or replace the fork with the upstream tree.
 
+## Baseline drift
+
+No plugin ships `templates/`, so the baselines come from the repository. Read only; fetching changes nothing local.
+
+```bash
+base=https://raw.githubusercontent.com/lawzava/megapowers
+for f in CLAUDE.md CODEX-LEAD.md settings.example.json; do
+  curl -fsS "$base/v<installed>/templates/$f" -o "<tmp>/from-$f"
+  curl -fsS "$base/v<target>/templates/$f" -o "<tmp>/to-$f"
+done
+diff -u "<tmp>/from-CLAUDE.md" "<tmp>/to-CLAUDE.md"
+```
+
+Use `$TMPDIR`, not a hard-coded path. Fetch the pinned tag for a pinned install, never the default branch. A fork or symlinked checkout already has `templates/` locally: diff `git -C <checkout> show v<installed>:templates/<file>` against the working copy instead of fetching, and say which source you used.
+
+Settings compare key by key, not as text:
+
+```bash
+jq -S 'keys' "<tmp>/to-settings.example.json"
+jq -S --slurpfile u ~/.claude/settings.json '[keys[] | select(. as $k | $u[0] | has($k) | not)]' "<tmp>/to-settings.example.json"
+```
+
+`curl` exit 22, 6, or 28 means the check did not run. Report that, with the reason, in place of a drift result. Do not fall back to the default branch to make a pinned check succeed; the answer would describe a version the user is not on.
+
 ## Partial failure
 
 After any failed write, stop the sequence and rerun the channel's inspection commands. Report observed applied, failed, and not-attempted actions. Do not proceed to optional additions and do not claim rollback unless the old state was restored and verified.
