@@ -144,7 +144,7 @@ inference is checkable by a person later.
 - Instructions baseline: offer [`templates/CLAUDE.md`](../templates/CLAUDE.md)
   as the project or global instruction file. Merge, don't overwrite; back up
   the existing file first.
-- Codex lead baseline: offer `templates/CODEX-LEAD.md` as `AGENTS.md` and merge
+- Codex baseline: offer `templates/CODEX.md` as `AGENTS.md` and merge
   wanted keys from `templates/codex-config.toml`. Optionally copy the
   Terra-pinned `builder.toml` and `reviewer.toml` from the installed
   mega-orchestration plugin's `assets/codex-agents/` into `~/.codex/agents/` or
