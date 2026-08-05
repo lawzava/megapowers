@@ -8,10 +8,11 @@
 # moves. Comment it out to let Codex choose its own default instead.
 model = "gpt-5.6-sol"
 
-# Reasoning depth for a Codex-lead session, one rung above the catalog's `high`
-# delegate default: leading costs more than being led. Drop to "high" to match
-# the catalog when this session is a delegate. "ultra" is reserved for the
-# complex profile (templates/codex-complex.config.toml), not the everyday lead.
+# Reasoning depth, one rung above the catalog's `high` delegate default: leading
+# costs more than being led. Codex ships as a lead here, so this is the everyday
+# value; a session dispatched with a task brief is the exception, and the brief
+# carries its own effort. "ultra" is reserved for the complex profile
+# (templates/codex-complex.config.toml).
 model_reasoning_effort = "xhigh"
 
 # Named profiles are separate `$CODEX_HOME/<name>.config.toml` files, not
@@ -23,6 +24,19 @@ sandbox_mode = "workspace-write"
 
 # Ask before actions that fall outside the sandbox policy.
 approval_policy = "on-request"
+
+# Features a lead does not use, measured on codex-cli 0.146.0 against a
+# 25,209-token baseline. Together these return 1,782 tokens of context on every
+# turn. `memories` (-3,880) and `web_search` (-2,280) cost more, but a lead uses
+# both, so they stay on; turn them off only for a session that always arrives
+# with a self-contained brief. Keep this table above [features.multi_agent_v2]:
+# a bare [features] header captures every top-level key that follows it.
+# Verify on your own build with:
+#   codex exec "ok" --json --skip-git-repo-check --ephemeral | jq .usage
+[features]
+tool_suggest = false     # -777
+apps = false             # -746: MCP apps
+image_generation = false # -259
 
 # This baseline deliberately opts into the under-development v2 collaboration
 # surface. V2 rejects the v1 `agents.max_threads` key. Its session-thread cap

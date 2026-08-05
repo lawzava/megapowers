@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 SDD="$ROOT/plugins/megapowers/skills/subagent-driven-development/SKILL.md"
-CODEX="$ROOT/templates/CODEX-LEAD.md"
+CODEX="$ROOT/templates/CODEX.md"
 CLAUDE="$ROOT/templates/CLAUDE.md"
 PRIMITIVES="$ROOT/plugins/mega-orchestration/skills/orchestrating/references/harness-primitives.md"
 PLANS="$ROOT/plugins/megapowers/skills/writing-plans/SKILL.md"
