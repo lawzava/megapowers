@@ -624,6 +624,43 @@ for pdir in plugins/*/; do
   if [[ -z $miss ]]; then ok "$(basename "$pdir") README lists all shipped skills"; else bad "$(basename "$pdir") README missing skills:$miss"; fi
 done
 
+echo "== baseline drift =="
+# upgrading-megapowers fetches templates/ from raw.githubusercontent to diff the
+# baseline across versions. A failed fetch and a clean baseline produce the same
+# empty output, so a path rename here would read as "nothing changed" forever.
+# Pin every fetched name to a file that actually exists.
+drift_ref="plugins/megapowers/skills/upgrading-megapowers/references/channels.md"
+skill_body="plugins/megapowers/skills/upgrading-megapowers/SKILL.md"
+if grep -qF 'raw.githubusercontent.com/lawzava/megapowers' "$drift_ref" 2>/dev/null; then
+  ok "upgrade channel reference fetches baselines from this repository"
+else
+  bad "upgrade channel reference must fetch baselines from raw.githubusercontent.com/lawzava/megapowers"
+fi
+# Parse the fetch list itself ("for f in A B C; do"), not any mention of the
+# name elsewhere in the file: a stale name in the loop is exactly the typo this
+# check exists to catch, and it appears in the jq examples further down too.
+drift_names="$(sed -n 's/^for f in \(.*\); do$/\1/p' "$drift_ref" 2>/dev/null | head -1)"
+if [[ -z $drift_names ]]; then
+  bad "channels.md has no parseable baseline fetch list (expected: for f in <names>; do)"
+else
+  drift_missing=0
+  for tname in $drift_names; do
+    [[ -f "templates/$tname" ]] || { bad "channels.md fetches templates/$tname, which does not exist"; drift_missing=1; }
+  done
+  (( drift_missing == 0 )) && ok "every baseline fetched by channels.md exists in templates/ ($drift_names)"
+  for tname in CLAUDE.md CODEX-LEAD.md settings.example.json; do
+    case " $drift_names " in
+      *" $tname "*) ok "channels.md fetches baseline $tname" ;;
+      *) bad "channels.md fetch list must include baseline $tname" ;;
+    esac
+  done
+fi
+if grep -qF 'did not run' "$skill_body" 2>/dev/null; then
+  ok "upgrading-megapowers distinguishes a failed drift check from no drift"
+else
+  bad "upgrading-megapowers must say the drift check did not run when the fetch fails"
+fi
+
 echo "== required files =="
 for f in LICENSE ATTRIBUTION.md README.md AGENTS.md CLAUDE.md docs/setup.md docs/harness-support.md docs/agent-install.md templates/settings.example.json "$codex_mp"; do
   if [[ -f $f ]]; then ok "$f present"; else bad "$f missing"; fi
