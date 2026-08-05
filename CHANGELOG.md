@@ -8,6 +8,22 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Changed
+
+- Codex ships as a lead only. `templates/CODEX.md` was a delegate baseline whose
+  first instruction was "you are a delegate"; it is deleted, and the former
+  `templates/CODEX-LEAD.md` takes its name. One template per harness, both lead
+  charters, because each harness leads in its own runtime and they dispatch each
+  other on demand. Being dispatched is now a property of the task brief rather
+  than of an instruction file: both templates carry the same paragraph saying a
+  brief makes you its delegate for that brief's duration, which is also where
+  the compressed reporting contract that the delegate baseline used to hold now
+  lives. Update any `AGENTS.md` symlink pointing at `CODEX-LEAD.md`.
+- `templates/codex-config.toml` disables `tool_suggest`, `apps`, and
+  `image_generation`, worth 1,782 tokens per turn on codex-cli 0.146.0 measured
+  against a 25,209-token baseline. `memories` and `web_search` cost more, 3,880
+  and 2,280, but a lead uses both and they stay on.
+
 ### Added
 
 - `templates/settings.example.json` turns off harness surfaces the plugins

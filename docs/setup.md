@@ -164,8 +164,8 @@ a model-visible system policy, not a hard runtime cap.
 
 Pin the Codex session model to `gpt-5.6-sol`. Under the shipped catalog Codex
 is the critic rather than the lead, and every delegated role runs at `high`;
-`xhigh` is the sensible setting only when you run Codex as the lead through an
-override layer (`templates/CODEX-LEAD.md`). The current bundled Sol model also
+`xhigh` is the sensible setting when Codex runs its own sessions, which is how
+`templates/CODEX.md` and `templates/codex-config.toml` ship. The current bundled Sol model also
 supports `ultra`, which adds automatic task delegation. Named profiles
 live in separate `$CODEX_HOME/<name>.config.toml` files and are selected with
 `--profile`; do not put `[profiles.*]` tables in the main config. Copy
@@ -357,11 +357,19 @@ fleet forward.
 
 `templates/` holds copyable examples, not files to install wholesale:
 
-- `templates/CLAUDE.md` and `templates/CODEX.md` are starter instruction files
-  for other projects (Claude Code lead, Codex delegate); `templates/CODEX-LEAD.md`
-  is the variant for running Codex as the lead.
+- `templates/CLAUDE.md` and `templates/CODEX.md` are starter instruction files,
+  one per harness. Both are lead charters: each harness leads in its own runtime
+  and they dispatch each other on demand, so which one is running is which one
+  is in charge. Neither ships a delegate variant. A session dispatched with a
+  task brief is that brief's delegate for its duration, and both templates carry
+  the same paragraph saying so.
 - `templates/codex-config.toml` is a minimal Codex baseline with no
-  user-configured MCP bridge requirement.
+  user-configured MCP bridge requirement. Its `[features]` table turns off
+  `tool_suggest`, `apps`, and `image_generation`, which a lead does not use and
+  which cost 1,782 tokens of context per turn on codex-cli 0.146.0. Keep that
+  table above `[features.multi_agent_v2]`: a bare `[features]` header captures
+  every top-level key written after it, which would silently move `sandbox_mode`
+  and `approval_policy` inside it.
 - `templates/codex-complex.config.toml` is the optional named Sol ultra layer;
   save it as `$CODEX_HOME/complex.config.toml` and select it with
   `codex --profile complex`.
