@@ -381,6 +381,53 @@ fleet forward.
   autonomy, opt in explicitly by adding `"defaultMode": "acceptEdits"`
   (auto-approves file edits) under `permissions` yourself; understand that it
   removes the per-edit prompt before you do.
+- The same file turns off harness surfaces the plugins already cover, which
+  buys back system-prompt budget every turn. Measured on Claude Code 2.1.222
+  against a 31,442-token headless baseline, one key at a time:
+
+  | Key | Saved | What it costs you |
+  | --- | --- | --- |
+  | `disableWorkflows` | 6,014 | The `Workflow` tool and the `ultracode` keyword |
+  | `includeGitInstructions: false` | 1,558 | Built-in commit and PR mechanics |
+  | `CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS` | 287 | The built-in `Explore` and `Plan` agent types |
+  | `skillOverrides` | ~1,000 | Listing lines for bundled skills you do not use |
+  | `disableArtifact` | ~1,500 | The `Artifact` tool for publishing web pages |
+
+  The `skillOverrides` and `disableArtifact` figures are interactive-session
+  estimates: a `claude -p` run never loads either surface, so a headless probe
+  scores both at zero. The three headless rows sum to 7,859 but the whole file
+  measures 7,818, because one-key probes are not additive; treat any single row
+  as approximate.
+- Five of those keys trade a feature away, so decide rather than copy:
+  - `disableWorkflows` also disables `templates/workflows/`. Re-enable it where
+    you actually fan out, with `"disableWorkflows": false` in that repo's
+    `.claude/settings.json`; project scope beats user scope. Left off,
+    mega-orchestration's `best-of-n` and `audit-fanout` skills still run the
+    same patterns through ordinary subagents, just without the runner.
+  - `includeGitInstructions: false` assumes you also took `templates/CLAUDE.md`,
+    whose Git section and the finishing-a-development-branch skill carry the
+    same rules. Flip it back first if commit or PR quality slips.
+  - `skillOverrides` is per skill, not all-or-nothing:  `"off"` hides a bundled
+    skill from everyone, `"user-invocable-only"` keeps `/name` typable while
+    hiding it from the model, `"name-only"` drops just the description. Prefer
+    it over `disableBundledSkills`, which also removes `claude-api`, `loop`,
+    and `schedule`. Your own and plugin skills are unaffected either way.
+  - `disableClaudeAiConnectors` stops claude.ai cloud MCP connectors from being
+    fetched and connected at startup. Servers you configure yourself, in
+    `.mcp.json`, `~/.claude.json`, or `--mcp-config`, are untouched. Drop the
+    key if you drive connectors from claude.ai rather than from local config.
+  - `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY` suppresses the session quality survey.
+    Use `feedbackSurveyRate` (0 to 1) instead if you would rather see it
+    occasionally than never.
+- `sandbox.credentials` takes objects, not strings: `{"path": "~/.ssh", "mode":
+  "deny"}` for files and `{"name": "GITHUB_TOKEN", "mode": "deny"}` for
+  variables, with `"mask"` as the other mode. Bare strings do not parse, and on
+  2.1.222 that takes the rest of the settings source down with them: a file
+  holding `"disableWorkflows": true` alongside `"files": ["~/.ssh"]` measured
+  31,446 tokens, the same file with `{"path": "~/.ssh", "mode": "deny"}`
+  measured 25,432. The published reference says invalid entries are stripped
+  individually, so this may be version specific; check yours against your own
+  build if you copied this template before v0.8.2.
 - The `autoMode` block in the same file teaches the permission classifier
   your environment instead of leaving it to guess: which hosts are
   production (write statements get a confirm), what is routine here (fewer

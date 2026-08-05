@@ -83,7 +83,9 @@ not create worktrees for this mode. Children must not perform Git index or ref
 operations. Full contract: megapowers:subagent-driven-development.
 
 For very large audits, migrations, or repeatable multi-agent research, prefer
-the harness's own workflow runner over hand-managed delegation.
+the harness's own workflow runner over hand-managed delegation. If the runner is
+off in this environment, mega-orchestration's `best-of-n` and `audit-fanout`
+skills run the same patterns through ordinary subagents.
 
 ## Git
 

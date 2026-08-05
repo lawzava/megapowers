@@ -1,6 +1,32 @@
 {
   "includeCoAuthoredBy": false,
-  "attribution": { "commit": "", "pr": "" },
+  "attribution": { "commit": "", "pr": "", "sessionUrl": false },
+  "includeGitInstructions": false,
+  "disableArtifact": true,
+  "disableWorkflows": true,
+  "disableClaudeAiConnectors": true,
+  "spinnerTipsEnabled": false,
+  "promptSuggestionEnabled": false,
+  "awaySummaryEnabled": false,
+  "skillOverrides": {
+    "artifact-capabilities": "off",
+    "artifact-design": "off",
+    "artifact-diagramming": "off",
+    "claude-in-chrome": "off",
+    "dataviz": "off",
+    "fewer-permission-prompts": "user-invocable-only",
+    "init": "user-invocable-only",
+    "keybindings-help": "user-invocable-only",
+    "review": "user-invocable-only",
+    "run": "user-invocable-only",
+    "security-review": "user-invocable-only",
+    "simplify": "user-invocable-only",
+    "update-config": "user-invocable-only"
+  },
+  "env": {
+    "CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS": "1",
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(playwright-cli:*)"
