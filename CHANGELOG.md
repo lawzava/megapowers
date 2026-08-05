@@ -8,6 +8,18 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Fixed
+
+- `templates/settings.example.json` listed `sandbox.credentials` as bare path and
+  variable-name strings. Claude Code expects `{"path": ..., "mode": "deny"}` and
+  `{"name": ..., "mode": "deny"}` objects. Copied wholesale, the file protected
+  no credentials, and on 2.1.222 it also voided the keys beside them: a two-key
+  file whose only fault was a bare-string credential entry left `disableWorkflows`
+  unapplied at 31,446 tokens, against 25,432 once the entry became an object.
+  The published reference describes invalid entries as stripped individually, so
+  the blast radius may be version specific; the malformed shape is a bug either
+  way.
+
 ## 0.8.1 - 2026-07-31
 
 ### Added
