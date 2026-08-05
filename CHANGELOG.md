@@ -20,6 +20,15 @@ field by design (their schema allows only name and description). Format:
   the blast radius may be version specific; the malformed shape is a bug either
   way.
 
+### Added
+
+- `templates/settings.example.json` turns off harness surfaces the plugins
+  already cover: `disableWorkflows`, `includeGitInstructions`, `disableArtifact`,
+  `disableClaudeAiConnectors`, per-skill `skillOverrides` for the bundled skills,
+  and the `Explore`/`Plan` agent types. Worth 7,818 tokens of system prompt on
+  every turn, measured, with the feature each one costs written down in
+  [docs/setup.md](docs/setup.md#optional-templates).
+
 ## 0.8.1 - 2026-07-31
 
 ### Added
