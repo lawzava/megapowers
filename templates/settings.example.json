@@ -20,8 +20,23 @@
   "sandbox": {
     "enabled": true,
     "credentials": {
-      "files": ["~/.ssh", "~/.aws", "~/.gnupg", "~/.netrc", "~/.pgpass", ".env", ".env.local", ".env.production", "secrets"],
-      "envVars": ["GITHUB_TOKEN", "NPM_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
+      "files": [
+        { "path": "~/.ssh", "mode": "deny" },
+        { "path": "~/.aws", "mode": "deny" },
+        { "path": "~/.gnupg", "mode": "deny" },
+        { "path": "~/.netrc", "mode": "deny" },
+        { "path": "~/.pgpass", "mode": "deny" },
+        { "path": ".env", "mode": "deny" },
+        { "path": ".env.local", "mode": "deny" },
+        { "path": ".env.production", "mode": "deny" },
+        { "path": "secrets", "mode": "deny" }
+      ],
+      "envVars": [
+        { "name": "GITHUB_TOKEN", "mode": "deny" },
+        { "name": "NPM_TOKEN", "mode": "deny" },
+        { "name": "AWS_ACCESS_KEY_ID", "mode": "deny" },
+        { "name": "AWS_SECRET_ACCESS_KEY", "mode": "deny" }
+      ]
     }
   },
   "autoMode": {
