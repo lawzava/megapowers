@@ -125,7 +125,12 @@ one PreToolUse, and one PostToolUse. If the versions differ, restart with
 
 ## 4. Optional, with explicit user approval
 
-Present these to the user; apply only what they approve:
+Present these to the user; apply only what they approve.
+
+Nothing on the machine records which baseline version a user adopted, and later
+upgrades have to infer it from the installed plugin version. Name the version
+you are offering here, and record what was taken in the step 5 report, so the
+inference is checkable by a person later.
 
 - Statusline (Claude Code, Linux): copy the plugin's `statusline.sh` to a
   stable path the user chooses and point `statusLine.command` in
@@ -182,3 +187,4 @@ skipped and why:
 | Codex runtime + hooks | CLI/app-server versions; trusted hooks; duplicate count |
 | Duplicates found/avoided | e.g. none; or "~/.agents/skills skipped, Claude plugins present" |
 | Optional steps applied | which of step 4, with user approval noted |
+| Baselines adopted | version offered, and which files the user took or declined |
