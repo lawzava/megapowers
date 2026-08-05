@@ -177,7 +177,7 @@ if [[ -f $codex_mp ]]; then
 fi
 
 echo "== scratch storage guidance =="
-for template in templates/CODEX-LEAD.md templates/CODEX.md templates/CLAUDE.md; do
+for template in templates/CODEX.md templates/CLAUDE.md; do
   # Three semantic markers, not the paragraph verbatim: the rules have to be
   # there, the wording is the template author's to tune.
   if grep -q '^## Scratch storage$' "$template" &&
@@ -648,7 +648,7 @@ else
     [[ -f "templates/$tname" ]] || { bad "channels.md fetches templates/$tname, which does not exist"; drift_missing=1; }
   done
   (( drift_missing == 0 )) && ok "every baseline fetched by channels.md exists in templates/ ($drift_names)"
-  for tname in CLAUDE.md CODEX-LEAD.md settings.example.json; do
+  for tname in CLAUDE.md CODEX.md settings.example.json; do
     case " $drift_names " in
       *" $tname "*) ok "channels.md fetches baseline $tname" ;;
       *) bad "channels.md fetch list must include baseline $tname" ;;

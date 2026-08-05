@@ -105,7 +105,7 @@ No plugin ships `templates/`, so the baselines come from the repository. Read on
 
 ```bash
 base=https://raw.githubusercontent.com/lawzava/megapowers
-for f in CLAUDE.md CODEX-LEAD.md settings.example.json; do
+for f in CLAUDE.md CODEX.md settings.example.json; do
   curl -fsS "$base/v<installed>/templates/$f" -o "<tmp>/from-$f"
   curl -fsS "$base/v<target>/templates/$f" -o "<tmp>/to-$f"
 done
