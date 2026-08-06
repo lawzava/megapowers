@@ -28,9 +28,6 @@
     "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1"
   },
   "permissions": {
-    "allow": [
-      "Bash(playwright-cli:*)"
-    ],
     "deny": [
       "Read(./.env)",
       "Read(./.env.local)",
