@@ -1,11 +1,19 @@
 # Harness primitives
 
-Last reviewed: 2026-07-14.
+Last reviewed: 2026-08-05.
 
 What each orchestration concept maps to per runtime, as of that date. Names
 and availability drift with releases; when a primitive is absent or you cannot
 confirm it, fall back to sequential inline work and say so. Never fabricate a
 call to a primitive the runtime does not expose.
+
+Read only the runtime you are running in, plus the last section:
+
+- [Claude Code](#claude-code)
+- [Codex](#codex)
+- [OpenCode](#opencode)
+- [Antigravity](#antigravity)
+- [The absent-primitive rule](#the-absent-primitive-rule)
 
 ## Claude Code
 
@@ -41,14 +49,17 @@ call to a primitive the runtime does not expose.
   on dispatch, and `/fast` on Opus-class models. Spend high effort on
   verify/judge/decide steps, low on mechanical ones.
 - **Non-Claude models in workflows and subagents**: the Agent and Workflow
-  `model` parameters accept Claude models only. To use another vendor as a
-  pipeline stage (finder, verifier, judge), spawn a thin wrapper agent with
-  `model: 'sonnet', effort: 'medium'` whose prompt has it write a
-  self-contained prompt for the external CLI, run it via Bash (for Codex:
-  `codex exec -s read-only` for reads, a worktree for writes), and return the
-  raw output. The wrapper composes and relays; it does not redo, filter, or
-  embellish the delegate's work. Medium effort, not low: a faithful
-  self-contained prompt is the whole job.
+  `model` parameters accept Claude models only, so another vendor enters a
+  pipeline through Bash, never through a `model` value. For a review stage that
+  is `scripts/delegate-run`, which already resolves the vendor and returns a
+  schema-checked verdict. For a stage the launcher does not cover (small_impl,
+  visual, browser_test), resolve it with `scripts/delegate-resolve` and run the
+  external CLI from the lead's own Bash on the printed route (for Codex:
+  `codex exec -s read-only` for reads, a worktree for writes). Putting that Bash
+  call in a subagent is a context decision, never a routing one: hand it the
+  already-resolved route, and never let it resolve its own. A subagent that
+  picks the model is the retired model-delegate again, which is what
+  orchestrating's one-path rule forbids.
 - **Scheduling and unattended**: cloud routines (`/schedule`: cron, HTTP
   endpoint, and GitHub triggers) run fully autonomously with no permission
   prompts, so effect-broker gating must live in the routine prompt. `/loop`
