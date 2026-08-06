@@ -69,6 +69,68 @@ present.
   uses gofmt/goimports (Go) and a project-local prettier (JS/TS/etc.) when
   present, and skips them quietly otherwise.
 
+### Optional: skipping the prompt on inspection commands
+
+`mega-guardrails` ships `hooks/allow-read-only.sh`, which is **not registered**.
+It is a PreToolUse(Bash) hook that auto-approves a command when the command
+string carries no write construct and names an inspection command that does not
+write, optionally behind one `cd <path> &&` prefix. It never denies and never
+asks; anything else is passed through untouched to the normal permission flow.
+
+It exists because a `permissions.allow` rule cannot do this job. `Bash(ls:*)`
+matches on the command prefix, so it also approves `ls -la > ~/.bashrc` and
+`ls "$(sh -c 'touch owned')"`. There is no read-only prefix, which is why the
+settings template ships no allow rules at all. A hook is the only mechanism that
+sees the whole string before deciding.
+
+What it removes: across 22,201 observed Bash calls the most common shape was
+`cd X && ...` at 4,348 occurrences, and the interruptions read "This Bash command
+contains multiple operations. The following part requires approval:" over parts
+like `ls -la` and `wc -l`. It approves `ls`, `wc`, `stat`, `file`, `head`, and
+`tail`, plus a single `cd <path> && <command>` prefix.
+
+Not every flag of those six, though, and the difference will look arbitrary the
+first time you hit it. A flag is on the list only when its documented behavior
+can neither write nor run a program, checked one flag at a time against the
+manual and then under `strace`. So a few ordinary-looking ones still prompt:
+`file -p` writes, because restoring the access time is a `utimensat` on the file
+you just inspected; `file -z` runs a decompressor that the operand's own first
+bytes name; `file -C` compiles a magic cache to disk; `stat --cached=never` can
+make a network filesystem write data back; and `tail -f` never returns. A flag
+the hook does not recognize prompts as well, rather than being guessed at, so a
+flag from a future coreutils release fails closed.
+
+To enable it, add a PreToolUse(Bash) entry pointing at
+`${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh allow-read-only.sh` in your
+own settings, alongside the destructive-command hook rather than replacing it.
+
+Read this before enabling it. Two things it does not do.
+
+**It does not approve git, including `git status`.** That looks like an omission
+and it is not. `git status` and `git diff` rewrite `.git/index` whenever the
+cached stat data is stale, which is any worktree you just edited, and `git
+status`, `git diff`, and `git ls-files` run whatever program the repository's
+`core.fsmonitor` names, while `git log -p`, `git show`, and `git diff` run
+`diff.external`, a textconv filter, or `core.pager`. All of that lives in
+`.git/config` and `.gitattributes`, which the hook never reads. Whether a git
+command writes is a property of the repository, not of the command you typed, so
+it is not a question this hook can answer. `git -C <path> status` will keep
+prompting.
+
+**It does not prove the command is harmless, and it does not prove which program
+runs.** It approves `head -n 5 .env` and `wc -l /home/you/.ssh/id_rsa` without a
+prompt, because reading a secret is not a write. Note the second one is spelled
+out: a `~` makes the hook pass the command through to the normal prompt, since
+tilde expansion is not in its inert byte set, but the expanded path an agent
+usually writes is approved. On a machine whose
+sandbox denies those paths the read still fails; what you give up is the prompt.
+And approval is a statement about the command string, not about the executable:
+an `ls` earlier on your `PATH`, or an exported shell function named `ls`, passes
+every check. That is the same hole the prompt has, since approving `ls -la` by
+hand never told you which binary answered either, but it is the reason the hook
+claims a property of the string and stops there. If either trade is wrong for
+your setup, leave the hook unregistered. It ships off for exactly this reason.
+
 ## Codex marketplace
 
 Codex adds this repo as a remote Git marketplace (codex-cli 0.142.5+ accepts
@@ -162,10 +224,16 @@ for the same assignment; start a fresh worker for a new problem. As observed in
 Codex 0.144.4, v2 does not enforce `agents.max_depth`, so the depth-five limit is
 a model-visible system policy, not a hard runtime cap.
 
-Pin the Codex session model to `gpt-5.6-sol`. Under the shipped catalog Codex
-is the critic rather than the lead, and every delegated role runs at `high`;
-`xhigh` is the sensible setting when Codex runs its own sessions, which is how
-`templates/CODEX.md` and `templates/codex-config.toml` ship. The current bundled Sol model also
+Pin the Codex session model to `gpt-5.6-sol`. Under the shipped catalog Codex is
+the critic rather than the lead. Roles that adjudicate or refute run at `high`;
+roles bounded by something other than reasoning depth (scoped implementation,
+visual, browser) run at `medium`, following OpenAI's GPT-5.6 guidance that medium
+is the balanced starting point and that `high` or `xhigh` want eval evidence of a
+meaningful gain. `templates/codex-config.toml` ships `high` as the Codex session
+default for the same reason; raise it per task, with a reason, rather than
+standing at `xhigh`. A 2026-08-05 audit of 1,623 rollouts found `xhigh` running
+roughly three times as often as `high`, which is the drift that default exists to
+stop. The current bundled Sol model also
 supports `ultra`, which adds automatic task delegation. Named profiles
 live in separate `$CODEX_HOME/<name>.config.toml` files and are selected with
 `--profile`; do not put `[profiles.*]` tables in the main config. Copy
@@ -383,8 +451,14 @@ fleet forward.
   reference.
 - `templates/settings.example.json` holds conservative, generic Claude Code
   defaults (no attribution trailers, secret-path denies, sandbox credential
-  blocks). It does not set a `defaultMode`, so it never loosens your permission
-  posture just by being copied. Copy the keys you want into your own
+  blocks). It sets no `defaultMode` and carries no `permissions.allow` entries,
+  so copying it never loosens your permission posture. A read-only inspection
+  allowlist was drafted for it and then dropped: a `Bash(cmd:*)` rule matches on
+  the command prefix, so `Bash(ls:*)` also matches `ls -la > ~/.bashrc`,
+  `ls "$(curl -fsS URL)"`, and `ls "$(sh -c 'touch owned')"`. No prefix rule can
+  express "this command, without redirection, substitution, or control
+  operators", which means no shell command is read-only at the prefix level and
+  the whole shape is unsafe. Copy the keys you want into your own
   `~/.claude/settings.json`; do not replace your file wholesale. For more
   autonomy, opt in explicitly by adding `"defaultMode": "acceptEdits"`
   (auto-approves file edits) under `permissions` yourself; understand that it
