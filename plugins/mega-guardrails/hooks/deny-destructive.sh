@@ -40,11 +40,14 @@
 # fails OPEN on anything it cannot read (missing jq, unparseable input) so it never wedges
 # work; the one conservative case is a command too long to parse, which asks (see the cap).
 #
-# Commands wrapped in bash -c / sh -c / eval are re-scanned recursively (bounded depth).
-# The reason is accident coverage, not evasion resistance: agents genuinely write
-# `bash -c "cd $d && rm -rf $x"`, and an unset variable there is as catastrophic nested
-# as it is at the top level. Anyone deliberately hiding a command has easier routes
-# (see the bypasses above); the depth cap exists to bound work, not to win that race.
+# Commands wrapped in bash -c / sh -c / eval, and the argv of a find -exec/-ok primary,
+# are re-scanned recursively (bounded depth) by the same rules a bare command gets. The
+# reason is accident coverage, not evasion resistance: agents genuinely write
+# `bash -c "cd $d && rm -rf $x"` and `find . -exec rm -rf $x \;`, and an unset variable
+# there is as catastrophic nested as it is at the top level. Anyone deliberately hiding a
+# command has easier routes (see the bypasses above); the depth cap exists to bound work,
+# not to win that race. Each payload is strictly shorter than the command it came out of,
+# so the recursion terminates on its own and the cap is only a work bound.
 #
 # SPEED: this hook runs before EVERY Bash call, so its cost is pure added latency.
 # Two things keep it cheap. (1) LC_ALL=C: the parsers slice the command string, and
@@ -219,16 +222,65 @@ resolve_command() {
   return 0
 }
 
+# --- lexical path normalization ----------------------------------------------------
+# Equivalent spellings of one path must classify the same, or the test below is a
+# spelling check rather than a target check: without this `rm -rf /home/alice//`,
+# `rm -rf /home/alice/.`, and `rm -rf .././..` all name the home or parent directory
+# while reading as ordinary scoped paths, and run with no guard at all.
+# Collapses repeated separators, drops "." components, and folds ".." into the component
+# before it. Purely textual on purpose: the guard must decide from the command string
+# alone, so it never stats the path (the target frequently does not exist yet, and a
+# guard that needs the filesystem answers differently on every host) and never resolves a
+# symlink (that would let the disk, not the command, pick the verdict).
+#
+# A "${VAR:-/x}" word is split on its inner slash too. That is safe because the joins put
+# the separator back and the patterns below key on the "${HOME:" prefix and the closing
+# brace, which both survive; special-casing braces would be code no input can exercise.
+NORM=""
+normalize_path() {
+  local rest="$1" abs=0 seg prev out="" i n=0
+  local -a parts=()
+  case "$rest" in /*) abs=1 ;; esac
+  while [ -n "$rest" ]; do
+    seg="${rest%%/*}"
+    if [ "$seg" = "$rest" ]; then rest=; else rest="${rest:${#seg}+1}"; fi
+    case "$seg" in
+      "" | ".") continue ;;                      # repeated separator or a no-op component
+      "..")
+        prev=""; [ "$n" -gt 0 ] && prev="${parts[$((n - 1))]}"
+        case "$prev" in
+          "" | ".." | *'$'* | *'*'* | "~")
+            # Nothing to fold into, or a component whose value the command string does
+            # not state. Folding there would invent a path ($HOME/.. is not "."), so the
+            # ".." stays literal and the classifier sees the same shape it sees today.
+            [ "$abs" -eq 1 ] && [ "$n" -eq 0 ] && continue   # "/.." is "/"
+            parts[$n]=".."; n=$((n + 1)) ;;
+          *) unset "parts[$((n - 1))]"; n=$((n - 1)) ;;
+        esac
+        ;;
+      *) parts[$n]="$seg"; n=$((n + 1)) ;;
+    esac
+  done
+  for ((i = 0; i < n; i++)); do out="${out:+$out/}${parts[$i]}"; done
+  [ "$abs" -eq 1 ] && out="/$out"
+  [ -n "$out" ] || out="."                       # "", ".", "./" and "x/.." all mean the cwd
+  NORM="$out"
+}
+
 # --- catastrophic target test (precise; NOT "any absolute/glob/var") ---------------
-# Matches only root, home-root, and top-level system directories — the paths whose
-# recursive deletion is unrecoverable. A specific subdir ("$TMPDIR/x", "./dist",
-# "~/.cache", "/tmp/app") is NOT catastrophic and passes.
+# Matches only root, a home directory, top-level system directories, and a parent-
+# relative escape. Those are the paths whose recursive deletion is unrecoverable, or
+# whose real location the command string does not pin down. A specific subdir ("$TMPDIR/x",
+# "./dist", "~/.cache", "/tmp/app", "/home/alice/Code") is NOT catastrophic and passes.
 is_catastrophic_target() {
-  local w="$1" root
+  local w="$1" root base
   while [[ "$w" = \\* ]]; do w="${w:1}"; done   # strip leading escapes
   w="${w%%\\}"                                   # strip a trailing escape artifact
-  [ "$w" != "/" ] && w="${w%/}"                  # drop one trailing slash, but keep bare /
   [ -z "$w" ] && return 1
+  # every comparison below is against a normalized path, so trailing and doubled
+  # slashes, "." components, and ".." folding are handled once here instead of being
+  # re-spelled into each pattern (which is how "/home/alice//" got through).
+  normalize_path "$w"; w="$NORM"
   # the "~" patterns match a LITERAL tilde the agent passed unexpanded; $HOME is
   # matched by the patterns below.
   # shellcheck disable=SC2088
@@ -249,6 +301,21 @@ is_catastrophic_target() {
     [ "$w" = "/$root" ] && return 0
     [ "$w" = "/$root/*" ] && return 0
   done
+  # A home directory named LITERALLY: /home/alice, /Users/alice, or the expanded value
+  # of $HOME. The patterns above only catch the unexpanded '$HOME'/'~' spellings and the
+  # bare '/home' parent, so an agent that writes out the real path (the shape that
+  # actually turns up in traffic) walked past the guard and wiped its own home. 'base'
+  # drops a trailing '/*' first because deleting a home dir's contents is the same loss
+  # as deleting the dir. One level deep only: /home/alice/Code stays scoped.
+  base="${w%/\*}"
+  case "$base" in
+    /home/?* | /Users/?*) [ "${base#/*/}" = "${base##*/}" ] && return 0 ;;
+  esac
+  [ -n "${HOME:-}" ] && [ "$HOME" != "/" ] && [ "$base" = "${HOME%/}" ] && return 0
+  # A parent-relative escape ('..', '../..', deeper, and their '/*' contents form).
+  # Where it lands depends on a cwd the command string does not state, so a recursive
+  # delete rooted there is not a scoped delete. '.' and '../sibling' stay scoped.
+  [[ "$w" =~ ^\.\.(/\.\.)*(/\*)?$ ]] && return 0
   return 1
 }
 
@@ -275,12 +342,111 @@ rm_is_catastrophic() {
   return 1
 }
 
-# find <catastrophic-start> ... -delete|-exec rm  -> deny
-find_is_catastrophic() {
+# --- find: a catastrophic start path plus a primary that ACTS ----------------------
+# The TIER rule below is a conjunction with is_catastrophic_target, so no tier can fire
+# on `find . -name x ...`. That is what keeps the widened primary set cheap: the shapes
+# it newly reaches are all rooted at /, a home directory, a top-level system directory,
+# or a parent-relative escape.
+#
+# The exec argv re-scan is the one thing here that is NOT gated on the start path, and it
+# has to be: `find .` in a harmless directory otherwise launders `rm -rf /`. See
+# _queue_exec_payload for why that costs no extra noise.
+#
+# Tier the exec target instead of comparing it to one name. The old rule was "the word
+# after -exec is literally rm", which trusted a NAME rather than proving a PROPERTY:
+# `-exec sh -c ...` runs anything at all, and so does a target this guard has never
+# heard of. So the first word after the primary decides.
+#   2 (deny)  an unrecoverable destroyer, run once per matched file.
+#   0 (silent) a command that cannot write. `find . -exec grep -l pat {} +` is an
+#             everyday idiom and its rooted cousin `find / -exec grep ...` is a real
+#             search; prompting on those is the false positive that gets a guard
+#             switched off, so proven-read-only targets produce no signal at all.
+#   1 (ask)   everything else: a shell, an interpreter, a wrapper like sudo or xargs,
+#             or a program the guard does not recognize. An unknown target ASKS rather
+#             than allows because the command string does not say what it does, and
+#             running it over every file under / or a home directory is the accident
+#             this rule exists for. It does not DENY, because unproven is not the same
+#             as unrecoverable and this tier has to stay cheap to be wrong about.
+# The read-only set is deliberately short and every member is a pure reader. `file` is
+# absent on purpose: its -C flag compiles a magic cache to disk.
+#
+# The tier answers ONE question: is running this target over every file under a
+# catastrophic start path worth a prompt. It says nothing about the target's own
+# arguments, which is why the exec argv is ALSO queued for a full recursive re-scan (see
+# _queue_exec_payload). The two are independent: the tier needs a dangerous start path,
+# the re-scan does not.
+_find_exec_tier() {
+  local t="$1"
+  while [[ "$t" = \\* ]]; do t="${t:1}"; done   # \rm (alias bypass) -> rm
+  t="${t##*/}"
+  case "$t" in
+    rm|unlink|shred) return 2 ;;
+    grep|egrep|fgrep|cat|head|tail|wc|ls|stat|du|readlink|realpath|basename|dirname|echo|printf|true|false|cmp|diff|md5sum|sha1sum|sha256sum|sha512sum) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Queue a find -exec target's OWN argv for the same recursive scan a `bash -c` or an
+# `eval` payload gets. Without this the guard classified only find's START path, so
+# `find . -exec rm -rf / \;` and `find . -exec sh -c 'rm -rf /' \;` ran silently from a
+# harmless directory while the bare `rm -rf /` and `sh -c 'rm -rf /'` were denied. A find
+# over a scoped tree launders the catastrophe, and that is a one-typo accident, not a
+# crafted bypass.
+#
+# The words are re-quoted because shell_words already stripped the original quoting, and
+# `sh -c rm -rf /` re-lexes into a different command than `sh -c 'rm -rf /'`: the payload
+# collector would take only `rm` as the program. A word that re-lexes unchanged stays
+# bare, because the command NAME must reach resolve_command without quotes around it.
+#
+# This adds no new noise on its own. The payload is judged by exactly the rules a bare
+# command is judged by, so `find . -exec mytool {} \;` and `find . -exec chmod 644 {} \;`
+# stay silent for the same reason bare `mytool` and bare `chmod 644 x` do.
+_queue_exec_payload() {
+  local w out="" specials
+  specials=$'*[[:space:]\'"`$;&|()<>]*'
+  for w in "$@"; do
+    # shellcheck disable=SC2053   # $specials is a glob on purpose
+    if [[ "$w" == $specials ]]; then
+      if [[ "$w" != *\'* ]]; then w="'$w'"
+      elif [[ "$w" != *\"* ]]; then w="\"$w\""
+      fi
+      # A word carrying BOTH quote characters is left bare. This lexer has no escapes, so
+      # there is no spelling that survives, and passing it through is the silence that
+      # stood here before rather than a new hole.
+    fi
+    out="${out:+$out }$w"
+  done
+  [ -n "$out" ] || return 0
+  _PAYLOADS+=("$out")
+}
+
+# Sets FIND_TIER to "deny" or "ask" and returns 0; returns 1 when the command carries
+# no signal. Deny outranks ask within one find, so `find / -delete -exec grep ...`
+# still denies. Queues every -exec argv into _PAYLOADS regardless of the verdict, because
+# a scoped start path silences the tier but must not silence the target itself.
+FIND_TIER=""
+find_is_risky() {
   shell_words "$1" || return 1
-  local w in_starts=1 danger_start=0 danger_action=0 expect_exec=0
+  local w in_starts=1 danger_start=0 deny=0 ask=0 in_exec=0 first_exec=0
+  local -a execv=()
+  FIND_TIER=""
   for w in "${WORDS[@]}"; do
-    if [ "$expect_exec" -eq 1 ]; then [ "${w##*/}" = "rm" ] && danger_action=1; expect_exec=0; continue; fi
+    if [ "$in_exec" -eq 1 ]; then
+      # An exec argv ends at ';' or '+'. A lone backslash counts because the top-level
+      # splitter already consumed the ';' of a '\;' terminator, leaving the escape behind;
+      # without this the argv would swallow every primary that follows it.
+      case "$w" in
+        ';' | '+' | '\' | '\;' | '\+')
+          _queue_exec_payload ${execv+"${execv[@]}"}; execv=(); in_exec=0; continue ;;
+      esac
+      if [ "$first_exec" -eq 1 ]; then
+        first_exec=0
+        _find_exec_tier "$w"
+        case "$?" in 2) deny=1 ;; 1) ask=1 ;; esac
+      fi
+      execv+=("$w")
+      continue
+    fi
     if [ "$in_starts" -eq 1 ]; then
       case "$w" in
         -H|-L|-P|-O*|-D) continue ;;
@@ -288,9 +454,26 @@ find_is_catastrophic() {
         *) is_catastrophic_target "$w" && danger_start=1; continue ;;
       esac
     fi
-    case "$w" in -delete) danger_action=1 ;; -exec|-execdir) expect_exec=1 ;; esac
+    case "$w" in
+      -delete) deny=1 ;;
+      # -ok/-okdir are -exec with a confirmation prompt. They are still action-bearing,
+      # and a hook must not assume the prompt saves anyone: an agent's find runs with no
+      # terminal, so whether the prompt is even answerable depends on the harness.
+      -exec|-execdir|-ok|-okdir) in_exec=1; first_exec=1 ;;
+      # These do not touch what they match: they TRUNCATE the file named on the command
+      # line. One clobbered file is a bounded, recoverable loss, so it asks instead of
+      # denying, but `find / -fls ~/.bashrc` reads as a listing and destroys a dotfile,
+      # which is exactly the accident worth one confirmation.
+      -fprint|-fprint0|-fprintf|-fls) ask=1 ;;
+    esac
   done
-  [ "$danger_start" -eq 1 ] && [ "$danger_action" -eq 1 ]
+  # An unterminated argv is the COMMON case, not an edge: the splitter eats the ';' of
+  # '\;', so the exec target usually runs to the end of the segment.
+  [ "$in_exec" -eq 1 ] && _queue_exec_payload ${execv+"${execv[@]}"}
+  [ "$danger_start" -eq 1 ] || return 1
+  [ "$deny" -eq 1 ] && { FIND_TIER="deny"; return 0; }
+  [ "$ask" -eq 1 ] && { FIND_TIER="ask"; return 0; }
+  return 1
 }
 
 # A mode that grants write broadly: numeric 777, or a symbolic mode that grants write
@@ -507,7 +690,11 @@ scan_level() {
     name="$RC_NAME"; tail="$RC_TAIL"
     case "$name" in
       rm)     rm_is_catastrophic "$tail"     && { REASON="recursive rm of a root, home, or system directory. Delete a specific subdirectory instead (e.g. rm -rf ./dist)."; DECISION="deny"; return 0; } ;;
-      find)   find_is_catastrophic "$tail"   && { REASON="find deleting from a root/home/system start path. Use a specific relative start path."; DECISION="deny"; return 0; } ;;
+      find)
+        if find_is_risky "$tail"; then
+          [ "$FIND_TIER" = "deny" ] && { REASON="find deleting or shredding from a root/home/system start path. Use a specific relative start path."; DECISION="deny"; return 0; }
+          ask_reason="find running an unvetted -exec/-ok target, or a -fprint/-fls file write, from a root/home/system start path. The command string does not say what that target does to every file it matches; confirm it, or use a specific relative start path."
+        fi ;;
       chmod)  chmod_is_catastrophic "$tail"  && { REASON="chmod 777 on a root/system path."; DECISION="deny"; return 0; } ;;
       dd)     dd_is_catastrophic "$tail"     && { REASON="dd writing to a raw block device (would overwrite a disk)."; DECISION="deny"; return 0; } ;;
       mkfs|mkfs.*|wipefs|blkdiscard|shred)
