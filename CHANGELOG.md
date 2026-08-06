@@ -8,6 +8,237 @@ field by design (their schema allows only name and description). Format:
 
 ## Unreleased
 
+### Known issues
+
+Eight rounds of independent cross-vendor review ran against this work. These are
+what survived, disclosed rather than closed, because the gates here are accident
+backstops and not security boundaries: a gap that needs a crafted payload is
+worth naming, while chasing it costs the precision that makes a gate usable.
+
+The risky-logic gate:
+
+- `find_is_catastrophic` does not classify an exec target's arguments when the
+  start path is not catastrophic AND the target is unrecognized. Pre-existing.
+- A policy layer committed in the same turn as its own change is not announced,
+  because the Stop hook runs after the commit.
+- A deleted tracked binary, or one whose staged content is binary while the
+  worktree copy is text, is classified from the worktree copy.
+- An unclosed cgo `/* ... */` preamble line, and an unclosed `<!--[if IE]>`, are
+  skipped as comments. Only the opening line; continuation lines scan.
+- Three marker-table rows are kept without being airtight: `.cfg` and `.conf`
+  name a purpose rather than a language, `.pl` is also Prolog, and a YAML literal
+  block scalar makes a `#` line inert document data.
+- The executable-bit test would disable the prose exclusions wholesale on a
+  filesystem that marks everything executable. That direction is false positives,
+  not misses.
+- The chunk-length expansion in `nul_scan` counts characters, not bytes, under a
+  multibyte locale, so the 1 MiB bound is per-character.
+- A risky line removed in the index and restored in the worktree gates. The
+  conservative direction, and the price of using the fingerprint's own
+  decomposition.
+
+`allow-read-only.sh`, which ships unregistered:
+
+- It approves reading a secret without a prompt. Reading is not writing, and the
+  hook's proof is about writes.
+- Approval names a command, not an executable. A shadowed binary or an exported
+  shell function passes, exactly as it passes a human clicking approve.
+- It approves commands that may not terminate, such as `wc -c /dev/urandom`. A
+  hang is a nuisance, not a breach.
+- Three consecutive review rounds each found one write or exec hiding behind a
+  flag name (`file -z`, `file -p`, `stat --cached`). Every remaining flag has now
+  been read in its own manual and run under `strace`, but the base rate of that
+  search has not reached zero.
+
+Elsewhere:
+
+- `delegate-resolve` still has one `grep -m1` in a pipeline, at the sole-candidate
+  read. Its status is never consumed and the value is captured before the writer
+  can be signalled, so it cannot produce a wrong answer today. It is the same
+  SIGPIPE-under-pipefail shape as the bug that was swept, and a trap only if
+  someone later tests its status.
+- `agents/model-delegate.md` is a tombstone. Claude Code registers every agent
+  file, so it still costs selector context; deleting it is a maintainer decision.
+
+### Added
+
+- An enforcement lifecycle. Every rule that can block a session, and every rule
+  that only advises one, is declared in a plugin's `enforcement.toml` with a
+  state of `off`, `advisory`, or `enforced`, the hook that owns it, the skill it
+  comes from, and the date it was promoted. `state = "off"` in a project
+  `.megapowers/enforcement.toml` is the supported per-repository opt-out, so
+  silencing a gate no longer means patching a hook. `scripts/check-enforcement.sh`
+  runs in `validate.sh` and asserts the declarations still describe the code: the
+  named hook exists, and it actually reads the rules file. That last check is the
+  point. The risky-logic keyword list used to live inline in the hook with nothing
+  recording that the rule was enforced or when, so nothing could tell that the
+  gate and the prose describing it had diverged.
+- `scripts/session-metrics --rules` reports the four numbers that would have
+  surfaced all of this on their own: advisory honor rate, gate fires with their
+  per-project distribution, verify rounds reached before an approve, and
+  delegate-run wall clock including the calls the harness backgrounded.
+
+### Fixed
+
+- The risky-logic gate scans what can execute. It matched a keyword list against
+  the entire raw diff, every line and every file, so a 2026-08-05 audit of 1,324
+  transcripts found it firing 141 times with 47 of those inside this repository,
+  which ships markdown and shell and no auth or billing code. One session
+  absorbed 37 consecutive blocks. It now reads added lines only, skips comment
+  lines, skips prose formats, and never scans the files that define the gate, all
+  declared in `enforcement.toml`. On this branch's own diff the old matcher trips
+  on ten files and the new one on none, with the exclusion set unchanged at 20 of
+  the 45 pending paths in the reviewed package.
+
+  Every narrowing has to prove a property rather than trust a name, which is the
+  rule five rounds of adversarial review kept teaching. `*.txt` is not a prose
+  extension, because `requirements.txt` is a dependency manifest. Neither is
+  `docs/`, because a path is not a format and `docs/auth.ts` executes. Neither is
+  `*.mdx`, which embeds JSX. An excluded path is scanned anyway when it carries
+  the executable bit or when line 1 is a `#!` shebang. A path that cannot be read
+  at all is not scanned, because there is nothing to scan; it is announced by
+  name, and it blocks only when the path itself names a risky category.
+  Comment markers are chosen per extension and an unknown extension scans every
+  line, because `#`, `--` and `;` execute in some languages; shebangs, `//go:`
+  directives, and `// +build` are never treated as comments. A self-exclusion
+  anchors on the running installation or a committed plugin manifest, never on a
+  directory that merely carries the right name.
+- The gate reads policy from committed content, not from the tree it is
+  reviewing. A pending `.megapowers/enforcement.toml` could previously set
+  `state = "off"` in the same change as new auth logic and silence the gate
+  judging that change. Project layers now resolve through `git show HEAD:`, a
+  pending edit is announced rather than honored in both directions, and a
+  repository with no commits gets no project layer at all.
+- The gate could fail open. The second `git diff` that drops excluded paths did
+  not check its exit status, so exceeding `ARG_MAX` yielded an empty scan and a
+  silent pass on a real finding. It now falls back to scanning the unreduced
+  diff, which is the conservative direction.
+- `delegate-run` stops after three consecutive dispatches of a role on a branch
+  without an approve, and hands the decision to the human with the transcripts
+  from the previous rounds. The ledger already counted rounds; nothing capped
+  them, and the audit found a real branch at round 11 and a repository branch at
+  round 22.
+- `delegate-run` enforces its own 540 second budget rather than trusting a
+  caller's `timeout`. Forty-four call sites declared 900 to 1800 seconds under a
+  harness that caps a foreground command at 600, so verdicts were arriving after
+  the lead had moved on. It also bounds the review package: one measured 674,630
+  bytes across 11,183 lines, and a reviewer handed that reviews the beginning of
+  it. Over budget, the package names every elided path and its line count instead
+  of truncating silently, serves those bytes from the immutable snapshot rather
+  than the live worktree, and the receipt still binds the complete tree. A round
+  is reserved only after provider and credential preflight, so a setup failure no
+  longer spends one: a sandboxed `codex exec` that cannot read `~/.codex/auth.json`
+  burned a round of this branch's own budget before that fix.
+- Reasoning effort is a routed decision. Roles that adjudicate or refute run
+  `high`; scoped implementation, visual, and browser work run `medium`, following
+  OpenAI's GPT-5.6 guidance that medium is the balanced starting point and that
+  `high` or `xhigh` want eval evidence of a meaningful gain. `templates/codex-config.toml`
+  drops from `xhigh` to `high` for the same reason: the audit measured 6,763
+  turns at `xhigh` against 2,298 at `high`, so the escalation rung had become the
+  floor and there was nothing left to escalate to.
+- `run-init` scaffolds `runbook.md` from `references/runbook-template.md` instead
+  of a heredoc, and the template is split into machine-checkable MUST lines and
+  advisory SHOULD lines. It was nine numbered steps carrying roughly sixty
+  constraints in compound sentences, which is where GPT-5.6's "conflicting rules
+  can create more instability than missing detail" bites.
+- A membership test spelled `printf ... | grep -q ...` under `set -o pipefail`
+  returns FAILURE on a match that is not on the last line. `grep -q` exits at the
+  first hit, the unwritten remainder kills the writer with SIGPIPE, and pipefail
+  promotes that to the pipeline's status, so a value that is present reads as
+  absent whenever the reader wins the race. It was measured at roughly 5% under
+  load and 0% serially. `delegate-resolve` used that spelling at sixteen
+  membership sites including route resolution, so under load it could skip a
+  provider that has a required capability or refuse a valid tier: a flaky routing
+  decision, not a flaky test. Swept repo-wide, including two live sites in
+  `scripts/validate.sh` itself, the autonomous-run status scripts, and
+  `mem-recall`.
+- `deny-destructive.sh` recognizes a home directory named literally
+  (`/home/<user>`, `/Users/<user>`, an expanded `$HOME`) and parent-relative
+  escapes as catastrophic targets. It also classifies the argv of `find -exec`,
+  `-execdir`, `-ok`, and `-okdir` through the same engine it applies to a bare
+  command, so `find . -exec sh -c 'rm -rf /' \;` no longer launders a
+  catastrophic command through a harmless start path. Across 60 realistic
+  `find -exec` idioms the change moved no verdict, and across the fixture corpus
+  it moved exactly one, from ask to deny.
+
+### Added
+
+- `mega-guardrails/hooks/allow-read-only.sh`, unregistered by default. A
+  PreToolUse(Bash) hook that skips the approval prompt on ordinary inspection
+  commands. It checks one positive property (every byte of the command is drawn
+  from an inert set) rather than chasing a list of bypasses, so redirection,
+  substitution, control operators, globs, and unresolvable quoting are all
+  rejected by the same test. It never denies and never asks.
+
+  It approves `ls`, `wc`, `stat`, `file`, `head`, and `tail`. It does **not**
+  approve git, and that is the interesting part. An independent cross-vendor
+  review found the hook claiming "proven read-only" over commands that write, and
+  reproducing it took no attacker at all: on git 2.53.0 in a clean repository,
+  `git status` and `git diff` rewrite `.git/index` whenever the cached stat data
+  is stale, which is the state of any worktree somebody just edited. Worse,
+  `git status`, `git diff`, and `git ls-files` execute the program named by the
+  repository's own `core.fsmonitor`, and `git log -p`, `git show`, and `git diff`
+  execute `diff.external`, a textconv filter, or `core.pager`. All of it is
+  configured in `.git/config` and `.gitattributes`, files the hook never opens,
+  so rejecting the command-line `-c` flag prevented none of it. Whether a git
+  command writes is a property of the repository, not of the command string, and
+  the string is all this hook sees. `git rev-parse` survived every probe and is
+  gone with the rest, because keeping it means a per-subcommand exception list
+  that fails open against the next git release.
+
+  That costs real value. `git -C <path> status` is in the measured interruptions
+  this hook was built to remove, and it prompts again. The decision string being
+  true is worth more.
+
+  The claim itself also changed. Approval now says what it proves: the command
+  string carries no write construct and names an allowlisted command with
+  allowlisted flags. It deliberately does not claim to know which executable each
+  name resolves to, because it cannot. A shadowed `ls` earlier on `PATH`, or an
+  exported shell function of the same name, passes every check. That gap is not
+  closed in code and does not need to be: the prompt this hook replaces has the
+  identical hole, since nobody approving `ls -la` is told which binary answers.
+  An overstated claim is more dangerous than a narrow gap, because it invites
+  reliance the mechanism cannot support.
+
+  The same review caught that claim a second time, in the same sentence. The
+  reason ended its list of absent constructs at "or control operator", flatly,
+  while the most valuable thing the hook approves is `cd PATH && COMMAND`, which
+  carries an `&&` and accounted for 4,348 of the 22,201 observed calls. The
+  exception is now named in the reason rather than the shape dropped, and the
+  suite asserts it mechanically instead of by eye. The test suite's own header had
+  drifted the same way, defining an approval as proof the command was read-only,
+  and it now states the string-scoped contract the hook actually asserts. Five of
+  the seven findings in that round were documentation claiming more than the code
+  did.
+
+  Three flags went the same way as git, one per review round, each found by
+  auditing the flag rather than by trusting the command name. `file -z` and
+  `file --uncompress` exec a decompressor named by the operand's own first bytes,
+  resolved through `PATH`: on file 5.46, `file -z a.lz` runs `lzip` and
+  `file -z a.zst` runs `zstd`, so a file the agent merely inspected got to pick a
+  program name. `file -p` is plainer still and sat on the list a round longer. It
+  restores the access time through `utimensat`, a write to the inode of the file
+  being inspected, and it is not even a faithful restore: the call carries whole
+  seconds, so an ext4 file's mtime went from `.419860996` to `.000000000` and its
+  ctime moved. Plain `file x` issues no `utime` call at all, so the syscall is the
+  flag and not the read. `stat --cached` is gone because `--cached=never` asks for
+  `AT_STATX_FORCE_SYNC`, which `statx(2)` says may require a network filesystem to
+  perform a data writeback; a long flag matches by name with its value stripped,
+  so the whole name goes rather than one mode. Nothing left on the allowlist
+  writes or execs, and every surviving flag was read in its own manual and then
+  run under `strace`.
+
+  A read-only Bash allowlist was drafted for `templates/settings.example.json`
+  and then dropped before shipping, because an independent cross-vendor review
+  showed its premise was false. A `Bash(cmd:*)` rule matches on the command
+  prefix, so `Bash(ls:*)` also matches `ls -la > ~/.bashrc`,
+  `ls "$(curl -fsS URL)"`, and `ls "$(sh -c 'touch owned')"`. No prefix rule can
+  say "this command, without redirection, substitution, or control operators",
+  so no shell command is read-only at the prefix level. The 4,348 `cd X && ...`
+  approval prompts the audit measured are real friction, but a preapproval that
+  also grants writes, network access, and arbitrary subprocess execution is not
+  the fix. Reducing them needs a matcher that parses argv.
+
 ### Changed
 
 - Codex ships as a lead only. `templates/CODEX.md` was a delegate baseline whose
