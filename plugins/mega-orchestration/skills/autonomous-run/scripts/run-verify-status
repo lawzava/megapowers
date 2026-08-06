@@ -101,7 +101,13 @@ case "$state" in
     if [ -f "$dir/plan.md" ]; then
       while IFS= read -r dtag; do
         [ -n "$dtag" ] || continue
-        printf '%s\n' "$unsupported" | grep -qx "DONETAG_${dtag}" || bad_count=$((bad_count + 1))
+        # Here-string, not a pipe. `grep -q` exits at the first match, and under
+        # the `set -o pipefail` above the unwritten remainder kills `printf` with
+        # SIGPIPE, which pipefail promotes to the pipeline status. A tag matching
+        # early in a long list then read as absent, intermittently. This exact
+        # construct was the root cause of an intermittent CI failure elsewhere in
+        # this repository, so it is spelled without a pipeline everywhere now.
+        grep -qx "DONETAG_${dtag}" <<<"$unsupported" || bad_count=$((bad_count + 1))
       done < <(sed -n 's/^## \([A-Za-z][A-Za-z0-9_-]*\):.*$/\1/p' "$dir/plan.md")
     fi
     if [ "${bad_count:-1}" -gt 0 ]; then

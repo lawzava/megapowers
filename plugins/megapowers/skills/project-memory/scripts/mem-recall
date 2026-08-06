@@ -21,7 +21,10 @@ for f in "$base"/*.md; do
   hay="$title $hook $(basename "$f" .md)"
   # match on the metadata OR anywhere in the memory body, so a fact buried in the
   # body is still recalled (case-insensitive, fixed-string, safe for metachar queries)
-  if printf '%s' "$hay" | grep -qiF -- "$q" || grep -qiF -- "$q" "$f"; then
+  # Here-string, not a pipe: `grep -q` exits at the first match and SIGPIPEs the
+  # writer, and `set -o pipefail` above promotes that to failure, so a memory
+  # matching early in its own haystack could read as no match.
+  if grep -qiF -- "$q" <<<"$hay" || grep -qiF -- "$q" "$f"; then
     printf -- '- %s (%s) — %s\n' "$title" "$(basename "$f")" "$hook"
     matched=1
   fi
