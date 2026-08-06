@@ -8,12 +8,20 @@
 # moves. Comment it out to let Codex choose its own default instead.
 model = "gpt-5.6-sol"
 
-# Reasoning depth, one rung above the catalog's `high` delegate default: leading
-# costs more than being led. Codex ships as a lead here, so this is the everyday
-# value; a session dispatched with a task brief is the exception, and the brief
-# carries its own effort. "ultra" is reserved for the complex profile
+# Reasoning depth for a Codex session leading its own work. `high`, matching the
+# catalog's lead default, not a rung above it.
+#
+# This was "xhigh", on the argument that leading costs more than being led. A
+# 2026-08-05 audit of 1,623 rollouts measured what that argument actually bought:
+# 6,763 turns at xhigh against 2,298 at high, so the escalation rung had quietly
+# become the floor and there was no longer a rung above the everyday value to
+# escalate TO. OpenAI's GPT-5.6 guidance is explicit that high or xhigh want eval
+# evidence of a meaningful gain, and no such evidence exists here.
+#
+# Raise it per task, with a reason. A session dispatched with a task brief takes
+# the brief's effort instead, and "ultra" stays reserved for the complex profile
 # (templates/codex-complex.config.toml).
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "high"
 
 # Named profiles are separate `$CODEX_HOME/<name>.config.toml` files, not
 # `[profiles.*]` tables here. `templates/codex-complex.config.toml` is the
