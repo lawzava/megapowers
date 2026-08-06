@@ -441,5 +441,76 @@ avg_ms=$(( ( $(date +%s%N) - start ) / runs / 1000000 ))
 printf '  cost: %sms per run averaged over %s runs (payload build included)\n' "$avg_ms" "$runs"
 [ "$avg_ms" -lt 121 ] && ok || bad "under the 121ms the guard establishes (got ${avg_ms}ms)"
 
+# 7. Enforcement lifecycle. This rule is declared advisory in ../enforcement.toml
+#    and reads two fields from there. `state` is the per-repository off switch,
+#    so a repo can silence the router without patching a hook. `fire_prefix` is
+#    the string scripts/session-metrics counts fires by, and keeping one copy is
+#    the point: a router that changed its wording while the metric kept matching
+#    the old one would report a rule nobody honors while it was in fact being
+#    obeyed.
+#
+#    The project layer is read relative to the working directory, so these cases
+#    run from a temp directory. Everything above ran from wherever the suite was
+#    invoked, and that is restored afterwards so a later addition is unaffected.
+_router_cwd="$PWD"
+_router_tmp="$(mktemp -d "${TMPDIR:-/tmp}/skill-router-layer.XXXXXX")"
+cd "$_router_tmp" || exit 1
+mkdir -p .megapowers
+
+# Baseline from this directory: no layer, shipped state advisory, router fires.
+out="$(run_router "why is this failing")"
+[ -n "$(context_of "$out")" ] && ok || bad "layer baseline: router fires with no project layer"
+
+printf '[rules.skill-router]\nstate = "off"\n' > .megapowers/enforcement.toml
+[ -z "$(run_router "why is this failing")" ] && ok || bad "project layer state=off silences the router"
+
+printf '[rules.skill-router]\nstate = "advisory"\n' > .megapowers/enforcement.toml
+[ -n "$(context_of "$(run_router "why is this failing")")" ] && ok \
+  || bad "project layer state=advisory keeps the router speaking"
+
+# A typo disables a rule rather than half-enabling it, which is the lifecycle
+# contract every consumer has to honor. This hook once tested only the literal
+# "off", so a misspelling kept it speaking while check-enforcement.sh would have
+# rejected the same file. An independent review found the mismatch.
+printf '[rules.skill-router]\nstate = "advisroy"\n' > .megapowers/enforcement.toml
+[ -z "$(run_router "why is this failing")" ] && ok \
+  || bad "an unknown state reads as off and silences the router"
+
+# `enforced` is not this consumer's state either. A UserPromptSubmit hook cannot
+# block, so the honest reading of a rule promoted past advisory is that this
+# consumer no longer speaks for it.
+printf '[rules.skill-router]\nstate = "enforced"\n' > .megapowers/enforcement.toml
+[ -z "$(run_router "why is this failing")" ] && ok \
+  || bad "a state this consumer does not implement silences the router"
+
+# The prefix comes from the rules file, not from a literal in the hook. A layer
+# that changes it must change what the hook emits, or the metric and the hook
+# have already drifted.
+printf '[rules.skill-router]\nstate = "advisory"\nfire_prefix = "ROUTED>> "\n' > .megapowers/enforcement.toml
+ctx="$(context_of "$(run_router "why is this failing")")"
+case "$ctx" in
+  "ROUTED>> systematic-debugging."*) ok ;;
+  *) bad "fire_prefix is read from the rules file (got '$ctx')" ;;
+esac
+
+# Fails OPEN, unlike the blocking gates. An advisory line cannot block anything,
+# so an unreadable rules file falls back to the shipped wording and keeps
+# routing: silence costs more here than a stale string would.
+printf 'this is not toml at all {{{\n' > .megapowers/enforcement.toml
+ctx="$(context_of "$(run_router "why is this failing")")"
+case "$ctx" in
+  "Trigger matched: megapowers:systematic-debugging."*) ok ;;
+  *) bad "unparseable rules file falls back to the shipped prefix (got '$ctx')" ;;
+esac
+
+# A layer naming a different rule says nothing about this one. Per-key merging,
+# not per-file replacement.
+printf '[rules.some-other-rule]\nstate = "off"\n' > .megapowers/enforcement.toml
+[ -n "$(context_of "$(run_router "why is this failing")")" ] && ok \
+  || bad "a layer silencing another rule leaves the router speaking"
+
+cd "$_router_cwd" || exit 1
+rm -rf "$_router_tmp"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
