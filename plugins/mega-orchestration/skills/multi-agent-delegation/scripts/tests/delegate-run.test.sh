@@ -6,6 +6,18 @@ DIFF_ID="$HERE/../review-diff-id"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# The launcher reads max_rounds from a user enforcement layer under
+# XDG_CONFIG_HOME, so an operator who has one would otherwise decide the round cap
+# for this suite. Point it at a directory this file owns, and set the cap high
+# enough that the sections below, which walk six rounds and five concurrent
+# dispatches on purpose, are testing what they say they test. The cap itself is
+# exercised against the shipped default and against a project layer further down.
+export XDG_CONFIG_HOME="$TMP/xdg"
+mkdir -p "$XDG_CONFIG_HOME/megapowers"
+printf '[rules.risky-logic-review]\nmax_rounds = 99\n' > "$XDG_CONFIG_HOME/megapowers/enforcement.toml"
+# The layer-free stack, for the runs that must see the shipped default.
+mkdir -p "$TMP/xdg-none"
+
 pass=0
 fail=0
 ok() { pass=$((pass + 1)); }
@@ -69,6 +81,24 @@ if [ -n "${FAKE_WAIT_FOR:-}" ]; then
 fi
 printf '%s\n' "$*" > "${FAKE_ARGS_LOG:?}"
 printf '%s\n' "${CLAUDE_CONFIG_DIR:-}" > "${FAKE_CONFIG_LOG:?}"
+# Follows every 'snapshot:' pointer in the review package, from INSIDE the
+# dispatch. The snapshot lives in the launcher's scratch directory and is removed
+# when the run ends, so an assertion made afterwards cannot tell a live pointer
+# from a dangling one. The launcher runs this from that directory, which is why
+# the package is read relative to $PWD.
+if [ -n "${FAKE_OMITTED_PROBE:-}" ]; then
+  : > "$FAKE_OMITTED_PROBE"
+  sed -n '/^## Files omitted from this package$/,$p' review-package.txt |
+    sed -n 's/^  snapshot: //p' |
+    while IFS= read -r omitted_path; do
+      if [ -f "$omitted_path" ]; then
+        printf 'READABLE %s\n' "$omitted_path" >> "$FAKE_OMITTED_PROBE"
+        cat "$omitted_path" >> "$FAKE_OMITTED_PROBE"
+      else
+        printf 'MISSING %s\n' "$omitted_path" >> "$FAKE_OMITTED_PROBE"
+      fi
+    done
+fi
 # Records WHICH credential the launcher copied in, so an OAuth test can prove it
 # handled the credential it planted rather than the operator's real one.
 if [ -n "${FAKE_CRED_LOG:-}" ]; then
@@ -932,6 +962,98 @@ wait
 conc_rounds="$(jq -r '.round' "$TMP"/conc-*.json 2>/dev/null | LC_ALL=C sort -n | tr '\n' ' ')"
 if [ "$conc_rounds" = "1 2 3 4 5 " ]; then ok; else bad "five concurrent dispatches must reserve rounds 1..5, got: $conc_rounds"; fi
 if jq -e '.rounds.verify | to_entries | .[0].value == 5' "$crepo/.git/megapowers-review-rounds.json" >/dev/null 2>&1; then ok; else bad "ledger must settle at 5 after five concurrent dispatches"; fi
+
+echo "== a contended lock is not an unwritable ledger =="
+# The launcher takes the ledger lock with an O_EXCL create, and when that create
+# was refused it concluded the directory was unwritable from the lock file not
+# being there. Those are two separate steps. The holder can release between them,
+# and the create is also refused with the path absent when something that is not a
+# regular file sits at it. Under parallel load the section above reproducibly lost
+# one of its five verifiers to this: a write error on a perfectly writable .git,
+# no receipt, and a ledger settling at 4. That is the panel pattern
+# cross-model-verification documents, failing on contention alone.
+#
+# The timing window itself cannot be hit on demand, and a test that tries for it
+# is the flake it exists to fix. A dangling symlink at the lock path is the same
+# OBSERVABLE condition with no timer in it: the create fails with EEXIST, `[ -e ]`
+# on the path is false because the link resolves to nothing, and the directory is
+# writable throughout.
+lockrepo="$TMP/lock-contention-repo"
+mkdir -p "$lockrepo"
+(
+  cd "$lockrepo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  printf 'base\n' > svc.txt
+  git add svc.txt
+  git commit -qm init
+  printf 'pending\n' > svc.txt
+) >/dev/null 2>&1
+locklock="$lockrepo/.git/megapowers-review-rounds.json.lock"
+ln -s /nonexistent/megapowers-lock-holder "$locklock"
+
+rc=0
+(
+  cd "$lockrepo" || exit 1
+  FAKE_VERDICT=needs_attention "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "an obstructed lock must not read as an unwritable ledger" \
+    --receipt "$TMP/lock-stuck.json" --config "$cfg"
+) >/dev/null 2>"$TMP/lock-stuck.err" || rc=$?
+want_rc 2 "$rc" "a lock that never clears refuses the dispatch"
+if grep -q 'cannot write the round ledger' "$TMP/lock-stuck.err"; then bad "a writable ledger directory must not be reported unwritable"; else ok; fi
+if grep -q 'stayed locked' "$TMP/lock-stuck.err"; then ok; else bad "an obstructed lock must be reported as a lock"; fi
+[ ! -e "$TMP/lock-stuck.json" ] && ok || bad "a dispatch refused at the lock must write no receipt"
+
+# ...and the wait has to end in an acquire rather than merely in a better message.
+# Clear the obstruction while the launcher is spinning: the round it then takes is
+# what says a contended lock costs a delay and not a refused review. The launcher
+# reaches the lock well under a second on a fixture this size and waits ten, so
+# three seconds sits clear of both ends.
+( sleep 3; rm -f "$locklock" ) &
+lockclear=$!
+rc=0
+(
+  cd "$lockrepo" || exit 1
+  FAKE_VERDICT=needs_attention "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "a contended lock delays a dispatch, it does not refuse one" \
+    --receipt "$TMP/lock-clear.json" --config "$cfg"
+) >/dev/null 2>"$TMP/lock-clear.err" || rc=$?
+wait "$lockclear"
+want_rc 5 "$rc" "a lock that clears mid wait still dispatches"
+want_jq "$TMP/lock-clear.json" '.round == 1' "the waiter that acquired the lock takes round 1"
+if grep -q 'cannot write the round ledger' "$TMP/lock-clear.err"; then bad "a lock that cleared must not be reported as an unwritable ledger"; else ok; fi
+
+# The probe that answers the writability question must not turn a genuinely
+# unwritable ledger directory into a ten second wait and a lock nobody holds. That
+# diagnosis is the reason the check exists at all.
+rolockrepo="$TMP/lock-readonly-repo"
+mkdir -p "$rolockrepo"
+(
+  cd "$rolockrepo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  printf 'base\n' > svc.txt
+  git add svc.txt
+  git commit -qm init
+  printf 'pending\n' > svc.txt
+) >/dev/null 2>&1
+rolockdir="$rolockrepo/.git"
+ln -s /nonexistent/megapowers-lock-holder "$rolockdir/megapowers-review-rounds.json.lock"
+chmod a-w "$rolockdir"
+rc=0
+(
+  cd "$rolockrepo" || exit 1
+  FAKE_VERDICT=needs_attention "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "an unwritable ledger directory is still named as one" \
+    --receipt "$TMP/lock-ro.json" --config "$cfg"
+) >/dev/null 2>"$TMP/lock-ro.err" || rc=$?
+chmod u+w "$rolockdir"
+want_rc 2 "$rc" "an unwritable ledger directory refuses the dispatch"
+if grep -q 'cannot write the round ledger' "$TMP/lock-ro.err"; then ok; else bad "an unwritable ledger directory must still be named as one"; fi
 
 echo "== round ledger write failures =="
 # A failed ledger write must refuse the dispatch, not reset the count. jq exiting
@@ -2150,6 +2272,833 @@ if jq -e --arg id "$(cd "$reprepo" && "$DIFF_ID")" '.subject.id == $id' "$TMP/re
 else
   bad "the launcher and the fingerprint must agree under a replace ref"
 fi
+
+echo "== the round cap =="
+# Counting was never the missing piece. The ledger already reported the number and
+# nothing compared it to anything, so the 2026-08-05 audit found a feature branch
+# at round 11 and a repository branch at round 22. `max_rounds` under
+# [rules.risky-logic-review] is what the count is measured against, and at the cap
+# the launcher stops dispatching and hands the decision back.
+shipped_enforcement="$HERE/../../../../enforcement.toml"
+if grep -q '^max_rounds = 3' "$shipped_enforcement"; then ok; else bad "test setup: the shipped max_rounds must be 3 for the cases below"; fi
+
+new_repo() {
+  local dir="$1"
+  mkdir -p "$dir"
+  (
+    cd "$dir" || exit 1
+    git init -q
+    git config user.email test@example.com
+    git config user.name test
+    git config commit.gpgsign false
+    printf 'base\n' > svc.txt
+    git add svc.txt
+    git commit -qm init
+    printf 'pending\n' > svc.txt
+  ) >/dev/null 2>&1
+}
+
+# XDG_CONFIG_HOME is emptied for every run in this section, so the cap under test
+# is the shipped 3 rather than the permissive layer this file planted at the top.
+run_cap() {
+  local dir="$1" verdict="$2" receipt_out="$3" err_out="$4"
+  shift 4
+  set +e
+  (
+    cd "$dir" || exit 1
+    XDG_CONFIG_HOME="$TMP/xdg-none" FAKE_VERDICT="$verdict" \
+      "$RUN" --role verify --author-vendor openai --artifact worktree \
+      --claim "the cap decides whether this dispatches" --receipt "$receipt_out" \
+      --config "$cfg" "$@"
+  ) >/dev/null 2>"$err_out"
+  local rc_out=$?
+  set -e
+  return "$rc_out"
+}
+
+caprepo="$TMP/cap-repo"
+new_repo "$caprepo"
+capledger="$caprepo/.git/megapowers-review-rounds.json"
+capbranch="$(git -C "$caprepo" symbolic-ref --short HEAD)"
+for capn in 1 2 3; do
+  rc=0; run_cap "$caprepo" needs_attention "$TMP/cap$capn.json" "$TMP/cap$capn.err" || rc=$?
+  want_rc 5 "$rc" "round $capn is under the cap and dispatches"
+  want_jq "$TMP/cap$capn.json" ".round == $capn" "round $capn reports its own number"
+done
+
+rc=0
+CAP_ARGS_LOG="$TMP/cap4-args.txt"
+set +e
+(
+  cd "$caprepo" || exit 1
+  XDG_CONFIG_HOME="$TMP/xdg-none" FAKE_ARGS_LOG="$CAP_ARGS_LOG" FAKE_VERDICT=needs_attention \
+    "$RUN" --role verify --author-vendor openai --artifact worktree \
+    --claim "the fourth round must not dispatch" --receipt "$TMP/cap4.json" --config "$cfg"
+) >/dev/null 2>"$TMP/cap4.err"
+rc=$?
+set -e
+want_rc 10 "$rc" "the fourth round is refused"
+[ ! -e "$TMP/cap4.json" ] && ok || bad "a capped dispatch must write no receipt"
+[ ! -e "$CAP_ARGS_LOG" ] && ok || bad "a capped dispatch must not reach the provider"
+# The refusal is not a dispatch, so it must not take the number it would have used.
+if jq -e --arg b "$capbranch" '.rounds.verify[$b] == 3' "$capledger" >/dev/null 2>&1; then ok; else bad "a capped dispatch must not consume a round"; fi
+if jq -e --arg b "$capbranch" '(.open.verify[$b] // []) == []' "$capledger" >/dev/null 2>&1; then ok; else bad "a capped dispatch must leave no open reservation"; fi
+if grep -q "role 'verify' on '$capbranch'" "$TMP/cap4.err"; then ok; else bad "the refusal must name the role and the branch"; fi
+if grep -q '3 consecutive dispatches' "$TMP/cap4.err"; then ok; else bad "the refusal must name the round count"; fi
+if grep -q 'max_rounds is 3' "$TMP/cap4.err"; then ok; else bad "the refusal must name the cap it hit"; fi
+if grep -qi 'not converged' "$TMP/cap4.err"; then ok; else bad "the refusal must say the reviewer has not converged"; fi
+if grep -qi 'another needs_attention' "$TMP/cap4.err"; then ok; else bad "the refusal must say what another pass costs"; fi
+if grep -qi "the human's" "$TMP/cap4.err"; then ok; else bad "the refusal must say who owns the decision now"; fi
+if grep -qi 'no --transcript-dir was passed' "$TMP/cap4.err"; then ok; else bad "with no transcript dir the refusal must say the previous rounds were not retained"; fi
+
+# The previous rounds are the evidence the human needs, so when they were retained
+# the refusal has to say where.
+rc=0; run_cap "$caprepo" needs_attention "$TMP/cap5.json" "$TMP/cap5.err" --transcript-dir "$TMP/cap-transcripts" || rc=$?
+want_rc 10 "$rc" "the capped dispatch stays refused with a transcript dir"
+if grep -q "under $TMP/cap-transcripts" "$TMP/cap5.err"; then ok; else bad "the refusal must point at the transcript directory holding the previous rounds"; fi
+# The directory is created by the up-front usability check, before there is any
+# dispatch to retain. It must stay empty: nothing ran.
+[ -z "$(ls -A "$TMP/cap-transcripts" 2>/dev/null)" ] && ok || bad "a capped dispatch must retain nothing of its own"
+
+# An approve ends the loop, so the count clears and the next change starts at 1.
+# Without that the cap would be permanent: three rounds on any branch would retire
+# the role for good.
+resetrepo="$TMP/cap-reset-repo"
+new_repo "$resetrepo"
+resetledger="$resetrepo/.git/megapowers-review-rounds.json"
+resetbranch="$(git -C "$resetrepo" symbolic-ref --short HEAD)"
+rc=0; run_cap "$resetrepo" needs_attention "$TMP/reset1.json" "$TMP/reset1.err" || rc=$?
+want_rc 5 "$rc" "the first round before an approve dispatches"
+rc=0; run_cap "$resetrepo" needs_attention "$TMP/reset2.json" "$TMP/reset2.err" || rc=$?
+want_rc 5 "$rc" "the second round before an approve dispatches"
+rc=0; run_cap "$resetrepo" approve "$TMP/reset3.json" "$TMP/reset3.err" || rc=$?
+want_rc 0 "$rc" "the approving round dispatches under the cap"
+want_jq "$TMP/reset3.json" '.round == 3' "the approving round reports its own number"
+if jq -e --arg b "$resetbranch" '.rounds.verify | has($b) | not' "$resetledger" >/dev/null 2>&1; then ok; else bad "an approve must still clear the ledger under the cap"; fi
+rc=0; run_cap "$resetrepo" needs_attention "$TMP/reset4.json" "$TMP/reset4.err" || rc=$?
+want_rc 5 "$rc" "the round after an approve dispatches although it is the fourth overall"
+want_jq "$TMP/reset4.json" '.round == 1' "an approve resets the count to 1"
+
+# The cap is layered like models.toml. A project layer wins over the user layer
+# this file planted, which is how one repository turns the number down or up
+# without patching anything shipped. COMMITTED, because the layer counts only as
+# it stands in the base commit: the cases after this one are what that buys.
+projrepo="$TMP/cap-project-layer-repo"
+new_repo "$projrepo"
+mkdir -p "$projrepo/.megapowers"
+printf '[rules.risky-logic-review]\nmax_rounds = 1\n' > "$projrepo/.megapowers/enforcement.toml"
+git -C "$projrepo" add -- .megapowers/enforcement.toml >/dev/null 2>&1
+git -C "$projrepo" commit -qm "project cap" >/dev/null 2>&1
+set +e
+(
+  cd "$projrepo" || exit 1
+  FAKE_VERDICT=needs_attention "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "a project layer sets the cap" \
+    --receipt "$TMP/proj1.json" --config "$cfg"
+) >/dev/null 2>"$TMP/proj1.err"
+rc=$?
+set -e
+want_rc 5 "$rc" "the first round under a project cap of 1 dispatches"
+set +e
+(
+  cd "$projrepo" || exit 1
+  FAKE_VERDICT=needs_attention "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "a project layer sets the cap" \
+    --receipt "$TMP/proj2.json" --config "$cfg"
+) >/dev/null 2>"$TMP/proj2.err"
+rc=$?
+set -e
+want_rc 10 "$rc" "the second round under a project cap of 1 is refused"
+if grep -q 'max_rounds is 1' "$TMP/proj2.err"; then ok; else bad "the project layer must win over the user layer"; fi
+
+# A PENDING PROJECT LAYER IS POLICY WRITTEN BY THE CHANGE UNDER REVIEW. This read
+# .megapowers/enforcement.toml straight out of the worktree, so an uncommitted
+# edit raised the cap on the reviews of its own change: the loop the cap exists to
+# stop kept running and the unresolved decision never reached the human. The Stop
+# hook already refused a pending layer for the same reason; this is the launcher
+# keeping the same rule.
+pendrepo="$TMP/cap-pending-layer-repo"
+new_repo "$pendrepo"
+pendledger="$pendrepo/.git/megapowers-review-rounds.json"
+pendbranch="$(git -C "$pendrepo" symbolic-ref --short HEAD)"
+mkdir -p "$pendrepo/.megapowers"
+printf '[rules.risky-logic-review]\nmax_rounds = 1\n' > "$pendrepo/.megapowers/enforcement.toml"
+git -C "$pendrepo" add -- .megapowers/enforcement.toml >/dev/null 2>&1
+git -C "$pendrepo" commit -qm "project cap" >/dev/null 2>&1
+run_pending() {
+  local receipt_out="$1" err_out="$2"
+  set +e
+  (
+    cd "$pendrepo" || exit 1
+    FAKE_VERDICT=needs_attention "$RUN" --role verify --author-vendor openai \
+      --artifact worktree --claim "a pending layer must not raise its own cap" \
+      --receipt "$receipt_out" --config "$cfg"
+  ) >/dev/null 2>"$err_out"
+  local rc_out=$?
+  set -e
+  return "$rc_out"
+}
+rc=0; run_pending "$TMP/pend1.json" "$TMP/pend1.err" || rc=$?
+want_rc 5 "$rc" "the first round under the committed cap of 1 dispatches"
+# The exploit: raise the cap in the worktree, leave it uncommitted, keep going.
+printf '[rules.risky-logic-review]\nmax_rounds = 99\n' > "$pendrepo/.megapowers/enforcement.toml"
+rc=0; run_pending "$TMP/pend2.json" "$TMP/pend2.err" || rc=$?
+want_rc 10 "$rc" "an uncommitted edit raising max_rounds does not raise its own cap"
+if grep -q 'max_rounds is 1' "$TMP/pend2.err"; then ok; else bad "the committed cap must still be the one enforced"; fi
+[ ! -e "$TMP/pend2.json" ] && ok || bad "a dispatch refused by the committed cap must write no receipt"
+if jq -e --arg b "$pendbranch" '.rounds.verify[$b] == 1' "$pendledger" >/dev/null 2>&1; then ok; else bad "a refusal under the committed cap must consume no round"; fi
+# Honoring the committed policy in SILENCE would hide the policy edit from the one
+# reader who has to judge it, so the ignored edit is named and its direction said.
+if grep -q 'pending edit of .megapowers/enforcement.toml is not honored' "$TMP/pend2.err"; then ok; else bad "an ignored pending policy edit must be named"; fi
+if grep -q 'would set max_rounds = 99' "$TMP/pend2.err"; then ok; else bad "the notice must say which direction the pending edit goes"; fi
+
+# THE INDEX HID THE SAME EDIT FROM THE DETECTION. `git diff HEAD` renders HEAD
+# against the WORKTREE and ignores what is staged, so `git add` on the raised cap
+# followed by restoring the worktree copy to its committed bytes produced no notice
+# at all: the policy sat in the index, one plain `git commit` from governing, with
+# nothing said. The staged value was never HONORED, because the layer is still read
+# from `HEAD:`, so this was a visibility gap rather than a raised cap, and
+# visibility is the whole job of the notice.
+git -C "$pendrepo" reset -q --hard HEAD >/dev/null 2>&1
+printf '[rules.risky-logic-review]\nmax_rounds = 99\n' > "$pendrepo/.megapowers/enforcement.toml"
+git -C "$pendrepo" add -- .megapowers/enforcement.toml >/dev/null 2>&1
+git -C "$pendrepo" show HEAD:.megapowers/enforcement.toml > "$pendrepo/.megapowers/enforcement.toml"
+printf 'pending\n' > "$pendrepo/svc.txt"
+if git -C "$pendrepo" diff --quiet HEAD -- .megapowers/enforcement.toml; then
+  ok
+else
+  bad "test setup: the worktree copy must read as the committed one"
+fi
+rc=0; run_pending "$TMP/staged.json" "$TMP/staged.err" || rc=$?
+want_rc 10 "$rc" "a staged raise does not raise its own cap either"
+if grep -q 'pending edit of .megapowers/enforcement.toml is not honored' "$TMP/staged.err"; then ok; else bad "a staged policy edit must be named"; fi
+# The direction has to come from the copy a commit would take, which here is the
+# INDEX: reading the worktree would report the committed cap back and the notice
+# would deny the edit it had just announced.
+if grep -q 'would set max_rounds = 99' "$TMP/staged.err"; then ok; else bad "the notice must report the STAGED value, not the restored worktree one"; fi
+git -C "$pendrepo" reset -q HEAD -- .megapowers/enforcement.toml >/dev/null 2>&1
+printf '[rules.risky-logic-review]\nmax_rounds = 99\n' > "$pendrepo/.megapowers/enforcement.toml"
+
+# ...and the same content COMMITTED does raise the cap, so the rule is about when
+# the policy was reviewed and not about refusing project policy.
+git -C "$pendrepo" add -- .megapowers/enforcement.toml >/dev/null 2>&1
+git -C "$pendrepo" commit -qm "raise the cap" >/dev/null 2>&1
+rc=0; run_pending "$TMP/pend3.json" "$TMP/pend3.err" || rc=$?
+want_rc 5 "$rc" "the committed raise is honored"
+want_jq "$TMP/pend3.json" '.round == 2' "the honored raise continues the same count"
+
+# A layer that was never committed buys nothing at all, in either direction: the
+# user and shipped layers govern, and the author still hears that the file they
+# wrote is doing nothing.
+newrepo="$TMP/cap-uncommitted-layer-repo"
+new_repo "$newrepo"
+mkdir -p "$newrepo/.megapowers"
+printf '[rules.risky-logic-review]\nmax_rounds = 1\n' > "$newrepo/.megapowers/enforcement.toml"
+for capn in 1 2; do
+  set +e
+  (
+    cd "$newrepo" || exit 1
+    XDG_CONFIG_HOME="$TMP/xdg-none" FAKE_VERDICT=needs_attention "$RUN" --role verify \
+      --author-vendor openai --artifact worktree --claim "an uncommitted layer alone" \
+      --receipt "$TMP/newlayer$capn.json" --config "$cfg"
+  ) >/dev/null 2>"$TMP/newlayer$capn.err"
+  rc=$?
+  set -e
+  want_rc 5 "$rc" "round $capn ignores an uncommitted project layer and runs under the shipped 3"
+done
+if grep -q 'pending addition of .megapowers/enforcement.toml is not honored' "$TMP/newlayer1.err"; then ok; else bad "an ignored pending addition must be named"; fi
+
+echo "== the provider wall clock =="
+# The launcher had no timeout of its own and relied on callers writing `timeout
+# 900` through `timeout 1800` in front of it, under a Bash tool that kills a
+# foreground command at 600 seconds. Five audited verdicts were silently
+# backgrounded and several came back as exit 143 at ten minutes, having paid for
+# the round and returned nothing.
+torepo="$TMP/timeout-repo"
+new_repo "$torepo"
+toledger="$torepo/.git/megapowers-review-rounds.json"
+tobranch="$(git -C "$torepo" symbolic-ref --short HEAD)"
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+  set +e
+  (
+    cd "$torepo" || exit 1
+    # FAKE_WAIT_FOR names a file the test never creates, so the fake provider
+    # blocks until something kills it. Nothing else can end this dispatch.
+    MEGAPOWERS_DELEGATE_TIMEOUT=1 FAKE_WAIT_FOR="$TMP/gate-that-never-opens" \
+      "$RUN" --role verify --author-vendor openai --artifact worktree \
+      --claim "a provider that never answers" --receipt "$TMP/to1.json" --config "$cfg"
+  ) >/dev/null 2>"$TMP/to1.err"
+  rc=$?
+  set -e
+  want_rc 11 "$rc" "a provider that never answers is cut off"
+  [ ! -e "$TMP/to1.json" ] && ok || bad "a timed out dispatch must write no receipt"
+  if grep -qi 'no verdict was produced' "$TMP/to1.err"; then ok; else bad "the timeout must say no verdict was produced"; fi
+  if grep -qi 'nothing is approved' "$TMP/to1.err"; then ok; else bad "the timeout must say nothing is approved"; fi
+  if grep -q '1s wall-clock budget' "$TMP/to1.err"; then ok; else bad "the timeout must name the budget it enforced"; fi
+  if grep -q 'MEGAPOWERS_DELEGATE_TIMEOUT' "$TMP/to1.err"; then ok; else bad "the timeout must say how to raise the budget"; fi
+  # A dispatch happened and was paid for, so it counts. Once: the cleanup trap
+  # resolves the reservation as failed and must not also leave it open.
+  if jq -e --arg b "$tobranch" '.rounds.verify[$b] == 1' "$toledger" >/dev/null 2>&1; then ok; else bad "a timeout must consume exactly one round"; fi
+  if jq -e --arg b "$tobranch" '(.open.verify[$b] // []) == []' "$toledger" >/dev/null 2>&1; then ok; else bad "a timeout must close its own reservation"; fi
+  set +e
+  (
+    cd "$torepo" || exit 1
+    FAKE_VERDICT=needs_attention "$RUN" --role verify --author-vendor openai \
+      --artifact worktree --claim "the round after a timeout" \
+      --receipt "$TMP/to2.json" --config "$cfg"
+  ) >/dev/null 2>/dev/null
+  rc=$?
+  set -e
+  want_rc 5 "$rc" "the round after a timeout dispatches"
+  want_jq "$TMP/to2.json" '.round == 2' "a timeout consumed a round and did not double count it"
+else
+  echo "  NOTE: neither timeout nor gtimeout is installed, so the wall clock was not exercised"
+fi
+
+# A budget that is not a number is a setup error, and it has to be caught before
+# the capture rather than silently replaced by the default.
+set +e
+(
+  cd "$torepo" || exit 1
+  MEGAPOWERS_DELEGATE_TIMEOUT=ten "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "a malformed budget" --receipt "$TMP/to3.json" --config "$cfg"
+) >/dev/null 2>"$TMP/to3.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "a non-numeric MEGAPOWERS_DELEGATE_TIMEOUT is refused"
+if grep -q 'MEGAPOWERS_DELEGATE_TIMEOUT must be' "$TMP/to3.err"; then ok; else bad "a malformed budget must name the variable"; fi
+
+# Zero used to disable the wall clock outright, so the one property the budget
+# exists for (a dispatch that cannot outlive the caller's foreground window) sat
+# behind an environment variable while the reference document stated it as a
+# fact. There is no bound to state if the bound is optional.
+set +e
+(
+  cd "$torepo" || exit 1
+  MEGAPOWERS_DELEGATE_TIMEOUT=0 "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "a disabled wall clock" --receipt "$TMP/to4.json" --config "$cfg"
+) >/dev/null 2>"$TMP/to4.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "a zero MEGAPOWERS_DELEGATE_TIMEOUT is refused"
+if grep -q 'at least 1 second' "$TMP/to4.err"; then ok; else bad "a zero budget must say the wall clock cannot be disabled"; fi
+[ ! -e "$TMP/to4.json" ] && ok || bad "a zero budget must write no receipt"
+
+# A host with neither timeout nor gtimeout got a warning and then an unbounded
+# provider call, which is the same unenforced budget arriving by a different
+# route. Built against a PATH holding every command EXCEPT those two, so the case
+# is exercised on a host that has them rather than only on one that does not.
+notimeout_bin="$TMP/no-timeout-bin"
+mkdir -p "$notimeout_bin"
+while IFS= read -r pathdir; do
+  [ -d "$pathdir" ] || continue
+  for pathcmd in "$pathdir"/*; do
+    pathbase="${pathcmd##*/}"
+    # `*` is the unmatched glob of an empty directory, not a command.
+    case "$pathbase" in timeout|gtimeout|'*') continue ;; esac
+    [ -e "$notimeout_bin/$pathbase" ] || ln -s "$pathcmd" "$notimeout_bin/$pathbase" 2>/dev/null || :
+  done
+done <<< "$(printf '%s' "$PATH" | tr ':' '\n')"
+set +e
+(
+  cd "$torepo" || exit 1
+  PATH="$notimeout_bin" "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "a host that cannot bound the dispatch" \
+    --receipt "$TMP/to-nobin.json" --config "$cfg"
+) >/dev/null 2>"$TMP/to-nobin.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "a host with no timeout implementation refuses to dispatch"
+if grep -q 'neither timeout(1) nor gtimeout(1)' "$TMP/to-nobin.err"; then ok; else bad "the refusal must name what is missing"; fi
+if grep -qi 'coreutils' "$TMP/to-nobin.err"; then ok; else bad "the refusal must say how to get one"; fi
+[ ! -e "$TMP/to-nobin.json" ] && ok || bad "a host with no timeout implementation must write no receipt"
+
+echo "== a round means a model was asked =="
+# The round was reserved BEFORE the provider was known to be usable, so a missing
+# credential, a CLI without the isolation flags, or a vendor with no adapter
+# exited 6 with the reservation already taken and closed as failed by the cleanup
+# trap. Three setup errors then exhausted a cap of 3 with zero reviews performed.
+# Not hypothetical: on the machine this was written on a sandboxed `codex exec`
+# could not read its own auth.json, exited 6, and consumed round 1 of the branch.
+prerepo="$TMP/preflight-repo"
+new_repo "$prerepo"
+preledger="$prerepo/.git/megapowers-review-rounds.json"
+
+# A reviewer CLI whose --help offers none of the flags the launcher requires.
+badcli="$TMP/fake-claude-noflags"
+cat > "$badcli" <<'EOF'
+#!/usr/bin/env bash
+echo "usage: fake [--model <id>]"
+exit 0
+EOF
+chmod +x "$badcli"
+badcfg="$TMP/routes-noflags.toml"
+sed "s#binary = \"$fake\"#binary = \"$badcli\"#" "$cfg" > "$badcfg"
+set +e
+(
+  cd "$prerepo" || exit 1
+  "$RUN" --role verify --author-vendor openai --artifact worktree \
+    --claim "a CLI missing the isolation flags" --receipt "$TMP/pre1.json" --config "$badcfg"
+) >/dev/null 2>"$TMP/pre1.err"
+rc=$?
+set -e
+want_rc 6 "$rc" "a CLI without the isolation flags fails setup"
+if grep -q 'lacks required isolation/schema flag' "$TMP/pre1.err"; then ok; else bad "the setup failure must name the missing flag"; fi
+if grep -q 'no round was consumed' "$TMP/pre1.err"; then ok; else bad "a setup failure must say it consumed no round"; fi
+
+# A vendor with no adapter at all: nothing can be dispatched, so nothing can be
+# billed.
+novendorcfg="$TMP/routes-novendor.toml"
+sed 's/^vendor = "anthropic"$/vendor = "moonshot"/' "$cfg" > "$novendorcfg"
+set +e
+(
+  cd "$prerepo" || exit 1
+  "$RUN" --role verify --author-vendor openai --artifact worktree \
+    --claim "a vendor with no adapter" --receipt "$TMP/pre2.json" --config "$novendorcfg"
+) >/dev/null 2>"$TMP/pre2.err"
+rc=$?
+set -e
+want_rc 6 "$rc" "a vendor with no adapter fails setup"
+if grep -q 'no safe adapter for vendor' "$TMP/pre2.err"; then ok; else bad "the setup failure must name the vendor"; fi
+
+# The credential case, which is the one that actually happened.
+mkdir -p "$TMP/no-cred-home"
+set +e
+(
+  cd "$prerepo" || exit 1
+  env -u ANTHROPIC_API_KEY -u CLAUDE_CONFIG_DIR HOME="$TMP/no-cred-home" \
+    "$RUN" --role verify --author-vendor openai --artifact worktree \
+    --claim "a route with no credential" --receipt "$TMP/pre3.json" --config "$cfg"
+) >/dev/null 2>"$TMP/pre3.err"
+rc=$?
+set -e
+want_rc 6 "$rc" "a route with no credential fails setup"
+if grep -q 'needs ANTHROPIC_API_KEY' "$TMP/pre3.err"; then ok; else bad "the setup failure must name what credential is missing"; fi
+if grep -q 'no round was consumed' "$TMP/pre3.err"; then ok; else bad "a missing credential must say it consumed no round"; fi
+
+# THE OTHER VENDOR'S CREDENTIAL, which is the one the story actually came from.
+# The OpenAI arm checked the CLI flags and stopped there, so Codex auth it could
+# not read failed at DISPATCH instead: exit 6 with the round already reserved and
+# closed as failed by the cleanup trap. `login status` reads the stored credential
+# and prints whose it is without asking a model, so the answer costs nothing and
+# belongs beside the Claude credential check rather than after the reservation.
+fakecodex="$TMP/fake-codex"
+cat > "$fakecodex" <<'EOF'
+#!/usr/bin/env bash
+# The codex surface this launcher depends on. `login status` succeeds only when
+# the auth material is readable, which is how the real CLI answers inside a
+# sandbox that hides ~/.codex/auth.json: "Error checking login status: Permission
+# denied (os error 13)", exit 1.
+if [ "${1:-}" = "exec" ] && [ "${2:-}" = "--help" ]; then
+  echo "--output-schema --ephemeral --sandbox"
+  exit 0
+fi
+if [ "${1:-}" = "login" ] && [ "${2:-}" = "--help" ]; then
+  echo "  status  Show login status"
+  exit 0
+fi
+if [ "${1:-}" = "login" ] && [ "${2:-}" = "status" ]; then
+  if [ -r "${FAKE_CODEX_AUTH:-/nonexistent}" ]; then
+    echo "Logged in using an API key"
+    exit 0
+  fi
+  echo "Error checking login status: Permission denied (os error 13)"
+  exit 1
+fi
+if [ "${1:-}" = "exec" ]; then
+  # Proof the provider was reached at all, which is what "no round was consumed"
+  # has to mean: the ledger says a round was not taken, this says no model was.
+  [ -z "${FAKE_CODEX_DISPATCHED:-}" ] || : > "$FAKE_CODEX_DISPATCHED"
+  # The dispatch fails on unreadable auth exactly as the real CLI did, so a
+  # preflight that stops checking does not merely reorder a success: it reaches
+  # this, fails, and leaves the round it reserved on the ledger.
+  if [ ! -r "${FAKE_CODEX_AUTH:-/nonexistent}" ]; then
+    echo "ERROR: Permission denied (os error 13) reading auth.json" >&2
+    exit 1
+  fi
+  out=""
+  while [ $# -gt 0 ]; do
+    [ "$1" = "--output-last-message" ] && out="$2"
+    shift
+  done
+  jq -cn '{verdict:"needs_attention",findings:[],next_steps:[],evidence:{commands:["git diff HEAD"],screenshots:[]}}' > "$out"
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "$fakecodex"
+codexcfg="$TMP/routes-codex.toml"
+cat > "$codexcfg" <<EOF
+[tiers]
+scale = ["fast", "strong", "frontier"]
+[efforts]
+scale = ["low", "medium", "high"]
+[providers.reviewer]
+vendor = "openai"
+binary = "$fakecodex"
+channel = "test"
+default_tier = "frontier"
+effort = "high"
+efforts = ["high"]
+capabilities = ["code"]
+[providers.reviewer.tiers]
+frontier = "fake-frontier"
+[roles]
+verify = "reviewer"
+[role_tiers]
+verify = "frontier"
+[role_efforts]
+verify = "high"
+[independence]
+verify = "author_vendor"
+[defaults]
+floor = "strong:low"
+EOF
+set +e
+(
+  cd "$prerepo" || exit 1
+  FAKE_CODEX_DISPATCHED="$TMP/codex-dispatched.txt" \
+    "$RUN" --role verify --author-vendor anthropic --artifact worktree \
+    --claim "Codex authentication that cannot be read" --receipt "$TMP/pre-codex.json" \
+    --config "$codexcfg"
+) >/dev/null 2>"$TMP/pre-codex.err"
+rc=$?
+set -e
+want_rc 6 "$rc" "unreadable Codex authentication fails setup"
+if grep -q 'login status' "$TMP/pre-codex.err"; then ok; else bad "the setup failure must name the check it ran"; fi
+if grep -q 'Permission denied' "$TMP/pre-codex.err"; then ok; else bad "the setup failure must carry the CLI's own reason"; fi
+if grep -q 'no round was consumed' "$TMP/pre-codex.err"; then ok; else bad "unreadable Codex auth must say it consumed no round"; fi
+[ ! -e "$TMP/codex-dispatched.txt" ] && ok || bad "unreadable Codex auth must not reach the provider"
+
+for prefile in "$TMP/pre1.json" "$TMP/pre2.json" "$TMP/pre3.json" "$TMP/pre-codex.json"; do
+  [ ! -e "$prefile" ] && ok || bad "a setup failure must write no receipt: $prefile"
+done
+# THE POINT. Three setup errors in a row, and the first real review is still
+# round 1. With the reservation ahead of the checks this was round 4, which under
+# the shipped cap of 3 means the role is retired on this branch before one
+# reviewer has been asked anything.
+if [ ! -e "$preledger" ]; then
+  ok
+else
+  jq -e '(.rounds.verify // {}) | length == 0' "$preledger" >/dev/null 2>&1 &&
+    ok || bad "setup failures must leave the round ledger empty"
+fi
+set +e
+(
+  cd "$prerepo" || exit 1
+  FAKE_VERDICT=needs_attention "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "the first review after three setup errors" \
+    --receipt "$TMP/pre4.json" --config "$cfg"
+) >/dev/null 2>"$TMP/pre4.err"
+rc=$?
+set -e
+want_rc 5 "$rc" "the first real review after three setup errors dispatches"
+want_jq "$TMP/pre4.json" '.round == 1' "three setup errors must leave the first review at round 1"
+
+# ...and the credential check must not be a check that refuses everything: with
+# the auth material readable the same route dispatches and takes its round. In a
+# repository of its own, so the count above stays the one this section measured.
+codexrepo="$TMP/codex-repo"
+new_repo "$codexrepo"
+printf '{"OPENAI_API_KEY":"test-key"}\n' > "$TMP/codex-auth.json"
+set +e
+(
+  cd "$codexrepo" || exit 1
+  FAKE_CODEX_AUTH="$TMP/codex-auth.json" FAKE_CODEX_DISPATCHED="$TMP/codex-dispatched-ok.txt" \
+    "$RUN" --role verify --author-vendor anthropic --artifact worktree \
+    --claim "Codex authentication that reads" --receipt "$TMP/codex1.json" --config "$codexcfg"
+) >/dev/null 2>"$TMP/codex1.err"
+rc=$?
+set -e
+want_rc 5 "$rc" "readable Codex authentication dispatches"
+[ -e "$TMP/codex-dispatched-ok.txt" ] && ok || bad "readable Codex authentication must reach the provider"
+want_jq "$TMP/codex1.json" '.round == 1 and .reviewer.vendor == "openai"' "the dispatched Codex review takes round 1"
+
+echo "== a setup probe that never answers =="
+# Every preflight probe reads local state and asks no model, so all of them ran
+# unwrapped while the dispatch under them ran on a wall clock. A CLI that blocks in
+# one, on a keyring prompt with no tty or an auth agent that accepts the connection
+# and never replies, hung the launcher outright: the caller's own foreground cap
+# killed it after ten minutes with nothing said about why. The setup budget is 15
+# seconds, or the dispatch budget when that is smaller, which is what lets these
+# cases cost two seconds each instead of fifteen.
+hangcodex="$TMP/fake-codex-hang"
+cat > "$hangcodex" <<'EOF'
+#!/usr/bin/env bash
+# Hangs at whichever probe FAKE_HANG_AT names and answers normally at every other,
+# so one fixture covers the credential probe and its neighbouring help probes on
+# both vendor arms.
+probe="${1:-}${2:+ $2}"
+if [ "$probe" = "${FAKE_HANG_AT:-}" ]; then
+  sleep 30
+  exit 0
+fi
+case "$probe" in
+  "--help") echo "--bare --json-schema --effort"; exit 0 ;;
+  "exec --help") echo "--output-schema --ephemeral --sandbox"; exit 0 ;;
+  "login --help") echo "  status  Show login status"; exit 0 ;;
+  "login status") echo "Logged in using an API key"; exit 0 ;;
+esac
+if [ "${1:-}" = "exec" ]; then
+  [ -z "${FAKE_CODEX_DISPATCHED:-}" ] || : > "$FAKE_CODEX_DISPATCHED"
+  exit 1
+fi
+exit 0
+EOF
+chmod +x "$hangcodex"
+hangcfg="$TMP/routes-codex-hang.toml"
+sed "s|binary = \"$fakecodex\"|binary = \"$hangcodex\"|" "$codexcfg" > "$hangcfg"
+hangrepo="$TMP/codex-hang-repo"
+new_repo "$hangrepo"
+hangledger="$hangrepo/.git/megapowers-review-rounds.json"
+for hangat in "login status" "login --help" "exec --help"; do
+  set +e
+  (
+    cd "$hangrepo" || exit 1
+    MEGAPOWERS_DELEGATE_TIMEOUT=2 FAKE_HANG_AT="$hangat" \
+      FAKE_CODEX_DISPATCHED="$TMP/codex-hang-dispatched.txt" \
+      "$RUN" --role verify --author-vendor anthropic --artifact worktree \
+      --claim "a setup probe that never answers" --receipt "$TMP/codex-hang.json" \
+      --config "$hangcfg"
+  ) >/dev/null 2>"$TMP/codex-hang.err"
+  rc=$?
+  set -e
+  want_rc 6 "$rc" "a hung '$hangat' probe fails setup"
+  if grep -q 'setup budget' "$TMP/codex-hang.err"; then ok; else bad "a hung '$hangat' probe must name the budget that stopped it"; fi
+  if grep -q -e "$hangat" "$TMP/codex-hang.err"; then ok; else bad "a hung probe must name itself: $hangat"; fi
+  if grep -q 'no round was consumed' "$TMP/codex-hang.err"; then ok; else bad "a hung '$hangat' probe must say it consumed no round"; fi
+  [ ! -e "$TMP/codex-hang.json" ] && ok || bad "a hung '$hangat' probe must write no receipt"
+  [ ! -e "$TMP/codex-hang-dispatched.txt" ] && ok || bad "a hung '$hangat' probe must not reach the provider"
+done
+
+# The Claude arm's help probe is the same call in the same place and was the same
+# exposure, so it is bounded and covered rather than left to be found later.
+hangclaudecfg="$TMP/routes-claude-hang.toml"
+sed "s|binary = \"$fake\"|binary = \"$hangcodex\"|" "$cfg" > "$hangclaudecfg"
+set +e
+(
+  cd "$hangrepo" || exit 1
+  MEGAPOWERS_DELEGATE_TIMEOUT=2 FAKE_HANG_AT="--help" \
+    "$RUN" --role verify --author-vendor openai --artifact worktree \
+    --claim "a Claude help probe that never answers" --receipt "$TMP/claude-hang.json" \
+    --config "$hangclaudecfg"
+) >/dev/null 2>"$TMP/claude-hang.err"
+rc=$?
+set -e
+want_rc 6 "$rc" "a hung Claude '--help' probe fails setup"
+if grep -q 'setup budget' "$TMP/claude-hang.err"; then ok; else bad "a hung Claude help probe must name the budget that stopped it"; fi
+[ ! -e "$TMP/claude-hang.json" ] && ok || bad "a hung Claude help probe must write no receipt"
+
+# A model was never asked in any of those, so the ledger must be untouched: four
+# hung probes must not retire the role on the branch the way four rounds would.
+if [ ! -e "$hangledger" ]; then
+  ok
+else
+  jq -e '(.rounds.verify // {}) | length == 0' "$hangledger" >/dev/null 2>&1 &&
+    ok || bad "a hung setup probe must leave the round ledger empty"
+fi
+
+echo "== the review package size budget =="
+# The largest package the audit measured was 674,630 bytes across 11,183 lines,
+# handed to one reviewer in one context. Attention is finite and it degrades as the
+# token count grows, so a reviewer given that much reviews the beginning of it. The
+# package is now bounded, and what does not fit is named rather than dropped.
+budrepo="$TMP/budget-repo"
+mkdir -p "$budrepo"
+(
+  cd "$budrepo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  printf 'base\n' > small.txt
+  printf 'base\n' > big-one.txt
+  printf 'base\n' > big-two.txt
+  git add small.txt big-one.txt big-two.txt
+  git commit -qm init
+  printf 'one small pending line\n' > small.txt
+  seq 1 400 > big-one.txt
+  seq 1 900 > big-two.txt
+) >/dev/null 2>&1
+
+# The untruncated run first, so the id it binds is the one the budgeted run has to
+# reproduce. Both approve, so neither leaves a round open.
+buddir_full="$TMP/budget-full-transcripts"
+set +e
+(
+  cd "$budrepo" || exit 1
+  "$RUN" --role verify --author-vendor openai --artifact worktree \
+    --claim "the whole package fits" --receipt "$TMP/bud-full.json" \
+    --config "$cfg" --transcript-dir "$buddir_full"
+) >/dev/null 2>"$TMP/bud-full.err"
+rc=$?
+set -e
+want_rc 0 "$rc" "the untruncated run dispatches"
+bud_full_pkg="$(find "$buddir_full" -name 'review-package.txt' | head -1)"
+if [ -n "$bud_full_pkg" ] && grep -q 'Files omitted from this package' "$bud_full_pkg"; then
+  bad "a package under budget must not be truncated"
+else
+  ok
+fi
+if grep -q 'exceeded' "$TMP/bud-full.err"; then bad "a package under budget must say nothing about eliding"; else ok; fi
+
+buddir="$TMP/budget-transcripts"
+bud_probe="$TMP/bud-omitted-probe.txt"
+set +e
+(
+  cd "$budrepo" || exit 1
+  MEGAPOWERS_REVIEW_PACKAGE_BYTES=3000 FAKE_OMITTED_PROBE="$bud_probe" \
+    "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "the package is over budget" --receipt "$TMP/bud.json" \
+    --config "$cfg" --transcript-dir "$buddir"
+) >/dev/null 2>"$TMP/bud.err"
+rc=$?
+set -e
+want_rc 0 "$rc" "an over-budget package still dispatches"
+bud_pkg="$(find "$buddir" -name 'review-package.txt' | head -1)"
+[ -n "$bud_pkg" ] && ok || bad "the over-budget run must retain its package"
+# THE BINDING IS UNCHANGED. The id and the receipt cover the complete captured
+# tree; the budget governs only how much of it is printed into one context.
+if jq -e --arg id "$(jq -r '.subject.id' "$TMP/bud-full.json")" '.subject.id == $id' "$TMP/bud.json" >/dev/null 2>&1; then ok; else bad "eliding from the package must not move the subject id"; fi
+if jq -e --arg id "$(cd "$budrepo" && "$DIFF_ID")" '.subject.id == $id' "$TMP/bud.json" >/dev/null 2>&1; then ok; else bad "the truncated run must still bind the id the Stop hook computes"; fi
+# The full status and the full file list survive, so the shape of the change is
+# never what was cut.
+if grep -q '^## Git status$' "$bud_pkg"; then ok; else bad "an over-budget package must keep the status"; fi
+if grep -q '^## Every file in this change$' "$bud_pkg"; then ok; else bad "an over-budget package must list every file"; fi
+for budfile in small.txt big-one.txt big-two.txt; do
+  if sed -n '/^## Every file in this change$/,/^## /p' "$bud_pkg" | grep -q "$budfile"; then ok; else bad "the file list must name $budfile"; fi
+done
+# Smallest first, so the budget buys as many complete files as it can.
+if grep -q 'one small pending line' "$bud_pkg"; then ok; else bad "the smallest file's diff must be included"; fi
+# And what did not fit is named, with its line count, and pointed at the worktree.
+bud_omitted="$(sed -n '/^## Files omitted from this package$/,$p' "$bud_pkg")"
+if [ -n "$bud_omitted" ]; then ok; else bad "an over-budget package must carry an omitted section"; fi
+if printf '%s' "$bud_omitted" | grep -q 'big-two.txt'; then ok; else bad "the omitted section must name the largest file"; fi
+if printf '%s' "$bud_omitted" | grep -qE '^- [0-9]+ lines .*big-two\.txt'; then ok; else bad "an omitted path must carry its line count"; fi
+if printf '%s' "$bud_omitted" | grep -qE '\(2|[0-9]+ bytes\)|3000 byte budget'; then ok; else bad "the omitted section must state the budget and the byte count"; fi
+if printf '%s' "$bud_omitted" | grep -qE '[0-9]+ files \([0-9]+ bytes\)'; then ok; else bad "the omitted section must state how many files and bytes were elided"; fi
+# The largest file's content is genuinely absent, or none of the above is true.
+if grep -q '^+900$' "$bud_pkg"; then bad "the largest file's diff must not be in the package"; else ok; fi
+# Said on stderr too, because the operator reading the run has to know the reviewer
+# was not shown everything.
+if grep -qE 'exceeded 3000 bytes, so [0-9]+ files \([0-9]+ bytes\) were named but not inlined' "$TMP/bud.err"; then ok; else bad "stderr must state how many files and bytes were elided and why"; fi
+# ...and in the prompt, because a reviewer reads what it was handed.
+bud_sub="$(find "$buddir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)"
+if grep -q 'Files omitted from this package' "$bud_sub/prompt.txt" 2>/dev/null; then ok; else bad "the review prompt must tell the reviewer the package is not the whole change"; fi
+
+# AN OMITTED FILE MUST STILL BE SERVED FROM THE IMMUTABLE SNAPSHOT. Naming it and
+# sending the reviewer to the worktree gives the whole binding away: the capture
+# is immutable and the worktree is not, so the reviewer can read B while the
+# receipt names A, and even with no race nothing ties the approve to the bytes the
+# id covers. Every path a reviewer is sent to has to be inside the capture.
+if printf '%s' "$bud_omitted" | grep -q "  snapshot: "; then ok; else bad "each omitted file must carry a snapshot path to read it at"; fi
+if printf '%s' "$bud_omitted" | grep -q "$budrepo"; then bad "the omitted section must not send the reviewer to the mutable worktree"; else ok; fi
+if grep -qiE 'do not read them from the working tree' "$bud_pkg"; then ok; else bad "the omitted section must say the working tree is not what an approve covers"; fi
+if grep -q "Read those paths from the worktree" "$bud_sub/prompt.txt" 2>/dev/null; then bad "the prompt must not send the reviewer to the mutable worktree"; else ok; fi
+if grep -q "snapshot" "$bud_sub/prompt.txt" 2>/dev/null; then ok; else bad "the prompt must say the omitted paths are read from the snapshot"; fi
+# The pointers are followed from inside the dispatch, because the snapshot is
+# gone by the time this file could stat them. A named path that does not resolve
+# while the reviewer is running is the same hole with extra words.
+if [ -s "$bud_probe" ]; then ok; else bad "the reviewer must have found snapshot paths to follow"; fi
+if grep -q '^MISSING ' "$bud_probe" 2>/dev/null; then bad "an omitted file's snapshot path must resolve during the dispatch"; else ok; fi
+if grep -q '^READABLE ' "$bud_probe" 2>/dev/null; then ok; else bad "an omitted file's snapshot path must be readable during the dispatch"; fi
+# ...and it must hold the omitted bytes themselves, not a stub.
+if grep -q '^+900$' "$bud_probe" 2>/dev/null; then ok; else bad "the snapshot path must serve the omitted file's complete diff"; fi
+
+# THE CAP MUST BOUND THE WHOLE PACKAGE. Status, the per-file manifest, the
+# omitted manifest and submodule content are emitted no matter what, and the
+# first three grow with the file count, so charging only the diffs let a change
+# with many files exceed the advertised limit by any margin while the run
+# reported it had elided down to size.
+bigrepo="$TMP/budget-many-repo"
+mkdir -p "$bigrepo"
+(
+  cd "$bigrepo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  for n in $(seq 1 40); do printf 'base\n' > "file-$n.txt"; done
+  git add .
+  git commit -qm init
+  for n in $(seq 1 40); do seq 1 60 > "file-$n.txt"; done
+) >/dev/null 2>&1
+bigdir="$TMP/budget-many-transcripts"
+set +e
+(
+  cd "$bigrepo" || exit 1
+  MEGAPOWERS_REVIEW_PACKAGE_BYTES=9000 "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "many files must not blow the cap" \
+    --receipt "$TMP/bud-many.json" --config "$cfg" --transcript-dir "$bigdir"
+) >/dev/null 2>"$TMP/bud-many.err"
+rc=$?
+set -e
+want_rc 0 "$rc" "a many-file over-budget package dispatches"
+big_pkg="$(find "$bigdir" -name 'review-package.txt' | head -1)"
+big_bytes="$(wc -c < "$big_pkg" | tr -d '[:space:]')"
+if [ -n "$big_bytes" ] && [ "$big_bytes" -le 9000 ]; then ok; else bad "the package must not exceed its own budget, got $big_bytes of 9000"; fi
+# Not by dropping the accounting: every file is still named and every omitted one
+# still carries its snapshot path.
+if grep -c '^- [0-9]* lines' "$big_pkg" | grep -qv '^0$'; then ok; else bad "the bounded package must still name every file"; fi
+if grep -q '^  snapshot: ' "$big_pkg"; then ok; else bad "the bounded package must still serve the omitted files from the snapshot"; fi
+
+# A budget the mandatory sections alone cannot fit is a budget that cannot be met.
+# Shipping it anyway is what makes the number decorative, so refuse, and refuse
+# before a round is reserved: nothing was dispatched.
+set +e
+(
+  cd "$bigrepo" || exit 1
+  MEGAPOWERS_REVIEW_PACKAGE_BYTES=600 "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "the metadata alone is over budget" \
+    --receipt "$TMP/bud-tiny.json" --config "$cfg"
+) >/dev/null 2>"$TMP/bud-tiny.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "a budget the mandatory sections alone exceed is refused"
+[ ! -e "$TMP/bud-tiny.json" ] && ok || bad "a refused budget must write no receipt"
+if grep -q 'mandatory sections alone' "$TMP/bud-tiny.err"; then ok; else bad "the refusal must say the mandatory sections are what exceeded the budget"; fi
+if grep -q 'Raise MEGAPOWERS_REVIEW_PACKAGE_BYTES above' "$TMP/bud-tiny.err"; then ok; else bad "the refusal must name the number that would fit"; fi
+if grep -q 'no round was consumed' "$TMP/bud-tiny.err"; then ok; else bad "the refusal must say it consumed no round"; fi
+if [ ! -e "$bigrepo/.git/megapowers-review-rounds.json" ]; then
+  ok
+else
+  jq -e '(.rounds.verify // {}) | length == 0' "$bigrepo/.git/megapowers-review-rounds.json" >/dev/null 2>&1 &&
+    ok || bad "a refused budget must consume no round"
+fi
+
+# A budget that is not a number is a setup error, not a reason to fall back to the
+# default: a typo would silently ship the 674,630 byte package again.
+set +e
+(
+  cd "$budrepo" || exit 1
+  MEGAPOWERS_REVIEW_PACKAGE_BYTES=lots "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "a malformed budget" --receipt "$TMP/bud-bad.json" --config "$cfg"
+) >/dev/null 2>"$TMP/bud-bad.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "a non-numeric MEGAPOWERS_REVIEW_PACKAGE_BYTES is refused"
+if grep -q 'MEGAPOWERS_REVIEW_PACKAGE_BYTES must be' "$TMP/bud-bad.err"; then ok; else bad "a malformed package budget must name the variable"; fi
+
+# An untracked file is a reviewable unit like any diff, so it has to be selectable
+# by the same budget rather than always included or always dropped.
+printf 'tiny untracked\n' > "$budrepo/tiny.txt"
+seq 1 900 > "$budrepo/bulk.txt"
+buddir_u="$TMP/budget-untracked-transcripts"
+set +e
+(
+  cd "$budrepo" || exit 1
+  MEGAPOWERS_REVIEW_PACKAGE_BYTES=3000 "$RUN" --role verify --author-vendor openai \
+    --artifact worktree --claim "untracked files are budgeted too" \
+    --receipt "$TMP/bud-u.json" --config "$cfg" --transcript-dir "$buddir_u"
+) >/dev/null 2>"$TMP/bud-u.err"
+rc=$?
+set -e
+want_rc 0 "$rc" "an over-budget package with untracked files dispatches"
+bud_u_pkg="$(find "$buddir_u" -name 'review-package.txt' | head -1)"
+if grep -q 'tiny untracked' "$bud_u_pkg"; then ok; else bad "a small untracked file must fit the budget"; fi
+if sed -n '/^## Files omitted from this package$/,$p' "$bud_u_pkg" | grep -q 'bulk.txt'; then ok; else bad "a large untracked file must be named as omitted"; fi
+if jq -e --arg id "$(cd "$budrepo" && "$DIFF_ID")" '.subject.id == $id' "$TMP/bud-u.json" >/dev/null 2>&1; then ok; else bad "an elided untracked file must still be bound by the subject id"; fi
+rm -f "$budrepo/tiny.txt" "$budrepo/bulk.txt"
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

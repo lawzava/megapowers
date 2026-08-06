@@ -1,5 +1,5 @@
 # megapowers model catalog: what orchestrates, what models exist, what each is for.
-# Last reviewed: 2026-07-30 (model IDs age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-08-05 (model IDs age; scripts/check-freshness.sh guards this date).
 # Edit an OVERRIDE LAYER, not this shipped file: a project .megapowers/models.toml or
 # user ~/.config/megapowers/models.toml wins per key and survives plugin updates.
 # Two identical copies ship (plugins/megapowers/models.toml and
@@ -44,11 +44,15 @@ frontier = "lead, critic, judge, verify, hard design calls"
 [efforts]
 scale = ["low", "medium", "high", "xhigh", "ultra"]
 
+# These strings render into every session, and the block is clamped to 1024 bytes
+# by hooks/render-model-catalog, so each one pays rent twice: in the clamp and in
+# a cached prefix that costs more to churn than to leave alone. The xhigh entry
+# carries its bar inline because that is the only place a session reads it.
 [efforts.use]
 low    = "mechanical steps, relays, latency-sensitive work"
-medium = "teammate default: ordinary in-session implementation"
-high   = "lead default, and every delegated role: review, verify, judge, execute"
-xhigh  = "escalation: only where high has demonstrably failed"
+medium = "balanced default: in-session teammate work, and delegated roles bounded by something other than depth (scoped impl, visual, browser)"
+high   = "lead default, and every role that adjudicates or refutes"
+xhigh  = "only with eval evidence of a gain on this task; audit: xhigh ran 3x high"
 ultra  = "deliberate complex work; Codex only, via the complex profile"
 
 # --- Providers: how to reach each backend ---
@@ -83,7 +87,7 @@ strong   = "claude-sonnet-5"
 # Second model vendor, so the cross-vendor roles have a real different-vendor route
 # when the lead (or an --exclude) rules out the primary.
 [providers.codex]
-effort  = "high"   # every delegated role runs high; ultra is the complex profile only
+effort  = "high"   # default only where a role leaves effort unset; ultra is the complex profile only
 efforts = ["low", "medium", "high", "xhigh", "ultra"]  # ultra: complex profile only
 vendor  = "openai"
 binary  = "codex"
@@ -111,7 +115,7 @@ strong   = "gpt-5.6-terra"
 # which is worse than having one alternate vendor.
 [providers.moonshot]
 enabled = false
-effort  = "high"   # every delegated role runs high
+effort  = "high"   # default only where a role leaves effort unset
 # Kimi K3 takes reasoning_effort low, high, or max (max is its own default). It has
 # no medium rung, and `ultra` is a Codex-only band, so this list is the honest
 # subset of the global scale: xhigh is how a route asks for reasoning_effort=max.

@@ -6,9 +6,9 @@ mid-run redefinition of success.
 
 | File | Contract |
 |---|---|
-| `charter.md` | The frozen spec: goal, explicit done-when acceptance criteria, autonomy level, blast-radius limits, and external stop budgets (time, step, or token caps) declared up front. Written once, never edited; a changed goal is a new run. |
-| `plan.md` | Milestones, each with its own acceptance check, preferably an executable oracle. Update as milestones complete; do not rewrite history. |
-| `runbook.md` | The operating loop: how to pick the next unmet milestone, when to stop, what to do on failure. |
+| `charter.md` | The frozen spec: goal, explicit done-when acceptance criteria, autonomy level, blast-radius limits, and external stop budgets declared up front under Caps as `budget`, `turns`, and `attempts` (the per-milestone fix-and-re-verify cap the runbook enforces, default 3). Written once, never edited; a changed goal is a new run. |
+| `plan.md` | Milestones, each with its own acceptance check, preferably an executable oracle, plus one `Regression subset:` line naming which completed checks re-run before a new milestone opens (`all`, or a named fast subset). Update as milestones complete; do not rewrite history. |
+| `runbook.md` | The operating loop, split by enforceability: a blocking MUST section of mechanically checkable constraints and a non-blocking SHOULD section of judgment calls. `run-init` copies [runbook-template.md](runbook-template.md) in verbatim and fails loudly if that template is missing; add run-specific rules to whichever half they belong to. |
 | `journal.md` | Append-only audit trail of every action, decision, and result. Never rewritten. |
 | `status` | Machine-readable `KEY=value` lines the loop and any hook read: STATE, CURSOR, LEVEL, LAST_VERIFY, PLAN_WARNINGS. Derived, never hand-written; the pointer, not the history. |
 | `evidence.md` | Literal acceptance map: implementation target, local oracle, required external, UX, or database oracle, earned state, and evidence. |

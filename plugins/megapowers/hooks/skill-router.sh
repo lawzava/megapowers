@@ -162,7 +162,45 @@ done
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib-json.sh
 . "$here/lib-json.sh"
+# shellcheck source=lib-toml.sh
+. "$here/lib-toml.sh"
 
-msg="Trigger matched: megapowers:${skill}. Invoke it with the Skill tool before answering. Its procedure governs this turn."
+# This rule is declared advisory in ../enforcement.toml, and two fields are read
+# from there rather than hardcoded here.
+#
+# `state` lets a repository silence the router from a project layer instead of
+# patching a hook, the same off switch every other rule gets. Layers read
+# project, then user, then shipped, first hit wins.
+#
+# `fire_prefix` is the string scripts/session-metrics counts fires by. Keeping
+# one copy is the whole point: a router that changed its wording and a metric
+# that kept matching the old one would report a rule nobody honors while the
+# rule was in fact firing and being obeyed.
+#
+# Fails OPEN, like the rest of this hook. An unreadable rules file falls back to
+# the shipped wording and keeps routing: an advisory line cannot block anything,
+# so silence costs more here than a stale string would.
+rule_state=""
+fire_prefix=""
+for _layer in ".megapowers/enforcement.toml" \
+              "${XDG_CONFIG_HOME:-$HOME/.config}/megapowers/enforcement.toml" \
+              "$here/../enforcement.toml"; do
+  [ -f "$_layer" ] || continue
+  [ -n "$rule_state" ]  || rule_state="$(toml_scalar_in "$_layer" "rules.skill-router" state 2>/dev/null)"
+  [ -n "$fire_prefix" ] || fire_prefix="$(toml_scalar_in "$_layer" "rules.skill-router" fire_prefix 2>/dev/null)"
+  [ -n "$rule_state" ] && [ -n "$fire_prefix" ] && break
+done
+# Anything that is not this consumer's own state is off. The lifecycle contract
+# says a typo disables a rule rather than half-enabling it, and this hook read
+# only the literal "off", so `state = "advisroy"` kept the router speaking while
+# check-enforcement.sh would have rejected the file. An empty value means no
+# layer defined the key, which is the shipped default and stays on.
+case "$rule_state" in
+  ""|advisory) : ;;
+  *) exit 0 ;;
+esac
+[ -n "$fire_prefix" ] || fire_prefix="Trigger matched: megapowers:"
+
+msg="${fire_prefix}${skill}. Invoke it with the Skill tool before answering. Its procedure governs this turn."
 printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "UserPromptSubmit",\n    "additionalContext": "%s"\n  }\n}\n' "$(escape_for_json "$msg")"
 exit 0
