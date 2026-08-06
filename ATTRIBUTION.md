@@ -86,11 +86,39 @@ Affaan Mustafa: https://github.com/affaan-m/everything-claude-code
   > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   > SOFTWARE.
 
+## OpenAI GPT-5.6 prompt guidance (prompting reference in `mega-orchestration`)
+
+`plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/codex.md`
+follows OpenAI's **Prompting guidance for GPT-5.6 Sol**:
+https://developers.openai.com/api/docs/guides/prompt-guidance-gpt-5p6.
+
+- Upstream terms: developer documentation, Copyright 2026 OpenAI, all rights
+  reserved. This is not the Apache-2.0 grant covering codex-plugin-cc below, and
+  nothing here relicenses it.
+- The material is rewritten for this repo. These passages are not, and are listed
+  so a later edit can tell whose wording it is changing. Line numbers are as of
+  2026-08-05 and shift if the file is rewrapped.
+  - codex.md:76-77, verbatim: "GPT-5-class models follow prompt contracts
+    closely, so conflicting rules can create more instability than missing
+    detail."
+  - codex.md:143, verbatim: "Keep reusable prefixes stable and avoid unnecessary
+    churn in large system prompts".
+  - codex.md:98-100, three upstream bullets merged into one sentence, their
+    wording otherwise verbatim: "Use low for latency-sensitive work when it
+    preserves quality", "medium as a balanced starting point", "high or xhigh
+    only when evals show a meaningful gain".
+  - codex.md:119-121, near-verbatim, with "model" changed to "delegate": upstream
+    reads "prompt for a short visible preamble before the first tool call, then
+    sparse outcome-based updates at major phase changes. Do not ask the model to
+    narrate routine tool calls."
+  - codex.md:126-129, close paraphrase of the autonomy policy, retaining the
+    phrase "external, destructive, costly, or scope-expanding".
+
 ## codex-plugin-cc (prompting reference in `mega-orchestration`)
 
 `plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/codex.md`
-adapts prompting guidance, the adversarial-review framing, and the review
-output schema from **codex-plugin-cc** by OpenAI:
+adapts the adversarial-review framing and the review output schema from
+**codex-plugin-cc** by OpenAI:
 https://github.com/openai/codex-plugin-cc.
 
 - Upstream license: Apache-2.0. Upstream NOTICE: "Copyright 2026 OpenAI"

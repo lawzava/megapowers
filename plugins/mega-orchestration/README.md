@@ -40,8 +40,8 @@ config file, so swapping a backend is an edit, not a rewrite.
   declaration-based (see the repository `SECURITY.md`), distinct from the
   Claude-only deny-destructive command tripwire.
 
-The plugin also ships two delegate agents and two Stop hooks, described below.
-The skills and the delegate agents read `models.toml` (catalog) and
+The plugin also ships one delegate agent and two Stop hooks, described below.
+The skills and the delegate agent read `models.toml` (catalog) and
 `delegates.toml` (routing, inside the `multi-agent-delegation` skill
 directory) for backend and model choices.
 
@@ -96,18 +96,22 @@ call them.
 ## Delegate agents
 
 A delegate agent is a markdown agent definition the plugin registers with the
-harness; the lead invokes it like a subagent, and it routes the work out. Two
-ship here:
+harness; the lead invokes it like a subagent, and it routes the work out. One
+does work:
 
-- `agents/model-delegate.md`: resolves a role via delegate-resolve, reads the
-  provider's reference file, dispatches, and returns summary plus diff
 - `agents/browser-delegate.md`: independent verification of rendered UI/UX
-  work (and visual/browser fallback), driven by playwright-cli
+  work (and the visual/browser driver), driven by playwright-cli
 
-Each reads `models.toml` (catalog) and `delegates.toml` (routing) from the
+It reads `models.toml` (catalog) and `delegates.toml` (routing) from the
 `multi-agent-delegation` skill to decide which backend and model to invoke.
-Edit the agent files to change how the handoff works; edit `delegates.toml`
+Edit the agent file to change how the handoff works; edit `delegates.toml`
 to change where work goes.
+
+`agents/model-delegate.md` is retired and does nothing. Delegation runs from
+Bash instead: `scripts/delegate-run` for an independent review, and
+`scripts/delegate-resolve` plus your own dispatch for every other role. The
+file still ships so a session that reaches for the old agent is redirected
+rather than left to improvise; removing it is a separate change.
 
 ## Stop hooks
 

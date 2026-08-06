@@ -53,6 +53,19 @@ if [ -f "$dir/charter.md" ]; then
   echo "run-init: $dir/charter.md exists — the charter is frozen. Use a new run-id to start over." >&2
   exit 3
 fi
+# The runbook is the operating contract, so it is copied from the shipped template
+# rather than restated here: one text, split MUST/SHOULD, no second copy to drift.
+# Resolved from the script's own directory so it works from any cwd and from an
+# installed plugin cache. A missing template is fatal, and it is checked BEFORE any
+# file is written: a run scaffolded without the contract is exactly the failure this
+# split exists to prevent, and a half-scaffolded directory cannot be re-inited
+# (the charter guard would then refuse).
+runbook_template="$scriptdir/../references/runbook-template.md"
+if [ ! -f "$runbook_template" ]; then
+  echo "run-init: runbook template not found at $runbook_template (the skill's references/ directory is missing, or the scripts were copied out of the skill)" >&2
+  exit 4
+fi
+
 mkdir -p "$dir"
 # self-ignoring: run state is runtime data, never committed (works in any project)
 [ -f "$base/.gitignore" ] || printf '*\n' > "$base/.gitignore"
@@ -75,6 +88,7 @@ $level
 ## Caps
 - budget: <token/cost cap or "none">
 - turns: <max turns or "none">
+- attempts: 3   (fix and re-verify attempts per milestone; the runbook's cap MUST reads this)
 - blast radius: <what this run may NOT touch — e.g. no prod, no external sends>
 EOF
 
@@ -96,6 +110,7 @@ else
   cat > "$dir/plan.md" <<'EOF'
 # Plan
 Milestones (each with its own acceptance check; prefer an executable oracle):
+Regression subset: all   (which completed checks re-run before a new milestone opens)
 
 ## M1: <name>
 - acceptance: <test/compile/eval that decides done>
@@ -111,20 +126,9 @@ fi
 # run-init <id> --replan. run-journal never updates the digest.
 if [ "$plan_authored" -eq 1 ] && [ ! -f "$dir/plan-digest" ]; then write_plan_digest "$dir"; fi
 
-[ -f "$dir/runbook.md" ] || cat > "$dir/runbook.md" <<'EOF'
-# Runbook
-Loop: read status -> next unmet milestone -> do it -> run its acceptance check ->
-journal the result -> advance status. Trust the files over memory after a restart.
-On failure: fix and re-verify, capped at 3 attempts, then mark blocked and move on.
-Provenance: init the run with --model <your model id>, or prefix every journal
-call inline (MEGAPOWERS_MODEL=<id> run-journal ...). A plain export does NOT
-survive between tool calls; each runs in a fresh shell.
-Before claiming finished: scripts/run-verify-status <run-id> must pass — it stamps
-LAST_VERIFY into status. STATE=done with LAST_VERIFY=none means never certified.
-Update evidence.md against each literal charter criterion. A local pass earns
-locally verified, not externally verified, when a target-environment or
-normal-user witness is still required.
-EOF
+if [ ! -f "$dir/runbook.md" ]; then
+  cp "$runbook_template" "$dir/runbook.md" || { echo "run-init: could not copy $runbook_template to $dir/runbook.md" >&2; exit 4; }
+fi
 
 [ -f "$dir/journal.md" ] || printf '# Journal (append-only)\n' > "$dir/journal.md"
 [ -f "$dir/status" ]     || printf 'STATE=initialized\nCURSOR=M1\nLEVEL=%s\nLAST_VERIFY=none\n' "$level" > "$dir/status"

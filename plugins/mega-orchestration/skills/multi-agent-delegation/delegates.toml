@@ -1,5 +1,5 @@
 # megapowers delegate routing: which provider handles which role, and run presets.
-# Last reviewed: 2026-07-30 (routes age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-08-05 (routes age; scripts/check-freshness.sh guards this date).
 # The model CATALOG (lead, tiers, providers, floor) lives in models.toml at the
 # plugin root, layered the same way: project .megapowers/models.toml, then user
 # ~/.config/megapowers/models.toml, then the shipped copy. Edit an override layer,
@@ -99,13 +99,24 @@ verify         = "frontier"
 judge          = "frontier"
 council_member = "frontier"
 
+# Effort is routed here, not inherited from whoever dispatches. OpenAI's GPT-5.6
+# guidance is that medium is the balanced starting point and high or xhigh are
+# justified only where evals show a meaningful gain, so a role earns high by
+# adjudicating: plan_review, code_review, verify, judge and council_member decide
+# whether work ships, and a miss there ships the defect. The medium rows are the
+# ones with an argument behind them. small_impl is bounded work whose output the
+# lead tests anyway, on the strong tier already. visual, browser_test and
+# visual_verify are bounded by the browser driver and the evidence it captures,
+# not by reasoning depth. xhigh appears nowhere on purpose: the 2026-08-05 audit
+# measured practice at 6763 xhigh turns against 2298 high with no eval behind the
+# gap. Raising any value here means beating that argument, in evals/.
 [role_efforts]
 plan_review    = "high"
 code_review    = "high"
-small_impl     = "high"
-visual         = "high"
-browser_test   = "high"
-visual_verify  = "high"
+small_impl     = "medium"
+visual         = "medium"
+browser_test   = "medium"
+visual_verify  = "medium"
 verify         = "high"
 judge          = "high"
 council_member = "high"

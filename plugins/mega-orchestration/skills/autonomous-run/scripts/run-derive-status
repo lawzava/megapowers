@@ -74,7 +74,10 @@ if [ -f "$dir/plan.md" ]; then
   while IFS= read -r dtag; do
     [ -n "$dtag" ] || continue
     last_declared="$dtag"
-    if printf '%s\n' "$derived" | grep -qx "MILESTONE_${dtag}=done"; then
+    # Here-string, not a pipe: `grep -q` exits early and SIGPIPEs the writer,
+    # and `set -o pipefail` above turns that into a false negative on a milestone
+    # that IS done. See the same fix in run-verify-status.
+    if grep -qx "MILESTONE_${dtag}=done" <<<"$derived"; then
       continue
     fi
     undeclared_undone=$((undeclared_undone + 1))
@@ -122,7 +125,9 @@ fi
 
 old_state="$(sed -n 's/^STATE=//p' "$dir/status" | head -1)"
 old_lastverify="$(sed -n 's/^LAST_VERIFY=//p' "$dir/status" | head -1)"
-if printf '%s\n' "$derived" | grep -q '=blocked$'; then
+# Here-string, same SIGPIPE-under-pipefail reason: a blocked milestone early in
+# the list could otherwise read as no blocker at all.
+if grep -q '=blocked$' <<<"$derived"; then
   new_state=blocked
 elif [ "$last_kind" = paused ]; then
   new_state=paused

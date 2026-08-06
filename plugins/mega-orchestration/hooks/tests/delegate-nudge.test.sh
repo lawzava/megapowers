@@ -43,6 +43,19 @@ reason_in() {
   local dir="$1" input="$2"
   (cd "$dir" && printf '%s' "$input" | bash "$HOOK" 2>/dev/null) | jq -r '.reason // ""' 2>/dev/null
 }
+# The non-blocking channel. Unscannable content is announced here rather than
+# blocked, so a case checking only the decision would pass over a gate that had
+# gone silent, which is the hole that made every unscannable file a hit.
+notice_in() {
+  local dir="$1" input="$2"
+  (cd "$dir" && printf '%s' "$input" | bash "$HOOK" 2>/dev/null) | jq -r '.systemMessage // ""' 2>/dev/null
+}
+says_got() {
+  case "$2" in
+    *"$1"*) pass=$((pass + 1)) ;;
+    *) fail=$((fail + 1)); printf '  FAIL want %s :: %s :: %s\n' "$1" "$3" "$2" ;;
+  esac
+}
 j() {
   printf '{"stop_hook_active":%s,"transcript_path":"%s","permission_mode":"%s"}' \
     "${1:-false}" "${2:-$TR}" "${3:-default}"
@@ -113,6 +126,22 @@ write_receipt verify openai anthropic needs_attention
 check BLOCK "$(j false "$TR")" "needs-attention receipt does not approve"
 write_receipt verify openai anthropic approve
 check ALLOW "$(j false "$TR")" "fresh corrected receipt allows"
+
+# A receipt clears the FINDING, not a pending policy edit. The reviewer is a
+# delegate model, and a change to .megapowers/enforcement.toml is the one thing
+# that needs a human read: it is not honored at this stop, and once committed it
+# governs every later one. An approved tree must still say the layer changed.
+mkdir -p .megapowers
+printf '[rules.risky-logic-review]\nstate = "off"\n' > .megapowers/enforcement.toml
+write_receipt
+check ALLOW "$(j false "$TR")" "an approved tree with a pending policy edit still allows"
+policy_notice="$(printf '%s' "$(j false "$TR")" | bash "$HOOK" 2>/dev/null | jq -r '.systemMessage // ""' 2>/dev/null)"
+case "$policy_notice" in
+  *".megapowers/enforcement.toml"*"would set state = off."*) pass=$((pass + 1)) ;;
+  *) fail=$((fail + 1)); printf '  FAIL a receipt must not silence a pending policy edit :: %s\n' "$policy_notice" ;;
+esac
+rm -rf .megapowers
+write_receipt verify openai anthropic approve
 
 printf 'func handler() { billing(\"staged-one\") }\n' > svc.go
 git add svc.go
@@ -285,21 +314,87 @@ esac
 # Self-exclusion: the guard must not police edits to its own source or tests.
 # Those files necessarily contain the risky keyword list verbatim, so without the
 # exclusion any edit to the guard trips the guard and the review request ends up
-# citing its own warning text as the risky change.
+# citing its own warning text as the risky change. The paths come from
+# `self_exclude` in enforcement.toml.
+#
+# THE PREFIX THEY SIT UNDER HAS TO BE PROVEN. The entries are plugin-relative, so
+# something has to say where this plugin lives in the repository being reviewed,
+# and a directory NAME is not that something: anyone can mkdir one. What counts is
+# a committed .claude-plugin/plugin.json at that prefix naming this plugin, so the
+# fixture declares one the way a real checkout does, in a commit.
 git reset -q HEAD -- . 2>/dev/null
 git checkout -q -- svc.go 2>/dev/null
 rm -f "$(receipt_path)"
-mkdir -p plugins/mega-orchestration/hooks/tests
+mkdir -p plugins/mega-orchestration/hooks/tests plugins/mega-orchestration/.claude-plugin
+printf '{"name":"mega-orchestration"}\n' > plugins/mega-orchestration/.claude-plugin/plugin.json
+git add plugins/mega-orchestration/.claude-plugin/plugin.json
+git commit -qm "declare the plugin"
 printf 'risky=%s\n' "'authn|billing|concurren'" > plugins/mega-orchestration/hooks/delegate-nudge.sh
 check ALLOW "$(j false "$TR")" "editing the guard itself does not trip the guard"
 printf 'printf %s > svc.go\n' "'func handler() { billing() }'" \
-  > plugins/mega-orchestration/hooks/tests/fixture.test.sh
-check ALLOW "$(j false "$TR")" "guard test fixtures naming billing do not trip the guard"
+  > plugins/mega-orchestration/hooks/tests/delegate-nudge-prose.test.sh
+check ALLOW "$(j false "$TR")" "the guard's own test fixtures naming billing do not trip the guard"
 
-# ...but a sibling hook carrying the same words is still gated.
+# ...and the exclusion covers exactly the files the rules file names. A test the
+# rules file does not name is source like any other: a test can carry real auth
+# logic, and a scan that skips the test tree is a scan with a known hole.
+printf 'func chargeCard() { stripe() }\n' > plugins/mega-orchestration/hooks/tests/other.test.sh
+check BLOCK "$(j false "$TR")" "a test the rules file does not name is still gated"
+rm -f plugins/mega-orchestration/hooks/tests/other.test.sh
+
+# ...and so is a sibling hook carrying the same words.
 printf 'func chargeCard() { stripe() }\n' > plugins/mega-orchestration/hooks/other-hook.sh
 check BLOCK "$(j false "$TR")" "a sibling hook with risky logic is still gated"
+rm -f plugins/mega-orchestration/hooks/other-hook.sh
+
+# THE EXCLUSION IS ANCHORED TO THIS PLUGIN, not matched as a bare suffix. An
+# unanchored suffix excluded any path that merely ended the same way, so real
+# logic parked at `<anything>/hooks/delegate-nudge.sh`, or an `enforcement.toml`
+# at any depth in an unrelated repository, bought silence with a filename. Both
+# decoys carry no risky word in the NAME, so only their content can gate.
+mkdir -p services/payments/hooks
+printf 'func chargeCard() { stripe() }\n' > services/payments/hooks/delegate-nudge.sh
+check BLOCK "$(j false "$TR")" "a decoy path ending in a self_exclude entry is still scanned"
+rm -rf services
+mkdir -p config/deep
+printf 'keywords = [%s]\n' '"billing"' > config/deep/enforcement.toml
+check BLOCK "$(j false "$TR")" "a nested enforcement.toml is still scanned"
+rm -rf config
+
+# A DIRECTORY NAMED AFTER THE PLUGIN IS NOT THE PLUGIN. Anchoring on the name
+# alone moved the blind spot up one level instead of closing it: risky code parked
+# at `<anything>/mega-orchestration/hooks/delegate-nudge.sh` in an unrelated
+# repository went unscanned for the price of an mkdir.
+mkdir -p vendor/mega-orchestration/hooks
+printf 'func chargeCard() { stripe() }\n' > vendor/mega-orchestration/hooks/delegate-nudge.sh
+check BLOCK "$(j false "$TR")" "a directory merely named after the plugin does not anchor the exclusion"
+rm -rf vendor
+# ...and the declaration that DOES anchor it has to be committed, for the reason
+# the project policy layer is read from the base commit: a pending tree that could
+# mint its own anchor could exempt itself, which is the bypass in another shape.
+mkdir -p decoy/mega-orchestration/.claude-plugin decoy/mega-orchestration/hooks
+printf '{"name":"mega-orchestration"}\n' > decoy/mega-orchestration/.claude-plugin/plugin.json
+printf 'func chargeCard() { stripe() }\n' > decoy/mega-orchestration/hooks/delegate-nudge.sh
+check BLOCK "$(j false "$TR")" "an uncommitted plugin manifest does not anchor the exclusion for its own change"
+rm -rf decoy
+# ...and a committed manifest naming a DIFFERENT plugin anchors nothing either, so
+# the check is about identity rather than about the file merely existing.
+mkdir -p other/mega-orchestration/.claude-plugin other/mega-orchestration/hooks
+printf '{"name":"some-other-plugin"}\n' > other/mega-orchestration/.claude-plugin/plugin.json
+git add other/mega-orchestration/.claude-plugin/plugin.json
+git commit -qm "declare an unrelated plugin"
+printf 'func chargeCard() { stripe() }\n' > other/mega-orchestration/hooks/delegate-nudge.sh
+check BLOCK "$(j false "$TR")" "a committed manifest for a different plugin does not anchor the exclusion"
+rm -rf other
+git add -A -- other
+git commit -qm "drop the unrelated plugin"
+
+# ...and the plugin's own paths are still spared, so the anchoring did not simply
+# delete the exclusion.
+check ALLOW "$(j false "$TR")" "the plugin's own files remain excluded under the anchored match"
 rm -rf plugins
+git add -A -- plugins
+git commit -qm "drop the plugin fixture"
 
 # A tracked path that is not a regular file must not silence the gate. The Claude
 # Code sandbox bind mounts /dev/null over deny-listed paths, so a tracked
@@ -334,10 +429,16 @@ printf 'func handler() { queue() }\n' > "$fifo_repo/worker.go"
 check_got ALLOW "$(verdict_in "$fifo_repo" "$(j false "$TR")")" \
   "non-regular tracked file alone is not a false gate demand"
 
-# Only paths that exist and are not regular files may be dropped. A path deleted
-# from the worktree also fails `[ -f ]`, but git reports its deletion without
-# hashing anything, and deleting risky logic is a real change: excluding it would
-# reopen the same hole one step over.
+# Deleting risky logic is risk going away, and under `added_lines_only` a pure
+# deletion contributes no added line, so it cannot trip the keyword scan. This
+# case asserted BLOCK while the gate grepped the whole raw diff: what it matched
+# was the `diff --git a/billing.go` header, not any code, which is the same
+# filename-shaped false positive the audit counted 47 of in this repository.
+#
+# The exclusion loop still must not drop a path merely because it is absent from
+# the worktree, and it still does not: `[ -e ]` guards that. It is no longer
+# observable from this hook's verdict, because a deletion that reaches the diff
+# and a deletion dropped from it now both allow.
 (
   cd "$fifo_repo" || exit 1
   printf 'func chargeCard() { stripe() }\n' > billing.go
@@ -345,8 +446,25 @@ check_got ALLOW "$(verdict_in "$fifo_repo" "$(j false "$TR")")" \
   git commit -qm billing
   rm billing.go
 )
+check_got ALLOW "$(verdict_in "$fifo_repo" "$(j false "$TR")")" \
+  "deleting a risky file is not itself a risky change"
+(cd "$fifo_repo" && git checkout -q -- billing.go)
+# The CONTROL for the case below, and the reason it is a separate case at all. An
+# earlier version untracked billing.go and asserted the block came from re-adding
+# risky content; what it actually exercised was the untracked NAME scan matching
+# "billing", so a zero-byte file blocked and the same empty file renamed
+# neutral.go allowed. The path stays TRACKED here, so nothing about the name can
+# gate: a clean tracked billing.go alongside the fifo must allow.
+check_got ALLOW "$(verdict_in "$fifo_repo" "$(j false "$TR")")" \
+  "a tracked risky filename with no pending change is not a gate demand"
+# ...and the risk ARRIVING as an added tracked line is gated, alongside the
+# non-regular path that would otherwise abort the diff. Under added_lines_only the
+# `diff --git a/billing.go` header never reaches the scan, so this can only be the
+# added line.
+printf 'func chargeCard() { stripe() }\nfunc refundCard() { stripe(order) }\n' \
+  > "$fifo_repo/billing.go"
 check_got BLOCK "$(verdict_in "$fifo_repo" "$(j false "$TR")")" \
-  "a deleted risky file is still gated alongside a non-regular path"
+  "a risky line added to a tracked file is gated alongside a non-regular path"
 (cd "$fifo_repo" && git checkout -q -- billing.go)
 
 # The exclusion must be built from repo-root-relative paths, because `:(top,...)`
@@ -503,6 +621,16 @@ check_got BLOCK "$(verdict_in "$fresh_repo" "$(j false "$TR")")" \
 (cd "$fresh_repo" && git rm -q -f billing.go && git add notes.txt)
 check_got ALLOW "$(verdict_in "$fresh_repo" "$(j false "$TR")")" \
   "staged benign content with no diff base still allows"
+
+# ...and a repository with no commits holds no reviewed content, so it holds no
+# trustworthy project policy either. The opt-out layer is honored as of the base
+# commit, and there is no base commit here, so the shipped state applies.
+mkdir -p "$fresh_repo/.megapowers"
+printf '[rules.risky-logic-review]\nstate = "off"\n' > "$fresh_repo/.megapowers/enforcement.toml"
+printf 'func chargeCard() { stripe() }\n' > "$fresh_repo/billing.go"
+check_got BLOCK "$(verdict_in "$fresh_repo" "$(j false "$TR")")" \
+  "a project layer in a repository with no commits cannot switch the gate off"
+rm -rf "$fresh_repo/.megapowers" "$fresh_repo/billing.go"
 
 # A receipt is scoped to the worktree it was produced in. review-diff-id
 # fingerprints the pending delta and nothing else: not the repository, not the
@@ -699,6 +827,15 @@ check_got ALLOW "$(verdict_in "$late_repo" "$(j false "$TR")")" \
 # The third way untracked content goes unread: a regular file the scan cannot
 # open. grep writes an error to a stream nobody reads and reports no match, so
 # unknown content is indistinguishable from benign content and passes.
+#
+# UNREADABLE IS UNSCANNABLE, AND ONE RULE GOVERNS ALL UNSCANNABLE CONTENT. This
+# leg blocked outright while the binary leg had already been corrected to announce,
+# so the same tree was judged two ways depending on which door the unread bytes
+# came through: an ordinary mode-000 notes.md demanded a full cross-vendor review
+# with no risky word and no risky path anywhere in it. THE ASSERTIONS BELOW WERE
+# INVERTED FROM BLOCK TO ALLOW, and each one grew a check that the notice names the
+# path, because an ALLOW alone would also pass over the silence that started all of
+# this.
 if [ "$(id -u)" != 0 ]; then
   locked_repo="$TMP/locked-untracked-repo"
   mkdir -p "$locked_repo"
@@ -712,11 +849,63 @@ if [ "$(id -u)" != 0 ]; then
   )
   printf 'func chargeCard() { stripe() }\n' > "$locked_repo/secret.go"
   chmod 000 "$locked_repo/secret.go"
-  check_got BLOCK "$(verdict_in "$locked_repo" "$(j false "$TR")")" \
-    "an untracked file the scan cannot open is not passed in silence"
+  check_got ALLOW "$(verdict_in "$locked_repo" "$(j false "$TR")")" \
+    "an untracked file the scan cannot open does not demand a review on its own"
+  locked_notice="$(notice_in "$locked_repo" "$(j false "$TR")")"
+  says_got secret.go "$locked_notice" "the notice must name the unreadable path"
+  says_got "could not be opened at all" "$locked_notice" \
+    "the notice must say the gate never read the file, not that it read undecided bytes"
   chmod 644 "$locked_repo/secret.go"
+  rm -f "$locked_repo/secret.go"
+  # ...and the exclusion must not narrow that rule. exclude_globs says prose does
+  # not execute, which is a claim about content the gate could READ. A file it
+  # cannot open is not known to be prose, only known to be unread, and the name is
+  # picked by whoever adds the file: applying the exclusion first lets `notes.md`
+  # at mode 000 go unmentioned while the same bytes as `notes.go` are announced.
+  # The ordering property is now visible in the NOTICE rather than in a block, so
+  # it needs the notice asserted or an ALLOW would satisfy it either way.
+  printf 'ordinary notes\n' > "$locked_repo/notes.md"
+  chmod 000 "$locked_repo/notes.md"
+  check_got ALLOW "$(verdict_in "$locked_repo" "$(j false "$TR")")" \
+    "an unreadable untracked file with an excluded name is not a review demand"
+  says_got notes.md "$(notice_in "$locked_repo" "$(j false "$TR")")" \
+    "an unreadable untracked file with an excluded name is not passed in silence"
+  # ...and the exclusion still spares a file the gate CAN read, so the case above
+  # is about the unread content rather than about the extension. It says NOTHING
+  # either, so the notice is about content that went unread rather than about the
+  # repository holding excluded files at all.
+  chmod 644 "$locked_repo/notes.md"
+  check_got ALLOW "$(verdict_in "$locked_repo" "$(j false "$TR")")" \
+    "a readable excluded untracked file still allows"
+  check_got "" "$(notice_in "$locked_repo" "$(j false "$TR")")" \
+    "a readable excluded untracked file produces no notice"
+  rm -f "$locked_repo/notes.md"
+  # THE PATH IS THE ONE SIGNAL BYTES NOBODY CAN READ STILL LEAVE, exactly as for a
+  # binary. This is the pairing that makes the ALLOW cases above mean something: it
+  # is the content being unread AND the path being ordinary that spares them, not
+  # unread alone.
+  printf 'ordinary notes\n' > "$locked_repo/payment_processor.go"
+  chmod 000 "$locked_repo/payment_processor.go"
+  check_got BLOCK "$(verdict_in "$locked_repo" "$(j false "$TR")")" \
+    "an unreadable untracked file whose path names a risky category still blocks"
+  says_got payment_processor.go "$(reason_in "$locked_repo" "$(j false "$TR")")" \
+    "the block must name the risky unreadable path"
+  chmod 644 "$locked_repo/payment_processor.go"
+  rm -f "$locked_repo/payment_processor.go"
+  # ...and the exclusion must not spare THAT either, which is the same ordering
+  # property read from the blocking side. An excluded name plus a mode the scan
+  # cannot open would otherwise be a two-step exemption for a risky-named file,
+  # bought with a rename.
+  printf 'ordinary notes\n' > "$locked_repo/billing_notes.md"
+  chmod 000 "$locked_repo/billing_notes.md"
+  check_got BLOCK "$(verdict_in "$locked_repo" "$(j false "$TR")")" \
+    "an unreadable risky-named file under an excluded name still blocks"
+  says_got billing_notes.md "$(reason_in "$locked_repo" "$(j false "$TR")")" \
+    "the block must name the risky unreadable path under the excluded name"
+  chmod 644 "$locked_repo/billing_notes.md"
+  rm -f "$locked_repo/billing_notes.md"
 else
-  printf '  SKIP as root: unreadable untracked file is not passed in silence (chmod 000 does not block root, 1 assertion)\n'
+  printf '  SKIP as root: unreadable untracked files are announced or blocked by path (chmod 000 does not block root, 11 assertions)\n'
 fi
 
 # REPLACEMENT OBJECTS DEFEAT THE BASE BINDING. `git replace X Y` makes every
@@ -1009,6 +1198,238 @@ check_got BLOCK "$(verdict_in "$sw" "$(j false "$TR")")" \
 (cd "$sw" && printf 'outside the cone\n' > far.txt)
 check_got ALLOW "$(verdict_in "$sw" "$(j false "$TR")")" \
   "restoring the content stops clean again"
+
+# THE INDEX IS PART OF PENDING. `git diff HEAD` renders HEAD against the WORKTREE
+# and says nothing about what is staged, so staging risky content and then
+# restoring the worktree copy to its committed bytes made the two cancel: the gate
+# read an empty diff, exited clean, and the risky content sat in the index one
+# plain `git commit` from shipping. A `--cached` check had been added for the
+# policy file alone, which closed one instance and left the general hole open.
+index_repo="$TMP/index-repo"
+mkdir -p "$index_repo"
+(
+  cd "$index_repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  printf 'func handler() {}\n' > svc.go
+  printf 'ordinary notes\n' > other.txt
+  git add -A
+  git commit -qm init
+)
+# THE CONTROL FIRST, so every block below is the staged content and not the
+# fixture: index and worktree both clean, and nothing untracked.
+check_got ALLOW "$(verdict_in "$index_repo" "$(j false "$TR")")" \
+  "a repository with a clean index and a clean worktree still stops clean"
+printf 'func handler() { billing(charge) }\n' > "$index_repo/svc.go"
+(cd "$index_repo" && git add svc.go)
+check_got BLOCK "$(verdict_in "$index_repo" "$(j false "$TR")")" \
+  "a staged risky change is pending and gates"
+# THE MASKED CASE. Same index, worktree returned to its committed bytes.
+(cd "$index_repo" && git show HEAD:svc.go > svc.go)
+check_got "" "$(cd "$index_repo" && git diff HEAD)" \
+  "test premise: HEAD against the worktree is empty while the index holds the change"
+check_got BLOCK "$(verdict_in "$index_repo" "$(j false "$TR")")" \
+  "a staged risky change masked by a restored worktree copy is not a clean tree"
+# ...and a non-empty worktree hop is not what saves it either. With an unrelated
+# benign edit alongside, the old gate computed a diff that was not empty at all,
+# scanned it clean, and allowed: the masking is about WHICH tree is read, not about
+# there being nothing to read.
+printf 'more ordinary notes\n' > "$index_repo/other.txt"
+check_got BLOCK "$(verdict_in "$index_repo" "$(j false "$TR")")" \
+  "an unrelated unstaged edit does not unmask or excuse the staged risky change"
+(cd "$index_repo" && git checkout -q -- other.txt)
+# Both hops carrying risk at once, which is the ordinary shape of an edit made
+# after `git add`.
+printf 'func handler() { billing(charge) }\nfunc settle() { stripe() }\n' > "$index_repo/svc.go"
+check_got BLOCK "$(verdict_in "$index_repo" "$(j false "$TR")")" \
+  "a staged risky change edited further in the worktree gates"
+# ...and clearing BOTH hops clears the gate, so the union is a union and not a
+# latch that never lets go.
+(cd "$index_repo" && git reset -q HEAD -- svc.go && git checkout -q -- svc.go)
+check_got ALLOW "$(verdict_in "$index_repo" "$(j false "$TR")")" \
+  "unstaging the change and restoring the worktree stops clean again"
+
+# THE EXCLUSION PATHSPEC CAN BE TOO LONG TO RUN. Excluded paths are dropped from a
+# second diff by handing git one `:(top,exclude,literal)` operand per excluded
+# changed path, and that list is unbounded. Past the execve argument limit the
+# command never runs and git writes nothing, which is indistinguishable from a
+# clean tree: the risky tracked line below then ships with the hook emitting
+# nothing at all. The paths are long rather than numerous so the fixture costs a
+# couple of seconds instead of megabytes of content.
+#
+# Last, because the limit is min(ARG_MAX, RLIMIT_STACK/4) on Linux and the fixture
+# is sized against the ordinary 8MB stack. Pinning it here keeps the case honest
+# on a runner that inherited an unlimited stack, where the ceiling would be 6MB.
+ulimit -s 8192 2>/dev/null || true
+argmax_repo="$TMP/argmax-repo"
+mkdir -p "$argmax_repo"
+(
+  cd "$argmax_repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  printf 'func handler() {}\n' > svc.go
+  seg="$(printf '%0250d' 0 | tr 0 d)"
+  deep="$seg/$seg/$seg/$seg/$seg/$seg/$seg/$seg/$seg/$seg/$seg"
+  mkdir -p "$deep"
+  # ~2.8KB per pathspec operand, so a thousand excluded paths is ~2.8MB of argv
+  # against a 2MB ceiling. Committed first, because only a CHANGED path reaches
+  # the drop list.
+  for i in $(seq 1 1000); do printf 'notes\n' > "$deep/f$i.md"; done
+  git add -A
+  git commit -qm init
+  for i in $(seq 1 1000); do printf 'more notes\n' > "$deep/f$i.md"; done
+)
+# The premise, asserted rather than assumed: the fixture really does exceed the
+# limit. Without this a runner with a bigger ceiling would compute the reduced
+# diff, block for the ordinary reason, and report a green case that exercised
+# nothing.
+argmax_drop_runs() {
+  local -a spec=()
+  local p
+  while IFS= read -r -d '' p; do
+    case "$p" in *.md) spec+=(":(top,exclude,literal)$p") ;; esac
+  done < <(cd "$argmax_repo" && git diff HEAD --name-only -z 2>/dev/null)
+  (cd "$argmax_repo" && git diff HEAD --no-ext-diff -- ':/' "${spec[@]}" >/dev/null 2>&1) \
+    && echo ran || echo failed
+}
+check_got failed "$(argmax_drop_runs)" \
+  "test premise: a thousand excluded paths exceed the execve argument limit"
+# Benign first: the fallback scans the excluded prose again, so it must not gate on
+# the markdown alone or the block below says nothing about svc.go.
+check_got ALLOW "$(verdict_in "$argmax_repo" "$(j false "$TR")")" \
+  "a thousand changed excluded paths alone are not a gate demand"
+printf 'func h() { chargeStripe() }\n' > "$argmax_repo/svc.go"
+check_got BLOCK "$(verdict_in "$argmax_repo" "$(j false "$TR")")" \
+  "a risky tracked line still gates when the exclusion pathspec cannot be run"
+
+# SCRATCH FILES ARE REMOVED FROM A TRAP, NOT AFTER THEIR LAST READ. Every temp
+# file was freed inline, which leaves one behind in TMPDIR whenever the hook stops
+# before reaching that line, and an interrupted stop is exactly that. The two
+# holding the index enumeration were the ones the hook's own comment claimed were
+# covered and were not, so each temp gets a case of its own here: a claim about
+# EVERY scratch file is only worth what its least covered file is worth.
+#
+# The signal has to arrive while the scratch file is on disk, so the fixture does
+# not guess at the timing: a `git` shim on PATH hangs one named call, which is a
+# call that runs with the file already created. The hook is signalled there, the
+# shim is released, and what is left in a private TMPDIR is the answer.
+leak_dir="$TMP/leak"
+shim_dir="$TMP/shim"
+mkdir -p "$shim_dir"
+real_git="$(command -v git)"
+cat > "$shim_dir/git" <<EOF
+#!/usr/bin/env bash
+# WHICH call hangs is per case, because the temps are made at different points and
+# only a call running with the file already on disk proves anything. The index
+# enumerations are matched on the whole argument line, and the two forms differ by
+# \`-z\` alone: the prefilter listing is live while index_lines is, the NUL form
+# while index_list is.
+hang=0
+case "\${LEAK_HANG:-show}" in
+  # Only an INDEX read hangs. \`git show HEAD:<path>\` runs earlier and must not.
+  show) [ "\${1:-}" = show ] && [ "\${2#:}" != "\${2:-}" ] && hang=1 ;;
+  index) case "\$*" in *"ls-files -s -v --full-name"*) hang=1 ;; esac ;;
+  indexz) case "\$*" in *"ls-files -s -v -z --full-name"*) hang=1 ;; esac ;;
+esac
+if [ "\$hang" = 1 ]; then
+  : > "\$LEAK_MARK"
+  i=0
+  while [ ! -e "\$LEAK_RELEASE" ] && [ "\$i" -lt 200 ]; do sleep 0.05; i=\$((i + 1)); done
+fi
+exec "$real_git" "\$@"
+EOF
+chmod +x "$shim_dir/git"
+leak_probe() {
+  local dir="$1" hang="${2:-show}" pid i=0
+  rm -rf "$leak_dir" "$TMP/leak-mark" "$TMP/leak-release"
+  mkdir -p "$leak_dir"
+  # `exec` inside `bash -c`, so the pid `$!` reports is the hook itself and the
+  # signal below is not delivered to a wrapper the hook never hears about.
+  printf '%s' "$(j false "$TR")" | env PATH="$shim_dir:$PATH" TMPDIR="$leak_dir" \
+    LEAK_MARK="$TMP/leak-mark" LEAK_RELEASE="$TMP/leak-release" LEAK_HANG="$hang" \
+    bash -c 'cd "$1" && exec bash "$2"' _ "$dir" "$HOOK" >/dev/null 2>&1 &
+  pid=$!
+  while [ ! -e "$TMP/leak-mark" ] && [ "$i" -lt 200 ]; do sleep 0.05; i=$((i + 1)); done
+  if [ ! -e "$TMP/leak-mark" ]; then
+    : > "$TMP/leak-release"
+    wait "$pid" 2>/dev/null
+    echo "FIXTURE-ERROR(the hook never made the $hang call, so no temp file existed)"
+    return
+  fi
+  # Bash holds a signal until the foreground command returns, so the release is what
+  # actually runs the trap. Killing without it would only prove the shim hangs.
+  kill -TERM "$pid" 2>/dev/null
+  : > "$TMP/leak-release"
+  wait "$pid" 2>/dev/null
+  printf '%s' "$(ls -A "$leak_dir" 2>/dev/null | tr '\n' ' ')"
+}
+
+# The staged-blob temp: a staged binary whose worktree copy is gone is classified
+# from the index, which materializes the blob first.
+leak_blob="$TMP/leak-blob-repo"
+mkdir -p "$leak_blob"
+(
+  cd "$leak_blob" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  git commit -q --allow-empty -m init
+  printf 'v1\000\001\002data\n' > blob.bin
+  git add blob.bin
+  rm -f blob.bin
+)
+check_got "" "$(leak_probe "$leak_blob")" \
+  "an interrupted stop leaves no staged-blob scratch file behind"
+
+# The policy-layer temp: a staged edit whose worktree copy reads as the committed
+# one is read from the index so the notice can say which direction it goes.
+leak_policy="$TMP/leak-policy-repo"
+mkdir -p "$leak_policy"
+(
+  cd "$leak_policy" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  mkdir -p .megapowers
+  printf '[rules.risky-logic-review]\nstate = "enforced"\n' > .megapowers/enforcement.toml
+  git add .megapowers/enforcement.toml
+  git commit -qm rules
+  printf '[rules.risky-logic-review]\nstate = "off"\n' > .megapowers/enforcement.toml
+  git add .megapowers/enforcement.toml
+  git show HEAD:.megapowers/enforcement.toml > .megapowers/enforcement.toml
+)
+check_got "" "$(leak_probe "$leak_policy")" \
+  "an interrupted stop leaves no policy-layer scratch file behind"
+
+# The two INDEX enumeration temps, which the trap did not know about at all. Both
+# are made immediately before their `git ls-files` call, so hanging that call
+# catches each one on disk. One fixture serves both: the prefilter has to find
+# something for the NUL listing to be made at all, and an assume-unchanged path is
+# what makes it look.
+leak_index="$TMP/leak-index-repo"
+mkdir -p "$leak_index"
+(
+  cd "$leak_index" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  printf 'func handler() {}\n' > svc.go
+  git add svc.go
+  git commit -qm init
+  git update-index --assume-unchanged svc.go
+  printf 'func handler() { billing() }\n' > svc.go
+)
+check_got "" "$(leak_probe "$leak_index" index)" \
+  "an interrupted stop leaves no index-prefilter scratch file behind"
+check_got "" "$(leak_probe "$leak_index" indexz)" \
+  "an interrupted stop leaves no index-listing scratch file behind"
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
