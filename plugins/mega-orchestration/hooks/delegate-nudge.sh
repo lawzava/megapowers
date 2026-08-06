@@ -22,33 +22,616 @@ command -v jq >/dev/null 2>&1 || exit 0
 stop_context_is_exempt "$input" && exit 0
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
-# The gate is about changed logic, so it reads code paths only. Prose names these
-# categories constantly: a checklist that lists them, or a template telling an
-# agent to route such work for review, is not a change to that work. Scanning
-# documentation fired the gate on doc-only edits.
+# One definition of pending, four call sites (compute, retry, diagnose, and the
+# reduced rescan), so the command lives in one place: a flag, a base, or a leg
+# added to only some of them is the kind of drift that silently narrows what the
+# gate reads. Redirection stays at the call sites, because each one wants something
+# different from stderr.
 #
-# This file and its tests are excluded for the same reason, one step further in:
-# they must contain the risky keyword list verbatim (the pattern below, the block
-# message that names the categories, and fixtures like `billing()` that prove the
-# gate fires). Without this, editing the guard always trips the guard, and the
-# resulting review request cites its own warning text as the risky change. The
-# exclusion is deliberately narrow: sibling hooks stay scanned, so a real logic
-# change to deny-destructive.sh is still gated, and it only ever matches inside a
-# checkout of this repository.
-prose=(':(top,exclude,glob)**/*.md' ':(top,exclude,glob)**/*.mdx'
-       ':(top,exclude,glob)**/*.markdown' ':(top,exclude,glob)**/*.rst'
-       ':(top,exclude,glob)**/mega-orchestration/hooks/delegate-nudge.sh'
-       ':(top,exclude,glob)**/mega-orchestration/hooks/tests/**')
-# One diff, three call sites (compute, retry, diagnose), so the command lives in
-# one place: a flag or base added to only two of the three is the kind of drift
-# that silently narrows what the gate reads. Redirection stays at the call sites,
-# because each one wants something different from stderr.
+# THE SUBJECT IS THE INDEX AND THE WORKTREE, NOT THE WORKTREE ALONE. `git diff HEAD`
+# renders HEAD against the WORKTREE and says nothing about what is staged, so
+# staging `billing()` and then restoring the worktree copy to its committed bytes
+# made the two changes cancel: the diff came back empty, the gate exited clean, and
+# the risky content sat in the index one plain `git commit` from shipping. The
+# policy file got a `--cached` check of its own for this and nothing else did,
+# which left the hole open everywhere else.
+#
+# Two hops instead, base to index and index to worktree, because a path can differ
+# in either or in both and their UNION is everything a commit now would carry. It
+# is also the exact decomposition review-diff-id fingerprints and delegate-run
+# renders into the review package (staged, unstaged, untracked), so the keyword
+# scan, the subject id, and the bytes the reviewer reads describe one tree. A
+# receipt binds what the reviewer read, so scanning a different tree than the
+# package describes would let a receipt clear content nobody was shown.
+#
+# THE PATHSPEC CARRIES ONLY PATHS GIT CANNOT HASH, filled in below, and only on the
+# WORKTREE hop. `git diff --cached` never stats the worktree, so no unhashable path
+# can make it abort, and excluding one there would drop that path's INDEX content,
+# which is ordinary reviewable text, from the scan.
+#
+# What the keyword scan is allowed to LOOK at is a separate decision, taken against
+# the rules file further down, and it is deliberately not taken here: a path the
+# scan ignores must still reach this diff, because the review package a reviewer
+# reads is built from the same pending tree. Narrowing the diff would hide the file
+# from the reviewer as well, which is a different and worse thing than declining to
+# be triggered by it. `dropspec` carries that narrowing for the reduced rescan
+# alone and is empty for every other read.
 base=HEAD
-tracked_diff() { git diff "$base" --binary --no-ext-diff -- ':/' "${prose[@]}"; }
+skipspec=()
+dropspec=()
+tracked_diff() {
+  local staged=0 unstaged=0
+  # Both statuses, and both legs always run: a `return` on the first failure would
+  # print a partial diff, and a partial diff read as a whole one is the shape of
+  # every bug this gate has had.
+  git diff --cached "$base" --binary --no-ext-diff -- ':/' \
+    ${dropspec[@]+"${dropspec[@]}"} || staged=$?
+  git diff --binary --no-ext-diff -- ':/' \
+    ${skipspec[@]+"${skipspec[@]}"} ${dropspec[@]+"${dropspec[@]}"} || unstaged=$?
+  [ "$staged" -eq 0 ] && [ "$unstaged" -eq 0 ]
+}
 # Hoisted: the tracked enumeration below wants it, and so do the index-flag and
 # submodule checks, which run on every stop rather than only on an unreadable
-# diff.
+# diff. The rules file's project layer resolves against it too, so a stop from a
+# subdirectory reads the same repository's opt-out as a stop from the root.
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
+
+# --- WHAT THIS GATE MAY DO, AND WHAT IT MAY READ -----------------------------
+# Both answers live in plugins/mega-orchestration/enforcement.toml, layered
+# exactly like models.toml: a project .megapowers/enforcement.toml, then a user
+# ${XDG_CONFIG_HOME:-~/.config}/megapowers/enforcement.toml, then the shipped
+# copy, with the first layer that DEFINES a key winning for that key. Layer
+# precedence is the caller's business per lib-toml.sh's own header, so the walk
+# lives here rather than behind a shared helper.
+#
+# This was an inline keyword alternation grepped over the whole raw diff until
+# the 2026-08-05 audit measured what that cost: the gate fired 141 times and 47
+# of those landed in this repository, which ships markdown and shell and has no
+# auth or billing code to change. One session absorbed 37 consecutive blocks. A
+# gate that cannot be narrowed per repository is a gate sessions learn to route
+# around, and a gate routed around protects nothing.
+lib_toml="$here/../skills/multi-agent-delegation/scripts/lib-toml.sh"
+rules_layers=()
+# THE PROJECT LAYER IS READ FROM THE BASE COMMIT, NEVER FROM THE WORKTREE.
+#
+# The pending tree is the thing being judged, so policy taken from it is policy
+# written by the change under review. One unreviewed commit can add
+# `state = "off"` to .megapowers/enforcement.toml beside new billing or auth
+# logic and silence the gate evaluating that very change, and every read below
+# happens before the diff is even computed, so nothing else would notice.
+# Committed content is different in kind: it is content a previous stop already
+# gated and a human already accepted. `git show HEAD:` therefore resolves this
+# layer. A repository with no commits has no reviewed content at all, so it has
+# no trustworthy project layer and the shipped defaults apply.
+#
+# The user layer stays worktree-readable. It lives outside the repository, reaches
+# no diff, and is the machine owner speaking rather than the change speaking.
+project_layer=".megapowers/enforcement.toml"
+project_rules=""
+project_note=""
+# Set below only when the lib is readable, so they are declared here: the notice
+# builder past the state check reads them unconditionally and `set -u` would
+# abort the whole hook on a machine missing lib-toml.sh.
+project_changed=0
+project_kind=""
+# The scan's own findings, declared here for the same reason: policy_notice_exit is
+# defined before any scanning happens and reads all three, so an exit through it on
+# a clean tree would abort the hook under `set -u`.
+hit=0
+binary_note=""
+unscannable_risky=""
+# EVERY SCRATCH FILE THIS HOOK MAKES IS DECLARED HERE AND REMOVED FROM ONE TRAP.
+# The committed policy copy is materialized to a temp file because lib-toml.sh
+# reads files rather than strings, two hold staged blobs further down, and two hold
+# the index enumeration the assume-unchanged and submodule checks read. All five
+# were freed inline after their last read, which leaks a file in TMPDIR whenever
+# the hook leaves before that line: the state check below exits on any repository
+# that opts out, and a stop the user interrupts leaves through a signal. The two
+# index temps were the ones the claim above was not true of, and a killed hook left
+# one behind. The inline removals stay, so a long stop does not hold scratch it has
+# finished with; the trap is what covers every other way out.
+#
+# A NAME IS FREE THE MOMENT THE FILE IS GONE, so an inline removal nulls its
+# variable as well. mktemp in another process can take that name back, and a trap
+# still holding it would delete a file this hook does not own.
+#
+# EXIT alone, with no signal traps beside it: bash runs the EXIT trap on a fatal
+# signal before it dies, so an interrupted stop is already covered and a TERM
+# handler would only add a second way to leave. SIGKILL cannot be caught, so nothing
+# here claims to survive one.
+pending_staged=""
+staged_blob=""
+index_lines=""
+index_list=""
+cleanup_temps() {
+  rm -f "$project_rules" "$pending_staged" "$staged_blob" "$index_lines" "$index_list" 2>/dev/null
+}
+trap cleanup_temps EXIT
+if [ -r "$lib_toml" ]; then
+  # shellcheck source=../skills/multi-agent-delegation/scripts/lib-toml.sh
+  . "$lib_toml"
+  if [ -n "$root" ] && git rev-parse --verify -q HEAD >/dev/null 2>&1; then
+    project_rules="$(mktemp 2>/dev/null)" || project_rules=""
+    # `HEAD:<path>` resolves against the repository ROOT, so a stop from a
+    # subdirectory reads the same layer as a stop from the top.
+    if [ -n "$project_rules" ] && git show "HEAD:$project_layer" > "$project_rules" 2>/dev/null; then
+      rules_layers+=("$project_rules")
+    else
+      rm -f "$project_rules"
+      project_rules=""
+    fi
+  fi
+  # A PENDING EDIT TO THE PROJECT LAYER IS IGNORED, AND THE BLOCK SAYS SO.
+  # Running the committed policy in silence would hide a policy change from the
+  # one human who has to see it, and the whole file is compared rather than each
+  # key judged for whether it loosens: ranking a narrowing against its committed
+  # value needs an order this file does not have, and the note only ever appears
+  # inside a block that already fired.
+  if [ -n "$root" ]; then
+    project_changed=0
+    # Add, edit and delete read differently to the human who has to judge the
+    # edit, and the gate already knows which one it is looking at, so it says so
+    # rather than making the reader diff the file to find out.
+    project_kind=""
+    if [ -n "$project_rules" ]; then
+      # BOTH SIDES, because `git diff HEAD` compares HEAD against the WORKTREE and
+      # says nothing about the index. Staging `state = "off"` and then restoring
+      # the worktree copy to its committed bytes left this clean, so the policy
+      # edit sat in the index ready to commit with nothing said. The staged value
+      # was never HONORED, since the layer is read from `HEAD:` either way, so this
+      # was a visibility gap rather than a bypass, and visibility is the whole job
+      # of the notice. A worktree copy git cannot read fails the command and reads
+      # as changed, which is the direction that tells the human more rather than
+      # less.
+      git diff --quiet HEAD -- ":(top,literal)$project_layer" 2>/dev/null || project_changed=1
+      git diff --cached --quiet HEAD -- ":(top,literal)$project_layer" 2>/dev/null || project_changed=1
+      project_kind=edit
+      [ -e "$root/$project_layer" ] || project_kind=deletion
+    elif [ -e "$root/$project_layer" ] ||
+         [ -n "$(git ls-files --cached -- ":(top,literal)$project_layer" 2>/dev/null)" ]; then
+      # The index again: a layer staged and then removed from the worktree is one
+      # commit away from governing every stop, and `-e` alone saw nothing.
+      # `ls-files --cached` and not `git diff --cached HEAD`, because this branch is
+      # also the one a repository with no commits takes, where naming HEAD is a
+      # fatal error rather than a clean tree.
+      project_changed=1
+      project_kind=addition
+    fi
+    if [ "$project_changed" -eq 1 ]; then
+      project_note="A pending change to $project_layer was ignored by this gate: a project policy layer counts only as it stands in the base commit, because the change under review must not be able to loosen the gate reviewing it."
+      [ -n "$project_rules" ] || project_note="$project_note No committed copy exists, so the shipped defaults applied."
+      project_note="$project_note Read that policy edit on its own before treating this block as settled. "
+    fi
+  fi
+  user_rules="${XDG_CONFIG_HOME:-$HOME/.config}/megapowers/enforcement.toml"
+  [ -r "$user_rules" ] && rules_layers+=("$user_rules")
+  [ -r "$here/../enforcement.toml" ] && rules_layers+=("$here/../enforcement.toml")
+fi
+# `toml_key_exists_in` before reading, so a layer that sets a key to the empty
+# string still wins the key. Testing the VALUE instead would fall through to the
+# shipped default and quietly ignore the override.
+rule_scalar() {
+  local f
+  for f in ${rules_layers[@]+"${rules_layers[@]}"}; do
+    toml_key_exists_in "$f" "$1" "$2" || continue
+    toml_scalar_in "$f" "$1" "$2"
+    return 0
+  done
+  return 1
+}
+rule_array() {
+  local f
+  for f in ${rules_layers[@]+"${rules_layers[@]}"}; do
+    toml_key_exists_in "$f" "$1" "$2" || continue
+    toml_array_in "$f" "$1" "$2"
+    return 0
+  done
+  return 1
+}
+rule_flag() { [ "$(rule_scalar "$1" "$2")" = "true" ]; }
+
+# `state`, read before any work happens because a project layer alone has to be
+# able to turn this off: that is the supported opt-out, and it only counts if it
+# costs nothing to exercise. It costs one commit, since the layer read above is
+# the committed one, and that is the whole price of not letting a change exempt
+# itself. Anything other than "enforced" is advisory, and an
+# advisory rule says nothing from a hook; it is stated in the skill the model
+# already reads. An ABSENT or unreadable value stays enforced, because a gate
+# that disables itself when its own rules go missing is a gate anyone disables by
+# deleting a file.
+state="$(rule_scalar rules.risky-logic-review state)" || state=""
+[ -n "$state" ] || state="enforced"
+
+# A PENDING POLICY EDIT IS NEVER SILENT, whether or not anything else fired.
+#
+# The committed-layer rule had a two-step bypass. A lone .megapowers/enforcement.toml
+# carrying only `state = "off"` holds no keyword, so it tripped nothing while it
+# was pending; committed, it exempted every later change in the repository with
+# this gate emitting nothing at all, ever. The reverse was as quiet: a pending
+# edit TIGHTENING a committed `off` back to `enforced` was ignored with no word
+# said, because the state check leaves before any block can carry project_note.
+# The design trusts committed content because a human reviewed it, and this is
+# what makes the moment of the change reach that human.
+#
+# A NOTICE, NOT A BLOCK, on the ordinary path. The pending layer already buys
+# nothing, since the committed one governs, so there is no risky change here to
+# stop. Blocking would re-fire at every stop until the edit is committed, which
+# makes editing the policy file unworkable and teaches sessions to route around
+# the gate: that is the exact failure this rules file exists to undo. What was
+# missing was visibility, not force. `systemMessage` carries it to the human, who
+# is the reader that has to judge a policy change, without spending another turn.
+# A stop that blocks for a real finding still names the edit in its reason.
+project_notice=""
+if [ "$project_changed" -eq 1 ]; then
+  # The pending file's own state, so the notice says which DIRECTION the edit
+  # goes. Naming the file alone would leave the reader to diff it, and a
+  # loosening and a tightening are not equally urgent to look at.
+  #
+  # WHICH COPY THAT DIRECTION IS READ FROM. The worktree copy is the answer almost
+  # always, because that is the file the author is editing. The exception is the
+  # masked case this gate now detects: the worktree copy reads exactly as the
+  # committed one while the INDEX holds something else, one plain `git commit` from
+  # governing. Reading the worktree there reports the committed state straight back
+  # and the notice denies the very edit it just announced.
+  pending_state=""
+  pending_file=""
+  pending_staged=""
+  if git diff --quiet HEAD -- ":(top,literal)$project_layer" 2>/dev/null &&
+     ! git diff --cached --quiet HEAD -- ":(top,literal)$project_layer" 2>/dev/null; then
+    pending_staged="$(mktemp 2>/dev/null)" || pending_staged=""
+    if [ -n "$pending_staged" ] && git show ":$project_layer" > "$pending_staged" 2>/dev/null; then
+      pending_file="$pending_staged"
+    fi
+  fi
+  [ -n "$pending_file" ] || { [ -r "$root/$project_layer" ] && pending_file="$root/$project_layer"; }
+  [ -n "$pending_file" ] &&
+    pending_state="$(toml_scalar_in "$pending_file" rules.risky-logic-review state 2>/dev/null)"
+  [ -z "$pending_staged" ] || rm -f "$pending_staged"
+  pending_staged=""
+  project_notice="Policy notice: a pending $project_kind of $project_layer is not honored by this gate, which reads that layer as it stands in the base commit."
+  [ -n "$project_rules" ] || project_notice="$project_notice No committed copy exists, so the shipped defaults applied."
+  project_notice="$project_notice This stop ran with state = $state."
+  case "$project_kind" in
+    deletion) project_notice="$project_notice Removing the layer would return this repository to the shipped defaults." ;;
+    *) if [ -n "$pending_state" ]; then
+         project_notice="$project_notice The pending file would set state = $pending_state."
+       else
+         project_notice="$project_notice The pending file sets no state of its own."
+       fi ;;
+  esac
+  project_notice="$project_notice Read that edit before it is committed, because from the commit onward it governs every stop and nothing else announces it."
+fi
+# Every exit that would otherwise say nothing goes through here. A silent exit is
+# the whole defect: the policy file changing is worth one statement on its own, and
+# so is content this gate could not read. See the design note above the scan for why
+# unscannable content is announced here rather than blocked.
+#
+# Only while nothing else fired. With `hit` set the same sentences ride in the block
+# preamble instead, and the one exit that passes with `hit` set is the one a review
+# receipt cleared, where a reviewer has already read that content in the package.
+policy_notice_exit() {
+  local msg="$project_notice"
+  if [ -n "$binary_note" ] && [ "$hit" -eq 0 ]; then
+    [ -z "$msg" ] || msg="$msg "
+    msg="${msg}Unscanned content notice: ${binary_note}Nothing else in the pending tree matched the risky keyword list and no unscannable path names a risky category, so this gate did not block. Unscanned is not the same as safe: if that content carries logic, read it yourself or send it for review."
+  fi
+  [ -z "$msg" ] || jq -nc --arg m "$msg" '{systemMessage:$m}'
+  exit 0
+}
+
+[ "$state" = "enforced" ] || policy_notice_exit
+
+keywords=()
+while IFS= read -r kw; do
+  [ -n "$kw" ] && keywords+=("$kw")
+done < <(rule_array rules.risky-logic-review.scope keywords)
+rules_note=""
+if [ "${#keywords[@]}" -eq 0 ]; then
+  # FAIL CLOSED. An empty list matches nothing, and a scan that matches nothing
+  # calls every tree benign in silence, which is worse than the false positives
+  # this file exists to remove. Keep the shipped list and drop every narrowing
+  # with it: the narrowings come from the same unreadable file and cannot be
+  # trusted more than the list could. The block then says so, so a broken rules
+  # file reads as a broken rules file rather than as a suspicious diff.
+  keywords=(authn authz authenticat authoriz oauth jwt saml passwd password
+            billing payment invoice subscription stripe webhook mutex goroutine
+            semaphore deadlock concurren)
+  rules_note="The enforcement rules at plugins/mega-orchestration/enforcement.toml could not be read or define no keywords, so this gate fell back to its built-in list and scanned everything, comments and prose included. Restore that file, or a .megapowers/enforcement.toml layer, before reading this block as a finding about the code. "
+  added_only=0
+  skip_comments=0
+  exclude_globs=()
+  self_exclude=()
+else
+  # Absent narrowings default to OFF, the widest scan, for the same reason the
+  # state defaults to enforced: a missing key must not silently buy leniency.
+  added_only=0
+  skip_comments=0
+  rule_flag rules.risky-logic-review.scope added_lines_only && added_only=1
+  rule_flag rules.risky-logic-review.scope skip_comments && skip_comments=1
+  exclude_globs=()
+  while IFS= read -r g; do
+    [ -n "$g" ] && exclude_globs+=("$g")
+  done < <(rule_array rules.risky-logic-review.scope exclude_globs)
+  self_exclude=()
+  while IFS= read -r s; do
+    [ -n "$s" ] && self_exclude+=("$s")
+  done < <(rule_array rules.risky-logic-review.scope self_exclude)
+fi
+# Keywords are LITERAL substrings matched against a lowercased line, so a list
+# entry carrying a regex metacharacter (`c++`) matches itself rather than
+# whatever the engine makes of it. Whoever edits the rules file is writing words,
+# not patterns.
+risky="$(printf '%s\n' "${keywords[@]}" |
+  awk '{gsub(/[][\\^$.|?*+(){}]/,"\\\\&"); printf "%s%s", (NR>1?"|":""), tolower($0)} END{print ""}')"
+
+# THE SAME WORDS, MATCHED AGAINST A PATH, for the one caller that has nothing else
+# to read: a file whose bytes this gate could not scan. A path is not evidence of
+# what a file does, but it is the only evidence left there, and it is the difference
+# between a changed favicon.png and a changed payment_processor.bin.
+#
+# Builtins only, no pipeline, for the reason nul_scan gives: this runs once per
+# unscannable changed path and the untracked-cap budget exists to stop per-file
+# processes creeping back in. Literal lowercase substrings, matching how the content
+# scan escapes its own list, so a keyword carrying a glob character matches itself.
+path_is_risky() {
+  local lower="${1,,}" k
+  for k in ${keywords[@]+"${keywords[@]}"}; do
+    case "$lower" in *"${k,,}"*) return 0 ;; esac
+  done
+  return 1
+}
+
+# exclude_globs decides what the KEYWORD SCAN reads and nothing else. `*` crosses
+# `/` in a bash case pattern, so `docs/*` already covers `docs/**` and the two
+# shipped forms agree.
+#
+# AN EXTENSION IS A CLAIM, NOT A PROOF. exclude_globs is justified by "prose does
+# not execute", and an extension establishes nothing about what a file is: an
+# executable shell payload named billing.md was omitted from the name scan and
+# from the content scan alike, so `git mv` was the whole bypass. A file the
+# operating system will RUN is not prose whatever it is called, and that is
+# checkable from the same enumeration these callers already walk.
+#
+# Two properties are checked, both cheap and both about the bytes rather than the
+# name. The mode bit says the kernel may execute the file. A `#!` on the first
+# line says which interpreter runs it, which is the only in-band claim a text file
+# makes about being a program. Either one contradicts the exclusion, so the file is
+# scanned like any other source.
+#
+# An UNREADABLE excluded file is scanned too, for the reason the untracked leg
+# already decides readability ahead of exclusion: not read is not the same as
+# prose, and the name is chosen by whoever adds the file. A path with no worktree
+# file left (a deletion) keeps the exclusion, because removed content executes
+# nowhere. A path whose worktree copy is neither of those, a fifo or a character
+# device or a directory, is a copy that cannot answer at all, so the claim is put
+# to the STAGED bytes instead: those are what a plain `git commit` ships.
+#
+# `read -n 2` and not a full line: a single-line multi-megabyte document would
+# otherwise be slurped whole on every stop, and two bytes is all `#!` needs.
+#
+# THE MODE BIT IS A CLAIM THE FILESYSTEM MAKES, AND SOME FILESYSTEMS MAKE IT FOR
+# EVERYTHING. FAT and many network mounts report every file executable, and so does
+# a tree unpacked under a permissive umask. Read there, the bit revokes every prose
+# exclusion at once and the gate fires on documentation, which is the false positive
+# the rules file names as the one that kills a gate: 47 of the audit's 141 blocks
+# were markdown. Failing toward false positives is the direction that gets a gate
+# routed around, so the bit has to be checked for meaning before it is believed.
+#
+# git's own files answer that cheaply. git writes HEAD without the execute bit, so
+# a filesystem reporting HEAD executable is reporting noise rather than a program.
+# Probed once, and only when some excluded file claims the bit, so an ordinary tree
+# pays nothing.
+#
+# Where the bit is noise the INDEX MODE is the signal that survives: 100755 is what
+# a commit ships, and the filesystem cannot fake it. An untracked path has no index
+# entry, so on such a filesystem the shebang below is the only claim left about it.
+# That is a real narrowing, and it is stated here rather than hidden: the cost of
+# reading the bit anyway is every excluded document in the repository scanned.
+exec_bit_ok=-1
+exec_bit_reliable() {
+  local probe
+  if [ "$exec_bit_ok" -lt 0 ]; then
+    exec_bit_ok=1
+    probe="$(git rev-parse --git-path HEAD 2>/dev/null)" || probe=""
+    [ -n "$probe" ] && [ -f "$probe" ] && [ -x "$probe" ] && exec_bit_ok=0
+  fi
+  [ "$exec_bit_ok" -eq 1 ]
+}
+exclude_claim_holds() {
+  local f="$root/$1" head2="" mode=""
+  # NO REGULAR WORKTREE COPY, SO THE WORKTREE ANSWERS NOTHING AND THE INDEX DOES.
+  #
+  # A narrowing has to PROVE a property. A fifo, a character device, a socket or a
+  # directory proves neither of the two below, because the scanner must never open
+  # one, and this returned "the exclusion stands" for all of them: "I could not
+  # look" was being reported as "it is prose".
+  #
+  # It takes no crafted tree to reach. A tracked path whose worktree copy is not a
+  # regular file is dropped from the WORKTREE hop by skipspec, so it reaches the
+  # union enumeration ONCE and the staged re-test further down, which runs on a
+  # path named twice, never runs for it: committed-and-staged content was excluded
+  # from the scan on the strength of a name and a file that is not there. The
+  # sandbox makes exactly this shape by bind mounting /dev/null over deny-listed
+  # paths, and `git commit` ships the index either way.
+  #
+  # So the same two questions go to the bytes that WOULD ship. An index matching
+  # the base ships nothing new, which keeps every deletion excluded: reading the
+  # base copy back would fire on ordinary `rm` of a document. A staged deletion and
+  # an unmerged path have no stage 0, so `git show` writes nothing, head2 stays
+  # empty and the claim holds for the same reason.
+  if [ ! -f "$f" ]; then
+    git diff --cached --quiet "$base" -- ":(top,literal)$1" 2>/dev/null && return 0
+    mode="$(git ls-files -s -- ":(top,literal)$1" 2>/dev/null)"
+    [ "${mode%% *}" = "100755" ] && return 1
+    IFS= read -r -n 2 head2 < <(git show ":$1" 2>/dev/null) || head2=""
+    case "$head2" in '#!') return 1 ;; esac
+    return 0
+  fi
+  [ -r "$f" ] || return 1
+  if [ -x "$f" ]; then
+    exec_bit_reliable && return 1
+    mode="$(git ls-files -s -- ":(top,literal)$1" 2>/dev/null)"
+    [ "${mode%% *}" = "100755" ] && return 1
+  fi
+  IFS= read -r -n 2 head2 < "$f" 2>/dev/null || head2=""
+  case "$head2" in '#!') return 1 ;; esac
+  return 0
+}
+
+# self_exclude names THIS PLUGIN's own files, so it is ANCHORED rather than suffix
+# matched. An unanchored suffix excluded any path that merely ended the same way:
+# `services/payments/hooks/delegate-nudge.sh` in an unrelated repository, and an
+# `enforcement.toml` at any depth, both stopped being scanned, so a blind spot was
+# available to whoever picks a filename.
+#
+# ANCHORING ON A DIRECTORY NAME WAS THE SAME DEFECT ONE LEVEL UP. Matching any path
+# under a directory called `mega-orchestration` trusts a name anyone can spell, so
+# risky code planted at `vendor/x/mega-orchestration/hooks/delegate-nudge.sh` in an
+# unrelated repository went unscanned for the price of an mkdir. A prefix now has
+# to be PROVEN to hold this plugin, by one of exactly two facts:
+#
+#   1. It is the running installation. The hook resolves its own plugin directory
+#      physically; when that directory lies inside the repository being reviewed,
+#      its repository-relative path is this plugin by construction.
+#   2. The repository DECLARES this plugin there in committed content, as a
+#      .claude-plugin/plugin.json at that prefix whose `name` equals the running
+#      installation's own. `git show HEAD:` reads it, never the worktree, for the
+#      reason the project policy layer is read the same way: a pending tree must
+#      not be able to mint the anchor that exempts it. Planting the anchor costs a
+#      commit a human already accepted, which is the strongest available claim when
+#      the hook runs from an installed copy outside the repository, as it normally
+#      does.
+#
+# A PATH WITH NO PREFIX IS NOT SELF-EVIDENTLY OURS EITHER, and it was taken as
+# such: an exact repository-relative match returned excluded outright, so an
+# unrelated repository holding a root `enforcement.toml`, a root
+# `hooks/delegate-nudge.sh`, or any other listed exact path went unscanned for the
+# price of a filename, with no manifest committed and without being the running
+# installation. That is the same defect the prefix branch already closed, so the
+# empty prefix is held to the same standard through self_root_anchored: the
+# repository has to BE this plugin, or say in committed content that it ships it.
+plugin_dir="$(cd "$here/.." 2>/dev/null && pwd -P)" || plugin_dir=""
+plugin_id=""
+[ -z "$plugin_dir" ] ||
+  plugin_id="$(jq -r '.name // ""' "$plugin_dir/.claude-plugin/plugin.json" 2>/dev/null)"
+plugin_rel=""
+root_phys=""
+if [ -n "$plugin_dir" ] && [ -n "$root" ]; then
+  root_phys="$(cd "$root" 2>/dev/null && pwd -P)" || root_phys=""
+  # Physical on both sides, so a symlinked checkout or a symlinked install still
+  # recognizes itself instead of failing the prefix test on spelling.
+  #
+  # The root case is left OUT of plugin_rel deliberately: `${x#"$x"/}` strips
+  # nothing, so an installation at the root would set plugin_rel to an absolute
+  # path that no repository-relative prefix can ever equal. self_root_anchored owns
+  # that case, and it compares the directories rather than a spelling.
+  if [ -n "$root_phys" ] && [ "$plugin_dir" != "$root_phys" ]; then
+    case "$plugin_dir/" in
+      "$root_phys"/*) plugin_rel="${plugin_dir#"$root_phys"/}" ;;
+    esac
+  fi
+fi
+# Memoized in two lists rather than recomputed: scan_excluded runs once per changed
+# path and once per untracked path, and the committed-manifest read is a git call
+# plus a jq call. The lists hold prefixes, of which a repository has one or two.
+self_anchor_ok=()
+self_anchor_no=()
+self_anchored() {
+  local pre="$1" x name
+  [ -n "$plugin_rel" ] && [ "$pre" = "$plugin_rel" ] && return 0
+  for x in ${self_anchor_ok[@]+"${self_anchor_ok[@]}"}; do [ "$x" = "$pre" ] && return 0; done
+  for x in ${self_anchor_no[@]+"${self_anchor_no[@]}"}; do [ "$x" = "$pre" ] && return 1; done
+  name=""
+  [ -n "$plugin_id" ] &&
+    name="$(git show "HEAD:$pre/.claude-plugin/plugin.json" 2>/dev/null | jq -r '.name // ""' 2>/dev/null)"
+  if [ -n "$plugin_id" ] && [ "$name" = "$plugin_id" ]; then
+    self_anchor_ok+=("$pre")
+    return 0
+  fi
+  self_anchor_no+=("$pre")
+  return 1
+}
+# THE EMPTY PREFIX: is the repository under review the one whose files this list
+# names? Three ways to prove it, and each one costs more than picking a filename.
+#
+#   1. The running installation IS the repository root, compared physically, which
+#      is the exact-path case the list was written for.
+#   2. The root carries a COMMITTED .claude-plugin/plugin.json naming this plugin,
+#      which is fact 2 above with an empty prefix.
+#   3. The root carries a COMMITTED .claude-plugin/marketplace.json declaring this
+#      plugin, at a source prefix that itself proves out by fact 1 or fact 2. This
+#      is the plugin's own SOURCE repository, where the entries that carry no
+#      plugin prefix live: a marketplace keeps the plugin under plugins/<name>/ and
+#      its own test fixtures for this gate outside it, at repository-relative paths
+#      like scripts/tests/enforcement.test.sh. Without this the source repository
+#      loses the exclusions its fixtures exist for and the gate fires on its own
+#      test data, which is the false-positive spiral this rules file exists to end.
+#      It is not a name anyone can spell: it takes a committed marketplace entry
+#      naming this plugin AND a committed plugin manifest at the prefix it points
+#      to, both read with `git show HEAD:` so a pending tree cannot mint its own
+#      exemption.
+#
+# Memoized in one variable rather than a list, because there is exactly one root.
+root_anchor=-1
+self_root_anchored() {
+  local src
+  if [ "$root_anchor" -lt 0 ]; then
+    root_anchor=0
+    if [ -n "$plugin_dir" ] && [ -n "$root_phys" ] && [ "$plugin_dir" = "$root_phys" ]; then
+      root_anchor=1
+    elif [ -z "$plugin_id" ]; then
+      : # No identity to match, so nothing can be proven and nothing is excluded.
+    elif [ "$plugin_id" = "$(git show HEAD:.claude-plugin/plugin.json 2>/dev/null |
+                             jq -r '.name // ""' 2>/dev/null)" ]; then
+      root_anchor=1
+    else
+      # `select(.source|type=="string")`, because the marketplace schema also
+      # allows a git source object, and an object names no directory in this
+      # checkout. The first matching entry decides; a marketplace listing this
+      # plugin twice is malformed either way.
+      src="$(git show HEAD:.claude-plugin/marketplace.json 2>/dev/null |
+        jq -r --arg id "$plugin_id" \
+          '[.plugins[]? | select(.name == $id) | select(.source|type == "string") | .source][0] // ""' \
+          2>/dev/null)"
+      src="${src#./}"
+      src="${src%/}"
+      # An absolute source, or one climbing out with `..`, points outside the
+      # repository and cannot be a prefix of a repository-relative path. An empty
+      # one is the root itself, which the two tests above already settled.
+      case "$src" in
+        ""|/*|..|../*|*/..|*/../*) ;;
+        *) self_anchored "$src" && root_anchor=1 ;;
+      esac
+    fi
+  fi
+  [ "$root_anchor" -eq 1 ]
+}
+scan_excluded() {
+  local p="$1" g pre
+  for g in ${exclude_globs[@]+"${exclude_globs[@]}"}; do
+    # Unquoted on purpose: these entries ARE globs, and quoting turns `*.md` into
+    # a request for a file literally called `*.md`, which matches nothing and
+    # silently reinstates every false positive this key exists to remove.
+    # shellcheck disable=SC2254
+    case "$p" in $g) ;; *) continue ;; esac
+    # One glob matching is enough to reach the claim, and a failed claim settles
+    # the path: another glob agreeing that the name looks like prose cannot make
+    # an executable file inert.
+    exclude_claim_holds "$p" || return 1
+    return 0
+  done
+  for g in ${self_exclude[@]+"${self_exclude[@]}"}; do
+    # `continue` rather than `return`, because a later entry may still match this
+    # path under a prefix that does prove out.
+    if [ "$p" = "$g" ]; then
+      self_root_anchored && return 0
+      continue
+    fi
+    case "$p" in */"$g") pre="${p%/"$g"}" ;; *) continue ;; esac
+    self_anchored "$pre" && return 0
+  done
+  return 1
+}
 
 # The status is captured separately from the output, because git prints NOTHING
 # when it aborts: one tracked path it cannot hash and the whole diff comes back
@@ -59,12 +642,12 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)"
 # into a character device.
 diff="$(tracked_diff 2>/dev/null)"
 rc=$?
-# A repository with no commits has no HEAD to diff against, so `git diff HEAD`
+# A repository with no commits has no HEAD to diff against, so the staged hop
 # always fails there for an ordinary reason. That is not an unreadable tree, but
 # it is not an empty one either: the index can already hold staged content, which
 # `git ls-files --others` does not report, so calling the diff empty here would
 # pass staged risky logic unread. Re-base onto the empty tree instead, which
-# every repository has, so the whole index stays visible.
+# every repository has, so the whole index renders as additions.
 if [ "$rc" -ne 0 ] && ! git rev-parse --verify -q HEAD >/dev/null 2>&1; then
   base="$(git hash-object -t tree /dev/null 2>/dev/null)"
   diff="$(tracked_diff 2>/dev/null)"
@@ -101,7 +684,7 @@ if [ "$rc" -ne 0 ]; then
     skipped+=(":(top,exclude,literal)$p")
   done < <(git ls-files -z --full-name -- ':/' 2>/dev/null)
   if [ "${#skipped[@]}" -gt 0 ]; then
-    prose+=("${skipped[@]}")
+    skipspec+=("${skipped[@]}")
     diff="$(tracked_diff 2>/dev/null)"
     rc=$?
   fi
@@ -112,9 +695,16 @@ fi
 # `[ -f ]` test below fails, the file is never opened, and risky content inside it
 # is never scanned. The name is picked by whoever adds the file, so quoting alone
 # chooses what goes unread. -z emits raw names and the problem does not arise.
+#
+# `--full-name`, so these names are repository-relative and can be matched against
+# exclude_globs and self_exclude, which are written against repository-relative
+# paths. Every read below therefore goes through "$root/$f": plain `git ls-files`
+# prints names relative to the CURRENT DIRECTORY, so a stop from a subdirectory
+# would test one spelling against the rules and open another.
 untracked=()
 while IFS= read -r -d '' f; do untracked+=("$f"); done \
-  < <(git ls-files -z --others --exclude-standard -- ':/' "${prose[@]}" 2>/dev/null)
+  < <(git ls-files -z --others --exclude-standard --full-name -- ':/' \
+        ${skipspec[@]+"${skipspec[@]}"} 2>/dev/null)
 if [ "$rc" -ne 0 ]; then
   # Still unreadable, so the gate has no idea what changed. Asking on an
   # uncomputable diff is the only safe direction: reporting clean here is how a
@@ -126,8 +716,8 @@ if [ "$rc" -ne 0 ]; then
   # review here would send it after a receipt that does nothing, which is pressure
   # to misrepresent what it did in order to leave a gate it cannot satisfy.
   detail="$(tracked_diff 2>&1 >/dev/null | head -3 | tr '\n' ' ')"
-  jq -nc --arg detail "$detail" \
-    '{decision:"block", reason:("This gate could not compute the pending diff, so it could not check whether risky auth, billing, payment, or concurrency logic changed. git reported: " + $detail + " Do not treat the tree as clean. Inspect the pending changes yourself. A review receipt cannot clear this block, so either make the path git named readable and stop again, or tell the human plainly that the automated check could not read the diff, which path caused it, and what your own inspection found.")}'
+  jq -nc --arg detail "$detail" --arg note "$project_note" \
+    '{decision:"block", reason:($note + "This gate could not compute the pending diff, so it could not check whether risky auth, billing, payment, or concurrency logic changed. git reported: " + $detail + " Do not treat the tree as clean. Inspect the pending changes yourself. A review receipt cannot clear this block, so either make the path git named readable and stop again, or tell the human plainly that the automated check could not read the diff, which path caused it, and what your own inspection found.")}'
   exit 0
 fi
 
@@ -181,6 +771,7 @@ elif LC_ALL=C grep -qE '^([^H] |H 160000 )' "$index_lines"; then
   index_list="$(mktemp 2>/dev/null)" || { index_list=""; hidden_rc=1; }
 fi
 [ -z "$index_lines" ] || rm -f "$index_lines"
+index_lines=""
 if [ -n "$index_list" ] && ! git ls-files -s -v -z --full-name -- ':/' > "$index_list" 2>/dev/null; then
   hidden_rc=1
   rm -f "$index_list"
@@ -296,6 +887,7 @@ if [ -n "$index_list" ]; then
     [ -n "$idx" ] && [ -n "$work" ] && [ "$idx" = "$work" ] || hidden="$hidden $path"
   done < "$index_list"
   rm -f "$index_list"
+  index_list=""
 fi
 if [ -n "$hidden" ] || [ "$hidden_rc" -ne 0 ]; then
   # No receipt clears this, and the reason says so: review-diff-id refuses to
@@ -303,43 +895,697 @@ if [ -n "$hidden" ] || [ "$hidden_rc" -ne 0 ]; then
   # review here would send it after a receipt that cannot be produced.
   detail="the index hides worktree changes at$hidden"
   [ -n "$hidden" ] || detail="this gate could not read the index flags, so it cannot tell whether the index is hiding a worktree change"
-  jq -nc --arg detail "$detail" \
-    '{decision:"block", reason:("Pending changes cannot be checked for risky auth, billing, payment, or concurrency logic: " + $detail + ". A path under assume-unchanged is omitted from every diff, from the risky-content scan, and from the review fingerprint, so this gate would report a clean tree over an edit nobody read. Clear the bit with '"'"'git update-index --no-assume-unchanged <path>'"'"' (or --no-skip-worktree) and stop again, then inspect what it exposes. A review receipt cannot clear this block.")}'
+  jq -nc --arg detail "$detail" --arg note "$project_note" \
+    '{decision:"block", reason:($note + "Pending changes cannot be checked for risky auth, billing, payment, or concurrency logic: " + $detail + ". A path under assume-unchanged is omitted from every diff, from the risky-content scan, and from the review fingerprint, so this gate would report a clean tree over an edit nobody read. Clear the bit with '"'"'git update-index --no-assume-unchanged <path>'"'"' (or --no-skip-worktree) and stop again, then inspect what it exposes. A review receipt cannot clear this block.")}'
   exit 0
 fi
 
-[ -n "$diff" ] || [ "${#untracked[@]}" -gt 0 ] || [ "$sub_risky" -eq 1 ] || exit 0
+[ -n "$diff" ] || [ "${#untracked[@]}" -gt 0 ] || [ "$sub_risky" -eq 1 ] || policy_notice_exit
 
-risky='authn|authz|authenticat|authoriz|oauth|jwt|saml|passwd|password|billing|payment|invoice|subscription|stripe|webhook|mutex|goroutine|semaphore|deadlock|concurren'
+# TWO scanners over ONE shared marker table: the reduced diff goes through the
+# diff scanner, untracked files through the file scanner. The comment rule lives
+# in the shared part, so it cannot apply to a tracked change and not to an
+# untracked one.
+#
+# `skip_comments`: a comment cannot authenticate a user or charge a card, and
+# prose ABOUT this gate quoting its own keyword list was the audit's single
+# largest false-positive cluster. Only the line's FIRST non-whitespace run counts,
+# so `handler() { /* oauth */ }` is still code and still scanned.
+#
+# COMMENT MARKERS ARE LANGUAGE SPECIFIC, and three of the common ones are
+# executable syntax somewhere: `#` opens a C preprocessor directive
+# (`#define AUTHZ_DISABLED 1`), `--` decrements in JavaScript
+# (`--paymentAttempts`), and `;` opens a statement in JavaScript and C
+# (`; paymentProcessor.charge()`). One marker set across every language reads all
+# three as comments and scans them clean, which is a hole chosen by the language
+# the change is written in. The table below picks the set from the file EXTENSION,
+# and an extension it does not know scans EVERY line: an unrecognized language
+# must cost a false positive, never a silent pass. It is a table and not a parser
+# because a parser per language is a far larger surface than the false positives
+# it removes, and being wrong in the scanning direction is survivable.
+#
+# EVERY ENTRY OWES A PROOF THAT ITS MARKER CANNOT BE EXECUTABLE SYNTAX in that
+# language, and an extension that names more than one language proves nothing:
+# it must scan. That is the same rule the exclusion globs are held to, and it is
+# what these seven removals cost. `.asm` named no assembler, and GNU as reads `;`
+# as a STATEMENT SEPARATOR, so `; call payment_processor` assembles while
+# is_comment dropped it; `.nasm` names one assembler and keeps `;`. `.cl` is
+# Common Lisp and OpenCL C, where `; chargeCard();` is a statement. `.r` is R,
+# REBOL and Rez, and Rez runs a C preprocessor, so `#define AUTHZ_DISABLED 1` is
+# a directive. `.m` is Objective-C, MATLAB, Mercury and Wolfram, where `//` is
+# the postfix application operator and `// chargePayment` is a call. `.pl` is Perl
+# and Prolog, and Prolog comments with `%`, so `#` there is not comment syntax at
+# all; `.pm` is a Perl module and keeps `#`. `.cfg` and `.conf` name a PURPOSE
+# rather than a language, which is the same defect one step further out: anything
+# at all can be spelled with them, so nothing about their syntax is known.
+# Whoever adds an entry here has to meet that standard: when the language cannot
+# be established from the extension alone, the answer is to scan, never to assume
+# the line is inert.
+#
+# TWO ENTRIES WERE AUDITED AND KEPT, because removing them would trade a narrow
+# miss for a broad false positive, which is the trade the rules file forbids.
+# `.yml` and `.yaml` keep `#`: inside a literal block scalar a `#` line is document
+# DATA rather than YAML syntax, so a keyword there can reach whatever consumes the
+# document. Reaching it needs that consumer to read `#` as code, and dropping the
+# entry costs every comment in every pipeline file, so the miss is named here and
+# left. `.css` keeps the C-family set for `/* */`, which really is CSS comment
+# syntax; the `//` half of that set matches nothing CSS executes, since a `//` line
+# is a parse error rather than a statement, so honoring it costs no safety and
+# splitting a marker set to remove it would buy none.
+#
+# A MARKER IS NOT A PROOF EITHER: SOME COMMENT-SHAPED LINES EXECUTE. A shebang
+# picks the interpreter, `//go:build` picks what compiles, an Emacs file-local
+# `eval:` runs on open, and a server-side include runs on request. Every one of
+# them is written in the file's comment syntax, so the marker set said "comment"
+# and the scanner skipped the line that carried the semantics. They are listed and
+# excepted in is_comment. `.sql` is split off the dash set for the same reason from
+# the other direction: MySQL and PostgreSQL disagree about whether `--payment` is a
+# comment at all, so one rule for both was a rule for neither.
+#
+# A MARKER THAT CLOSES ON THE SAME LINE PROVES NOTHING ABOUT THE REST OF IT.
+# `/* note */ chargeCard()` and `<!-- note --> <script>go()</script>` both start
+# with an opener and both execute, so a block opener counts only when the line
+# does not also close it. `-->` is out of the table entirely, for the reason `*`
+# is: it CLOSES a comment rather than opening one, and everything after it on the
+# line is live. Haskell ends the dash run at the first symbol character, so `-->`
+# is an operator there and a continuation line may legally begin with one.
+#
+# `*` IS NOT A COMMENT OPENER and is not in the C-family set. It opens nothing: it
+# only continues a block comment some earlier line already opened, and a scanner
+# that judges one line at a time cannot tell that state. Meanwhile it dereferences
+# a pointer (`*paymentTotal = 0`), starts a generator method
+# (`*paymentIterator() {}`), and multiplies, in exactly the languages that set
+# covers. Reading it as a comment scanned all three clean. Scanning a real
+# continuation line costs at most one false positive; missing a dereference costs
+# a risky change nobody reads, so the line is scanned.
+markers_prog='
+  function markers(p,   e, n, a) {
+    n = split(p, a, "/"); p = a[n]
+    if (p !~ /\./) return ""
+    e = tolower(p); sub(/^.*\./, "", e)
+    if (e ~ /^(sh|bash|zsh|ksh|fish|py|rb|pm|jl|nix|ex|exs|cmake|yml|yaml|toml|ini|tf|tfvars|mk)$/) return "#"
+    # `.go` gets its own marker: see the "G" branch, where a block comment is
+    # compiled C rather than prose.
+    if (e == "go") return "G"
+    if (e ~ /^(js|mjs|cjs|jsx|ts|tsx|c|h|cc|cpp|cxx|hpp|hh|java|cs|rs|swift|kt|kts|scala|php|dart|proto|sol|zig|groovy|gradle|css|scss|less|mm)$/) return "/"
+    # `.sql` gets its own marker: see the "S" branch, where one dash rule cannot
+    # cover MySQL and PostgreSQL at once.
+    if (e == "sql") return "S"
+    if (e ~ /^(hs|lhs|lua|elm|adb|ads|vhd|vhdl)$/) return "-"
+    if (e ~ /^(html|htm|xhtml|xml|svg|vue|svelte|md|mdx|markdown)$/) return "<"
+    if (e ~ /^(lisp|clj|cljs|cljc|edn|el|scm|ss|nasm)$/) return ";"
+    return ""
+  }
+  function is_comment(l, m,   t, s) {
+    if (m == "") return 0
+    t = l; sub(/^[ \t]*/, "", t)
+    # A SHEBANG IS NEVER A COMMENT, IN ANY LANGUAGE. `#!/usr/bin/payment-wrapper`
+    # is the one line that decides what the kernel executes, and the `#` set read
+    # it as prose and skipped it. Checked ahead of the marker table because no
+    # extension can make it inert, and on the stripped line rather than at column
+    # one because scanning an indented `#!` costs one false positive and missing a
+    # real one costs the interpreter choice.
+    if (t ~ /^#!/) return 0
+    # AN EMACS FILE-LOCAL VARIABLES LINE EXECUTES. `-*- eval: (charge-card) -*-`
+    # is evaluated when the file is opened, and it is written inside whatever the
+    # file comment syntax is, so it reaches every marker set. Ordinary
+    # `# -*- coding: utf-8 -*-` headers carry no keyword and cost nothing.
+    if (t ~ /-\*-/) return 0
+    if (m == "#") return t ~ /^#/
+    if (m == "/" || m == "G") {
+      if (t ~ /^\/\//) {
+        # DIRECTIVES ARE NOT COMMENTS EITHER. These are comment-shaped and
+        # semantically live: `//go:build` and `// +build` decide which file
+        # compiles at all, `//go:embed` and `//go:generate` decide what is
+        # embedded and what runs, `//export` names a cgo entry point, and a
+        # TypeScript `/// <reference>` pulls another file into the compilation.
+        # `//go:` covers the whole Go pragma family in one test.
+        if (t ~ /^\/\/go:/) return 0
+        if (t ~ /^\/\/[ \t]*\+build/) return 0
+        if (t ~ /^\/\/export[ \t]/) return 0
+        if (t ~ /^\/\/\/[ \t]*<reference/) return 0
+        return 1
+      }
+      if (t ~ /^\/\*/) {
+        # Opened AND closed here, so what follows the close executes.
+        if (substr(t, 3) ~ /\*\//) return 0
+        # A GO BLOCK COMMENT CAN BE COMPILED C. The preamble above `import "C"` is
+        # C source handed to cgo, so `/* #include <payment.h>` is a directive the C
+        # compiler reads, not prose. Every entry here owes a proof that its marker
+        # cannot be executable syntax in that language, and Go cannot give one for
+        # `/*`, so the opening line scans. Only that line: the continuation lines
+        # already scan, because `*` opens nothing and is in no marker set, and a
+        # comment that closes on its own line is handled above. In every other
+        # C-family language the block really is inert, and scanning the first line of
+        # every multi-line comment there would be a broad false positive for nothing.
+        return (m != "G")
+      }
+      return 0
+    }
+    if (m == "S") {
+      if (t !~ /^--/) return 0
+      # SQL IS NOT HASKELL, AND THE DIALECTS DISAGREE WITH EACH OTHER. MySQL needs
+      # whitespace or a control character after the dashes, so `--payment` there is
+      # two unary minus operators applied to a column, while PostgreSQL, SQLite,
+      # Oracle and T-SQL read the same text as a comment. Only the form every
+      # dialect agrees on is suppressed: dashes followed by whitespace, or a line
+      # that is nothing but dashes. Everything else is scanned, because a scanner
+      # that has to pick a dialect from a `.sql` extension is guessing.
+      return (t ~ /^--[ \t]/) || (t ~ /^--$/)
+    }
+    if (m == "-") {
+      if (t !~ /^--/) return 0
+      # The dash run ends at the first symbol character: `---` is a comment,
+      # `-->` is an operator Haskell code legally starts a line with.
+      s = t; sub(/^-+/, "", s)
+      return s !~ /^[!#$%&*+.\/<=>?@\\^|~:]/
+    }
+    if (m == "<") {
+      # A SERVER-SIDE INCLUDE IS A COMMENT ONLY TO THE BROWSER. `<!--#exec cmd=`
+      # and `<!--#include` run on the server, and an IE conditional comment
+      # `<!--[if IE]>` reveals the markup it wraps. Both are directives wearing
+      # comment syntax, so neither is skipped.
+      if (t ~ /^<!--#/) return 0
+      if (t ~ /^<!--\[if/) return 0
+      if (t ~ /^<!--/) return substr(t, 5) !~ /-->/
+      return 0
+    }
+    if (m == ";") return t ~ /^;/
+    return 0
+  }
+  function risky_line(l, m) {
+    if (skipc && is_comment(l, m)) return 0
+    return tolower(l) ~ pat
+  }
+'
+# `added_lines_only`: only a line the change ADDS can introduce risky logic.
+# Context lines are the tree as it already stood and removed lines are risk going
+# away, so scanning all three made every edit near auth code read as an auth
+# change.
+#
+# The header/body split is tracked through `diff --git` and `@@` rather than by
+# pattern alone, because an added line whose content starts with `++` renders as
+# `+++ ...` and dropping it by shape would drop a real change. That is also why
+# the `+++` rule is guarded by the header state rather than by its shape alone.
+# Tracking the header is what supplies the marker table with a filename, since
+# `+++ b/<path>` names the file the following hunk belongs to.
+#
+# A BINARY PATCH IS A HIT, NOT AN EMPTY SCAN. A `GIT binary patch` section carries
+# no `@@` and no text, so a changed executable, archive, or model file produced
+# zero scanned lines and the tree read clean unless some other file tripped the
+# gate. An empty textual scan of a binary is not evidence of safety. The path is
+# reported instead and the caller blocks naming it, through the ordinary
+# receipt-clearable route: the review package covers the same binary delta, so an
+# independent review can legitimately clear it.
+diff_scan_prog=$markers_prog'
+  # The path a binary block is reported under. `diff --git a/X b/X` has no
+  # unambiguous separator once a name holds a space, and git quotes such a name,
+  # so an unparseable header falls back to the whole remainder: the reason has to
+  # name something the reader can find, which is a weaker requirement than
+  # recovering the exact name.
+  function dgpath(l,   s, i) {
+    s = substr(l, 12)
+    i = index(s, " b/")
+    if (i > 0) return substr(s, i + 3)
+    return s
+  }
+  /^diff --git / {
+    inhdr = 1; cls = ""; dg = dgpath($0)
+    if (!addedonly && risky_line($0, cls)) { hit = 1; exit }
+    next
+  }
+  inhdr && /^GIT binary patch$/ { if (binary == "") binary = dg; next }
+  inhdr && /^Binary files /     { if (binary == "") binary = dg; next }
+  inhdr && /^\+\+\+ / {
+    cls = markers(substr($0, 5))
+    if (!addedonly && risky_line($0, cls)) { hit = 1; exit }
+    next
+  }
+  /^@@/ { inhdr = 0; if (!addedonly && risky_line($0, cls)) { hit = 1; exit } next }
+  inhdr { if (!addedonly && risky_line($0, cls)) { hit = 1; exit } next }
+  {
+    if (addedonly) {
+      if (substr($0, 1, 1) == "+" && risky_line(substr($0, 2), cls)) { hit = 1; exit }
+    } else if (risky_line($0, cls)) { hit = 1; exit }
+  }
+  END {
+    if (hit) exit 0
+    if (binary != "") { print binary; exit 2 }
+    exit 1
+  }
+'
+# The file scanner takes the filename from awk itself, so one table serves both
+# callers. Reading stdin leaves FILENAME empty, which resolves to no markers and
+# therefore scans every line: that is the path the untracked NAME scan takes, and
+# a path is not a line of source.
+file_scan_prog=$markers_prog'
+  FNR == 1 { cls = markers(FILENAME) }
+  { if (risky_line($0, cls)) { hit = 1; exit } }
+  END { exit !hit }
+'
+scan_lines() { awk -v pat="$risky" -v skipc="$1" "$file_scan_prog"; }
+
+# A NUL byte is the test git itself uses to call content binary, so this needs no
+# new dependency and no extension list. An extension list would let a rename
+# decide what goes unread, which is the same hole the self_exclude anchoring
+# closed.
+#
+# A BOUNDED PREFIX IS NOT A CLASSIFICATION. This read one 8192 character window
+# and called everything without a NUL in it text, so a file whose first NUL sits
+# at byte 8193 passed as ordinary source in BOTH legs: git sniffs only its own
+# first 8000 bytes and renders the same shape as a text diff, and bash strips the
+# later NUL out of the captured diff, so awk saw a keyword-free file. Both were
+# reproduced. The scan runs to the end of the file now, and where it cannot
+# finish it says UNDECIDED rather than text: a narrowing whose safe default is
+# skip is the defect this file keeps being audited for, and text is the answer
+# that skips.
+#
+# Status 0 the content holds a NUL, 1 it does not, 2 it could not be established.
+# Every caller treats 2 exactly like 0, because "not known to be text" is the
+# only honest reading of a file this could not finish.
+#
+# BUILTINS ONLY, no pipeline. This runs once per untracked path and once per
+# changed tracked path, and the untracked-cap test holds the scan to a budget
+# precisely so nobody reintroduces per-file processes; a head/tr/wc sniff costs
+# three of them per file and blew that budget at 1424ms against a 1000ms limit,
+# which is the constraint every version of this function has had to meet.
+# `read -d ''` stops at the first NUL and reports success when it found that
+# delimiter, and `-n` takes the file one window at a time so a multi-gigabyte
+# artifact is never slurped whole. The two success cases are told apart by
+# length: short means the NUL ended the read, a full window means the window did.
+# Command substitution could not carry the byte back anyway, since bash drops NUL
+# from strings.
+#
+# $2 windows is the work bound, and it is a bound on TIME rather than a claim
+# about content: the builtin reads about a mebibyte every 15ms on the machine
+# this was measured on, so 16 windows is one mebibyte per file. A file bigger
+# than that carrying no NUL in the part that was read is undecided, which gates.
+nul_window=65536
+nul_limit=16
+nul_scan() {
+  # LC_ALL=C SO THE WINDOW IS BYTES. `read -n` counts CHARACTERS, so under a UTF-8
+  # locale a 65536 character window is up to four times that many bytes and the
+  # mebibyte bound above is per character: the time bound it exists to enforce moves
+  # with the content of the file being read, which is the one thing a work bound
+  # must not do. Measured at 400000 bytes of two-byte characters: six windows under
+  # C, three under en_US.utf8. NUL detection is unaffected, because `-d ''` is a NUL
+  # BYTE in every locale, and C also stops an invalid multibyte sequence from ending
+  # a read early. `local` so the setting lasts exactly this call: bash restores the
+  # previous value, set or unset, on return.
+  local LC_ALL=C
+  local chunk="" seen=0
+  # Unreadable is undecided, never text. The name is chosen by whoever adds the
+  # file, so a mode that stops the read must not also stop the gate.
+  [ -r "$1" ] || return 2
+  # The whole loop and the probe read one shared descriptor, which is why they sit
+  # inside a redirected group rather than each carrying their own `< "$1"`: the
+  # probe has to continue where the last window stopped.
+  {
+    while IFS= read -r -d '' -n "$nul_window" chunk; do
+      [ "${#chunk}" -lt "$nul_window" ] && return 0
+      seen=$((seen + 1))
+      # THE BUDGET IS SPENT, THE FILE IS NOT NECESSARILY BIGGER THAN IT. Returning
+      # undecided here read every byte of an exactly-$2-window file, found no NUL,
+      # and then blocked it anyway, although the comment above promises undecided
+      # only ABOVE the bound. One more byte tells the two apart, and it is the only
+      # extra work this costs. Empty on success means the NUL delimiter ended the
+      # read; one byte means content continues past the bound and nothing here
+      # decided it; failure means end of file, so every byte was read and none was
+      # a NUL.
+      if [ "$seen" -ge "$2" ]; then
+        if IFS= read -r -d '' -n 1 chunk; then
+          [ -n "$chunk" ] && return 2
+          return 0
+        fi
+        return 1
+      fi
+    done
+    return 1
+  } < "$1"
+}
+
+# AN UNSCANNABLE CHANGE IS ANNOUNCED, NOT BLOCKED, UNLESS ITS PATH SAYS OTHERWISE.
+#
+# Round 3 found the real hole here: a binary patch scanned as EMPTY and passed in
+# silence, so staging a compiled artifact bought a clean bill of health. The fix
+# made every unscannable file a hit, and that overcorrected into the failure the
+# rules file names as the one that kills a gate. Adding a favicon, a tarball, an
+# object file, a test fixture blob, or a generated report past the classification
+# bound then forced a full cross-vendor review with no risky keyword and no risky
+# path anywhere in the tree. A gate that fires on adding an image is a gate
+# sessions learn to route around, and a gate routed around protects nothing.
+#
+# So the two halves are separated. NOT SCANNED is a FACT, and the reviewer still
+# has to learn it: it goes out on the non-blocking systemMessage this hook already
+# uses for a pending policy edit, which exists for exactly this case where a human
+# should see something but stopping the session is disproportionate. RISKY is a
+# CLAIM, and it needs evidence. The only evidence left when the bytes cannot be
+# read is the path, so a path matching the keyword list still blocks: a changed
+# payment_processor.bin is a different proposition from a changed favicon.png.
+#
+# Silence is never the outcome, which is what keeps the round-3 hole closed. When
+# something else blocks, these sentences ride in the block preamble; when nothing
+# else does, they go out as a notice. Either way the reviewer learns that content
+# nobody could scan changed, and that is precisely what round 3 lost.
 hit="$sub_risky"
-printf '%s' "$diff" | grep -qiE "$risky" && hit=1
-if [ "${#untracked[@]}" -gt 0 ]; then
-  printf '%s\n' "${untracked[@]}" | grep -qiE "$risky" && hit=1
-  # EVERY regular untracked file is opened. Stopping at the first fifty paths let
-  # path fifty-one carry risky content past the scan with nothing said, and a
-  # silent bound on a security scan is a hole wherever it is drawn. The batching
-  # is only about the execve argument limit, not about how much gets read, and the
-  # loop stops early once something has already been found.
+if [ "$hit" -eq 0 ] && [ -n "$diff" ]; then
+  # Excluded paths are dropped from a SECOND diff, never from the one computed
+  # above. git spells the exclusion itself, with `literal` so a name holding a `*`
+  # excludes itself and nothing else, and the diff everything downstream reads
+  # stays whole. Building the drop list needs the path enumeration git already
+  # has; parsing names back out of the diff text would have to undo core.quotePath
+  # first, and a name it failed to unquote would silently drop the wrong file.
+  scan_diff="$diff"
+  drop=()
+  # THE RENDERED DIFF CANNOT CLASSIFY THE FILE IT RENDERS. git calls a blob
+  # binary on its own first 8000 bytes, so a file whose first NUL sits past that
+  # renders as ordinary added lines with no `GIT binary patch` section at all, and
+  # the capture above is a bash string, which drops every NUL git did write. The
+  # scanner then reads a keyword-free text file and the tree passes: staging the
+  # artifact was the whole exploit. So the classification is taken from the BYTES
+  # on disk, through the enumeration this loop already runs, and a path that
+  # cannot be classified counts the same as one that is binary.
   #
-  # `[ -f ]` is the filter that matters: it keeps grep off a fifo, which would
-  # block forever and hang the Stop hook. Symlinks to regular files still read,
-  # which is what git would diff anyway.
-  scan_files=()
+  # AFTER the exclusion, matching the untracked leg: an excluded path is dropped
+  # from the scanned diff, so a binary under an excluded glob is reported in
+  # neither leg and the two legs agree about the same file.
+  #
+  # BOTH HOPS ARE ENUMERATED, because the diff being reduced has both. Naming only
+  # the worktree hop would leave a staged-only path out of the drop list, so its
+  # excluded prose would be rescanned and its bytes never sniffed at all.
+  #
+  # `sort -z` and NOT `-zu`, because the duplicate carries information: a path named
+  # by both hops is one whose index content differs from its worktree content. The
+  # first occurrence does the ordinary work and the second classifies the INDEX
+  # bytes, which is what a plain `git commit` ships. Sorted, so the two occurrences
+  # are adjacent and one comparison finds them. The drop list still gets one operand
+  # per path, because a duplicate operand spends the execve argument budget the
+  # fallback below exists to survive.
+  tracked_binary=""
+  tracked_unclassified=""
+  staged_blob=""
+  prev=""
+  prev_dropped=0
+  while IFS= read -r -d '' p; do
+    if [ "$p" = "$prev" ]; then
+      # THE WORKTREE COPY IS NOT THE STAGED COPY HERE. `git add` an artifact and
+      # then delete or rewrite the file and the sniff below reads bytes that are no
+      # longer what would ship: a late-NUL binary staged and then removed from the
+      # worktree renders as ordinary added lines, sniffs nothing on disk because
+      # there is nothing on disk, and passes as text. A path named by ONE hop needs
+      # no second read: differing only in the index means the worktree copy IS the
+      # index content, and differing only in the worktree means it was never staged.
+      #
+      # THE SHORT-CIRCUIT IS THE RISKY PATH, NOT THE FIRST BINARY. Stopping at the
+      # first unscannable file was free while every one of them blocked. Now that
+      # only a risky-named one does, stopping there would let `git add favicon.png
+      # payment_processor.bin` decide by enumeration order which of the two the gate
+      # ever looked at. Sniffing continues until there is nothing further to learn,
+      # matching the untracked leg, which has never short-circuited.
+      [ -n "$unscannable_risky" ] && [ "$prev_dropped" -eq 0 ] && continue
+      [ -n "$staged_blob" ] || staged_blob="$(mktemp 2>/dev/null)" || staged_blob=""
+      # Materialized, because nul_scan reads windows from a regular file: over a
+      # pipe a short read is indistinguishable from the NUL that ends one, which is
+      # the difference between binary and text. Unreadable staged bytes are
+      # undecided rather than text, for the reason every other leg gives.
+      if [ -z "$staged_blob" ] || ! git show ":$p" > "$staged_blob" 2>/dev/null; then
+        # AN UNMERGED PATH HAS NO STAGE 0 AND NOTHING TO SHIP. `git commit` refuses
+        # while a conflict is open, so there is no staged content here to classify,
+        # and the worktree copy carrying the conflict markers was already sniffed on
+        # the first occurrence. Calling it unclassifiable would block every stop in
+        # the middle of a merge, and a gate that fires on ordinary work is a gate
+        # sessions learn to route around. Anything else is content this gate could
+        # not read, and unread is not text.
+        [ -n "$(git ls-files -u -- ":(top,literal)$p" 2>/dev/null)" ] && continue
+        [ -n "$tracked_unclassified" ] || tracked_unclassified="$p"
+        continue
+      fi
+      if [ "$prev_dropped" -eq 1 ]; then
+        # THE EXCLUSION CLAIM WAS TESTED AGAINST THE WORKTREE COPY TOO. `*.md` is
+        # excluded because prose does not execute, and exclude_claim_holds checks
+        # that per file against the bytes on disk. Stage an executable shebang
+        # payload as billing.md, restore the worktree copy to inert prose, and the
+        # claim held over a file that no longer had anything to do with what would
+        # ship. The index mode and the staged first two bytes answer the same two
+        # questions about the copy that WOULD ship, and either one contradicting the
+        # claim revokes the exclusion for this path.
+        #
+        # This leg is for a REGULAR worktree copy that answered, inertly, while the
+        # index held something else. A copy that cannot answer at all never gets
+        # here, because such a path is named ONCE: exclude_claim_holds puts the same
+        # two questions to the index itself for those.
+        #
+        # Revoked by REBUILDING the list rather than unsetting an element: `unset`
+        # leaves a sparse array whose ${#a[@]} is a count and not a last index, so
+        # the next revocation would drop the wrong operand. Revocations are rare and
+        # the list is short enough that the fallback below survives it.
+        staged_mode="$(git ls-files -s -- ":(top,literal)$p" 2>/dev/null)"
+        staged_mode="${staged_mode%% *}"
+        staged_head=""
+        IFS= read -r -n 2 staged_head < "$staged_blob" 2>/dev/null || staged_head=""
+        if [ "$staged_mode" = "100755" ] || [ "$staged_head" = '#!' ]; then
+          keep=()
+          for spec in ${drop[@]+"${drop[@]}"}; do
+            [ "$spec" = ":(top,exclude,literal)$p" ] && continue
+            keep+=("$spec")
+          done
+          drop=(${keep[@]+"${keep[@]}"})
+          prev_dropped=0
+        else
+          continue
+        fi
+      fi
+      [ -n "$unscannable_risky" ] && continue
+      nul_scan "$staged_blob" "$nul_limit"
+      # The first of each kind is kept for the message, and every one of them has
+      # its path tested, because the path is the only risk signal these bytes leave.
+      case "$?" in
+        0) [ -n "$tracked_binary" ] || tracked_binary="$p"
+           path_is_risky "$p" && unscannable_risky="$p" ;;
+        2) [ -n "$tracked_unclassified" ] || tracked_unclassified="$p"
+           path_is_risky "$p" && unscannable_risky="$p" ;;
+      esac
+      continue
+    fi
+    prev="$p"
+    prev_dropped=0
+    if scan_excluded "$p"; then
+      drop+=(":(top,exclude,literal)$p")
+      prev_dropped=1
+      continue
+    fi
+    [ -n "$unscannable_risky" ] && continue
+    # A symlink diffs as its target string, so it is not content this gate can read.
+    [ -L "$root/$p" ] && continue
+    if [ ! -f "$root/$p" ]; then
+      # NO REGULAR WORKTREE COPY, AND THE INDEX MAY STILL SHIP BYTES. The staged
+      # read below only runs for a path BOTH hops name, on the reasoning that a path
+      # named once differs in one place and the worktree copy is therefore the index
+      # content. That reasoning fails when the worktree hop cannot report the path at
+      # all: a tracked path whose worktree copy is a fifo or a character device is
+      # dropped from that hop by skipspec, so a staged unscannable blob under it is
+      # named ONCE and classified from a worktree copy that does not exist. The
+      # sandbox creates exactly that shape by bind mounting /dev/null over
+      # deny-listed paths, and `git commit` ships the index either way.
+      #
+      # A DELETION STILL CLASSIFIES NOTHING. Staged, the index holds no stage 0 and
+      # `git show` fails; unstaged, the index still matches the base and the
+      # `--cached` test is quiet, so neither reaches the sniff. Removed content
+      # executes nowhere, and announcing it would fire on every ordinary `rm` of a
+      # binary.
+      git diff --cached --quiet "$base" -- ":(top,literal)$p" 2>/dev/null && continue
+      [ -n "$staged_blob" ] || staged_blob="$(mktemp 2>/dev/null)" || staged_blob=""
+      # A `git show` failure here is the deletion case again, either staged or
+      # unmerged: no stage 0 exists, so there is nothing to classify and nothing to
+      # say.
+      if [ -z "$staged_blob" ] || ! git show ":$p" > "$staged_blob" 2>/dev/null; then
+        continue
+      fi
+      nul_scan "$staged_blob" "$nul_limit"
+      case "$?" in
+        0) [ -n "$tracked_binary" ] || tracked_binary="$p"
+           path_is_risky "$p" && unscannable_risky="$p" ;;
+        2) [ -n "$tracked_unclassified" ] || tracked_unclassified="$p"
+           path_is_risky "$p" && unscannable_risky="$p" ;;
+      esac
+      continue
+    fi
+    nul_scan "$root/$p" "$nul_limit"
+    case "$?" in
+      0) [ -n "$tracked_binary" ] || tracked_binary="$p"
+         path_is_risky "$p" && unscannable_risky="$p" ;;
+      2) [ -n "$tracked_unclassified" ] || tracked_unclassified="$p"
+         path_is_risky "$p" && unscannable_risky="$p" ;;
+    esac
+  done < <({ git diff --cached "$base" --name-only -z -- ':/' 2>/dev/null
+             git diff --name-only -z -- ':/' ${skipspec[@]+"${skipspec[@]}"} 2>/dev/null
+           } | LC_ALL=C sort -z)
+  [ -z "$staged_blob" ] || rm -f "$staged_blob"
+  staged_blob=""
+  if [ "${#drop[@]}" -gt 0 ]; then
+    # THE STATUS DECIDES, not the output, for the reason the first diff already
+    # states: git prints nothing when it aborts, so an unchecked capture turns any
+    # failure into an empty scan the gate reads as a clean tree. This list is the
+    # one place that failure is reachable without a hostile tree, because it grows
+    # one operand per excluded changed path with no bound: a few thousand long
+    # paths pass the execve argument limit and the command never runs at all.
+    # Falling back to the UNREDUCED diff is the conservative direction. It scans
+    # the excluded prose again, which costs false positives, where an empty scan
+    # costs a risky change nobody reads.
+    #
+    # Through tracked_diff and not a fourth hand-written command, so the reduced
+    # rescan is the same TWO HOPS and the same flags as the diff it replaces. A
+    # rescan that dropped the staged hop would undo the whole union: an excluded
+    # path anywhere in the tree would silently return the gate to reading the
+    # worktree alone. `--binary` rides along with it, so a changed binary renders
+    # the literal `GIT binary patch` the scanner detects rather than the localized
+    # "Binary files ... differ" sentence git writes without it, and a gate must not
+    # depend on the reader's language for what it can detect.
+    dropspec=("${drop[@]}")
+    reduced="$(tracked_diff 2>/dev/null)" && scan_diff="$reduced"
+    dropspec=()
+  fi
+  binary_path="$(printf '%s\n' "$scan_diff" |
+    awk -v pat="$risky" -v skipc="$skip_comments" -v addedonly="$added_only" "$diff_scan_prog")"
+  case "$?" in
+    0) hit=1 ;;
+    2) # Named, because "something binary changed" is not a finding a reader can
+       # act on and the path is the only part of a binary this gate can report. It
+       # is also the only risk signal such a file leaves, so it is matched against
+       # the keyword list rather than assumed risky.
+       [ -n "$binary_path" ] || binary_path="a path git did not name"
+       path_is_risky "$binary_path" && unscannable_risky="$binary_path"
+       binary_note="A binary file changed and cannot be scanned for risky logic as text: $binary_path. An empty textual scan of a binary is not evidence of safety. " ;;
+  esac
+  # Said even when the keyword scan already fired: the reader is deciding what to
+  # look at, and "a changed file git showed me as text is not text" is a separate
+  # fact from whichever line matched.
+  if [ -n "$tracked_binary" ]; then
+    binary_note="${binary_note}A changed tracked file holds NUL bytes, so it is binary whatever git rendered: $tracked_binary. git decides on the first 8000 bytes of a blob, so a binary carrying a text prefix diffs as ordinary lines and its empty textual scan says nothing. "
+  elif [ -n "$tracked_unclassified" ]; then
+    binary_note="${binary_note}A changed tracked file could not be classified as text or binary within the bytes this gate reads: $tracked_unclassified. Not known to be text is not the same as read. "
+  fi
+fi
+if [ "$hit" -eq 0 ] && [ "${#untracked[@]}" -gt 0 ]; then
+  scan_paths=()
+  untracked_unreadable=""
   for f in "${untracked[@]}"; do
-    [ -f "$f" ] || continue
-    # A regular file the scan cannot open is content the gate has not read, and
-    # that is the same silence as skipping it: grep writes an error nobody sees
-    # and reports no match, so unknown content reads as benign. Treat it as risky
-    # so the ordinary remedy applies rather than inventing a block nothing clears.
-    if [ -r "$f" ]; then scan_files+=("$f"); else hit=1; fi
+    # UNREADABLE IS DECIDED BEFORE EXCLUDED. An exclusion is a statement about
+    # content the gate CAN read: prose does not execute. A regular file it cannot
+    # open is not known to be prose, only known to be unread, and the name is
+    # chosen by whoever adds the file. Ordering the exclusion first would make
+    # `notes.md` at mode 000 pass while the same bytes as `notes.go` go through the
+    # scan, which is a name deciding what goes unread.
+    #
+    # WHAT IS DECIDED HERE IS "WAS THIS READ", NOT "IS THIS RISKY", and separating
+    # the two is what lets the early position survive the announce-not-block rule.
+    # This leg set `hit` outright, so an ordinary `notes.md` at mode 000 demanded a
+    # full cross-vendor review with no risky word and no risky path anywhere: the
+    # same false positive the binary leg was corrected for one round earlier, left
+    # behind because it arrives through a different door. An unreadable file is
+    # unscannable content exactly as a binary one is, so it takes the same route:
+    # recorded here, announced by the note below, and promoted to a block only by
+    # `unscannable_risky` when the path names a risky category. Not scanned is a
+    # fact this position establishes; risky is a claim, and the path is the only
+    # evidence left for it.
+    #
+    # SILENCE IS STILL NEVER THE OUTCOME, which is the hole the old `hit` closed.
+    # The scan loop below skips a file it cannot open, so without this record the
+    # file would reach neither the scanner nor the reader. The note is emitted
+    # unconditionally and names the path.
+    if [ -f "$root/$f" ] && [ ! -r "$root/$f" ]; then
+      [ -n "$untracked_unreadable" ] || untracked_unreadable="$f"
+      path_is_risky "$f" && unscannable_risky="$f"
+    fi
+    scan_excluded "$f" || scan_paths+=("$f")
   done
+  # The NAMES are scanned with the comment rule off: a path called
+  # payment_handler.go says what it is before anything is read out of it, and a
+  # path is not a line of source.
+  if [ "${#scan_paths[@]}" -gt 0 ]; then
+    printf '%s\n' "${scan_paths[@]}" | scan_lines 0 && hit=1
+  fi
+  # EVERY remaining regular untracked file is opened. Stopping at the first fifty
+  # paths let path fifty-one carry risky content past the scan with nothing said,
+  # and a silent bound on a security scan is a hole wherever it is drawn. The
+  # batching is only about the execve argument limit, not about how much gets
+  # read, and the loop stops early once something has already been found.
+  #
+  # `[ -f ]` is the filter that matters: it keeps the scanner off a fifo, which
+  # would block forever and hang the Stop hook. Symlinks to regular files still
+  # read, which is what git would diff anyway.
+  #
+  # The operands are ABSOLUTE, which is not cosmetic: awk reads an operand of the
+  # form `name=value` as a variable assignment and never opens it, so an untracked
+  # file called `a=b.go` would go unscanned under a bare relative name. `/` is not
+  # valid in an awk identifier, so an absolute path can only be a filename.
+  # AN UNTRACKED BINARY IS A HIT, exactly as a binary in the diff is. The diff leg
+  # already treats a `GIT binary patch` as risky by construction, but the same
+  # bytes left unstaged reached awk as text, matched nothing, and passed: `git add`
+  # was the whole difference between a block naming the path and silence. Dropping
+  # a built artifact into a worktree without staging it is the ordinary agent
+  # workflow, so this needs no adversarial step to reach.
+  untracked_binary=""
+  untracked_unclassified=""
+  scan_files=()
+  for f in ${scan_paths[@]+"${scan_paths[@]}"}; do
+    [ -f "$root/$f" ] || continue
+    # A regular file the scan cannot open is content the gate has not read, and
+    # that is the same silence as skipping it: the scanner writes an error nobody
+    # sees and reports no match, so unknown content reads as benign. The
+    # enumeration above already recorded it and tested its path, ahead of the
+    # exclusion so the rule cannot be narrowed by a filename; dropping it here only
+    # keeps the scanner off a file it cannot open. nul_scan would also refuse it,
+    # but as `untracked_unclassified`, which would tell the reader the bytes were
+    # read and found undecided when they were never read at all.
+    [ -r "$root/$f" ] || continue
+    # After the exclusions, matching the diff leg: an excluded path is dropped
+    # from the scanned diff there, so a binary under an excluded glob is reported
+    # in neither leg. Sniffing before the exclusion would gate every image added
+    # under docs/ and make the two legs disagree about the same file.
+    nul_scan "$root/$f" "$nul_limit"
+    # The path is tested here as well as by the NAME scan above, which already
+    # covers these same paths. Stating the rule where the classification happens is
+    # what keeps it true of unscannable files specifically: a later narrowing of the
+    # name scan must not quietly take the only signal these bytes leave with it.
+    case "$?" in
+      0) [ -n "$untracked_binary" ] || untracked_binary="$f"
+         path_is_risky "$f" && unscannable_risky="$f"
+         continue ;;
+      2) [ -n "$untracked_unclassified" ] || untracked_unclassified="$f"
+         path_is_risky "$f" && unscannable_risky="$f"
+         continue ;;
+    esac
+    scan_files+=("$root/$f")
+  done
+  # Named, for the reason the diff leg names its own: "something binary is here"
+  # is not a finding a reader can act on, and the path is the only part of a
+  # binary this gate can report. Appended rather than assigned, because a tracked
+  # binary change and an untracked binary addition are two separate facts and the
+  # reader needs both.
+  # THE UNREADABLE FILE IS NAMED OUT LOUD, and this line is what keeps the round-3
+  # hole shut now that the enumeration above only records. Unconditional, and
+  # separate from the two below, because "the gate could not open it" and "the gate
+  # opened it and the bytes are not text" are different facts about how far the scan
+  # got, and the reader deciding what to look at needs the one that applies.
+  [ -z "$untracked_unreadable" ] || binary_note="${binary_note}An untracked file could not be opened at all, so none of its content was scanned: $untracked_unreadable. Unread is not the same as absent, and a mode is chosen by whoever adds the file. "
+  [ -z "$untracked_binary" ] || binary_note="${binary_note}An untracked binary file was added and cannot be scanned for risky logic as text: $untracked_binary. An empty textual scan of a binary is not evidence of safety. "
+  [ -z "$untracked_unclassified" ] || binary_note="${binary_note}An untracked file could not be classified as text or binary within the bytes this gate reads: $untracked_unclassified. Not known to be text is not the same as read. "
   i=0
   while [ "$hit" -eq 0 ] && [ "$i" -lt "${#scan_files[@]}" ]; do
-    grep -qiE "$risky" -- "${scan_files[@]:i:200}" 2>/dev/null && hit=1
+    awk -v pat="$risky" -v skipc="$skip_comments" "$file_scan_prog" \
+      "${scan_files[@]:i:200}" 2>/dev/null && hit=1
     i=$((i + 200))
   done
 fi
-[ "$hit" -eq 1 ] || exit 0
+# THE ONE PLACE UNSCANNABLE CONTENT BECOMES A BLOCK, said once after both legs so
+# the rule cannot drift between them and the reader is told which fact promoted an
+# announcement into a finding. Everything above only records; nothing above decides.
+if [ -n "$unscannable_risky" ]; then
+  hit=1
+  binary_note="${binary_note}The path $unscannable_risky names one of the risky categories this gate watches, and its content could not be scanned, so that change is treated as risky by construction rather than announced. "
+fi
+[ "$hit" -eq 1 ] || policy_notice_exit
 
 diff_id_tool="$here/../skills/multi-agent-delegation/scripts/review-diff-id"
 receipt="$(git rev-parse --git-path megapowers-review-receipt.json 2>/dev/null)"
@@ -413,7 +1659,9 @@ if [ -x "$diff_id_tool" ] && [ -f "$receipt" ]; then
     (.reviewer.vendor | type == "string" and length > 0) and
     (all(.author_vendors[]; . != $receipt.reviewer.vendor))
   ' "$receipt" >/dev/null 2>&1; then
-    exit 0
+    # A receipt clears the FINDING, not the policy edit. The reviewer is a
+    # delegate model, and the thing a pending layer edit needs is a human read.
+    policy_notice_exit
   fi
 fi
 
@@ -449,12 +1697,18 @@ if [ -x "$resolver" ]; then
   fi
 fi
 
+# Everything the reader has to know BEFORE the finding itself: a rules file that
+# could not be read, a pending policy edit this gate refused to honor, a binary it
+# could not scan, and a receipt it declined. Each one changes how the block below
+# should be read, so none of them may be left to a comment nobody sees.
+preamble="$rules_note$project_note$binary_note"
+
 if [ "$reachable" -lt 2 ]; then
-  jq -nc --arg legacy "$legacy" \
+  jq -nc --arg legacy "$preamble$legacy" \
     '{decision:"block", reason:($legacy + "Risky auth, billing, payment, or concurrency logic changed, and no independent reviewer is reachable: fewer than two delegate vendors have an installed CLI, so a different-vendor review cannot be resolved on this machine. Do not silently ship it. Summarize the risky change and its blast radius for the human and get an explicit go-ahead, or install a second vendor CLI and re-run the independent pass. Say plainly that the automated cross-vendor check did not run.")}'
   exit 0
 fi
 
-jq -nc --arg launcher "$launcher" --arg legacy "$legacy" \
+jq -nc --arg launcher "$launcher" --arg legacy "$preamble$legacy" \
   '{decision:"block", reason:($legacy + "Risky auth, billing, payment, or concurrency logic changed without a current independent approval receipt. Run " + $launcher + " --role verify --author-vendor <artifact-author-vendor> --artifact worktree --claim <claim>. The launcher resolves a different-vendor reviewer and binds its verdict to the pending tree git reports, plus the base commit it applies to. Ignored paths and content git does not surface in a diff are outside that binding. Unrelated delegate calls and stale receipts do not satisfy this gate.")}'
 exit 0
