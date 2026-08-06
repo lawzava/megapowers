@@ -1,0 +1,58 @@
+# megapowers enforcement lifecycle: the advisory half.
+# Last reviewed: 2026-08-05 (scripts/check-freshness.sh guards this date).
+#
+# Edit an OVERRIDE LAYER, not this shipped file: a project .megapowers/enforcement.toml
+# or user ~/.config/megapowers/enforcement.toml wins per key and survives plugin
+# updates.
+#
+# The three states (off, advisory, enforced) and the promotion rule are
+# documented once, in plugins/mega-orchestration/enforcement.toml. This file
+# carries the rules the megapowers plugin owns, all of them advisory today.
+# Set `state = "off"` in a project layer to silence one for a repository.
+#
+# An advisory rule earns promotion by measurement, not by argument. Run
+# `scripts/session-metrics --rules` to see how each one is doing.
+#
+# Measure it on the right record. The 2026-08-05 audit first counted a fire as
+# the prefix appearing anywhere in a transcript and read 27 fires with 7 honored.
+# That was the instrument measuring itself: 68 of the 76 occurrences were
+# tool_results and assistant text echoing the string, mostly greps run while
+# auditing this very rule. Counted on `attachment.type == "hook_additional_context"`,
+# the only shape that is an actual hook delivery, the same store reads 8 fires
+# and 8 honored.
+
+# --- Naming the applicable skill when its trigger phrase is typed ---
+# Advisory since 2026-07-30. Owned by hooks/skill-router.sh, which emits
+# `Trigger matched: megapowers:<skill>` as UserPromptSubmit additionalContext.
+#
+# Promotion criterion, stated before the fact so the bar cannot move afterwards:
+# this rule stays advisory, and the number to watch is RECALL, not honor.
+#
+# Honor is already 100%: every one of the 8 deliveries in the 2026-08-05 store
+# was followed by the named skill. Compliance is not the problem and a louder
+# message would buy nothing. Recall is the problem: 8 fires against 498 typed
+# prompts in the same window, while process skills were invoked 2.2% of the time
+# overall. The table matches too little, so the fix is a BROADER trigger table
+# tested against real prompts, not a stronger mechanism.
+#
+# The bar: if honor stays at or above 90% while fires stay under 5% of typed
+# prompts, add triggers. Promote to enforced only if honor falls below 60%, which
+# would be the first evidence that the mechanism, rather than the coverage, is
+# what fails.
+[rules.skill-router]
+state    = "advisory"
+hook     = "hooks/skill-router.sh"
+source   = "skills/using-megapowers/SKILL.md"
+declared = "2026-07-30"
+
+# The test that PROVES this rule's declared state is the state that runs. The
+# checker requires it to exist and to name the rule; it does not try to prove the
+# behavior itself, because a textual check cannot establish a behavioral property.
+contract_test = "hooks/tests/skill-router.test.sh"
+
+# The literal the hook emits. session-metrics counts a fire by matching this
+# prefix in the transcript, and counts it honored when the named skill is invoked
+# within `honor_window` assistant records. Keeping the string here rather than
+# only in the hook is what stops the metric and the hook from drifting apart.
+fire_prefix  = "Trigger matched: megapowers:"
+honor_window = "12"

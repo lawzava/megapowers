@@ -42,7 +42,10 @@ done
 #   two surfaces and bump the date on this comment line to clear a failure.
 FILES='docs/harness-support.md|Last reviewed:
 evals/RESULTS.md|Last run:
+plugins/mega-orchestration/enforcement.toml|Last reviewed:
+plugins/megapowers/enforcement.toml|Last reviewed:
 plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml|Last reviewed:
+plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/codex.md|Last reviewed:|30
 plugins/megapowers/models.toml|Last reviewed:
 plugins/mega-orchestration/skills/orchestrating/references/harness-primitives.md|Last reviewed:|30
 plugins/mega-frontend/skills/designing-frontends/SKILL.md|Calibration reviewed:
