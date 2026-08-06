@@ -496,7 +496,11 @@ out="$(cd "$TMP/author-policy" && "$DR" small_impl 2>&1)"; rc=$?
 check_exit "small_impl resolves with role policy" 0 "$rc"
 check "small_impl without an author follows the lead" "MODEL=claude-sonnet-5" "$out"
 check "small_impl tier is strong" "TIER=strong" "$out"
-check "small_impl effort is high" "EFFORT=high" "$out"
+# Medium, not high, and the value is the assertion. GPT-5.6 guidance makes medium
+# the balanced starting point and asks for eval evidence before high; scoped
+# implementation whose output the lead tests anyway does not clear that bar.
+# A change back to high has to beat that argument, not just edit a table.
+check "small_impl effort is medium" "EFFORT=medium" "$out"
 
 out="$(cd "$TMP/author-policy" && "$DR" small_impl --author-model gpt-5.6-sol 2>&1)"; rc=$?
 check_exit "small_impl resolves for a non-lead caller" 0 "$rc"
@@ -537,7 +541,9 @@ check_exit "visual_verify resolves" 0 "$rc"
 check "visual verifier is a model provider" "PROVIDER=claude" "$out"
 check "visual verifier has a model" "MODEL=claude-opus-5" "$out"
 check "visual verifier has a tier" "TIER=frontier" "$out"
-check "visual verifier has an effort" "EFFORT=high" "$out"
+# Medium for the same reason small_impl is: judging screenshot evidence is bound
+# by the driver and the evidence, not by reasoning depth.
+check "visual verifier effort is medium" "EFFORT=medium" "$out"
 check "visual verifier carries Playwright driver" "DRIVER=playwright" "$out"
 check "visual verifier carries resolved driver binary" "DRIVER_BINARY=sh" "$out"
 
@@ -1672,6 +1678,88 @@ EOF
 out="$("$DR" code_review --config "$TMP/missing-excluded.toml" --models "$TMP/empty-catalog.toml" --author-vendor globex --exclude ghost 2>&1)"; rc=$?
 check_exit "an excluded routed provider with no section is still fatal" 2 "$rc"
 check "the missing-section error names the provider" "ghost" "$out"
+
+echo "== membership tests =="
+
+# A value that IS in a scale must never read as absent, whatever the scheduler does.
+#
+# The old spelling was `printf '%s\n' "$list" | grep -qx -- "$value"`. `grep -q`
+# exits at the first match, so everything after the match stays unwritten, the
+# writer takes SIGPIPE, and `set -o pipefail` promotes that 141 to the pipeline's
+# status: a HIT reported as a miss. It needed the reader to win a scheduling race,
+# so it surfaced as a rare red in a loaded validate.sh run and never on a serial
+# re-run, and it hit resolution as well as --check.
+#
+# This fixture deletes the race rather than hoping for it: the value is the FIRST
+# entry and the rest of the scale is bigger than a pipe buffer, so the writer
+# cannot possibly be finished when the reader leaves. Against the old spelling
+# every assertion below fails on every run.
+# Only the LENGTH matters here: 1200 entries of this width put well over a pipe
+# buffer behind the matching first entry.
+pad_word="$(printf '%090d' 0)"
+padding=""
+pad_i=0
+while [ "$pad_i" -lt 1200 ]; do
+  padding="$padding, \"pad-$pad_i-$pad_word\""
+  pad_i=$((pad_i + 1))
+done
+cat > "$TMP/longscale.toml" <<EOF
+[tiers]
+scale = ["strong"]
+[efforts]
+scale = ["high"$padding]
+[providers.alpha]
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["high"]
+default_tier = "strong"
+[providers.alpha.tiers]
+strong = "alpha-1"
+[roles]
+code_review = "alpha"
+[role_tiers]
+code_review = "strong"
+[role_efforts]
+code_review = "high"
+EOF
+LONG=(--config "$TMP/longscale.toml" --models "$TMP/empty-catalog.toml")
+out="$("$DR" --check "${LONG[@]}" 2>&1)"; rc=$?
+check_exit "--check accepts an effort early in a long [efforts] scale" 0 "$rc"
+check "--check reports no phantom scale finding" "OK (" "$out"
+out="$("$DR" code_review "${LONG[@]}" 2>&1)"; rc=$?
+check_exit "resolution accepts an effort early in a long [efforts] scale" 0 "$rc"
+check "the resolved route keeps that effort" "EFFORT=high" "$out"
+
+# The same --check validate.sh runs, several at once against the shipped files.
+# The defect above was first seen as one red among concurrently executing suites,
+# so pin that concurrency itself is survivable instead of only the serial path.
+#
+# This one is a smoke, not the regression: against the defective spelling it fires
+# only when the machine is loaded enough to lose the race, which is exactly the
+# property that made the bug hard to see. The fixture above is what pins it.
+conc_dir="$TMP/concurrent"
+mkdir -p "$conc_dir"
+conc_n=12
+conc_i=1
+while [ "$conc_i" -le "$conc_n" ]; do
+  (
+    DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" \
+      "$DR" --check >"$conc_dir/out.$conc_i" 2>&1 ||
+      printf 'run %s exit %s\n' "$conc_i" "$?" > "$conc_dir/bad.$conc_i"
+  ) &
+  conc_i=$((conc_i + 1))
+done
+wait
+conc_bad="$(find "$conc_dir" -name 'bad.*' | wc -l)"
+if [ "$conc_bad" -eq 0 ]; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1))
+  printf '  FAIL %s of %s concurrent --check runs failed\n' "$conc_bad" "$conc_n"
+  cat "$conc_dir"/bad.* "$conc_dir"/out.* 2>/dev/null | sed 's/^/    /' | sort -u
+fi
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

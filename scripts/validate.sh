@@ -595,13 +595,21 @@ if [[ -f $claude_mp && -f $codex_mp ]] && command -v jq >/dev/null 2>&1; then
   codex_support="$(awk '/^## Codex$/{in_section=1;next} /^## /{in_section=0} in_section' docs/harness-support.md)"
   while IFS= read -r pname; do
     [[ -n $pname ]] || continue
-    if printf '%s\n' "$codex_support" | grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)"; then ok "Codex support matrix mentions $pname"; else bad "Codex support matrix omits $pname"; fi
+    # Here-string, not a pipe. `grep -q` exits at the first match, and under the
+    # `set -o pipefail` at the top of this file the unwritten remainder kills the
+    # upstream `printf` with SIGPIPE, which pipefail then promotes to the
+    # pipeline's status. A plugin listed EARLY in the section therefore reported
+    # as missing, intermittently, depending on who won the race. A here-string
+    # has no pipeline and no writer to signal. This same construct was the root
+    # cause of the intermittent `delegate-resolve --check` failure.
+    if grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)" <<<"$codex_support"; then ok "Codex support matrix mentions $pname"; else bad "Codex support matrix omits $pname"; fi
   done < <(jq -r '.plugins[].name' "$codex_mp")
 
   antigravity_support="$(awk '/^## Google Antigravity$/{in_section=1;next} /^## /{in_section=0} in_section' docs/harness-support.md)"
   while IFS= read -r manifest; do
     pname="$(jq -r '.name' "$manifest")"
-    if printf '%s\n' "$antigravity_support" | grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)"; then ok "Antigravity support matrix mentions $pname"; else bad "Antigravity support matrix omits $pname"; fi
+    # Here-string for the same SIGPIPE-under-pipefail reason as the Codex twin.
+    if grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)" <<<"$antigravity_support"; then ok "Antigravity support matrix mentions $pname"; else bad "Antigravity support matrix omits $pname"; fi
   done < <(find plugins -mindepth 2 -maxdepth 2 -name plugin.json | sort)
 
   while IFS= read -r pname; do
@@ -671,6 +679,20 @@ if jq -e . templates/settings.example.json >/dev/null 2>&1; then ok "settings.ex
 # format guard only (huge max-age): every dated-opinion file must still carry a
 # parseable review date. AGE is enforced by the scheduled freshness workflow.
 if scripts/check-freshness.sh --max-age-days 36500 >/dev/null 2>&1; then ok "dated-opinion files carry parseable review dates"; else bad "dated-opinion date lines broken (run scripts/check-freshness.sh)"; fi
+
+# Every rule that can block a session is declared in a plugin's enforcement.toml,
+# and the checker asserts each declaration is complete and wired: the named hook
+# exists, the source skill exists, the state is one of the three legal values, the
+# promotion is dated, and a named contract_test exists and names the rule.
+#
+# It does NOT inspect the hook body to prove the declared state is what runs. Two
+# attempts to do that textually were defeated, first by a comment and then by an
+# unused assignment, so the behavioral proof lives in each rule's contract_test
+# and this check verifies the linkage instead. check-enforcement.sh carries the
+# full reasoning. Drift between a gate's behavior and the file claiming to
+# configure it is a release bug rather than a staleness problem, which is why this
+# runs here and not only in the weekly freshness job.
+if scripts/check-enforcement.sh >/dev/null 2>&1; then ok "enforcement lifecycle declarations are complete and wired"; else bad "enforcement lifecycle broken (run scripts/check-enforcement.sh)"; fi
 
 echo "== native plugin validate (claude CLI) =="
 # CI's plugin-validate job runs the native Claude Code manifest validator with

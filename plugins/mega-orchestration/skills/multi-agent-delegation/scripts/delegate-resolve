@@ -249,6 +249,29 @@ cat_array() {
   marray_val "$1" "$2"
 }
 
+# Is a value one of the lines in a newline-separated list. Every membership test
+# below goes through here, and none of them may use a pipeline.
+#
+# `printf '%s\n' "$list" | grep -qx -- "$v"` read as the obvious spelling and was
+# not: `grep -q` exits at the FIRST match, so bash's line-at-a-time write of the
+# rest of the list lands on a closed pipe and the writer dies of SIGPIPE. `set -o
+# pipefail` then promotes that 141 to the pipeline's status, so a value that IS in
+# the list reads as absent. It needs the match to be somewhere other than the last
+# line and the reader to win the race, which is why it showed up as a rare red in
+# a loaded validate.sh run and never in a serial re-run. Resolution used the same
+# spelling, so the same race could refuse a valid tier, effort, or capability and
+# exit 2 on a route that is fine.
+#
+# Comparing in the shell has no pipeline to fail, is exact rather than a basic
+# regex (a tier or capability containing `.` or `[` now means itself), and drops
+# two forks per call.
+list_has() {  # $1=newline-separated list $2=value
+  case $'\n'"$1"$'\n' in
+    *$'\n'"$2"$'\n'*) return 0 ;;
+  esac
+  return 1
+}
+
 fallbacks_of() { array_val fallbacks "$1"; }
 
 providers_list() {  # every [providers.X] name across layers (tier subsections excluded)
@@ -596,7 +619,7 @@ candidate_serves_role() {  # $1=provider $2=req $3=tier $4=effort $5=floor_tier_
     caps="$(cat_array "providers.$p" capabilities)"
     while IFS= read -r rc_; do
       [ -n "$rc_" ] || continue
-      printf '%s\n' "$caps" | grep -qx -- "$rc_" || return 1
+      list_has "$caps" "$rc_" || return 1
     done <<< "$req_"
   fi
   if [ -n "$tier_" ]; then
@@ -606,7 +629,7 @@ candidate_serves_role() {  # $1=provider $2=req $3=tier $4=effort $5=floor_tier_
     ptier="$(cat_val "providers.$p" default_tier)"
   fi
   if [ -n "$eff_" ]; then
-    printf '%s\n' "$(cat_array "providers.$p" efforts)" | grep -qx -- "$eff_" || return 1
+    list_has "$(cat_array "providers.$p" efforts)" "$eff_" || return 1
     peff="$eff_"
   else
     peff="$(cat_val "providers.$p" effort)"
@@ -675,7 +698,7 @@ if [ "$check" -eq 1 ]; then
     if section_exists role_tiers; then
       rt="$(section_val role_tiers "$r")"
       [ -n "$rt" ] || note "role '$r' has no [role_tiers] entry"
-      [ -z "$rt" ] || printf '%s\n' "$scale_list" | grep -qx -- "$rt" || note "role '$r' tier '$rt' not in [tiers] scale"
+      [ -z "$rt" ] || list_has "$scale_list" "$rt" || note "role '$r' tier '$rt' not in [tiers] scale"
       if [ -n "$rt" ]; then
         while IFS= read -r rp; do
           [ -n "$rp" ] || continue
@@ -687,12 +710,12 @@ if [ "$check" -eq 1 ]; then
     if section_exists role_efforts; then
       re="$(section_val role_efforts "$r")"
       [ -n "$re" ] || note "role '$r' has no [role_efforts] entry"
-      [ -z "$re" ] || printf '%s\n' "$(cat_array efforts scale)" | grep -qx -- "$re" || note "role '$r' effort '$re' not in [efforts] scale"
+      [ -z "$re" ] || list_has "$(cat_array efforts scale)" "$re" || note "role '$r' effort '$re' not in [efforts] scale"
       if [ -n "$re" ]; then
         rproviders="$(fallbacks_of "$r")"; [ -n "$rproviders" ] || rproviders="$p_check"
         while IFS= read -r rp; do
           [ -n "$rp" ] || continue
-          printf '%s\n' "$(cat_array "providers.$rp" efforts)" | grep -qx -- "$re" || note "provider '$rp' does not support effort '$re' required by role '$r'"
+          list_has "$(cat_array "providers.$rp" efforts)" "$re" || note "provider '$rp' does not support effort '$re' required by role '$r'"
         done <<< "$rproviders"
       fi
     fi
@@ -764,13 +787,13 @@ if [ "$check" -eq 1 ]; then
   fl="$(cat_val defaults floor)"
   if [ -n "$fl" ] && [ -n "$scale_list" ]; then
     ft="${fl%%:*}"
-    printf '%s\n' "$scale_list" | grep -qx -- "$ft" || note "floor tier '$ft' not in [tiers] scale"
+    list_has "$scale_list" "$ft" || note "floor tier '$ft' not in [tiers] scale"
   fi
   ce_scale="$(cat_array efforts scale)"
   if [ -n "$fl" ] && [ -n "$ce_scale" ]; then
     fe="${fl#*:}"
     if [ "$fe" != "$fl" ] && [ -n "$fe" ]; then
-      printf '%s\n' "$ce_scale" | grep -qx -- "$fe" || note "floor effort '$fe' not in [efforts] scale"
+      list_has "$ce_scale" "$fe" || note "floor effort '$fe' not in [efforts] scale"
     fi
   fi
   while IFS= read -r p; do
@@ -779,7 +802,7 @@ if [ "$check" -eq 1 ]; then
     if [ -n "$dt" ]; then
       [ -n "$(cat_val "providers.$p.tiers" "$dt")" ] || note "provider '$p' default_tier '$dt' has no tier-map entry"
       if [ -n "$scale_list" ]; then
-        printf '%s\n' "$scale_list" | grep -qx -- "$dt" || note "provider '$p' default_tier '$dt' not in [tiers] scale"
+        list_has "$scale_list" "$dt" || note "provider '$p' default_tier '$dt' not in [tiers] scale"
       fi
     fi
     ref="$(cat_val "providers.$p" reference)"
@@ -787,15 +810,15 @@ if [ "$check" -eq 1 ]; then
     pe="$(cat_val "providers.$p" effort)"
     plist="$(cat_array "providers.$p" efforts)"
     if [ -n "$pe" ] && [ -n "$ce_scale" ]; then
-      printf '%s\n' "$ce_scale" | grep -qx -- "$pe" || note "provider '$p' default effort '$pe' not in [efforts] scale"
+      list_has "$ce_scale" "$pe" || note "provider '$p' default effort '$pe' not in [efforts] scale"
     fi
     if [ -n "$pe" ] && [ -n "$plist" ]; then
-      printf '%s\n' "$plist" | grep -qx -- "$pe" || note "provider '$p' default effort '$pe' not in its efforts list"
+      list_has "$plist" "$pe" || note "provider '$p' default effort '$pe' not in its efforts list"
     fi
     if [ -n "$plist" ] && [ -n "$ce_scale" ]; then
       while IFS= read -r pev; do
         [ -n "$pev" ] || continue
-        printf '%s\n' "$ce_scale" | grep -qx -- "$pev" || note "provider '$p' efforts entry '$pev' not in [efforts] scale"
+        list_has "$ce_scale" "$pev" || note "provider '$p' efforts entry '$pev' not in [efforts] scale"
       done <<< "$plist"
     fi
   done <<< "$(providers_list)"
@@ -962,7 +985,7 @@ if section_exists role_efforts && [ -z "$role_effort" ]; then
 fi
 if [ -n "$role_tier" ]; then
   [ -n "$scale_list" ] || { echo "delegate-resolve: role '$role' declares tier '$role_tier' without a [tiers] scale" >&2; exit 2; }
-  printf '%s\n' "$scale_list" | grep -qx -- "$role_tier" || {
+  list_has "$scale_list" "$role_tier" || {
     echo "delegate-resolve: role '$role' tier '$role_tier' is not in the [tiers] scale" >&2
     exit 2
   }
@@ -970,7 +993,7 @@ fi
 effort_scale="$(cat_array efforts scale)"
 if [ -n "$role_effort" ]; then
   [ -n "$effort_scale" ] || { echo "delegate-resolve: role '$role' declares effort '$role_effort' without an [efforts] scale" >&2; exit 2; }
-  printf '%s\n' "$effort_scale" | grep -qx -- "$role_effort" || {
+  list_has "$effort_scale" "$role_effort" || {
     echo "delegate-resolve: role '$role' effort '$role_effort' is not in the [efforts] scale" >&2
     exit 2
   }
@@ -1067,7 +1090,7 @@ floor_effort_idx=""
 if [ -n "$floor" ]; then
   feff="${floor#*:}"
   if [ "$feff" != "$floor" ] && [ -n "$feff" ]; then
-    if [ -n "$effort_scale" ] && ! printf '%s\n' "$effort_scale" | grep -qx -- "$feff"; then
+    if [ -n "$effort_scale" ] && ! list_has "$effort_scale" "$feff"; then
       echo "delegate-resolve: floor effort '$feff' is not in the [efforts] scale" >&2
       exit 2
     fi
@@ -1103,7 +1126,7 @@ while IFS= read -r p; do
     capmiss=0
     while IFS= read -r rc_; do
       [ -n "$rc_" ] || continue
-      printf '%s\n' "$caps" | grep -qx -- "$rc_" || { capmiss=1; break; }
+      list_has "$caps" "$rc_" || { capmiss=1; break; }
     done <<< "$req"
     if [ "$capmiss" -eq 1 ]; then
       echo "delegate-resolve: provider '$p' lacks a required capability for role '$role' (skipped)" >&2
@@ -1125,7 +1148,7 @@ while IFS= read -r p; do
   candidate_effort="${role_effort:-$(cat_val "providers.$p" effort)}"
   if [ -n "$role_effort" ]; then
     supported_efforts="$(cat_array "providers.$p" efforts)"
-    if [ -z "$supported_efforts" ] || ! printf '%s\n' "$supported_efforts" | grep -qx -- "$role_effort"; then
+    if [ -z "$supported_efforts" ] || ! list_has "$supported_efforts" "$role_effort"; then
       echo "delegate-resolve: provider '$p' does not support role '$role' effort '$role_effort'" >&2
       exit 2
     fi
