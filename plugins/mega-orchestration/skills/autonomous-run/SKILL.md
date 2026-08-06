@@ -53,71 +53,41 @@ contract stands on its own.
 
 ## The loop
 
-The runbook owns the procedure. The outcomes it must produce:
+The runbook owns the procedure, and it ships split by enforceability.
+`run-init` copies [references/runbook-template.md](references/runbook-template.md)
+into the run verbatim: a MUST section where every line is one mechanically
+checkable constraint that blocks, and a SHOULD section holding the judgment
+calls, which never blocks. Read it before working the first milestone. Put any
+run-specific rule into whichever half it belongs to; a judgment call promoted
+into MUST to be safe is how a run ends up blocked on nothing.
 
-- In each controlling session, explicitly invoke `scripts/run-claim <run-id>`
-  before relying on the Stop hook to continue the run. The command binds that
-  session ID to the run's `owner.json`; merely reading run files never claims
-  ownership.
-- Once `plan.md` is authored, freeze it with `scripts/run-init <run-id>
-  --replan` before working the first milestone, so the milestone digest exists
-  to certify the eventual done-claim; `run-verify-status` fails a done-claim
-  that has none. After a restart or context compaction, trust the files, not
-  your memory. The journal and git history are the truth.
-- Before opening a new milestone, confirm the completed ones still pass their
-  acceptance checks (or the declared fast subset). A run whose earlier work
-  broke is regressing, not progressing. Delegate milestone work where a
-  different model is better (mega-orchestration:multi-agent-delegation).
-- A milestone completes only against the acceptance check declared for it in
-  `plan.md`, not a substitute the work happens to pass. For an external
-  dependency, the declared check asserts where it resolves from (for example
-  its import path), not merely that it imports, so a vendored local substitute
-  cannot satisfy it. Detect failure honestly; on failure, fix and re-verify
-  within the stopping rule's bounds.
-- Keep `evidence.md` literal. Distinguish implemented, locally verified, and
-  externally verified, and claim only the highest state earned. User-facing
-  criteria require the supported ordinary-user path. External database-backed
-  criteria record caller, service, database, response, and visible-result
-  cutpoints with environment and correlation keys.
-- Journal at every decision point with `scripts/run-journal <run-id> <kind>
-  <confidence> <msg>` (kind = action, decision, result, blocked, paused;
-  confidence 0.0 to 1.0). Tag messages with their milestone ("M2: ..."). Ground
-  every progress claim in a tool result: a result entry cites the declared
-  check it ran and what it output, evidence rather than intention. A trailing
-  paused entry derives STATE=paused; any later entry resumes.
-- At each milestone boundary, checkpoint the work using an already authorized
-  commit or the durable ledger and working tree, then regenerate status with
-  `scripts/run-derive-status <run-id>`.
-- Stop when every done-when criterion in `charter.md` is met, a stop budget
-  declared in the charter is exhausted, or you hit a blocker only the human can
-  clear. Near a budget cap, finish the current milestone cleanly and report
-  rather than start new work.
+The outcomes that contract exists to produce:
 
-Status is derived, never declared. The journal is the only hand-written record;
+- One session owns the run (`scripts/run-claim <run-id>`) and `plan.md` is
+  frozen (`scripts/run-init <run-id> --replan`) before the first milestone.
+- Each milestone closes against the acceptance check declared for it, and its
+  journal entry cites what that check output.
+- Status is derived (`scripts/run-derive-status`), certified once
+  (`scripts/run-verify-status`), and never declared.
+- Irreversible actions wait for the approval the autonomy level requires.
+
 `run-derive-status` reads `done` only when every milestone declared in
 `plan.md` (and every tagged milestone in the journal) has a final result entry,
-and a milestone whose last entry is blocked derives to blocked. Before
-finishing, run `scripts/run-verify-status <run-id>`; a run that fails the check
-cannot claim completion. That closure is the only sanctioned way a run reads
-finished, and it is eval-guarded (evals/scenarios/autonomous-run-contract).
-When a step delegates, the exact brief lives in the delegation artifacts;
-reference them from the journal message so the run stays replayable without
-bloating the log.
+and a milestone whose last entry is blocked derives to blocked. A passing
+`run-verify-status` is the only sanctioned way a run reads finished, and it is
+eval-guarded (evals/scenarios/autonomous-run-contract). When a step delegates,
+the exact brief lives in the delegation artifacts; the journal cites them by
+path so the run stays replayable without bloating the log.
 
-Selecting an autonomous workflow never grants permission to commit, push,
-merge, deploy, or perform another external side effect. Existing user and
-repository authorization remains binding.
-
-Roll the controller after 8 to 10 completed tasks, or before another task would
-cross 80 percent of the context or cache budget. Persist status and the journal
-first. Reserve the final 20 percent for integration, verification, and
-synthesis.
+Selecting an autonomous workflow grants no authorization of its own; the
+runbook's Authorization section is where that rule blocks.
 
 ## Autonomy level (the dial, not blind autonomy)
 
 `charter.md` declares one level; `scripts/autonomy-level <level>` prints the
-policy so every step reads the same dial. The dial gates by reversibility and
-blast radius, never by "is it simple":
+policy so every step reads the same dial. It emits one disposition per action
+class, REVERSIBLE, STAGED, and IRREVERSIBLE, because the dial gates by
+reversibility and blast radius, never by "is it simple":
 
 - **autonomous**: do reversible and staged work without asking; only
   irreversible or high-blast actions stop for approval (stage them through an
@@ -128,39 +98,41 @@ blast radius, never by "is it simple":
   every staged or irreversible action, and checkpoint at each milestone
   boundary so the human approves the direction before the next milestone.
 
-The invariant is about actions, not cadence: at every level a reversible action
-proceeds without a human gate, and an irreversible one always waits for one.
-What the level sets is checkpoint granularity, the oversight the user asked
-for, not per-action friction on reversible work. Minimizing human presence
-means making supervision cheap (a legible journal, a readable report, decisions
-ranked by confidence), not removing the human's ability to see. Scheduled and
-cloud runners execute without permission prompts; anything the effect broker
-would gate must be simulated or deferred to an attended session, and the
-runbook says so.
+Why the dial is shaped that way: the level sets checkpoint granularity, the
+oversight the user asked for, not per-action friction on reversible work.
+Minimizing human presence means making supervision cheap (a legible journal, a
+readable report, decisions ranked by confidence), not removing the human's
+ability to see. The per-class rules themselves live in the runbook's
+Authorization section and are stated only there.
 
 ## The stopping rule (adaptive compute)
 
-Spend by stakes and uncertainty, and stop deliberately. Cap fix/re-verify
-attempts per milestone (default 3); at the cap, journal the milestone as
-blocked with what you tried and the next idea, then move on or surface it
-rather than loop. Scale verification effort to the milestone's stakes: a money-
-or auth-touching milestone earns a cross-model verification pass, a doc tweak
-does not.
+Spend by stakes and uncertainty, and stop deliberately. The mechanics are in
+the runbook template (the per-milestone attempt cap, the blocked entry at the
+cap, stakes-scaled verification effort). What belongs here is why they exist:
+an uncapped fix/re-verify loop spends the whole budget on the one milestone
+that was never going to pass, and a milestone journaled blocked with what was
+tried is worth more to the next session than a tenth attempt.
 
 ## Reporting
 
 `scripts/run-report <run-id>` emits a skimmable report: what is done, what is
 left, decisions ranked by confidence lowest first (that is where to look),
-failures surfaced plainly, and the provenance trail. Run it at checkpoints and
-at the end so supervision costs the human a glance, not an investigation.
-Journal messages and report prose use the handoff register
-(megapowers:using-megapowers, Communication, if installed): conclusion first,
-declarative, self-contained.
+failures surfaced plainly, and the provenance trail. The runbook says when to
+run it; the reason is that supervision should cost the human a glance, not an
+investigation. That is also why journal messages and report prose use the
+handoff register (megapowers:using-megapowers, Communication, if installed):
+conclusion first, declarative, self-contained.
 
 ## Guards
 
 - The frozen charter and append-only journal are what let the run be trusted
-  and replayed. Do not tidy them.
+  and replayed. Tidying either one destroys the evidence the done-claim rests
+  on.
+- The template is the only copy of the operating contract, and
+  `scripts/tests/runbook-template.test.sh` keeps it that way: it pins the MUST
+  and SHOULD counts per section and asserts `run-init` emits the file verbatim,
+  so a rule cannot be dropped or quietly demoted into the advisory half.
 - Declared milestones are fingerprinted against `plan-digest`, so a vanished
   milestone or a changed acceptance line fails the done-claim until you re-run
   `--replan` (references/file-contract.md, Milestone digest).
