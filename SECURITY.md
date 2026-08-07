@@ -13,7 +13,7 @@ Nothing in this repository is a security boundary.
 - Hook manifests ship for Claude Code and Codex. Codex's installed
   mega-guardrails plugin dispatches PreToolUse to the destructive-command
   adapter after a `/hooks` trust decision. Nothing blocks or gates on OpenCode
-  or Antigravity.
+  or OpenCode.
 
 If your threat model includes a malicious or compromised model, none of these
 help; use OS-level sandboxing.
@@ -114,4 +114,4 @@ with real blast radius should go through the private channel.
 None of this repo's components hold secrets or run as services, so coordinated
 disclosure is often unnecessary. Please include the exact command/input, the
 expected vs actual behavior, and your harness (Claude Code / Codex / OpenCode /
-Antigravity + version).
+OpenCode + version).

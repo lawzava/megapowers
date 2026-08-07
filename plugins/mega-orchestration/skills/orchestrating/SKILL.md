@@ -118,7 +118,7 @@ transition or a bounded stuck-worker timeout, and prefer a native watcher.
 Subagents, agent teams, background tasks, workflow engines, and effort dials go
 by different names in each runtime, and not every runtime has all of them. See
 [harness-primitives](references/harness-primitives.md) for what each maps to in
-Claude Code, Codex, OpenCode, and Antigravity. When one is missing, fall back to
+Claude Code, Codex, and OpenCode. When one is missing, fall back to
 sequential inline work and say so; never fabricate a call it does not expose.
 
 ## Guardrails

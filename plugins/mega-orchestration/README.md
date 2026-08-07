@@ -117,7 +117,7 @@ rather than left to improvise; removing it is a separate change.
 
 `run-loop` is Claude Code-only and becomes a no-op on Codex.
 `delegate-nudge` runs on Claude Code and Codex and understands both transcript
-formats. Neither runs on OpenCode or Antigravity. Treat them as backstops where
+formats. Neither runs on OpenCode. Treat them as backstops where
 they fire, not as the reason the discipline holds. Both are fail-open; under
 Claude Code they honor `stop_hook_active` so a blocked stop cannot loop. They
 depend only on `jq`, `git`, `grep`, and `sed`.

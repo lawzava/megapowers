@@ -19,7 +19,8 @@ Ground rules:
 ## 1. Detect the environment
 
 Determine which harness you are running in (you know this about yourself:
-Claude Code, Codex, OpenCode, Antigravity, or another Agent Skills harness)
+Claude Code, Codex, or OpenCode; another Agent Skills harness can read these
+skills but is not supported here)
 and check for existing installs:
 
 - Claude Code: `claude plugin list 2>/dev/null | grep -i mega`
@@ -74,7 +75,7 @@ the three plugin manifests, and trust the handlers the user approves. The
 run-loop Stop and formatter PostToolUse handlers intentionally no-op on Codex.
 Do not add manual entries to `~/.codex/hooks.json`.
 
-**OpenCode, Antigravity, or any other Agent Skills harness** (skills only):
+**OpenCode, or any other Agent Skills harness** (skills only):
 
 CAUTION first: the skills CLI installs skills for many agents into SHARED skill
 directories that several harnesses read, so one global install can register the
@@ -97,7 +98,7 @@ If step 1 found no conflicting channel, install globally:
 npx skills add lawzava/megapowers -g -y -s '*' -a <your-agent-name>
 ```
 
-Set `-a` to your harness, e.g. `-a opencode` or `-a antigravity`; `-a '*'`
+Set `-a` to your harness, e.g. `-a opencode`; `-a '*'`
 targets every agent the skills CLI supports (see skills.sh for the accepted
 names). Drop `-g` to install into the current project only.
 
