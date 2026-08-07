@@ -79,6 +79,9 @@ present() { if grep -qE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "BA
   present 'Do not poll unchanged state'             "$ORCH" "monitoring: transition driven"
   present 'at most three turns'                     "$ORCH" "context: bounded fork inheritance"
   present 'Autonomous execution chooses inline work' "$AUTO" "autonomy: chooses executor proportionally"
-  present 'never grants permission to commit'       "$AUTO" "git: workflow is not authorization"
+  # Either phrasing satisfies this: the rule is that selecting a workflow confers
+  # no git authority, and 4a9bea0 restated it without changing it. The guard is on
+  # the rule surviving, not on one sentence surviving.
+  present 'never grants permission to commit|grants no authorization of its own' "$AUTO" "git: workflow is not authorization"
 } >> "$report"
 cat "$report"

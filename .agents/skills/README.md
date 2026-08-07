@@ -1,7 +1,7 @@
 # .agents/skills
 
 Relative symlinks, one per skill, into `plugins/*/skills/*`. They give a Codex,
-OpenCode, or Antigravity session running inside this checkout zero-install skill
+or OpenCode session running inside this checkout zero-install skill
 discovery: `.agents/skills/` is a discovery path all three read, and each link
 resolves to the canonical `SKILL.md` under `plugins/`. Git tracks them as
 symlinks (mode 120000), so a clone or `git pull` keeps them pointing at the

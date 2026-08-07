@@ -1,5 +1,5 @@
 # megapowers delegate routing: which provider handles which role, and run presets.
-# Last reviewed: 2026-08-05 (routes age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-08-06 (routes age; scripts/check-freshness.sh guards this date).
 # The model CATALOG (lead, tiers, providers, floor) lives in models.toml at the
 # plugin root, layered the same way: project .megapowers/models.toml, then user
 # ~/.config/megapowers/models.toml, then the shipped copy. Edit an override layer,
@@ -55,32 +55,24 @@ council_member = "codex"     # council-adjudication: independent answer + blind 
 # own provider or no route. It is not an independence role, so a chain would only
 # smuggle a third-party call into work that never needed one.
 #
-# Order is deliberate: moonshot sits ahead of claude on every independence role so
-# a chain that loses codex reaches a third vendor before it reaches the vendor that
-# most often wrote the artifact. Chain length is not the same as reachable length:
-# claude is the lead's vendor, so --author-vendor anthropic skips it, and moonshot
-# ships with enabled false in the catalog, so it is skipped. Anthropic-authored
-# work therefore still has exactly ONE reachable alternate (codex) until the
-# moonshot channel is verified and enabled. Ordering it now means enabling the
-# catalog entry is the only remaining step. visual_verify keeps its two-entry chain
-# on purpose: moonshot does declare the vision capability that role requires, but
-# judging screenshot evidence has not been benched on it, and an unbenched vision
-# route is a worse second opinion than a benched one.
-# What is still missing before moonshot can be enabled, and the channel mechanics:
-# references/providers/moonshot.md.
+# Chain length is not the same as reachable length. Claude is the lead's vendor, so
+# --author-vendor anthropic skips it, which leaves anthropic-authored work exactly
+# ONE reachable alternate: codex. Independence is therefore SINGLE-ROUTE, and the
+# next outage takes independent review with it rather than degrading it. A resolved
+# independence route reports this as ALTERNATES=1, which is the number to watch;
+# `<role> --vendors` printing fewer than two says the same thing before dispatch.
 #
-# Until it is enabled, independence is SINGLE-ROUTE for anthropic-authored work: one
-# reachable alternate, so the next outage takes independent review with it rather than
-# degrading it. A resolved independence route reports this as ALTERNATES=1, which is
-# the number to watch; `<role> --vendors` printing fewer than two says the same thing
-# before dispatch.
+# A third vendor is the fix and it is deliberately not in this table. Supported
+# providers are the harnesses this repo targets, and a provider earns a row by being
+# a harness someone runs, not by being a model with an endpoint. Adding one means
+# adding a harness, not wiring a base URL and a token.
 [fallbacks]
-plan_review    = ["codex", "moonshot", "claude"]
-code_review    = ["codex", "moonshot", "claude"]
+plan_review    = ["codex", "claude"]
+code_review    = ["codex", "claude"]
 visual_verify  = ["codex", "claude"]
-verify         = ["codex", "moonshot", "claude"]
-judge          = ["codex", "moonshot", "claude"]
-council_member = ["codex", "moonshot", "claude"]
+verify         = ["codex", "claude"]
+judge          = ["codex", "claude"]
+council_member = ["codex", "claude"]
 
 # Role policy selects the model tier and reasoning effort. Provider defaults in
 # the catalog cover the lead and anything a role leaves unset. Review and

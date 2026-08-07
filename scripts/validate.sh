@@ -215,7 +215,7 @@ while IFS= read -r sk; do
 done < <(find plugins skills -name SKILL.md 2>/dev/null)
 
 echo "== .agents/skills discovery links =="
-# Codex, OpenCode, and Antigravity discover skills in a checkout through
+# Codex and OpenCode discover skills in a checkout through
 # .agents/skills/<name> symlinks. A skill added under plugins/ without its link
 # is invisible to those harnesses, which is how upgrading-megapowers went
 # missing. Exemptions are deliberate, one line each, with the reason.
@@ -331,19 +331,46 @@ else
   bad "using-megapowers skill or SessionStart hook missing (cannot measure always-loaded budget)"
 fi
 
-echo "== Antigravity manifests =="
-while IFS= read -r pj; do
-  [[ -z $pj ]] && continue
-  dir="$(basename "$(dirname "$pj")")"
-  if jq -e . "$pj" >/dev/null 2>&1; then
-    pjn="$(jq -r '.name' "$pj")"
-    if [[ $pjn == "$dir" ]]; then ok "Antigravity plugin $dir -> $pj"; else bad "$pj: name '$pjn' != dir '$dir'"; fi
-    extra="$(jq -r 'keys[] | select(. != "$schema" and . != "name" and . != "description")' "$pj" 2>/dev/null | tr '\n' ' ')"
-    if [[ -z $extra ]]; then ok "Antigravity plugin $dir schema-compatible keys"; else bad "$pj: unsupported keys: $extra"; fi
-  else
-    bad "$pj missing/invalid JSON"
+# 3. Post-compaction survival budget. An invoked skill's rendered body stays in the
+#    conversation for the whole session, and when Claude Code compacts it re-attaches
+#    the most recent invocation of each skill AFTER the summary, keeping the first
+#    5,000 tokens of each under a combined 25,000-token cap, filled newest-first.
+#    Two failures follow from that and neither is visible while authoring:
+#      - a body past the per-skill head is TRUNCATED after the first compaction, so a
+#        rule written near the end silently stops applying mid-session;
+#      - a deep stack of skills evicts the oldest ones entirely, which on this suite
+#        is the always-first process skill.
+#    Budgeted in bytes at 4 bytes/token with a 20% margin, because the tokenizer is
+#    not ours to run and a budget that assumes the best case is not a budget.
+SKILL_HEAD_MAX=16000     # 5,000 tokens * 4 B/token * 0.8
+SKILL_STACK_MAX=80000    # 25,000 tokens * 4 B/token * 0.8
+SKILL_STACK_DEPTH=6      # the deepest routine stack: using-megapowers -> orchestrating
+                         # -> multi-agent-delegation -> a process skill -> TDD -> verification
+head_over=0; body_peak=0; body_peak_name=""
+while IFS= read -r sk; do
+  [[ -z $sk ]] && continue
+  n="$(byte_len "$(cat "$sk")")"
+  if (( n > body_peak )); then body_peak=$n; body_peak_name="$(basename "$(dirname "$sk")")"; fi
+  if (( n > SKILL_HEAD_MAX )); then
+    bad "skill body over the post-compaction head budget of ${SKILL_HEAD_MAX}B: $(basename "$(dirname "$sk")") (${n}B) — everything past it is dropped at the first compaction"
+    head_over=1
   fi
-done < <(find plugins -mindepth 2 -maxdepth 2 -name plugin.json 2>/dev/null)
+done < <(find plugins skills -name SKILL.md 2>/dev/null | sort)
+(( head_over == 0 )) && ok "every skill body survives compaction whole (budget ${SKILL_HEAD_MAX}B, peak: ${body_peak_name} ${body_peak}B)"
+
+# The stack bound uses the largest bodies rather than a named route: which skills a
+# session stacks is a runtime question, and the worst case is what has to fit.
+stack_sum=0
+while IFS= read -r n; do
+  [[ -z $n ]] && continue
+  stack_sum=$((stack_sum + n))
+done < <(find plugins skills -name SKILL.md -exec wc -c {} + 2>/dev/null |
+         grep -v ' total$' | awk '{print $1}' | sort -rn | head -"$SKILL_STACK_DEPTH")
+if (( stack_sum <= SKILL_STACK_MAX )); then
+  ok "the ${SKILL_STACK_DEPTH} largest skills co-load within ${SKILL_STACK_MAX}B (${stack_sum}B)"
+else
+  bad "the ${SKILL_STACK_DEPTH} largest skills exceed the ${SKILL_STACK_MAX}B re-attach budget (${stack_sum}B): a deep stack will evict the earliest process skill after compaction"
+fi
 
 echo "== hooks (shellcheck) =="
 if command -v shellcheck >/dev/null 2>&1; then
@@ -604,13 +631,6 @@ if [[ -f $claude_mp && -f $codex_mp ]] && command -v jq >/dev/null 2>&1; then
     # cause of the intermittent `delegate-resolve --check` failure.
     if grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)" <<<"$codex_support"; then ok "Codex support matrix mentions $pname"; else bad "Codex support matrix omits $pname"; fi
   done < <(jq -r '.plugins[].name' "$codex_mp")
-
-  antigravity_support="$(awk '/^## Google Antigravity$/{in_section=1;next} /^## /{in_section=0} in_section' docs/harness-support.md)"
-  while IFS= read -r manifest; do
-    pname="$(jq -r '.name' "$manifest")"
-    # Here-string for the same SIGPIPE-under-pipefail reason as the Codex twin.
-    if grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)" <<<"$antigravity_support"; then ok "Antigravity support matrix mentions $pname"; else bad "Antigravity support matrix omits $pname"; fi
-  done < <(find plugins -mindepth 2 -maxdepth 2 -name plugin.json | sort)
 
   while IFS= read -r pname; do
     [[ -n $pname ]] || continue

@@ -1,17 +1,22 @@
 # Harness support matrix
 
-Last reviewed: 2026-07-23.
+Last reviewed: 2026-08-07.
 
-This repo is cross-harness, but not every harness has the same extension
-surface. Two facts apply across the whole matrix:
+Three harnesses are targeted: Claude Code, Codex, and OpenCode. They do not have
+the same extension surface. Three facts apply across the whole matrix:
 
 - `mega-guardrails` ships hook manifests for Claude Code and Codex. Claude gets
-  the destructive guard and formatter; Codex's cross-harness dispatcher runs
-  the destructive adapter and makes the formatter a no-op. OpenCode and
-  Antigravity remain skills-only and receive no enforcement.
-- The Gemini CLI was discontinued for consumer use in mid-2026 and is no
-  longer a target. Visual/browser work routes through `playwright-cli` plus a
-  vision-capable model (see `mega-orchestration`).
+  the destructive guard, injection probe, and formatter; Codex's cross-harness
+  dispatcher runs the destructive adapter and makes the others no-ops. OpenCode
+  remains skills-only and receives no enforcement.
+- Scope is deliberate. A harness earns a section by being one this repo is
+  actually run under, not by being able to read a `SKILL.md`. Skills are portable
+  markdown, so other harnesses may well load them; that is not the same as being
+  supported here, and nothing is tested against one.
+- The Gemini CLI was discontinued for consumer use in mid-2026, and Google
+  Antigravity was dropped as a target in 2026-08. Visual/browser work routes
+  through `playwright-cli` plus a vision-capable model (see
+  `mega-orchestration`).
 
 ## Claude Code
 
@@ -29,6 +34,22 @@ Status: supported.
 - Manifest validation: `claude plugin validate <path> --strict` treats warnings
   as errors, so it belongs in CI; `claude plugin eval` runs a plugin's eval
   cases (with a no-plugin baseline arm).
+- Skill content lifecycle, which is a design constraint rather than a detail: an
+  invoked skill's rendered body enters the conversation once and stays for the
+  session, and the file is not re-read on later turns, so anything meant to hold
+  for a whole task is a standing instruction, not a step. On compaction, Claude
+  Code re-attaches the most recent invocation of each skill after the summary,
+  keeping the first 5,000 tokens of each under a combined 25,000-token cap,
+  filled newest-first: a long body is truncated and an old skill in a deep stack
+  is dropped entirely. `scripts/validate.sh` budgets both.
+- Frontmatter beyond the portable set. The Agent Skills spec has six fields
+  (`name`, `description`, `license`, `compatibility`, `metadata`,
+  `allowed-tools`), and the claude.ai upload, Skills API, and `package_skill.py`
+  paths reject anything else. Claude Code additionally reads `context: fork`
+  (run the skill as its own background subagent), `paths` (glob-gate automatic
+  activation), `disable-model-invocation`, `disallowed-tools`, `arguments`, and
+  `argument-hint`. Shipped skills stay portable; the extensions are worth
+  adopting per skill, against the cost of leaving that packaging path.
 - Dynamic workflows: Claude Code's built-in multi-agent workflow runner is
   separate from these skills. Use it for very large audits, migrations, and
   repeated orchestrated jobs; use these skills for normal process guidance.
@@ -118,38 +139,6 @@ Status: supported through shared instructions and portable skills.
   `tool.execute.before/after` hooks, so a guardrail port is feasible here. This
   repo does not ship one yet; the current shell hooks are Claude Code scripts
   and have not been ported.
-
-## Google Antigravity
-
-Status: supported as a skills target; CLI plugin manifests ship.
-
-- Terminal harness: the Antigravity CLI (`agy`) is the successor to the
-  discontinued Gemini CLI. Migrators can run `agy plugin import gemini` to
-  register existing Gemini CLI extensions.
-- Native skill shape: the nested `skills/<name>/SKILL.md` layout is
-  Antigravity's native format, so this repo's canonical skills import as-is with
-  no conversion. Project skills live in `<workspace>/.agents/skills/<name>/`;
-  the global path read by all Antigravity flavors (IDE, CLI, Agent Manager) is
-  `~/.gemini/config/skills/<name>/`. `description` is required; `name` defaults
-  to the directory name.
-- CLI plugin manifests: `plugins/*/plugin.json` ship for `megapowers`,
-  `mega-go`, `mega-python`, `mega-ts`, `mega-orchestration`, and
-  `mega-frontend`;
-  `mega-guardrails` is not offered (see the note at the top).
-- Verify a manual install with the same first-task probe used elsewhere:
-  install one plugin or skill, then in a fresh Antigravity session ask the agent
-  to load `test-driven-development` and quote its core-principle sentence (see
-  [`setup.md`](./setup.md)). A correct quote proves discovery and loading.
-- Command glossary: `/agents` (Agent Manager: subagent approvals and activity),
-  `/tasks` (Task Manager: shell execution logs), `/skills` (browse loaded local
-  and global skills), `/hooks` (browse active hooks), and `/artifact` (review
-  agent-produced files, plans, and diffs). Antigravity keeps its implementation
-  plans and walkthroughs in its own artifact/scratch area rather than
-  guaranteed repo-local files, so a file contract that expects repo-local files
-  (for example autonomous-run journals) should not assume the harness writes
-  them into the project tree.
-- Disambiguation: command names do not port across harnesses. Antigravity's
-  `/agents` opens the Agent Manager; Claude Code's `/agents` is unrelated.
 
 ## Operating systems
 

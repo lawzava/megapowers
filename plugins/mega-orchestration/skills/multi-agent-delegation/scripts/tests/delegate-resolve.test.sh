@@ -770,7 +770,7 @@ scale = ["strong", "frontier"]
 [efforts]
 scale = ["low", "high"]
 [providers.firsthost]
-vendor  = "moonshot"
+vendor  = "othervendor"
 binary  = "sh"
 channel = "cli"
 effort  = "high"
@@ -805,12 +805,12 @@ AMB=(--config "$TMP/ambiguous.toml" --models "$TMP/empty-catalog.toml")
 out="$("$DR" verify "${AMB[@]}" --author-model shared-weights-1 2>&1)"; rc=$?
 check_exit "a model id spanning two vendors is refused" 2 "$rc"
 check "the ambiguity error names the model" "shared-weights-1" "$out"
-check "the ambiguity error names both vendors" "moonshot" "$out"
+check "the ambiguity error names both vendors" "othervendor" "$out"
 check "the ambiguity error names the second vendor" "reseller" "$out"
 check "the ambiguity error offers the unambiguous flag" "--author-vendor" "$out"
 
 # --author-vendor is unambiguous by construction, so the same config still resolves.
-out="$("$DR" verify "${AMB[@]}" --author-vendor moonshot 2>&1)"; rc=$?
+out="$("$DR" verify "${AMB[@]}" --author-vendor othervendor 2>&1)"; rc=$?
 check_exit "--author-vendor still resolves on an ambiguous catalog" 0 "$rc"
 check "--author-vendor routes away from the named vendor" "VENDOR=reseller" "$out"
 
@@ -824,7 +824,7 @@ check "--check names the ambiguous model id" "shared-weights-1" "$out"
 out="$("$DR" verify "${AMB[@]}" --author-provider firsthost 2>&1)"; rc=$?
 check_exit "--author-provider resolves an independence role" 0 "$rc"
 check "--author-provider excludes the provider's whole vendor" "VENDOR=reseller" "$out"
-check "--author-provider reports the derived vendor" "AUTHOR_VENDORS=moonshot" "$out"
+check "--author-provider reports the derived vendor" "AUTHOR_VENDORS=othervendor" "$out"
 
 out="$("$DR" verify "${AMB[@]}" --author-provider nosuchprovider 2>&1)"; rc=$?
 check_exit "unknown --author-provider is a usage error" 2 "$rc"
@@ -838,7 +838,7 @@ scale = ["strong", "frontier"]
 [efforts]
 scale = ["low", "high"]
 [providers.firsthost]
-vendor  = "moonshot"
+vendor  = "othervendor"
 binary  = "sh"
 channel = "cli"
 effort  = "high"
@@ -848,7 +848,7 @@ default_tier = "frontier"
 strong   = "shared-weights-small"
 frontier = "shared-weights-1"
 [providers.secondhost]
-vendor  = "moonshot"
+vendor  = "othervendor"
 binary  = "sh"
 channel = "cli"
 effort  = "high"
@@ -899,7 +899,7 @@ check_exit "a provider name as author excludes its whole vendor" 3 "$rc"
 out="$("$DR" verify "${AMB[@]}" --author-vendor firsthost 2>&1)"; rc=$?
 check_exit "a provider name as author still resolves across vendors" 0 "$rc"
 check "a provider name as author routes to the other vendor" "VENDOR=reseller" "$out"
-check "a provider name as author is recorded as its vendor" "AUTHOR_VENDORS=moonshot" "$out"
+check "a provider name as author is recorded as its vendor" "AUTHOR_VENDORS=othervendor" "$out"
 
 # An author identity that names nothing is a typo, not an empty exclusion. Silently
 # excluding no one is the worst outcome: the review appears independent and is not.
@@ -916,7 +916,7 @@ out="$("$DR" --check "${DUP[@]}" 2>&1)"; rc=$?
 check_exit "--check reports a self-routing ambiguity" 1 "$rc"
 check "--check names the ambiguous model for self-routing" "shared-weights-1" "$out"
 
-sed 's/vendor  = "reseller"/vendor  = "moonshot"/' "$TMP/ambiguous.toml" > "$TMP/dup-no-self.toml"
+sed 's/vendor  = "reseller"/vendor  = "othervendor"/' "$TMP/ambiguous.toml" > "$TMP/dup-no-self.toml"
 out="$("$DR" --check --config "$TMP/dup-no-self.toml" --models "$TMP/empty-catalog.toml" 2>&1)"; rc=$?
 check_exit "--check accepts a same-vendor duplicate with no self role" 0 "$rc"
 

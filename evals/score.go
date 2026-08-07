@@ -112,6 +112,31 @@ func fisherTwoSided(a, b, c, d int) float64 {
 	return sum
 }
 
+// passHatK estimates pass^k: the probability that ALL k independent trials succeed,
+// given `pass` successes out of `n`. This is the consistency question, and it is the
+// one a discipline skill is actually judged on. A pass rate answers "does the skill
+// usually work"; a session does not get to be usually governed. The unbiased
+// estimator from an n-trial sample is C(pass,k)/C(n,k), the same combinatorial form
+// the pass@k literature uses, rather than p_hat^k, which is biased upward at small n.
+//
+// Returns NaN when n < k: with fewer trials than the bar, the sample cannot speak to
+// it, and reporting a number there would invent confidence the run did not buy.
+func passHatK(pass, n, k int) float64 {
+	if k <= 0 || n < k || pass < 0 || pass > n {
+		return math.NaN()
+	}
+	if pass < k {
+		return 0
+	}
+	// Computed as a product of ratios: every partial result stays in [0,1], so this
+	// neither overflows nor loses the small values that matter here.
+	r := 1.0
+	for i := 0; i < k; i++ {
+		r *= float64(pass-i) / float64(n-i)
+	}
+	return r
+}
+
 // selftest verifies the Fisher exact test against three known 2x2 tables and
 // returns the number of failed assertions (0 = pass). Wired into run-all.sh so
 // a statistics regression fails the suite.
@@ -132,6 +157,19 @@ func selftest() int {
 	// 3/10 vs 2/10: every table is at least as probable as the observed one,
 	// so the two-sided p-value is exactly 1.
 	check("3/10 vs 2/10 fisher_p", fisherTwoSided(3, 7, 2, 8), 1.0, 1e-9)
+	// pass^k. A perfect arm stays 1 at every k; one failure out of ten drops the
+	// three-trial consistency to C(9,3)/C(10,3) = 84/120 = 0.7, which is the whole
+	// point: 90% passing is 70% reliable at k=3.
+	check("pass^3 of 10/10", passHatK(10, 10, 3), 1.0, 1e-12)
+	check("pass^3 of 9/10", passHatK(9, 10, 3), 0.7, 1e-12)
+	check("pass^3 of 2/10", passHatK(2, 10, 3), 0.0, 1e-12)
+	check("pass^1 equals the pass rate", passHatK(7, 10, 1), 0.7, 1e-12)
+	if !math.IsNaN(passHatK(2, 2, 3)) {
+		fmt.Println("FAIL pass^3 with n<k must be NaN")
+		fails++
+	} else {
+		fmt.Println("ok   pass^3 with n<k is NaN")
+	}
 	if fails == 0 {
 		fmt.Println("score.go selftest: PASS")
 	} else {
@@ -215,10 +253,12 @@ func main() {
 	fmt.Println()
 
 	// Effect size where a scenario was run in both skill and control mode.
+	const consistencyK = 3 // the reliability bar: three independent runs, all governed
 	type eff struct {
 		scenario         string
 		p1, p2, delta, z float64
 		fisher           float64
+		pk1, pk2         float64
 		n1, n2           int
 	}
 	var effs []eff
@@ -242,22 +282,31 @@ func main() {
 		// z's normal approximation is not; both are reported so the reader can
 		// prefer the exact p-value.
 		fisher := fisherTwoSided(sk.pass, sk.fail, ct.pass, ct.fail)
-		effs = append(effs, eff{s, p1, p2, p1 - p2, z, fisher, n1, n2})
+		effs = append(effs, eff{s, p1, p2, p1 - p2, z, fisher,
+			passHatK(sk.pass, n1, consistencyK), passHatK(ct.pass, n2, consistencyK), n1, n2})
 	}
 	if len(effs) > 0 {
 		fmt.Println("## Skill effect size (skill vs control)")
 		fmt.Println()
-		fmt.Println("| scenario | skill pass% (n) | control pass% (n) | Δ | z | fisher_p |")
-		fmt.Println("|---|---|---|---|---|---|")
+		fmt.Printf("| scenario | skill pass%% (n) | control pass%% (n) | Δ | z | fisher_p | skill pass^%d | control pass^%d |\n", consistencyK, consistencyK)
+		fmt.Println("|---|---|---|---|---|---|---|---|")
+		pct := func(v float64) string {
+			if math.IsNaN(v) {
+				return "n/a"
+			}
+			return fmt.Sprintf("%.0f%%", v*100)
+		}
 		for _, e := range effs {
 			zs := "n/a"
 			if !math.IsNaN(e.z) {
 				zs = fmt.Sprintf("%.2f", e.z)
 			}
-			fmt.Printf("| %s | %.0f%% (%d) | %.0f%% (%d) | %+.0f%% | %s | %.3g |\n",
-				e.scenario, e.p1*100, e.n1, e.p2*100, e.n2, e.delta*100, zs, e.fisher)
+			fmt.Printf("| %s | %.0f%% (%d) | %.0f%% (%d) | %+.0f%% | %s | %.3g | %s | %s |\n",
+				e.scenario, e.p1*100, e.n1, e.p2*100, e.n2, e.delta*100, zs, e.fisher, pct(e.pk1), pct(e.pk2))
 		}
 		fmt.Println()
 		fmt.Println("_z is a two-proportion z-score; |z|>1.96 ≈ p<0.05. fisher_p is the two-sided Fisher exact p-value, valid at small n and boundary (0%/100%) cells where z is not. Small n → treat as directional, and grow the run count before claiming significance._")
+		fmt.Printf("_pass^%d estimates the chance that ALL %d independent runs comply, from C(pass,%d)/C(n,%d). A pass rate says whether a skill usually binds; pass^%d says whether a session can rely on it, which is the bar a discipline skill is for. It is n/a below %d runs, and it falls fast: 90%% passing is 70%% at k=%d._\n",
+			consistencyK, consistencyK, consistencyK, consistencyK, consistencyK, consistencyK, consistencyK)
 	}
 }

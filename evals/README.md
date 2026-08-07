@@ -69,6 +69,46 @@ any change to published numbers is reviewable as a diff, and keep generation
 (keyed) separate from scoring (deterministic, CI-safe). Methodology adapted
 from caveman (https://github.com/JuliusBrussee/caveman, MIT).
 
+## Consistency, not just pass rate
+
+`score.go` reports `pass^3` beside the pass rate for every arm with at least
+three runs. A pass rate answers whether a skill usually binds; `pass^3`
+estimates the chance that all three independent runs comply, which is the bar a
+discipline skill actually has to clear, because a session does not get to be
+usually governed. The two diverge fast and the gap is the interesting part: 90%
+passing is 70% at k=3. Use the pass rate to compare arms and `pass^3` to decide
+whether a discipline is ready to rely on.
+
+## Noise floor for real-agent numbers
+
+Two sources of noise sit under every keyed number here, and neither is the
+model.
+
+Sampling noise is the one the harness already reports: `z` and `fisher_p`
+exist so a small-n difference is read as directional rather than proven.
+
+Infrastructure noise is the one that is easy to miss. Anthropic measured a
+6-point spread on Terminal-Bench 2.0 (p<0.01) between the most- and
+least-resourced setups of the *same* model and harness, and 1.54 points on
+SWE-bench across a 5x RAM variance; their infrastructure error rate moved from
+5.8% to 0.5% purely on resource headroom
+([Quantifying infrastructure noise in agentic coding evals](https://www.anthropic.com/engineering/infrastructure-noise),
+2026-02-05). That is larger than several results worth having.
+
+So, for any wave whose conclusion depends on a difference under about 3 points:
+
+- Record the machine and the resource envelope in the study protocol, with the
+  same care given to the model id and the prompt.
+- Spread the runs across more than one time of day, and preferably more than
+  one day, rather than taking a single contiguous block.
+- Read a sub-3-point difference as noise unless the configurations are
+  documented and matched.
+- Suspect the environment, not the skill, when failures correlate across
+  unrelated scenarios in the same block.
+
+This does not touch the large results: a 0/36 to 36/36 split is orders of
+magnitude outside any of it. It bounds what the small ones are allowed to claim.
+
 ## Published artifacts
 
 Re-running a study draws a fresh stochastic sample; it does not reproduce the
