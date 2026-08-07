@@ -2,9 +2,81 @@
 
 All plugins version together; the version in each Claude and Codex plugin
 manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
-the repo release. The minimal Antigravity root manifests carry no version
-field by design (their schema allows only name and description). Format:
-[Keep a Changelog](https://keepachangelog.com), semver.
+the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
+semver.
+
+## 0.9.1 - 2026-08-07
+
+Alignment pass against 2026 primary sources: Anthropic's harness-design,
+containment, auto-mode, evals, and infrastructure-noise engineering posts,
+OpenAI's GPT-5.6 prompting guidance, and the current Claude Code skills
+reference.
+
+### Added
+
+- `mega-guardrails`: `scan-tool-output.sh`, a PostToolUse injection probe over
+  WebFetch, WebSearch, Bash, and MCP results. Eleven marker classes; on a hit it
+  adds one `additionalContext` reminder that tool output is data, never
+  instructions. It never blocks and never rewrites. This is the input layer the
+  plugin was missing: the other two hooks guard what the agent is about to do,
+  and nothing guarded what it had just read.
+- `score.go`: `pass^k` beside the pass rate. A pass rate says whether a skill
+  usually binds; `pass^3` says whether a session can rely on it, which is the bar
+  a discipline skill is for.
+- `validate.sh`: post-compaction context budgets. Claude Code re-attaches only
+  the first 5,000 tokens of each invoked skill under a combined 25,000-token cap,
+  so a long body is truncated mid-session and a deep stack drops its earliest
+  skill. Both are now pinned.
+
+### Changed
+
+- A provider is a harness, not an endpoint. The catalog holds no base URLs, API
+  keys, or token names, and the comment above `[providers]` now says so: a model
+  reachable only by hand-wiring an endpoint and a token is out of scope, and
+  adding a provider means adding a harness. Moonshot is removed from the catalog,
+  the fallback chains, the freshness list, and the reference set, along with an
+  attempt to route it by splitting the adapter switch onto a `dialect` field.
+  That attempt was withdrawn after two rounds of cross-vendor review found six
+  ways for a route to name one vendor while dispatching to another; each fix was
+  another denylist entry and severity rose round over round.
+- Independence is single-route again and says so plainly in `delegates.toml`:
+  anthropic-authored work has exactly one reachable reviewer vendor, reported as
+  `ALTERNATES=1`. The fix is a third harness, not a third endpoint.
+- `evals/README.md`: a noise floor for real-agent numbers. Infrastructure
+  configuration alone moved Terminal-Bench 2.0 by 6 points in Anthropic's
+  measurements, so a sub-3-point difference is noise unless configurations are
+  documented and matched. The large results are unaffected.
+- `docs/harness-support.md`: skill content lifecycle and the Claude Code
+  frontmatter extensions beyond the six-field portable set.
+
+### Removed
+
+- Google Antigravity as a target. Supported harnesses are Claude Code, Codex,
+  and OpenCode. Gone with it: the six root `plugin.json` manifests, the
+  Antigravity blocks in `validate.sh`, the `agy` arm of the install-smoke study,
+  the `antigravity-tools.md` skill reference, and the harness-support and
+  harness-primitives sections. Skills are portable markdown and another harness
+  may still load them, which is not the same as being supported or tested here.
+  The published install-smoke count is left as measured, with its scope dated
+  rather than rewritten.
+
+### Fixed
+
+- Three deterministic eval oracles that went red during 0.9.0 and shipped that
+  way, against a `RESULTS.md` claim of 16/16. All three were stale oracles rather
+  than broken skills, which is the failure mode a regression suite is supposed to
+  make loud: `delegate-resolve` pinned `visual_verify` at `EFFORT=high` after the
+  audit routed bounded roles at medium; the anti-pattern killlist matched one
+  sentence about commit authority that was restated without being changed; and
+  the reusable-workflow version ban flagged "the pre-0.8.2 bare-string form",
+  which dates a format change rather than pinning a release. The version ban now
+  strips historical spans rather than whole lines, so a real hardcoded version
+  cannot hide beside one, and it strips only the `pre-X.Y.Z` form: an
+  intermediate cut also accepted since/before/after/as of/from, which let
+  "install from v9.9.9 and keep that release pinned" through. The oracle now
+  self-tests that filter against those pins before trusting it, because a
+  too-permissive strip turns the whole check into a no-op that still reports
+  PASS.
 
 ## 0.9.0 - 2026-08-06
 
