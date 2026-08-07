@@ -25,7 +25,8 @@ these holds:
 - Stakes times uncertainty justify multiple attempts or independent checks.
 
 Keep inline anything you cannot yet decompose, any critical path where each
-step reshapes the next, and anything small enough that coordination costs more.
+step reshapes the next, and anything you could finish in a handful of tool
+calls. The pull to delegate past that gate (Opus 5 more than 4.8) is bias, not signal.
 
 ## Route by task shape
 
@@ -43,9 +44,8 @@ step reshapes the next, and anything small enough that coordination costs more.
 | A long, many-step or multi-session goal with minimal supervision | mega-orchestration:autonomous-run: charter, plan, journal, autonomy dial. |
 | An action that leaves the working tree (deploy, send, migrate) | mega-orchestration:effect-broker before acting. |
 
-These compose: an autonomous run's milestones can each run through
-subagent-driven-development, best-of-n can use cross-model-verification as its
-blind judge. Route the outer shape first, then the inner steps as they arrive.
+These compose: autonomous-run milestones can each run through
+subagent-driven-development. Route the outer shape first, inner steps as they arrive.
 
 ## Delegated work: one path
 
@@ -88,7 +88,7 @@ differs. One-file-per-agent fan-out multiplies briefing and review cost.
 Anchor the spend: a multi-agent structure runs roughly 15x the token cost of a
 single chat (Anthropic's multi-agent research system), so the bar is high. Size
 the fan-out to the question: 1 agent for a fact-find, 2 to 4 for a comparison,
-10 plus only for wide research.
+10 plus only for wide research, never past 20 unasked.
 
 - Routine and certain: inline, verified by tests.
 - Uncertain approach, moderate stakes: one independent review
@@ -105,7 +105,8 @@ across the ladder:
   or higher effort on your own authority, without parking the task for a human
   to approve the spend. Judge the output, not the price tag. Named, scoped
   defects earn a bounded fix pass first; structural misses earn the redo. One
-  automatic redo per artifact, then a declared cap or a human.
+  automatic redo per artifact, then a declared cap or a human. Output that
+  clears the bar is done: never re-derive a delegate's findings.
 - Nothing that ships routes below the floor declared in models.toml
   (`[defaults] floor` in mega-orchestration:multi-agent-delegation).
 
@@ -123,9 +124,8 @@ sequential inline work and say so; never fabricate a call it does not expose.
 
 ## Guardrails
 
-- Decide the structure once, out loud, before dispatching anything. One journal
-  or chat line ("structure: SDD, 6 tasks, delegate review per task") makes the
-  choice reviewable.
+- Decide the structure once, out loud, before dispatching anything: one journal
+  or chat line ("structure: SDD, 6 tasks") makes the choice reviewable.
 - Use `fork_turns = "none"` by default. A positive count is exceptional, limited
   to the indispensable recent continuation, at most three turns; `all` is only
   for an explicit same-context resumption.
