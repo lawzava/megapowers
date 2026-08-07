@@ -34,6 +34,22 @@ Status: supported.
 - Manifest validation: `claude plugin validate <path> --strict` treats warnings
   as errors, so it belongs in CI; `claude plugin eval` runs a plugin's eval
   cases (with a no-plugin baseline arm).
+- Skill content lifecycle, which is a design constraint rather than a detail: an
+  invoked skill's rendered body enters the conversation once and stays for the
+  session, and the file is not re-read on later turns, so anything meant to hold
+  for a whole task is a standing instruction, not a step. On compaction, Claude
+  Code re-attaches the most recent invocation of each skill after the summary,
+  keeping the first 5,000 tokens of each under a combined 25,000-token cap,
+  filled newest-first: a long body is truncated and an old skill in a deep stack
+  is dropped entirely. `scripts/validate.sh` budgets both.
+- Frontmatter beyond the portable set. The Agent Skills spec has six fields
+  (`name`, `description`, `license`, `compatibility`, `metadata`,
+  `allowed-tools`), and the claude.ai upload, Skills API, and `package_skill.py`
+  paths reject anything else. Claude Code additionally reads `context: fork`
+  (run the skill as its own background subagent), `paths` (glob-gate automatic
+  activation), `disable-model-invocation`, `disallowed-tools`, `arguments`, and
+  `argument-hint`. Shipped skills stay portable; the extensions are worth
+  adopting per skill, against the cost of leaving that packaging path.
 - Dynamic workflows: Claude Code's built-in multi-agent workflow runner is
   separate from these skills. Use it for very large audits, migrations, and
   repeated orchestrated jobs; use these skills for normal process guidance.
