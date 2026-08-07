@@ -1,5 +1,5 @@
 # megapowers model catalog: what orchestrates, what models exist, what each is for.
-# Last reviewed: 2026-08-05 (model IDs age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-08-06 (model IDs age; scripts/check-freshness.sh guards this date).
 # Edit an OVERRIDE LAYER, not this shipped file: a project .megapowers/models.toml or
 # user ~/.config/megapowers/models.toml wins per key and survives plugin updates.
 # Two identical copies ship (plugins/megapowers/models.toml and
@@ -18,8 +18,6 @@
 #   claude-sonnet-5   strong: in-session teammate work and cheap execution
 #   gpt-5.6-sol       frontier: plan review, code review, verify, judge, research
 #   gpt-5.6-terra     strong: scoped implementation
-#   kimi-k3           frontier: third-vendor independent review (ships disabled)
-#   kimi-k2.7-code    strong: third-vendor cheap execution (ships disabled)
 
 # --- Lead: what orchestrates ---
 # delegate-resolve --lead prints it. Artifact reviews use --author-vendor rather
@@ -55,12 +53,15 @@ high   = "lead default, and every role that adjudicates or refutes"
 xhigh  = "only with eval evidence of a gain on this task; audit: xhigh ran 3x high"
 ultra  = "deliberate complex work; Codex only, via the complex profile"
 
-# --- Providers: how to reach each backend ---
-# `binary` is the CLI delegate-resolve probes with `command -v`. `reference` names
-# the channel-mechanics file, resolved relative to the multi-agent-delegation skill
-# directory (the reference files ship with that skill). `use` is shown in the
-# session block. Stop-hook approval reads a current structured receipt, never a
-# transcript marker.
+# --- Providers: which harness runs which models ---
+# A provider is a HARNESS, not an endpoint. `binary` is the CLI delegate-resolve
+# probes with `command -v`, and that CLI brings its own stored login: this catalog
+# holds no endpoints, keys, or token names, and adding them is out of scope by
+# design. A model reachable only by hand-wiring a base URL and a token is not
+# reachable here. `reference` names the channel-mechanics file, resolved relative to
+# the multi-agent-delegation skill directory (the reference files ship with that
+# skill). `use` is shown in the session block. Stop-hook approval reads a current
+# structured receipt, never a transcript marker.
 [providers.claude]
 effort  = "high"   # lead default; in-session teammate work runs medium
 efforts = ["low", "medium", "high", "xhigh"]  # the CLI --effort scale has no `ultra` rung
@@ -71,7 +72,7 @@ default_tier = "frontier"
 capabilities = ["code", "vision", "computer_use"]
 reference = "references/providers/claude.md"
 use     = "lead: orchestration, integration, in-session teammate work"
-notes   = "The lead runs as the session itself; the headless channel is for a delegate pass under a different lead. One-shot headless Claude: --bare with API keys, disposable config/cwd with OAuth."
+notes   = "The lead runs as the session itself; the headless channel is for a delegate pass under a different lead."
 
 # Two models, two tiers; the role's tier picks which. Sonnet 5 carries the strong
 # tier so "least capable model that can do the role" has somewhere cheaper to land:
@@ -102,38 +103,6 @@ notes   = "Native subagents inside Codex; codex-plugin-cc from Claude Code; code
 [providers.codex.tiers]
 frontier = "gpt-5.6-sol"
 strong   = "gpt-5.6-terra"
-
-# Third model vendor, so independence survives one vendor being unreachable: with
-# only claude and codex, an anthropic-authored artifact has exactly one cross-vendor
-# route, and cross-model-verification cannot seat a panel of distinct vendors at all.
-# SHIPS DISABLED. enabled = false is not a placeholder for missing data: it is the
-# honest state until a channel is verified on the machine that routes to it. The
-# resolver skips a disabled candidate, so this section costs nothing and dispatches
-# nothing. Flipping it to true needs both a working `kimi` channel and a moonshot
-# adapter in delegate-run, which today dispatches on vendor and knows only
-# anthropic and openai. Until then a route here would fail inside a review gate,
-# which is worse than having one alternate vendor.
-[providers.moonshot]
-enabled = false
-effort  = "high"   # default only where a role leaves effort unset
-# Kimi K3 takes reasoning_effort low, high, or max (max is its own default). It has
-# no medium rung, and `ultra` is a Codex-only band, so this list is the honest
-# subset of the global scale: xhigh is how a route asks for reasoning_effort=max.
-efforts = ["low", "high", "xhigh"]
-vendor  = "moonshot"
-binary  = "kimi"
-channel = "kimi-cli-or-openai-compatible-api"
-default_tier = "frontier"
-capabilities = ["code", "vision"]   # native vision; computer use is not claimed
-reference = "references/providers/moonshot.md"
-use     = "third vendor: plan and code review, verify, judge, council"
-notes   = "Open-weights vendor, so the same model is reachable self-hosted or through a third-party host when the first-party API is not an option. Channel mechanics: see the reference file."
-
-# K3 reviews and judges; k2.7-code is the cheaper coding model. Context differs by
-# tier here, unlike the other providers: K3 holds 1M tokens, k2.7-code holds 256k.
-[providers.moonshot.tiers]
-frontier = "kimi-k3"
-strong   = "kimi-k2.7-code"
 
 # --- Defaults: cross-cutting rules ---
 [defaults]

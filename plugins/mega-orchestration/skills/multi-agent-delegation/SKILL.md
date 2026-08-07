@@ -109,7 +109,6 @@ round, and the receipt path.
 | references/receipts-and-rounds.md | the delegate-run exit map, what a receipt binds, the round ledger and its cap |
 | references/providers/codex.md | Codex channels and how to word a dispatch |
 | references/providers/claude.md | Claude channels and how to word a dispatch |
-| references/providers/moonshot.md | Moonshot (Kimi) channels, currently declared and not reachable |
 | references/providers/browser.md | the browser driver, which is a driver and not a model provider |
 
 Read the resolved provider's file, and the driver's when the role needs one,
