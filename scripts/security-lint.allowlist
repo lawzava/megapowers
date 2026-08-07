@@ -18,3 +18,10 @@ templates/agent-notify/agent-notify
 # inputs that prove the guardrail hook blocks them.
 plugins/mega-guardrails/hooks/tests/deny-destructive.test.sh
 plugins/mega-guardrails/hooks/tests/codex-deny-destructive.test.sh
+
+# Injection-probe test fixtures. Same shape as the two entries above, one layer
+# earlier in the pipeline: these carry the attack phrasings ("ignore all previous
+# instructions", "without asking for permission", an encoded payload piped to a
+# shell) because they are the inputs that prove the probe fires on them. The probe
+# itself is not listed and must stay clean.
+plugins/mega-guardrails/hooks/tests/scan-tool-output.test.sh
