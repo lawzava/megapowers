@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "megapowers",
   "owner": { "name": "lawzava" },
-  "description": "An opinionated, à-la-carte collection of skills, plugins, and hooks for Claude Code, Codex, OpenCode, and Antigravity. One maintainer's workflow, not a universal framework.",
+  "description": "An opinionated, à-la-carte collection of skills, plugins, and hooks for Claude Code, Codex, and OpenCode. One maintainer's workflow, not a universal framework.",
   "plugins": [
     {
       "name": "megapowers",

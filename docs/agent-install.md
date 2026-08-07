@@ -19,7 +19,8 @@ Ground rules:
 ## 1. Detect the environment
 
 Determine which harness you are running in (you know this about yourself:
-Claude Code, Codex, OpenCode, Antigravity, or another Agent Skills harness)
+Claude Code, Codex, or OpenCode; another Agent Skills harness can read these
+skills but is not supported here)
 and check for existing installs:
 
 - Claude Code: `claude plugin list 2>/dev/null | grep -i mega`
@@ -64,7 +65,7 @@ The verb is `add`, not `install`. `codex plugin marketplace add` accepts
 `owner/repo[@ref]` (codex-cli 0.142.5+); unpinned tracks the default branch.
 Updates: `codex plugin marketplace upgrade megapowers`, then re-run
 `codex plugin add` for each plugin. Change-controlled installs pin with
-`@v0.9.0` instead and update by re-adding at the new tag. To track a fork,
+`@v0.9.1` instead and update by re-adding at the new tag. To track a fork,
 clone it and run `codex plugin marketplace add ./` from the checkout.
 After the core plugin is installed, use its `upgrading-megapowers` skill for
 future updates. It preserves the active channel and pinning policy and offers
@@ -74,7 +75,7 @@ the three plugin manifests, and trust the handlers the user approves. The
 run-loop Stop and formatter PostToolUse handlers intentionally no-op on Codex.
 Do not add manual entries to `~/.codex/hooks.json`.
 
-**OpenCode, Antigravity, or any other Agent Skills harness** (skills only):
+**OpenCode, or any other Agent Skills harness** (skills only):
 
 CAUTION first: the skills CLI installs skills for many agents into SHARED skill
 directories that several harnesses read, so one global install can register the
@@ -97,7 +98,7 @@ If step 1 found no conflicting channel, install globally:
 npx skills add lawzava/megapowers -g -y -s '*' -a <your-agent-name>
 ```
 
-Set `-a` to your harness, e.g. `-a opencode` or `-a antigravity`; `-a '*'`
+Set `-a` to your harness, e.g. `-a opencode`; `-a '*'`
 targets every agent the skills CLI supports (see skills.sh for the accepted
 names). Drop `-g` to install into the current project only.
 

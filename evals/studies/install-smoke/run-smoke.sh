@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-smoke.sh — fresh-environment install + first-task smoke test, per harness.
 #
-#   run-smoke.sh --out DIR [--harnesses claude,codex,opencode,agy] [--repo DIR]
+#   run-smoke.sh --out DIR [--harnesses claude,codex,opencode] [--repo DIR]
 #   run-smoke.sh --out DIR --source lawzava/megapowers --ref v0.5.0
 #                --version 0.5.0 --harnesses claude,codex
 #
@@ -53,7 +53,7 @@ if [ "${1:-}" = "--selftest" ]; then
   exit "$sf"
 fi
 
-OUT="" REPO="$REPO_DEFAULT" HARNESSES="claude,codex,opencode,agy"
+OUT="" REPO="$REPO_DEFAULT" HARNESSES="claude,codex,opencode"
 SOURCE="" REF="" VERSION="" FAIL_ON_SKIP=0 FETCHED=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -188,25 +188,6 @@ smoke_opencode() {
   if quote_ok "$OUT/opencode-task.out"; then
     note $h PASS "first task loaded the symlinked skill"
   else note $h FAIL "first task did not surface the skill — see opencode-task.out"; fi
-}
-
-smoke_agy() {
-  local h=agy proj
-  command -v agy >/dev/null || { note $h SKIP "agy CLI not installed"; return; }
-  proj="$(mktemp -d)"
-  if ! ( cd "$proj" && timeout 180 agy -p "Reply with exactly: OK" \
-           > "$OUT/agy-auth.out" 2> "$OUT/agy-auth.err" ) \
-     || ! grep -q OK "$OUT/agy-auth.out"; then
-    note $h SKIP "no working auth (agy -p failed)"; return
-  fi
-  # docs/setup.md: Antigravity native skills are flat markdown under .agents/skills/
-  mkdir -p "$proj/.agents/skills"
-  ln -s "$REPO/plugins/megapowers/skills/test-driven-development" "$proj/.agents/skills/test-driven-development"
-  ( cd "$proj" && timeout 300 agy -p "$QUOTE_PROMPT" --dangerously-skip-permissions \
-      > "$OUT/agy-task.out" 2> "$OUT/agy-task.err" )
-  if quote_ok "$OUT/agy-task.out"; then
-    note $h PASS "first task loaded the skill from .agents/skills"
-  else note $h FAIL "first task did not surface the skill — see agy-task.out"; fi
 }
 
 for hh in ${HARNESSES//,/ }; do "smoke_$hh"; done
