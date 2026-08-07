@@ -2065,7 +2065,13 @@ if jq -e '.subject | has("base") | not' "$TMP/race-file.json" >/dev/null 2>&1; t
 
 # The schema has to carry the requirement too, for anything validating a receipt
 # outside this launcher.
-if python3 -c 'import jsonschema' >/dev/null 2>&1; then
+# Gate on EVERY module the checker below imports, not just the headline one. Gating
+# on `jsonschema` alone let an environment that has it but lacks `referencing` pass
+# the gate and then crash inside the snippet, which reported as three schema
+# violations against a receipt that was correct. That is backwards: a missing
+# optional dependency must SKIP a check, never fail it. GitHub's hosted runner is
+# such an environment, so this only ever fired in CI, where the output was swallowed.
+if python3 -c 'import jsonschema, referencing, referencing.jsonschema' >/dev/null 2>&1; then
   receipt_schema_check() {
     python3 - "$HERE/../../schemas/review-receipt-v2.json" "$1" <<'PY' >/dev/null 2>&1
 import json, sys
