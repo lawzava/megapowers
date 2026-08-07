@@ -314,8 +314,9 @@ version is published.
 
 ## Every other harness: the skills CLI
 
-For harnesses without a native plugin marketplace (OpenCode, Antigravity,
-Cursor, Copilot, and the rest of the Agent Skills ecosystem), use the open
+For harnesses without a native plugin marketplace (OpenCode, plus the rest of
+the Agent Skills ecosystem, which is not supported here but can still read
+these skills), use the open
 [skills CLI](https://github.com/vercel-labs/skills) (published at skills.sh):
 
 ```bash
@@ -352,7 +353,7 @@ Two rules:
   twice.
 
 The second rule has a trap on mixed machines: the skills CLI installs several
-agents (OpenCode, Antigravity, Codex among them) into the SHARED
+agents (OpenCode and Codex among them) into the SHARED
 `~/.agents/skills/` directory, and Claude Code scans that directory too. If
 the Claude Code plugins are installed on the same machine, a global skills-CLI
 install into `~/.agents/skills/` double-registers every skill for Claude Code.
@@ -374,15 +375,6 @@ ln -s "$(pwd)"/plugins/megapowers/skills/* ~/.config/opencode/skills/
 Symlinks track the checkout: `git pull` updates them in place. Do not load
 every skill body through `instructions`: bodies are meant to load only when a
 skill is invoked, and inlining them keeps every word in context permanently.
-
-Antigravity root plugin manifests are present as `plugins/*/plugin.json`, and
-the nested `skills/<name>/SKILL.md` shape is Antigravity's native skill layout,
-so a plugin install imports these skills as-is with no conversion. The
-maintainer has not tested the `agy plugin` install path directly; the supported
-lane for Antigravity is the skills CLI above. Whichever you use, verify with the
-first-task probe: in a fresh Antigravity session, ask the agent to load
-`test-driven-development` and quote its core-principle sentence. See
-[`docs/harness-support.md`](./harness-support.md) for the current support matrix.
 
 ## Fleet: keeping many devices in sync
 
@@ -578,8 +570,7 @@ a fork.
 - skills CLI installs: `npx skills remove` (interactive) removes the
   skill from every agent directory it was installed to and updates
   `skills-lock.json`.
-- OpenCode / Antigravity: delete the symlinks or copied skill directories
-  you created.
+- OpenCode: delete the symlinks or copied skill directories you created.
 - Runtime state the skills wrote lives under `.megapowers/` in each project
   (run journals, SDD ledgers, evidence). It is plain text and git-ignored;
   delete it when you no longer need the trail.

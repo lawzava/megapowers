@@ -8,7 +8,7 @@ labels: bug
 
 **What the skill/hook/doc says should happen** (file + line if you have it)
 
-**Harness**: Claude Code / Codex / OpenCode / Antigravity + version
+**Harness**: Claude Code / Codex / OpenCode + version
 
 **Repro** (the prompt or command; for hooks, the stdin JSON if you have it)
 

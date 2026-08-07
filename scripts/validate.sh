@@ -215,7 +215,7 @@ while IFS= read -r sk; do
 done < <(find plugins skills -name SKILL.md 2>/dev/null)
 
 echo "== .agents/skills discovery links =="
-# Codex, OpenCode, and Antigravity discover skills in a checkout through
+# Codex and OpenCode discover skills in a checkout through
 # .agents/skills/<name> symlinks. A skill added under plugins/ without its link
 # is invisible to those harnesses, which is how upgrading-megapowers went
 # missing. Exemptions are deliberate, one line each, with the reason.
@@ -330,20 +330,6 @@ if [[ -f $skfile && -x $session_hook ]]; then
 else
   bad "using-megapowers skill or SessionStart hook missing (cannot measure always-loaded budget)"
 fi
-
-echo "== Antigravity manifests =="
-while IFS= read -r pj; do
-  [[ -z $pj ]] && continue
-  dir="$(basename "$(dirname "$pj")")"
-  if jq -e . "$pj" >/dev/null 2>&1; then
-    pjn="$(jq -r '.name' "$pj")"
-    if [[ $pjn == "$dir" ]]; then ok "Antigravity plugin $dir -> $pj"; else bad "$pj: name '$pjn' != dir '$dir'"; fi
-    extra="$(jq -r 'keys[] | select(. != "$schema" and . != "name" and . != "description")' "$pj" 2>/dev/null | tr '\n' ' ')"
-    if [[ -z $extra ]]; then ok "Antigravity plugin $dir schema-compatible keys"; else bad "$pj: unsupported keys: $extra"; fi
-  else
-    bad "$pj missing/invalid JSON"
-  fi
-done < <(find plugins -mindepth 2 -maxdepth 2 -name plugin.json 2>/dev/null)
 
 echo "== hooks (shellcheck) =="
 if command -v shellcheck >/dev/null 2>&1; then
@@ -604,13 +590,6 @@ if [[ -f $claude_mp && -f $codex_mp ]] && command -v jq >/dev/null 2>&1; then
     # cause of the intermittent `delegate-resolve --check` failure.
     if grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)" <<<"$codex_support"; then ok "Codex support matrix mentions $pname"; else bad "Codex support matrix omits $pname"; fi
   done < <(jq -r '.plugins[].name' "$codex_mp")
-
-  antigravity_support="$(awk '/^## Google Antigravity$/{in_section=1;next} /^## /{in_section=0} in_section' docs/harness-support.md)"
-  while IFS= read -r manifest; do
-    pname="$(jq -r '.name' "$manifest")"
-    # Here-string for the same SIGPIPE-under-pipefail reason as the Codex twin.
-    if grep -qE "(^|[^a-zA-Z0-9_-])${pname}([^a-zA-Z0-9_-]|$)" <<<"$antigravity_support"; then ok "Antigravity support matrix mentions $pname"; else bad "Antigravity support matrix omits $pname"; fi
-  done < <(find plugins -mindepth 2 -maxdepth 2 -name plugin.json | sort)
 
   while IFS= read -r pname; do
     [[ -n $pname ]] || continue

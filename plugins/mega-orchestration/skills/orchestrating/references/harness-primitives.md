@@ -1,6 +1,6 @@
 # Harness primitives
 
-Last reviewed: 2026-08-05.
+Last reviewed: 2026-08-07.
 
 What each orchestration concept maps to per runtime, as of that date. Names
 and availability drift with releases; when a primitive is absent or you cannot
@@ -12,7 +12,6 @@ Read only the runtime you are running in, plus the last section:
 - [Claude Code](#claude-code)
 - [Codex](#codex)
 - [OpenCode](#opencode)
-- [Antigravity](#antigravity)
 - [The absent-primitive rule](#the-absent-primitive-rule)
 
 ## Claude Code
@@ -118,26 +117,6 @@ Read only the runtime you are running in, plus the last section:
   deny). Discovery uses six paths (project and global); they are named in
   docs/harness-support.md and not duplicated here.
 - **Effort**: no numeric dial; set a stronger or weaker per-agent model instead.
-
-## Antigravity
-
-- **Subagents**: the main agent spawns parallel subagents with per-subagent
-  workspace isolation (it auto-creates worktrees for them and cleans up
-  afterward). Maps to orchestrating's parallel fan-out. Oversight is the
-  Agent Manager surface.
-- **Scheduling and unattended**: Scheduled Tasks run cron-style prompts
-  periodically (via `/schedule`); maps to mega-orchestration:autonomous-run
-  recurrence. Scheduled-task agents are pinned to Gemini 3.5 Flash.
-- **Effort**: Plan vs Fast agent modes (Plan for multi-step planning, Fast for
-  quick tasks). Antigravity also ships native hooks and skills, but its command
-  vocabulary differs from Claude Code.
-- **Models**: a multi-vendor roster (Gemini 3.5 Flash default, Gemini 3.1 Pro,
-  the current Claude Sonnet/Opus tiers, gpt-oss-120b) chosen per agent. Subagents inherit the
-  parent's model, so scale by choosing the lead model rather than assigning
-  vendors per subagent within one job.
-- **Disambiguation**: command names do not port across harnesses. Antigravity
-  manages subagents through the Agent Manager; Claude Code's `/agents` is
-  unrelated.
 
 ## The absent-primitive rule
 

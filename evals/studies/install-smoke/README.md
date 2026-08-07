@@ -16,9 +16,9 @@ config, no other plugins, no CLAUDE.md/AGENTS.md):
      `claude plugin install megapowers@megapowers` (fresh `CLAUDE_CONFIG_DIR`).
    - Codex: `codex plugin marketplace add <checkout>` +
      `codex plugin add megapowers@megapowers` (fresh `CODEX_HOME`).
-   - OpenCode / Antigravity: the documented manual path, a symlink of the
-     canonical skill directory into the project (`.claude/skills/` for
-     OpenCode's Claude-compatible loading, `.agents/skills/` for Antigravity).
+   - OpenCode: the documented manual path, a symlink of the canonical skill
+     directory into the project (`.claude/skills/`, which OpenCode loads through
+     its Claude-compatible paths).
 2. **Assert the install registered** (`… plugin list` shows the plugin).
 3. **First task**: in an empty project, ask the agent to load the
    test-driven-development skill and quote its core-principle sentence
@@ -61,6 +61,6 @@ Artifacts (install logs, task transcripts) land in `--out` for auditing.
   Whether skills trigger organically on a matching task is a behavior
   question; that axis belongs to the process-behavior study's methodology,
   not an install check.
-- OpenCode/Antigravity assertions follow the documented manual install; if
-  your local CLI versions load skills from different paths, the study reports
-  FAIL with artifacts rather than guessing.
+- OpenCode assertions follow the documented manual install; if your local CLI
+  version loads skills from a different path, the study reports FAIL with
+  artifacts rather than guessing.

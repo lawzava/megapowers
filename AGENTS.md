@@ -3,7 +3,7 @@
 ## Scope
 
 This repository publishes optional skills, plugins, hooks, and templates for
-Claude Code, Codex, OpenCode, and Google Antigravity. Keep it public-safe:
+Claude Code, Codex, and OpenCode. Keep it public-safe:
 no personal secrets, no machine-specific absolute paths, no private bridge
 requirements unless clearly marked optional.
 
@@ -27,10 +27,10 @@ requirements unless clearly marked optional.
 - OpenCode reads `AGENTS.md` and can load `skills/<name>/SKILL.md` through
   `.opencode/`, `.agents/`, or Claude-compatible paths; its plugins are
   JavaScript or TypeScript modules, not these Claude shell hooks.
-- Antigravity CLI plugins use a root `plugin.json`; its native skills are flat
-  markdown files under `.agents/skills/` or a plugin `skills/` directory.
-  `mega-guardrails` intentionally ships no root `plugin.json`: it is
-  hooks-only, and Antigravity consumes skills, not these hooks.
+- Three harnesses are targeted and no others. Skills are portable markdown, so
+  another harness may load them; that is not support, and nothing here is tested
+  against one. Adding a harness is a deliberate change to this list and to
+  `docs/harness-support.md`, not a side effect of a file happening to parse.
 - Full per-harness support details: `docs/harness-support.md` (canonical,
   freshness-checked).
 
