@@ -513,12 +513,29 @@ else
   bad "templates/settings.example.json permission denies must not use ineffective wildcard paths"
 fi
 
+# Run one test file. On failure, SHOW the last of its output: a suite that reports
+# only "this file failed" is a suite that cannot be diagnosed from CI, where the
+# working tree is gone by the time anyone reads the log. That cost a full
+# investigation once, against a failure that reproduced on the hosted runner and
+# nowhere else.
+run_test_file() {  # $1=label $2=path
+  local out
+  out="$(mktemp)"
+  if bash "$2" >"$out" 2>&1; then
+    ok "$1 $2"
+  else
+    bad "$1 $2"
+    sed -n '$!{/FAIL/p};${p}' "$out" | tail -15 | sed 's/^/      /'
+  fi
+  rm -f "$out"
+}
+
 echo "== hook tests =="
 ht_found=0
 while IFS= read -r t; do
   [ -n "$t" ] || continue
   ht_found=1
-  if bash "$t" >/dev/null 2>&1; then ok "hook test $t"; else bad "hook test $t"; fi
+  run_test_file "hook test" "$t"
 done < <(find plugins -type f -path '*/hooks/tests/*.test.sh' 2>/dev/null | sort)
 [[ $ht_found -eq 1 ]] || bad "no hook tests found (expected plugins/*/hooks/tests/*.test.sh)"
 
@@ -527,7 +544,7 @@ st_found=0
 while IFS= read -r t; do
   [ -n "$t" ] || continue
   st_found=1
-  if bash "$t" >/dev/null 2>&1; then ok "skill script test $t"; else bad "skill script test $t"; fi
+  run_test_file "skill script test" "$t"
 done < <(find plugins -type f -path '*/skills/*/scripts/tests/*.test.sh' 2>/dev/null | sort)
 [[ $st_found -eq 1 ]] || bad "no skill script tests found (expected plugins/*/skills/*/scripts/tests/*.test.sh)"
 
@@ -536,7 +553,7 @@ rt_found=0
 while IFS= read -r t; do
   [ -n "$t" ] || continue
   rt_found=1
-  if bash "$t" >/dev/null 2>&1; then ok "repository script test $t"; else bad "repository script test $t"; fi
+  run_test_file "repository script test" "$t"
 done < <(find scripts/tests -type f -name '*.test.sh' 2>/dev/null | sort)
 [[ $rt_found -eq 1 ]] || bad "no repository script tests found (expected scripts/tests/*.test.sh)"
 
@@ -544,7 +561,7 @@ echo "== evals =="
 if [[ -d evals/scenarios ]]; then
   while IFS= read -r t; do
     [ -n "$t" ] || continue
-    if bash "$t" >/dev/null 2>&1; then ok "eval harness test $t"; else bad "eval harness test $t"; fi
+    run_test_file "eval harness test" "$t"
   done < <(find evals/tests evals/studies/tests -type f -name '*.test.sh' 2>/dev/null | sort)
   ev_bad=0; ev_n=0
   for sd in evals/scenarios/*/; do
