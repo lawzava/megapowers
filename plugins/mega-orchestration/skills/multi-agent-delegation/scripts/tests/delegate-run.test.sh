@@ -2649,7 +2649,7 @@ if grep -q 'no round was consumed' "$TMP/pre1.err"; then ok; else bad "a setup f
 # A vendor with no adapter at all: nothing can be dispatched, so nothing can be
 # billed.
 novendorcfg="$TMP/routes-novendor.toml"
-sed 's/^vendor = "anthropic"$/vendor = "moonshot"/' "$cfg" > "$novendorcfg"
+sed 's/^vendor = "anthropic"$/vendor = "othervendor"/' "$cfg" > "$novendorcfg"
 set +e
 (
   cd "$prerepo" || exit 1
