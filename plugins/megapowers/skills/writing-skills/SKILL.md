@@ -8,11 +8,18 @@ license: MIT
 
 ## Overview
 
-Writing skills is Test-Driven Development applied to process documentation. You write pressure scenarios (test cases), watch a baseline agent fail without the skill (RED), write the minimal skill that fixes those failures (GREEN), and close the loopholes testing exposes (REFACTOR).
+Writing skills is evidence-driven documentation design. Define the outcome a
+skill should improve, evaluate representative tasks, make the smallest justified
+change, and keep the evidence with the skill.
 
-**Core principle:** if you didn't watch an agent fail without the skill, you don't know whether the skill teaches the right thing.
+**Core principle:** judge a skill by honest task outcomes, not forced obedience.
 
-Required background: megapowers:test-driven-development defines the RED-GREEN-REFACTOR cycle this skill adapts. For current portable OpenAI and Anthropic guidance, see authoring-best-practices.md. For the research on phrasing that lands, see effective-phrasing.md. When editing an existing skill down, de-prescription-rubric.md is the trim standard: it says what to remove, what to keep, and what never to touch.
+Required background: megapowers:test-driven-development defines a useful cycle
+for executable changes. For current portable OpenAI and Anthropic guidance, see
+authoring-best-practices.md. For the research on phrasing that lands, see
+effective-phrasing.md. When editing an existing skill down,
+de-prescription-rubric.md is the trim standard: it says what to remove, what to
+keep, and what never to touch.
 
 ## What a Skill Is
 
@@ -38,40 +45,37 @@ description: Use when tests have race conditions, timing dependencies, or pass/f
 
 Name skills verb-first; gerunds work well (creating-skills, root-cause-tracing). Seed the body with terms an agent would search: error messages, symptoms, tool names, synonyms. An agent finds a skill by matching its problem against descriptions, skims the overview, and loads examples only when implementing; put searchable terms early. Cross-reference other skills by name with a requirement marker (`**Required background:** megapowers:systematic-debugging`), never by `@` path, which force-loads the file into context.
 
-A loaded skill competes with the task for a finite attention budget, so aim for the smallest set of high-signal tokens that still produces the behavior; the word budget tightens where the skill loads most often: always-in-context material under 200 words, getting-started workflows under 150 words each, other skills as lean as the material allows with heavy reference pushed to files loaded on demand. Verify with `wc -w` rather than eyeballing. Compressing by inventing abbreviations (cfg, impl, req) saves nothing: the tokenizer splits them like the full word, so the full word is both cheaper and clearer. One excellent, complete, runnable example from a real scenario beats implementations in five languages; agents port well.
+Keep loaded guidance concise and move optional detail to references. Use `wc -w`
+as a diagnostic, not a universal target. Prefer clear words over invented
+abbreviations. One complete, runnable example from a real scenario is usually
+more useful than many shallow variants.
 
 Do not invent impact statistics. A claim of effect needs a measured run behind it (see this repo's `evals/`); unsourced percentages get repeated to users as fact.
 
-## The Core Rule
+## Evidence Rule
 
-No behavioral guidance without a failing test first. If a change adds or alters what the skill tells an agent to do (a rule, prohibition, recipe, or conditional) and you wrote it before testing, delete it and restart the cycle; keeping it as reference or adapting it while the tests run is the same violation. Mechanical and editorial edits (typos, broken links, meaning-preserving rewording) carry no behavioral hypothesis and need only a correctness check. When unsure which kind an edit is, treat it as behavioral.
-
-## Match the Form to the Failure
-
-Classify the baseline failure before writing guidance; the form that fixes one failure type measurably backfires on another.
-
-- Agent skips a rule under pressure: prohibition plus rationalization counters and red flags (see Bulletproofing).
-- Output complies but has the wrong shape: a positive recipe stating what the output is, its parts in order. A prohibition measurably underperforms a recipe here, and underperforms saying nothing at all.
-- Required element omitted: a structural slot in the template the agent fills, not a prose reminder nearby.
-- Behavior depends on a condition: a conditional keyed to an observable predicate, not an unconditional rule with exemption clauses.
-
-No nuance clauses: appending one to a winning recipe degraded it from consistent to noisy in the same tests; express a real exception as its own conditional. Exemption clauses do not scope ("this limit doesn't apply to code blocks" still suppresses code blocks); restructure so the rule cannot reach the exempt part.
-
-## Bulletproofing Discipline Skills
-
-Discipline skills must survive agents negotiating under pressure. State the rule, then name the specific workarounds it forecloses (keeping deleted code as reference, adapting it while writing tests). Add a red-flags list agents can self-check against, built from the verbatim excuses baseline runs produce. Keep it to what a baseline run actually surfaced: a speculative excuse list is guidance nobody needed and it costs the same tokens. This toolkit is for discipline failures only; applied to shaping problems it backfires, so use the forms above instead.
+Behavioral guidance needs evidence appropriate to its risk before shipping.
+Use an executable regression when the behavior has one; otherwise use an honest
+representative task evaluation with a clear oracle. Mechanical and editorial
+edits need a correctness check. Record uncertainty instead of disguising it as
+a passing evaluation.
 
 ## Test Before Shipping
 
-Every skill is tested with subagents before deployment, and each excuse for skipping ("obviously clear", "just a reference", "no time", "I'm confident") fails the same way: untested skills hide issues you cannot see until an agent uses them. Complete one skill's full cycle before starting another; batching is the rationalization, not the efficiency.
+Evaluate every behavioral change before deployment. Start with a representative
+task and observable oracle. Use a no-guidance, prior-guidance, or alternative
+control when it can distinguish the new wording from normal performance. Do not
+disguise an evaluation as live work, force a chosen answer, or mistake a skill
+quotation for successful task completion.
 
-RED: run pressure scenarios with a subagent that lacks the skill and document exact behavior, including rationalizations verbatim. You must see the natural failure before writing the fix. GREEN: write the minimal skill addressing those specific failures, nothing for hypotheticals, and re-run the same scenarios until agents comply. REFACTOR: each new rationalization gets an explicit counter; re-test until none surface.
+Scale evidence to risk: mechanical and editorial changes need correctness
+checks; techniques need representative application; workflow and safety rules
+need ordering, consent, and verification evidence; high-impact rules need
+boundary cases and independent review when available. Preserve inconclusive
+results and revise only for demonstrated gaps.
 
-Micro-test wording before full scenario runs: one fresh-context sample per call with the guidance in its realistic surrounding context, always against a no-guidance control (if the control does not exhibit the failure, there is nothing to fix; stop), 5+ reps per variant, and every flagged match read manually, since template echoes and quoted counter-examples masquerade as hits. Variance is a metric: reps converging on one shape mean the wording binds; five interpretations mean tighten the form before adding words. Micro-tests verify wording; discipline skills still need full pressure scenarios as the final gate.
-
-Match the test to the skill type: discipline skills under combined pressures (time, sunk cost, exhaustion), techniques by application to new scenarios, patterns by recognition and counter-examples, references by retrieval and gap probes.
-
-Full methodology, pressure types, hole-plugging, and meta-testing: see [testing-skills-with-subagents.md](testing-skills-with-subagents.md).
+Full methodology and evidence templates: see
+[testing-skills-with-subagents.md](testing-skills-with-subagents.md).
 
 ## Shipping
 

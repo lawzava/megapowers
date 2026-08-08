@@ -37,6 +37,13 @@ tally() {  # $1 = a JSON result row
   esac
 }
 
+tally_local() {  # $1=id $2=label $3=verdict $4=rc
+  local row
+  row="$(jq -cn --arg scenario "$1" --arg verdict "$3" --argjson rc "$4" \
+    '{scenario:$scenario, skill:"", kind:"selftest", agent:"local", mode:"local", verdict:$verdict, phase:"oracle", rc:$rc}')"
+  tally "$row" "$2"
+}
+
 for sdir in "$EVALS"/scenarios/*/; do
   id="$(basename "$sdir")"
   [ -f "$sdir/scenario.toml" ] || continue
@@ -66,13 +73,33 @@ done
 # fails the run. Guarded so environments without a Go toolchain still run evals.
 if command -v go >/dev/null 2>&1; then
   if go run "$EVALS/score.go" --selftest >/dev/null 2>&1; then
-    pass=$((pass+1)); printf '  \033[32mPASS\033[0m score.go --selftest\n'
+    tally_local score-go-selftest "score.go --selftest" pass 0
   else
-    fail=$((fail+1)); failed_ids="$failed_ids score.go--selftest"; printf '  \033[31mFAIL\033[0m score.go --selftest\n'
+    tally_local score-go-selftest "score.go --selftest" fail 1
   fi
 else
-  indet=$((indet+1)); printf '  \033[33mINDET\033[0m score.go --selftest (go not installed)\n'
+  tally_local score-go-selftest "score.go --selftest (go not installed)" indeterminate 127
 fi
+
+# Offline oracle mutations. These do not call agent CLIs or consume credentials.
+for selftest in \
+  "$EVALS/studies/process-behavior/run-study.sh" \
+  "$EVALS/studies/install-smoke/run-smoke.sh" \
+  "$EVALS/studies/gauntlet/oracle.sh"
+do
+  if bash "$selftest" --selftest >/dev/null 2>&1; then
+    verdict=pass; rc=0
+  else
+    rc=$?; verdict=fail
+  fi
+  case "$selftest" in
+    */process-behavior/run-study.sh) selftest_id=process-behavior-runner-selftest ;;
+    */install-smoke/run-smoke.sh) selftest_id=install-smoke-runner-selftest ;;
+    */gauntlet/oracle.sh) selftest_id=gauntlet-oracle-selftest ;;
+    *) selftest_id="$(basename "$selftest")-selftest" ;;
+  esac
+  tally_local "$selftest_id" "$selftest --selftest" "$verdict" "$rc"
+done
 
 [ -n "$jsonout" ] && cp "$rows" "$jsonout"
 echo

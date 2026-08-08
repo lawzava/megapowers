@@ -4,12 +4,16 @@
 #
 # Blind a candidate set before a judge ranks it (mega-orchestration:best-of-n step 4,
 # mega-orchestration:council-adjudication step 3). Copies the N immediate children of
-# --src (files or dirs) into --out as candidate-A..N in a SHUFFLED order, strips every
+# --src (files or dirs) into a hidden sibling of --out, then atomically renames that
+# staging directory to --out with Perl's rename(2). The result is an ordinary directory
+# containing candidate-A..N in a SHUFFLED order. Strips every
 # caller-supplied authorship marker (case-insensitive, literal) from text-file contents,
 # preserves non-matching and binary files byte-for-byte, and REFUSES symlinks or any
 # marker that survives in file content or a copied path. A half-blinded set must never
 # reach the judge. The shuffled label->original manifest is printed to stdout; the LEAD
-# keeps it private (it is the de-anonymization key). Portable: bash + awk.
+# keeps it private (it is the de-anonymization key). The --out parent must be controlled
+# by that writer; portable rename has no universal no-replace primitive against a
+# hostile concurrent writer. Portable: bash + awk.
 #
 # Blinding is necessary but not sufficient: self-preference bias persists without author
 # labels (arXiv 2410.21819), so route ranking to a non-author / different-vendor judge.
@@ -20,6 +24,7 @@
 set -uo pipefail
 
 src=""; out=""; seed=""; markers=()
+perl_bin="${ANONYMIZE_PERL:-perl}"
 usage() { echo "usage: anonymize-candidates --src <dir> --out <dir> [--marker <s>]... [--marker-file <f>] [--seed <int>]" >&2; }
 
 while [ $# -gt 0 ]; do
@@ -39,9 +44,10 @@ done
 [ -n "$src" ] || { usage; exit 2; }
 [ -n "$out" ] || { usage; exit 2; }
 [ -d "$src" ] || { echo "anonymize-candidates: --src is not a directory: $src" >&2; exit 2; }
-[ -e "$out" ] && { echo "anonymize-candidates: --out already exists (refusing to overwrite): $out" >&2; exit 2; }
+[ -e "$out" ] || [ -L "$out" ] && { echo "anonymize-candidates: --out already exists (refusing to overwrite): $out" >&2; exit 3; }
 [ "${#markers[@]}" -gt 0 ] || { echo "anonymize-candidates: at least one --marker is required" >&2; exit 2; }
 case "$seed" in ''|*[!0-9]*) [ -z "$seed" ] || { echo "anonymize-candidates: --seed must be a non-negative integer" >&2; exit 2; } ;; esac
+command -v "$perl_bin" >/dev/null 2>&1 || { echo "anonymize-candidates: Perl with Errno is required for atomic publication" >&2; exit 2; }
 
 # canonical starting order: glob-sorted immediate children of --src
 entries=()
@@ -79,13 +85,42 @@ perm="$(awk -v n="$n" -v seed="$seed" 'BEGIN{
 }')"
 
 alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-mkdir -p "$out"
+out_parent="$(dirname "$out")"
+mkdir -p "$out_parent" || { echo "anonymize-candidates: cannot create output parent: $out_parent" >&2; exit 3; }
+stage="$(mktemp -d "$out_parent/.anonymize-candidates.XXXXXX")" || {
+  echo "anonymize-candidates: cannot create staging directory" >&2; exit 3
+}
+cleanup_stage() { [ -z "${stage:-}" ] || rm -rf "$stage"; }
+cleanup_all() { cleanup_stage; }
+abort() { echo "anonymize-candidates: $1" >&2; cleanup_stage; exit 3; }
+finalize_success() {
+  stage=""
+  trap - EXIT
+  trap '' HUP INT TERM
+  printf '%s' "$manifest"
+  exit 0
+}
+on_signal() {
+  # rename(2) is the commit point. If it already moved staging to the real
+  # output, finish the private manifest response instead of reporting a
+  # refusal whose output nevertheless exists.
+  if [ -n "${stage:-}" ] && [ ! -e "$stage" ] && [ -d "$out" ] && [ ! -L "$out" ]; then
+    echo "anonymize-candidates: signal arrived after publication; completing manifest delivery" >&2
+    finalize_success
+  fi
+  echo "anonymize-candidates: interrupted" >&2
+  cleanup_all
+  trap - EXIT HUP INT TERM
+  exit 3
+}
+trap cleanup_all EXIT
+trap on_signal HUP INT TERM
 manifest=""; i=0
 while IFS= read -r idx; do
   [ -n "$idx" ] || continue
   label="${alpha:i:1}"
   orig="${entries[$idx]}"
-  cp -R "$src/$orig" "$out/candidate-$label"
+  cp -R "$src/$orig" "$stage/candidate-$label" || abort "could not copy candidate '$orig'"
   manifest="$manifest""candidate-$label"$'\t'"$orig"$'\n'
   i=$((i + 1))
 done <<< "$perm"
@@ -94,14 +129,16 @@ done <<< "$perm"
 strip_markers() {  # $1=file
   local f="$1" tmp mk has_marker=0 final_nl=0
   for mk in "${markers[@]}"; do
-    if grep -qiF -e "$mk" "$f" >/dev/null 2>&1; then has_marker=1; break; fi
+    grep -qiF -e "$mk" "$f" >/dev/null 2>&1; rc=$?
+    case "$rc" in 0) has_marker=1; break ;; 1) ;; *) return 2 ;; esac
   done
   [ "$has_marker" -eq 1 ] || return 0
   # Leave binary content untouched. The refusal scan below still checks it and
   # rejects the candidate if an authorship marker is embedded in those bytes.
-  LC_ALL=C grep -Iq . "$f" 2>/dev/null || return 0
+  LC_ALL=C grep -Iq . "$f" 2>/dev/null; rc=$?
+  case "$rc" in 0) ;; 1) return 0 ;; *) return 2 ;; esac
   if [ -s "$f" ] && [ "$(tail -c 1 "$f" | wc -l | tr -d '[:space:]')" = "1" ]; then final_nl=1; fi
-  tmp="$(mktemp "$f.anon.XXXXXX")"
+  tmp="$(mktemp "$f.anon.XXXXXX")" || return 2
   if MARKERS="$(printf '%s\n' "${markers[@]}")" awk -v final_nl="$final_nl" '
     function strip(line, ml,   lo, res, idx, mlen) {
       lo=tolower(line); mlen=length(ml); if(mlen==0) return line; res="";
@@ -123,21 +160,45 @@ strip_markers() {  # $1=file
     rm -f "$tmp"; return 1
   fi
 }
-while IFS= read -r f; do [ -n "$f" ] && strip_markers "$f"; done < <(find "$out" -type f)
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  strip_markers "$f" || abort "could not strip authorship markers"
+done < <(find "$stage" -type f)
 
 # refusal net: no marker may survive in any candidate's CONTENT or in a copied PATH.
 # Deletion can re-form a marker at a seam, and a filename can carry authorship; either
 # leaks the author to the judge, so abort and leave nothing half-blinded behind.
 refuse() {  # $1=marker $2=where
   echo "anonymize-candidates: authorship marker '$1' survived in $2 — aborting (rename/remove it, then re-run)" >&2
-  rm -rf "$out"; exit 3
+  cleanup_stage; exit 3
 }
-paths="$(cd "$out" && find . -mindepth 1)"
+paths="$(cd "$stage" && find . -mindepth 1)" || abort "could not inspect staged candidates"
 for mk in "${markers[@]}"; do
   # no -I: binary candidates must be scanned too, or an authorship marker
   # embedded in a binary file would silently bypass the refusal net.
-  grep -riFl -e "$mk" "$out" >/dev/null 2>&1 && refuse "$mk" "candidate file content"
-  printf '%s\n' "$paths" | grep -iF -e "$mk" >/dev/null 2>&1 && refuse "$mk" "a copied path/filename"
+  grep -riFl -e "$mk" "$stage" >/dev/null 2>&1; rc=$?
+  case "$rc" in 0) refuse "$mk" "candidate file content" ;; 1) ;; *) abort "could not verify candidate file content" ;; esac
+  printf '%s\n' "$paths" | grep -iF -e "$mk" >/dev/null 2>&1; rc=$?
+  case "$rc" in 0) refuse "$mk" "a copied path/filename" ;; 1) ;; *) abort "could not verify candidate paths" ;; esac
 done
 
-printf '%s' "$manifest"
+# Staging stays private while it is incomplete. Publication adopts the
+# directory mode implied by the caller's umask.
+chmod "$(umask -S)" "$stage" || abort "could not set output directory permissions"
+
+"$perl_bin" -MErrno=EEXIST,ENOENT,ENOTEMPTY -e '
+  my ($stage, $out) = @ARGV;
+  $! = 0;
+  my @existing = lstat $out;
+  exit 3 if @existing;
+  exit 2 unless $!{ENOENT};
+  rename $stage, $out and exit 0;
+  exit(($!{EEXIST} || $!{ENOTEMPTY}) ? 3 : 2);
+' "$stage" "$out"
+publish_rc=$?
+case "$publish_rc" in
+  0) ;;
+  3) abort "output path changed during publication" ;;
+  *) abort "could not publish anonymized candidates" ;;
+esac
+finalize_success

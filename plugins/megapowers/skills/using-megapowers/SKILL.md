@@ -1,6 +1,6 @@
 ---
 name: using-megapowers
-description: Use when starting any conversation - establishes how to find and use skills, requiring skill invocation before any response including clarifying questions
+description: Use when starting a conversation or task, before any response including clarifying questions. Triggers on any new user request. Not for a subagent dispatched with a specific task.
 license: MIT
 ---
 
@@ -21,7 +21,8 @@ todos. Use one durable progress surface for work that needs one.
 
 Process skills set the approach. If scope, area, oracle, and risk are clear,
 take the scoped fast path through test-driven development. Ambiguous features
-start with brainstorming; unknown failures start with systematic-debugging.
+start with `megapowers:brainstorming`; unknown failures start with
+`megapowers:systematic-debugging`.
 For non-trivial structure, use mega-orchestration:orchestrating when installed.
 
 ## Communication
@@ -38,8 +39,10 @@ Senior engineer's register for anything a human or agent reads:
 
 ## Platform Adaptation
 
-If your harness appears here, read its reference for tool specifics: Codex
-`references/codex-tools.md`, OpenCode `references/opencode-tools.md`.
+For environment-specific tool details, read the relevant adapter reference:
+[Codex](references/codex-tools.md) or [OpenCode](references/opencode-tools.md).
+Resolve relative files and helpers from the directory of the skill that names
+them. Resolve a cross-skill helper from the target skill's installed directory.
 
 ## User Instructions
 

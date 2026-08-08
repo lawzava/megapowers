@@ -4,14 +4,10 @@ Use this template when dispatching a code reviewer subagent.
 
 **Purpose:** Review completed work against requirements and engineering standards as separate axes before it cascades into more work.
 
-Dispatch this on the most capable model available, scaled to the diff's size and
-risk — review quality tracks reviewer capability, and an omitted model silently
-inherits whatever default the platform picks. On platforms without a model
-selector, drop the `model:` line.
+Assign a reviewer with capability proportionate to the change's size and risk.
 
 ```
 Subagent (general-purpose):
-  model: <most capable available, e.g. the top-tier reviewing model>
   description: "Review code changes"
   prompt: |
     You are a Senior Code Reviewer with expertise in software architecture,
@@ -32,8 +28,9 @@ Subagent (general-purpose):
 
     **[REVIEW_PACKAGE_PATH]**
 
-    Read that file first — it contains the commit list, `git diff --stat`, and the
-    full `git diff -U10` for the range, so you do not need to re-derive the diff.
+    Read that file first. It contains committed, staged, unstaged, and untracked
+    task changes. Review every section; a blank committed range does not make a
+    no-commit task empty.
     If no package path is given above, derive the diff yourself from the range:
 
     **Base:** [BASE_SHA]  (the branch point — never `HEAD~1` for a multi-commit task)
@@ -42,6 +39,12 @@ Subagent (general-purpose):
     ```bash
     git diff --stat [BASE_SHA]..[HEAD_SHA]
     git diff [BASE_SHA]..[HEAD_SHA]
+    git diff --cached
+    git diff
+    git ls-files --others --exclude-standard -z |
+      while IFS= read -r -d '' file; do
+        git diff --no-index -- /dev/null "$file" || true
+      done
     ```
 
     ## Ground Rules
@@ -89,16 +92,13 @@ Subagent (general-purpose):
     - Documentation complete?
     - No obvious bugs?
 
-    **Agent-era failure modes:**
-    - LLM output trust boundary: does model output reach SQL, shell, eval,
+    **Automation and integration risks:**
+    - Untrusted output boundary: does externally generated output reach SQL, shell, eval,
       or rendered HTML unsanitized anywhere in the diff?
     - Enum and value completeness: a new enum value or status string is
       traced through every consumer that switches on, filters by, or
       displays it. Read those files; a grep for the definition is not the
       check.
-    - Prompt indexing: lists numbered from 0 in a prompt while the code
-      expects the model's answer to index them (models reliably answer
-      1-indexed).
 
     ## Axis Verdicts
 
@@ -199,7 +199,7 @@ Subagent (general-purpose):
 - `[RUBRIC_FILE]` — absolute path to `review-rubric.md` in this skill's directory
 - `[DESCRIPTION]` — brief summary of what was built
 - `[PLAN_OR_REQUIREMENTS]` — what it should do (plan file path, task text, or requirements)
-- `[REVIEW_PACKAGE_PATH]` — path to the pre-generated diff file (preferred); leave blank to have the reviewer derive the diff from the SHAs
+- `[REVIEW_PACKAGE_PATH]` — path to the pre-generated complete task package; leave blank only when the reviewer can derive committed, staged, unstaged, and untracked changes
 - `[BASE_SHA]` — starting commit (branch point, not `HEAD~1`)
 - `[HEAD_SHA]` — ending commit
 

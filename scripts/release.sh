@@ -20,6 +20,11 @@ if ! grep -q "^## ${version//./\\.} - " CHANGELOG.md; then
 fi
 command -v jq >/dev/null 2>&1 || { echo "release.sh: jq is required" >&2; exit 2; }
 
+# Release gates are deliberately real, unlike validate.sh's format-only date
+# check. Both are offline and fail before any version stamp mutates the tree.
+bash evals/run-all.sh
+scripts/check-freshness.sh
+
 # In-place sed portably: GNU sed takes -i with no argument, BSD sed needs an
 # explicit (empty) backup suffix.
 if sed --version >/dev/null 2>&1; then

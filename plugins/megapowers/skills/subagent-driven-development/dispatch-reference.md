@@ -3,23 +3,6 @@
 How to pick a model for each role, what goes into a dispatch, and how artifacts
 move between the controller and its subagents.
 
-## Model Selection
-
-When the dispatch surface exposes a per-worker model selector, use the least
-capable model that can handle each role and specify it explicitly. Transcribing
-a complete spec and single-file mechanical fixes take the cheapest tier;
-multi-file integration takes a standard model; design judgment and the final
-whole-branch review take the most capable. Turn count beats token price: the
-cheapest models routinely take two to three times the turns on multi-step work,
-so hold a mid-tier floor for reviewers and for implementers working from prose
-descriptions.
-
-Codex v2 inherits the session model and effort even with fresh context;
-`fork_turns = "none"` controls transcript inheritance, not model selection. Omit
-the model field on that surface. If a task requires a different Codex model or
-effort, use a separate role-aware surface or bounded `codex exec` run. Use
-`delegate-resolve` when the role requires another provider.
-
 ## Constructing Dispatch Prompts
 
 A dispatch describes one task, not the session's history. A fresh subagent needs its task, the interfaces it touches, and the global constraints. Do not paste prior-task summaries.
@@ -40,7 +23,9 @@ For fixes:
 
 ## File Handoffs
 
-Everything you paste into a dispatch, and everything a subagent prints back, stays resident in your context for the rest of the session. Hand artifacts over as files: senior-engineer register (see using-megapowers, Communication), conclusion first, self-contained. `scripts/sdd-workspace` resolves the working-tree directory all of these artifacts live in.
+Hand bulky artifacts over as files: senior-engineer register (see
+using-megapowers, Communication), conclusion first, self-contained.
+`scripts/sdd-workspace` resolves the working-tree directory for these artifacts.
 
 Each delegate has one report channel. For small reports, return the report
 directly. For bulky reports, write the report file and return only status plus
@@ -50,7 +35,11 @@ its path. Do not duplicate claims and evidence across chat and file.
 - **Report file:** named after the brief (task-N-brief.md pairs with
   task-N-report.md). For a bulky report, the implementer writes the full report
   there and returns only status plus the path. Fixes append to the same file.
-- **Reviewer inputs:** the brief, the report, and the review package as three paths, plus the binding constraints. `scripts/review-package BASE HEAD` writes the commit list, stat summary, and full diff with context to one file and prints its path, so the reviewer reads everything in one call. The final review gets the same treatment with the branch's merge base (for example `git merge-base main HEAD`) as BASE.
+- **Reviewer inputs:** the brief, report, review package, and binding
+  constraints. `scripts/review-package BASE HEAD` writes the committed range
+  plus staged, unstaged, and untracked changes. The final review gets the same
+  treatment with the branch's merge base (for example `git merge-base main
+  HEAD`) as BASE.
 
 ## Example Workflow
 

@@ -68,7 +68,6 @@ const winner = await agent(
   `authorship markers, then judge blind on the criteria (not on length). Return the ` +
   `winning worktree path and a one-line reason.`,
   {
-    model: 'sonnet',
     schema: {
       type: 'object',
       required: ['worktree', 'reason'],

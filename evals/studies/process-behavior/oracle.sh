@@ -24,6 +24,7 @@
 # positive Δ = the skill helps.
 set -uo pipefail
 DIR="${1:?usage: oracle.sh <results-dir>}"
+[ "${STUDY_SKIP_PROVENANCE:-0}" = 1 ] || "$(dirname "$0")/../provenance-check.sh" "$DIR" || exit $?
 rows="$(mktemp)"; trap 'rm -f "$rows"' EXIT
 
 bash_cmds() { # transcript.jsonl -> every Bash tool_use command, ONE LINE per command

@@ -20,6 +20,7 @@ run_one() { # model|mode|idx|out|run_timeout
   local rundir; rundir="$out/$malias/$mode/run-$(printf '%02d' "$idx")"
   [ -f "$rundir/meta.json" ] && return 0
   rm -rf "$rundir"; mkdir -p "$rundir"
+  study_record_provenance "$rundir" "$agent" "$model" "$HERE/prompts/gauntlet-$mode.txt" "$HERE" || return $?
   local work; work="$(mktemp -d "${TMPDIR:-/tmp}/gaunt.XXXXXX")" || return 1
   local repo="$work/repo"
   if ! "$HERE/fixtures/setup-gauntlet.sh" "$repo" >/dev/null 2>&1; then

@@ -6,95 +6,55 @@ license: MIT
 
 # Upgrading Megapowers
 
-**Core principle:** Inspect first, preserve policy, approve one exact plan, then verify observed state.
-
-Read [the channel reference](references/channels.md) before choosing commands. Use only the section for the detected harness and install channel. For initial installation, use the repository setup guide instead.
+Inspect first, preserve the existing installation policy, approve one exact
+plan, then verify observed state. Read [the channel reference](references/channels.md)
+and use only the detected installation channel.
 
 ## 1. Inspect: read only
 
-Identify the harness and every visible Megapowers source. Record installed and enabled plugins, versions, scopes, marketplace or repository, pins, symlinks, forks, local edits, duplicates, hook state, and, on Codex, CLI and app-server parity.
-
-Inspect available plugins and upstream release metadata without changing local state when the channel permits it. If provenance is ambiguous or managed files have local edits, stop before any write and show the conflict.
-
-Plugins are half the install. The instruction files and settings baselines drift too, and nothing on the machine records which version of them the user took, so inspect them in the same pass. Candidates: `~/.claude/CLAUDE.md`, the project `CLAUDE.md`, and `~/.claude/settings.json` on Claude Code; `~/.codex/AGENTS.md` and `~/.codex/config.toml` on Codex; a project `AGENTS.md` on either. Classify each before comparing anything:
-
-- **Absent:** offer the current baseline as a fresh adoption, not as drift.
-- **Unrelated:** it exists but shares no baseline section headings. Say the baseline is not adopted here and move on. Do not diff it and do not raise it again.
-- **Adopted:** it shares baseline headings. Compare the baseline against itself across versions, never against the user's file. These files are meant to be edited, so "differs from the shipped copy" is the normal state and carries no information.
-
-The comparison is between the baseline at the installed version and the baseline at the target version. Nothing on the machine states when the user actually adopted, so that `from` ref is an inference from the installed plugin version. Say so in the report. It is wrong in both directions: someone who adopted last week but installed a year ago sees changes they already have, and someone who never adopted sees a diff for a file they do not run. [The channel reference](references/channels.md) has the fetch commands.
+Identify every visible installation, including enabled plugins, versions,
+scopes, sources, pins, local edits, duplicates, and hook or settings state.
+Inspect available releases without changing local state. If provenance is
+ambiguous or managed files have local edits, stop before the first write and
+report the conflict.
 
 ## 2. Classify
 
-Classify every installed plugin:
+Keep a floating install on its source's latest stable release. Preserve source and scope,
+and preserve a pin unless the user explicitly approves changing it. Treat a
+checkout with local edits, a fork, or a duplicate as a separate decision, never
+an overwrite or cleanup implied by an upgrade.
 
-- Floating marketplace install: target the latest stable release from the same source.
-- Explicit tag, ref, or version: preserve pinned policy. Move to a named pin only with approval; never convert it to floating.
-- Symlinked checkout: update only a clean checkout with an unambiguous upstream.
-- Fork: propose an upstream integration; never overwrite local work.
-- Duplicate or unknown source: report it. Cleanup is a separate opt-in change.
-
-"Latest" means latest stable unless the user names a version, ref, branch, or prerelease.
+Classify a user-owned baseline as absent, unrelated, or adopted. For an adopted
+baseline, compare the shipped baseline at the inferred installed ref with the
+target baseline, not with the user's edited file. If the fetch fails, report
+that the comparison did not run; an empty result is not no drift.
 
 ## 3. Compare and propose
 
-Separate the plan into:
+Separate upgrades from available additions and user-owned configuration drift.
+Offer relevant additions first and `show all` for the full catalog. An addition
+is optional until explicitly selected. Exclude a plugin overlapping any visible
+component, and do not install both registrations simultaneously; propose an
+explicit migration instead.
 
-1. **Upgrades:** already-installed plugins with an applicable target.
-2. **Available additions:** bundles not installed and not overlapping any visible installed plugin, skill, or component.
-3. **Baseline drift:** adopted instruction files and settings whose shipped baseline changed between the installed and target versions.
-
-Report drift as what the baseline changed, section by section, with the inferred `from` ref named. The user decides what to merge into a file they own. Settings compare key by key rather than as text, because that file is merged, not copied: report baseline keys their file lacks, keys whose baseline value changed, and any `sandbox.credentials` entry still using the pre-0.8.2 bare-string form, which parses as invalid and silently voids every other key in that settings source. Never propose `permissions.allow` entries, which widen what the agent may do without asking.
-
-Rank additions relevant first using repository evidence: language manifests and source, frontend files or design work, and orchestration needs. Offer `show all` for the full catalog. Describe newly included skills inside an upgraded bundle as part of that upgrade, not as separate installs. Say "available but not installed" unless release history proves when a bundle was introduced.
-
-Report visible overlap as a same-source duplicate or cross-source conflict, not an addition.
-Do not install an overlapping bundle while both registrations would remain active. If the user explicitly wants it, propose a migration that selects the one registration to keep and lists any disable or removal as an opt-in write.
-
-Optional additions start unselected. Never install one without explicit selection.
-
-Present one summarized approval request immediately before the first write. Include known current and target versions or refs, unresolved target policy if the cache is stale, exact installed upgrades, selected additions, preserved pins, scopes, and sources, warnings, writes, restarts, and verification. Read-only inspection needs no approval. If refresh changes the plan materially, summarize the delta and ask again.
-
-Example approval shape:
-
-```text
-Upgrade: <installed plugin>, <current> to <target policy or ref>
-Add: <explicitly selected bundle, or none>
-Baselines: <file>: <what the baseline changed>, assuming adoption at <from ref>
-           <file>: not adopted here
-           <or: drift check did not run, and why>
-Preserve: <source, scope, pin policy>
-Warnings: <local edits, duplicates, hooks, restart, or none>
-Writes: <marketplace refresh and exact plugin operations>
-Verify: <state probes>
-Proceed?
-```
+Before any write, request one summarized approval covering targets, sources,
+scopes, preserved pins, selected additions, expected writes, restart needs, and
+verification. Read-only inspection needs no approval.
 
 ## 4. Apply
 
-After approval, refresh the selected source and upgrade the installed set first. Re-inspect and verify those upgrades before installing any selected additions.
-
-Do not silently change pins or sources, remove duplicates, discard edits, edit settings, trust hooks, or add plugins. A baseline edit is a write like any other: apply only the specific additions the user selected, into a file they own, leaving their own text alone. Never overwrite an instruction file with the baseline. Use `effect-broker` for external effects when available, but do not require that optional plugin.
+After approval, apply the selected upgrades first, then re-inspect before any
+selected addition. Do not silently change pins, sources, scopes, settings,
+hooks, local edits, or duplicates.
 
 ## 5. Verify
 
-Re-read actual state. Confirm the approved plugin set, enabled state, versions or refs, pins, scopes, source, duplicates, expected skill discovery after any restart, and hook status. On Codex, compare CLI and app-server/plugin state.
+Re-read actual state and confirm the approved plugin set, enabled state,
+versions or refs, pins, scopes, sources, duplicate status, and required restart
+or hook state. On partial failure, stop before optional additions and report
+applied, failed, and not attempted actions with the safest recovery step.
 
-On partial failure, stop before optional additions. Inspect again and report **applied, failed, and not attempted** actions. Give the safest recovery step. Never claim rollback, loading, or success without observing it.
+Do not remove stale cached versions until every session using them has restarted.
 
-## 6. Clean up stale plugin cache versions
-
-A running session resolves plugin hooks through the versioned cache path (`cache/<plugin>/<version>`) captured at session start. Deleting an old version disables every hook in every session still pinned to it, with no warning beyond a non-zero hook status.
-
-Deleting a stale version is safe only when no session is still running on it. Order matters: upgrade, restart every open session, then delete stale directories. Deleting before every session has restarted is the failure mode: it silently kills that session's hooks, guard and delegate nudge alike, for the rest of its life.
-
-Detection: a hook attachment reporting `Plugin directory does not exist` for a versioned cache path means this happened. It affects only the sessions still pinned to the deleted version, not the machine as a whole. Restart the affected session to recover.
-
-## Common mistakes
-
-- Reporting no baseline drift when the fetch failed. An empty result and an unreachable network look identical in the output and only one of them is good news. Say the check did not run.
-- Treating a difference between the user's instruction file and the shipped baseline as drift. Those files are meant to diverge. Only a change in the baseline between two versions is a finding.
-- Refreshing a marketplace before the approval gate because it seems harmless. It is still a write.
-- Calling every uninstalled bundle newly introduced. Availability does not prove release timing.
-- Assuming a failed update restored the old version. Only observed state supports that claim.
-- Deleting a stale plugin cache version before every session on it has restarted. See "Clean up stale plugin cache versions" above.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

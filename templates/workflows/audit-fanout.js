@@ -58,7 +58,7 @@ const verified = await parallel(findings.map(f => () =>
 const report = await agent(
   `Merge these verified findings into one ranked, deduplicated audit report:\n` +
   JSON.stringify(verified.filter(f => f.survives)),
-  { model: 'sonnet' },
+  {},
 )
 
 return report

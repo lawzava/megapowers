@@ -100,9 +100,9 @@ Read only the runtime you are running in, plus the last section:
   `codex mcp-server` as documented there.
 - **Teams / workflows**: no distinct primitive this repo relies on; native
   subagent fan-out covers it.
-- **Effort**: native v2 workers inherit the session effort. Use a separate
-  role-aware or non-interactive Codex run when a different model or effort is
-  required; spend high on verify/judge/decide steps.
+- **Effort**: configure agent defaults and explicit spawn model/effort overrides
+  from the resolved route when the active Codex version exposes them. Spend high
+  on verify/judge/decide steps.
 
 ## OpenCode
 

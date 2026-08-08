@@ -10,8 +10,6 @@ more, nothing less) and is well-built (clean, tested, maintainable)
 ```
 Subagent (general-purpose):
   description: "Review Task N (spec + quality)"
-  model: [MODEL — include only when the dispatch surface supports per-worker
-         selection; omit this line for Codex v2]
   prompt: |
     You are reviewing one task's implementation: first whether it matches its
     requirements, then whether it is well-built. This is a task-scoped gate,
@@ -36,12 +34,13 @@ Subagent (general-purpose):
     **Diff file:** [DIFF_FILE]
 
     Read the diff file once — it contains the commit list, a stat summary,
-    and the full diff with surrounding context, and it is your view of the
-    change. The diff's context lines ARE the changed files: do not Read a
+    and all committed, staged, unstaged, and untracked task changes. It is your
+    view of the change. A blank committed range does not make a no-commit task
+    empty. Do not read a
     changed file separately unless a hunk you must judge is cut off
-    mid-function — and say so in your report. Do not re-run git commands.
-    If the diff file is missing, fetch the diff yourself:
-    `git diff --stat [BASE_SHA]..[HEAD_SHA]` and `git diff [BASE_SHA]..[HEAD_SHA]`.
+    mid-function — and say so in your report.
+    If the diff file is missing, fetch the committed range, staged diff,
+    unstaged diff, and untracked files yourself before reviewing.
     Do not crawl the broader codebase. Inspect code outside the diff only
     to evaluate a concrete risk you can name — one focused check per named
     risk, and name both the risk and what you checked in your report.
@@ -146,8 +145,6 @@ Subagent (general-purpose):
 **Placeholders:**
 - `[RUBRIC_FILE]` — absolute path to `review-rubric.md` in the
   requesting-code-review skill's directory (a sibling skill of this one)
-- `[MODEL]` — optional: include the reviewer model only when the dispatch
-  surface supports per-worker selection; omit the entire line for Codex v2
 - `[BRIEF_FILE]` — required: the task brief file (`scripts/task-brief PLAN N`
   prints the path; same file the implementer worked from)
 - `[GLOBAL_CONSTRAINTS]` — the binding requirements copied verbatim from

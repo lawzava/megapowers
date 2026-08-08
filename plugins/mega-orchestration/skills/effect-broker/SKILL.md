@@ -8,58 +8,53 @@ license: MIT
 
 # Effect Broker
 
-People delegate what they can trust not to do something irreversible they did not
-want. String-parsing shell commands cannot guard that; a parser cannot see intent
-and every parser has bypasses. Gate on what the action is: the caller declares the
-action's class and the broker enforces that class's protocol, scaled by the
-autonomy dial from mega-orchestration:autonomous-run.
+Use this before any action that may change data, systems, people, or external state.
+Starting an autonomous workflow does not authorize an effect.
 
-## Classify the effect
+## Effect record
 
-| Class | What it is | Examples |
-|---|---|---|
-| **reversible** | Undoable locally; a `git revert`/restore fixes it. | edit a file, read data, write to a scoped temp dir, create a branch |
-| **staged** | Has a native dry-run / plan / preview and a defined undo. | `terraform apply` (has `plan`), `kubectl apply` (has `--dry-run`), a migration with up/down, a push to a non-default branch |
-| **irreversible** | No real undo and real blast radius. | prod deploy, sending email/notifications, a payment/refund, `DROP`/`DELETE` without a backup, a DNS cutover, deleting a cloud resource |
+Classify the proposed action before executing it. Keep these dimensions separate:
 
-When unsure between two classes, pick the more dangerous one.
+| Dimension | Record |
+|---|---|
+| Mutation | What changes, versus a read-only observation. |
+| Sensitivity | Credentials, personal, regulated, financial, or other protected data touched. |
+| Externality | Which person, service, account, or system observes the change. |
+| Compensability | Whether a real rollback exists, its limits, and who can perform it. |
+| Environment and blast radius | Target environment, scope, affected identities, and bounded maximum impact. |
+| Approval provenance | Who authorized this exact effect, when, scope, and evidence of that authority. |
 
-Run `scripts/effect-broker <class> [--level <autonomy-level>]` to get the required
-protocol as `KEY=VALUE` (DRY_RUN, IDEMPOTENCY, JOURNAL, APPROVAL, PROCEED,
-BLAST_RADIUS).
+Inputs: the effect record, intended outcome, available simulation, autonomy level, and
+existing authorization. Output: proceed, simulate, defer, or refuse, with the record
+and evidence needed for a later decision.
 
-## The protocol (simulate → commit)
+`scripts/effect-broker <reversible|staged|irreversible> [--level <level>]` is a compact
+accelerator for the compensability and oversight portion of this record. It accepts
+three classes: reversible actions have a real local undo, staged actions have a
+meaningful preview and defined undo, and irreversible actions have no reliable undo.
+Levels are `autonomous`, `on-the-loop`, and `in-the-loop`, from least to most
+interactive oversight. The helper does not replace the other dimensions or validate
+authorization.
 
-- **reversible** is never gated. Do it at any autonomy level; a journal line is
-  optional.
-- **staged** dry-runs first, always. Record the plan or preview, check it against
-  intent, then commit with an idempotency key where the API supports one, so a
-  retry after a timeout is a no-op rather than a second charge, send, or deploy.
-  A human gates this only at `in-the-loop`.
-- **irreversible** — **stage a plan and get approval at every level, including `autonomous`.** It never auto-fires. The plan states what will happen, to what, and the blast radius; the commit uses an idempotency key and is recorded in the run journal for replay.
+## Protocol
 
-## Blast radius
+1. Observe or simulate first whenever a meaningful preview exists. Compare the result
+   with the intended outcome and declared blast radius.
+2. Require an idempotency or duplicate-prevention strategy when retries could repeat
+   the effect.
+3. Subject to the level disposition below, proceed only for actions inside the
+   authorized scope whose impact is genuinely recoverable.
+4. Record partial completion and the required compensating action plainly. Never claim
+   success from intent, a plan, or a local preparation step.
 
-The charter (mega-orchestration:autonomous-run) declares what a run may not touch.
-Enforcing it is your job, not the helper's: the helper prints
-`BLAST_RADIUS=caller-enforced-vs-charter` and does not read the charter. Refuse an
-action outside the charter's caps rather than asking for approval to exceed them.
+Level disposition remains explicit: a reversible action inside scope may proceed; a
+staged action always previews, requires human approval at `in-the-loop`, and may proceed
+within scope at other levels; an irreversible, poorly compensable, sensitive, or
+high-blast action requires approval at every level.
 
-## Honest failure reporting
+## Safety and oracle
 
-If a committed effect fails or partially applies, say so plainly in the journal and
-the run report: what succeeded, what did not, and whether a compensating action is
-needed. A half-applied irreversible effect is the case where honesty matters most.
-
-## Relationship to the guardrail hooks
-
-The `deny-destructive` PreToolUse hook is a thin, last-ditch tripwire for a few
-unambiguous local catastrophes, not the irreversibility layer. It runs through
-the native adapters on Claude Code and Codex; other harnesses receive no hook
-enforcement. This skill is the irreversibility layer, and it is portable: it
-works by declaration on every runtime, with no dependency on a hook firing. No
-agent message counts as human approval; where the harness does not enforce
-that, this skill's wording is the guarantee. A scheduled or cloud runner skips
-permission prompts entirely, so an irreversible action's approval gate must
-live in the run prompt itself; mega-orchestration:autonomous-run carries the
-full caveat.
+An approval is valid only when it covers the exact target, effect, environment, and
+scope. A chat inference, generic permission, or stale approval is not provenance. The
+oracle is the target system's readback or other observable result, plus the effect
+record. Command parsing and local hooks are optional tripwires, not authorization.

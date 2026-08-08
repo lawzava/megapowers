@@ -6,65 +6,32 @@ license: MIT
 
 # Verification Before Completion
 
-**Core principle:** Evidence before claims, always.
+**Core principle:** evidence before claims.
 
-This applies to the spirit of a completion claim, not just the exact wording. Rephrasing a success claim doesn't exempt it.
+For each claim, identify the oracle, run it fresh, read its complete result, and
+state only the status that result supports. A partial check, a linter, or
+confidence is not evidence for a broader claim. If the oracle fails, report the
+actual status and evidence instead of softening the claim. A bug regression test
+must also fail without the fix.
 
-## The Core Rule
+Keep implementation, local verification, and external verification distinct.
+A local test does not prove a deployment, external service, or user-visible
+result. Exercise the behavior through the interface a real user or caller uses,
+such as the deployed URL, published CLI, or public API, when that behavior is in
+scope.
 
-Make no completion claim without fresh verification evidence.
+For work with multiple acceptance criteria or external witnesses, copy each
+criterion verbatim into a map with its implementation target, local oracle,
+required external oracle, earned state, and evidence. For external proof,
+record the environment and correlation key at each cutpoint: caller request,
+service receipt and decision, target read or write, outward response, and
+user-visible result.
 
-If you haven't run the verification command in this message, you can't yet claim it passes.
+If a required tool, input, or environment is unavailable, disclose it. A
+fallback does not satisfy the original requirement until the requirement owner
+accepts it.
 
-## The Gate
-
-Before claiming any status or expressing satisfaction, work through these steps in order:
-
-1. **Identify:** What command proves this claim?
-2. **Run:** Execute the full command, fresh and complete.
-3. **Read:** The full output — check the exit code, count the failures.
-4. **Verify:** Does the output confirm the claim?
-   - If no: state the actual status, with evidence.
-   - If yes: state the claim, with evidence.
-5. **Then** make the claim.
-
-Each claim has its own oracle. Tests need the test run, a build needs the build command, a bug fix needs the original symptom exercised, a regression test must fail with the fix reverted, and an agent's success report needs independent verification of the actual changes. Confidence, a partial check, or a passing linter is not that oracle.
-
-## Earned State
-
-Every claim lands in one of three states. Claim only the highest one you earned:
-
-- **Implemented:** the requested change exists.
-- **Locally verified:** the canonical local oracle passes.
-- **Externally verified:** the real target environment and every required
-  normal-user, external-service, or database witness pass.
-
-A local test never silently earns external verification. For user-facing
-behavior, automated tests do not replace a normal-user witness: exercise the
-supported entry point with ordinary permissions and record the interaction, the
-visible result, and its provenance.
-
-## Acceptance Evidence Map
-
-Work with several acceptance criteria, or any criterion needing an external,
-UX, or database oracle, earns a written map instead of prose tracking:
-
-`criterion | implementation target | local oracle | external, UX, or database oracle | earned state | evidence`
-
-Copy each criterion verbatim; never weaken or paraphrase one. For external
-database-backed behavior, record each cutpoint separately: caller request,
-service receipt and decision, target-environment database write or read,
-outward response, and user-visible result, each carrying its environment and
-correlation or record key. A missing required cutpoint leaves external
-verification pending or blocked.
-
-A single-criterion local change does not need the table. It still needs the
-oracle, the output, and the honest state.
-
-## Unavailable Requirements
-
-If a required dependency, tool, or input is unavailable, say so explicitly — a completion claim that hides a missing requirement is a false claim. A workaround or fallback never silently satisfies the requirement: disclose the substitution and report the requirement itself as unmet (blocked or partial) until the human accepts the substitute.
-
-The gate holds before committing, opening a PR, marking a task done, moving to the next task, or delegating. Hedged wording ("should work now") signals a claim you have not yet earned the evidence for.
+The gate applies before a completion report, commit, pull request, handoff, or
+next task.
 
 Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

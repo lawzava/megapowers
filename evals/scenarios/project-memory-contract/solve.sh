@@ -15,6 +15,6 @@ export MEGAPOWERS_MEMORY_DIR="$PWD/.megapowers/memory"
   # discipline present in the skill?
   sk="$ROOT/plugins/megapowers/skills/project-memory/SKILL.md"
   grep -qi "Don't save" "$sk" && echo "DISCIPLINE_OK" || echo "DISCIPLINE_MISSING"
-  grep -qi "verify that still exists" "$sk" && echo "VERIFY_OK" || echo "VERIFY_MISSING"
+  grep -qi "verify it still exists" "$sk" && echo "VERIFY_OK" || echo "VERIFY_MISSING"
 } > out.txt 2>&1
 cat out.txt

@@ -66,11 +66,11 @@ shipped="$here/../delegates.toml"   # scripts/../delegates.toml
 . "$here/lib-toml.sh"
 
 usage() {
-  echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--author-vendor <vendor>]... [--author-model <id>]... [--author-provider <name>]... [--exclude <vendor|provider>]... [--list]" >&2
+  echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--author-vendor <vendor>]... [--author-model <id>]... [--author-provider <name>]... [--caller-model <id>]... [--caller-provider <name>]... [--caller-adapter <name>]... [--exclude <vendor|provider>]... [--list]" >&2
   echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --vendors | --where | --lead | --check" >&2
 }
 
-role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; vendors=0; cfg=""; mcfg=""; excludes=(); author_vendors=(); author_models=(); author_providers=(); caller_models=(); caller_providers=()
+role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; vendors=0; cfg=""; mcfg=""; excludes=(); author_vendors=(); author_models=(); author_providers=(); caller_models=(); caller_providers=(); caller_adapters=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
@@ -89,6 +89,8 @@ while [ $# -gt 0 ]; do
               caller_models+=("$2"); shift 2 ;;
     --caller-provider) [ $# -ge 2 ] || { echo "delegate-resolve: --caller-provider needs a provider name" >&2; usage; exit 2; }
               caller_providers+=("$2"); shift 2 ;;
+    --caller-adapter) [ $# -ge 2 ] || { echo "delegate-resolve: --caller-adapter needs a runtime adapter name" >&2; usage; exit 2; }
+              caller_adapters+=("$2"); shift 2 ;;
     --preset) [ $# -ge 2 ] || { echo "delegate-resolve: --preset needs a name" >&2; usage; exit 2; }
               preset="$2"; shift 2 ;;
     --list) list=1; shift ;;
@@ -298,6 +300,15 @@ provider_model() {  # $1=provider ; prints "model<TAB>tier"
   fi
 }
 
+# Model providers describe model/vendor identity. Runtime adapters describe how a
+# route launches. Catalogs that predate [adapters] remain provider-keyed.
+provider_adapter() { local a; a="$(cat_val "providers.$1" adapter)"; printf '%s\n' "${a:-$1}"; }
+adapter_exists() { cat_exists "adapters.$1"; }
+adapter_val() { # $1=provider $2=key
+  local a declared; declared="$(cat_val "providers.$1" adapter)"; a="${declared:-$1}"
+  if [ -n "$declared" ]; then cat_val "adapters.$a" "$2"; else cat_val "providers.$1" "$2"; fi
+}
+
 scale_list="$(cat_array tiers scale)"   # empty on v1 configs
 tier_index() { printf '%s\n' "$scale_list" | grep -nx -- "$1" | cut -d: -f1; }
 
@@ -500,6 +511,16 @@ for cp in ${caller_providers[@]+"${caller_providers[@]}"}; do
   }
   add_caller_set "$cp"
 done
+caller_adapter_declared=""
+for ca in ${caller_adapters[@]+"${caller_adapters[@]}"}; do
+  [ -n "$ca" ] || { echo "delegate-resolve: --caller-adapter cannot be empty" >&2; exit 2; }
+  adapter_exists "$ca" || { echo "delegate-resolve: --caller-adapter '$ca' has no [adapters.$ca] section" >&2; exit 2; }
+  if [ -n "$caller_adapter_declared" ] && [ "$caller_adapter_declared" != "$ca" ]; then
+    echo "delegate-resolve: the declared caller adapters differ, so they cannot describe one running session" >&2
+    exit 2
+  fi
+  caller_adapter_declared="$ca"
+done
 caller_candidates="$(dedupe_lines "$caller_candidates")"
 if [ -n "$caller_conflict" ]; then
   echo "delegate-resolve: the declared caller identities share no provider, so they cannot describe one running session" >&2
@@ -566,14 +587,24 @@ resolve_self_target_or_die() {  # $1=role ; sets self_target_out, or exits 2
 # Sets globals rather than printing: a caller would have to capture stdout in a
 # subshell, and the provenance would not survive it.
 set_running_provider() {  # $1=1 when the role is self-routed
+  if [ -n "$caller_adapter_declared" ]; then
+    running_p="$caller_declared"; running_adapter="$caller_adapter_declared"; caller_provenance="declared"; return 0
+  fi
   if [ -n "$caller_declared" ]; then
-    running_p="$caller_declared"; caller_provenance="declared"; return 0
+    running_p="$caller_declared"; running_adapter="$(provider_adapter "$running_p")"; caller_provenance="declared"; return 0
   fi
   # For a self role the author IS the caller, so an author declaration is a caller one.
   if [ "$1" -eq 1 ] && [ -n "$self_provider" ]; then
-    running_p="$self_provider"; caller_provenance="declared"; return 0
+    running_p="$self_provider"; running_adapter="$(provider_adapter "$running_p")"; caller_provenance="declared"; return 0
   fi
-  running_p="$(cat_val lead provider)"; caller_provenance="assumed-lead"
+  running_p="$(cat_val lead provider)"; running_adapter="$(provider_adapter "$running_p")"; caller_provenance="assumed-lead"
+}
+
+# A declared model provider proves the caller can execute that provider even when it
+# uses a BYO runtime adapter. An adapter names a launch surface, not a provider, so
+# sharing one never makes a different backend native.
+candidate_is_native() {  # $1=selected provider
+  [ -n "${running_p:-}" ] && [ "$1" = "$running_p" ]
 }
 
 # Reachability, shared by resolution and the --vendors probe. These two loops have
@@ -585,16 +616,18 @@ set_running_provider() {  # $1=1 when the role is self-routed
 # resolution treats a missing section as fatal and tracks "disabled" for its exit-4
 # contract, while the probes just skip. Returning a single boolean is what let these
 # semantics get redefined per loop in the first place.
-candidate_reachable() {  # $1=provider $2=running provider
-  local p="$1" rp="$2" en bin              # 0 usable, 2 no section, 3 disabled, 4 CLI absent
+candidate_reachable() {  # $1=provider; running provider comes from set_running_provider
+  local p="$1" en bin declared     # 0 usable, 2 provider absent, 3 disabled, 4 CLI absent, 5 adapter absent
   cat_exists "providers.$p" || return 2
+  declared="$(cat_val "providers.$p" adapter)"
+  [ -z "$declared" ] || adapter_exists "$declared" || return 5
   en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
   [ "$en" = "false" ] && return 3
   # `binary` is the CROSS-RUNTIME entry point, so it gates a cli dispatch only. A
   # candidate that IS the caller runs on the harness's own subagent surface, which is
   # present by definition; demanding its CLI would strand every BYO-model harness.
-  [ -n "$rp" ] && [ "$p" = "$rp" ] && return 0
-  bin="$(cat_val "providers.$p" binary)"
+  candidate_is_native "$p" && return 0
+  bin="$(adapter_val "$p" binary)"
   if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then return 4; fi
   return 0
 }
@@ -807,6 +840,10 @@ if [ "$check" -eq 1 ]; then
     fi
     ref="$(cat_val "providers.$p" reference)"
     if [ -n "$ref" ] && [ ! -f "$here/../$ref" ]; then note "provider '$p' reference file missing: $ref"; fi
+    pa="$(cat_val "providers.$p" adapter)"
+    if [ -n "$pa" ] && ! adapter_exists "$pa"; then
+      note "provider '$p' names missing runtime adapter '$pa'"
+    fi
     pe="$(cat_val "providers.$p" effort)"
     plist="$(cat_array "providers.$p" efforts)"
     if [ -n "$pe" ] && [ -n "$ce_scale" ]; then
@@ -863,7 +900,7 @@ if [ "$vendors" -eq 1 ]; then
     vr_floor="$(cat_val defaults floor)"
     vr_scale="$scale_list"
     vr_eff_scale="$(cat_array efforts scale)"
-    set_running_provider "$vr_role_is_self"; vr_running_p="$running_p"
+    set_running_provider "$vr_role_is_self"
     vr_floor_idx=""; vr_floor_eff_idx=""
     if [ -n "$vr_floor" ] && [ -n "$vr_scale" ]; then
       vr_floor_idx="$(tier_index "${vr_floor%%:*}")"
@@ -879,7 +916,7 @@ if [ "$vendors" -eq 1 ]; then
       # Exactly the reachability resolution uses, from one definition: this probe
       # decides whether a review can happen at all, so a route that resolves must not
       # disappear here, and one that cannot resolve must not be counted.
-      candidate_reachable "$p" "$vr_running_p" || continue
+      candidate_reachable "$p" || continue
       candidate_serves_role "$p" "$vr_req" "$vr_tier" "$vr_effort" \
         "$vr_floor_idx" "$vr_floor_eff_idx" "$vr_eff_scale" || continue
       v="$(cat_val "providers.$p" vendor)"
@@ -891,7 +928,9 @@ if [ "$vendors" -eq 1 ]; then
     [ -n "$p" ] || continue
     en="$(cat_val "providers.$p" enabled)"; en="${en:-true}"
     [ "$en" = "false" ] && continue
-    bin="$(cat_val "providers.$p" binary)"
+    declared="$(cat_val "providers.$p" adapter)"
+    [ -z "$declared" ] || adapter_exists "$declared" || continue
+    bin="$(adapter_val "$p" binary)"
     if [ -n "$bin" ] && ! command -v "$bin" >/dev/null 2>&1; then continue; fi
     v="$(cat_val "providers.$p" vendor)"
     [ -n "$v" ] && printf '%s\n' "$v"
@@ -1110,9 +1149,13 @@ while IFS= read -r p; do
   # Status 2 is handled BEFORE exclusion on purpose: a routed provider that has no
   # section is a broken table whether or not this call happens to exclude it, and
   # checking exclusion first would make that fatal depend on who the author is.
-  candidate_reachable "$p" "$running_p"; reach_st=$?
+  candidate_reachable "$p"; reach_st=$?
   if [ "$reach_st" -eq 2 ]; then
     echo "delegate-resolve: role '$role' routes to provider '$p', but no [providers.$p] section exists in ${layers[*]}" >&2
+    exit 2
+  fi
+  if [ "$reach_st" -eq 5 ]; then
+    echo "delegate-resolve: role '$role' provider '$p' names missing runtime adapter '$(cat_val "providers.$p" adapter)'" >&2
     exit 2
   fi
   if excluded "$p"; then only_disabled=0; continue; fi
@@ -1120,7 +1163,7 @@ while IFS= read -r p; do
   only_disabled=0
   [ "$reach_st" -eq 0 ] || continue                  # absent CLI on a cli route -> next
   candidate_native=0
-  if [ -n "$running_p" ] && [ "$p" = "$running_p" ]; then candidate_native=1; fi
+  candidate_is_native "$p" && candidate_native=1
   if [ -n "$req" ]; then
     caps="$(cat_array "providers.$p" capabilities)"
     capmiss=0
@@ -1228,9 +1271,15 @@ fi
 model="$selected_model"
 tier="$selected_tier"
 effort="$selected_effort"
-channel="$(cat_val "providers.$selected" channel)"
+adapter="$(provider_adapter "$selected")"
+if [ "$selected_native" -eq 1 ] && [ -n "$running_adapter" ]; then adapter="$running_adapter"; fi
+channel="$(adapter_val "$selected" channel)"
 vendor="$(cat_val "providers.$selected" vendor)"
-binv="$(cat_val "providers.$selected" binary)"
+binv="$(adapter_val "$selected" binary)"
+if [ "$selected_native" -eq 1 ] && adapter_exists "$adapter"; then
+  channel="$(cat_val "adapters.$adapter" channel)"
+  binv="$(cat_val "adapters.$adapter" binary)"
+fi
 notes="$(cat_val "providers.$selected" notes)"
 
 # How to reach the resolved provider, which is not the same question as which
@@ -1260,7 +1309,7 @@ if [ -n "$independence" ]; then
     while IFS= read -r ap_; do
       [ -n "$ap_" ] || continue
       excluded "$ap_" && continue
-      candidate_reachable "$ap_" "$running_p" || continue
+      candidate_reachable "$ap_" || continue
       candidate_serves_role "$ap_" "$req" "$role_tier" "$role_effort" \
         "$floor_idx" "$alt_floor_eff_idx" "$effort_scale" || continue
       av_="$(cat_val "providers.$ap_" vendor)"
@@ -1271,8 +1320,10 @@ fi
 
 echo "ROLE=$role"
 echo "PROVIDER=$selected"
+echo "ADAPTER=$adapter"
 echo "DISPATCH=$dispatch"
 echo "CALLER=$caller_provenance"
+[ -n "${running_adapter:-}" ] && echo "CALLER_ADAPTER=$running_adapter"
 echo "MODEL=${model:-}"
 [ -n "$tier" ] && echo "TIER=$tier"
 [ -n "$effort" ] && echo "EFFORT=$effort"

@@ -14,10 +14,8 @@ verification. The default process executes tasks sequentially on one branch.
 Recursive coordinator mode is an explicit exception for independent tasks with
 disjoint ownership.
 
-**Why subagents:** each task gets deliberately fresh context that you construct.
-Some harnesses can inherit or fork parent history, so request a fresh context
-explicitly for implementers and reviewers. Hand each one exactly what its task
-needs, which keeps it focused and preserves your own context for coordination.
+**Why subagents:** each task gets a narrowly scoped brief. Hand each worker the
+requirements, owned paths, and verification needed for that task.
 
 **Git authorization:** selecting SDD never grants permission to commit, push,
 merge, or open a pull request. Preserve the user's and repository's existing
@@ -27,11 +25,20 @@ children never perform Git index or ref operations.
 
 **Continuous execution:** do not check in with your human partner between tasks. Stop only for a BLOCKED status you cannot resolve, ambiguity that prevents progress, or completion of all tasks. Narrate at most one short line between tool calls; the ledger and tool results carry the record.
 
-**Repository-wide verification is the lead's, once, at the boundary.** Give each implementer the focused suite for the files it owns, never the whole-repository script. Parallel dispatch multiplies that script by the number of writers, and a whole-repository run is usually the most expensive command in the tree. Several at once can exhaust the machine and take the agents with them, which is silent: a killed subagent leaves a stale transcript and no status, so the lead learns about it by noticing a timestamp. The lead runs the repository suite after the tree is quiescent, and treats a self-reported pass as unverified either way.
+**Repository-wide verification is the lead's, once, at the boundary.** Give
+each implementer the focused suite for the files it owns, never the
+whole-repository script. Concurrent whole-repository runs can exhaust the
+machine and terminate workers without a useful result. The lead runs the
+repository suite after the tree is quiescent, and treats a self-reported pass
+as unverified either way.
 
 ## When to Use
 
-Use this skill when a written plan exists, its tasks are mostly independent, and subagents are available. Use the ordinary sequential process when per-task commits are acceptable. Select recursive coordinator mode only when the harness supports nested subagents and every concurrent writer can receive disjoint ownership. With no plan, tightly coupled tasks, or no safe ownership split, execute manually or use megapowers:executing-plans.
+Use this skill when a written plan exists, its tasks are mostly independent, and
+subagents are available. Use the ordinary sequential process by default.
+Select recursive coordinator mode only when every concurrent writer can receive
+disjoint ownership. With no plan, tightly coupled tasks, or no safe ownership
+split, execute manually or use megapowers:executing-plans.
 
 For deterministic mechanical changes that share one oracle, use bulk
 mechanical mode: one owner, one bounded batch, one focused verification set,
@@ -40,12 +47,15 @@ file.
 
 ## Recursive Coordinator Mode
 
-Recursive coordinator mode is guidance for native Codex and Claude Code subagents, not an execution runtime. Select it explicitly when a plan has several independent roots and coordinators can assign exclusive paths before dispatch. The ordinary sequential process below remains the fallback.
+Recursive coordinator mode is a shared-checkout exception, not a separate
+execution runtime. Select it explicitly when a plan has several independent
+roots and coordinators can assign exclusive paths before dispatch. The ordinary
+sequential process remains the fallback.
 
 All writers share the current checkout; recursive mode creates no worktrees. Each child receives exclusive ownership of exact files or non-overlapping directory roots. A coordinator may subdivide only the ownership it inherited. Overlapping ownership, shared interface changes, and dependencies stay sequential. If independence cannot be stated in one concise ownership sentence, keep the work under one writer.
 
-Before any recursive dispatch, run
-`scripts/ownership-preflight PLAN_FILE`. Do not dispatch if it reports missing,
+Before any recursive dispatch, resolve `scripts/ownership-preflight` from this
+skill's installed directory and run it with `PLAN_FILE`. Do not dispatch if it reports missing,
 ambiguous, globbed, duplicated, or parent-child-overlapping ownership among
 parallel tasks. Correct the plan or execute the affected work sequentially.
 The executable parser contract is
@@ -53,13 +63,16 @@ The executable parser contract is
 
 The lead launches one native coordinator per independent root. A coordinator may launch native children for independent pieces of its own scope. It waits for every required child, reviews the combined diff, resolves integration issues within its ownership, runs the required verification, and returns one synthesized result to its parent. The lead coordinates only its direct children. Descendants report to the coordinator that spawned them.
 
-In Codex, use native nested subagents with `fork_turns = "none"` for independent children. In Claude Code, use nested Agent calls; do not use agent teams because teams cannot nest. Respect the harness capacity and depth visible in the session. When capacity is unavailable, continue inline or serially.
+Use the platform's supported nested delegation mechanism. Respect available
+capacity and depth. When capacity is unavailable, continue inline or serially.
 
 Each child brief contains the assignment, done criteria, owned paths, relevant interfaces and constraints, required verification, whether it may subdivide, and the requirement to wait for its direct children and return one synthesized subtree result. Do not copy the parent transcript, full plan, repository tests, or descendant chatter into the brief.
 
 Separate top-level sessions may share the checkout only when their exclusive ownership was partitioned before launch. There is no cross-session lock or automatic conflict resolution. Concurrent children do not run Git index or ref mutations. They do not commit, merge, rebase, reset, switch branches, update refs, push, or clean the checkout. Only the top-level lead performs any authorized Git action, after its direct children return and repository policy permits it.
 
-Use native done, blocked, and needs-context results. The parent decides whether to add context, retry with a fresh child, reduce the task, continue inline, or surface the blocker. Recursive mode adds no separate recovery machinery.
+Use done, blocked, and needs-context results. The parent decides whether to add
+information, retry, reduce the task, continue inline, or surface the blocker.
+Recursive mode adds no separate recovery machinery.
 
 ## The Process
 
@@ -88,20 +101,21 @@ Per task, in order:
    Cap fix and re-review at three cycles per artifact. After the third unresolved
    verdict, mark the task blocked and surface the remaining findings. Never loop
    until clean without a stopping rule.
-4. Mark the task complete in the plan or ledger, whichever is the declared
-   progress surface.
+4. Append the completion line to the ledger (see Durable Progress), and check
+   the plan box when the plan carries one.
 
 After all tasks, run the branch-boundary verification. Medium and high-risk
 branches get one whole-branch review. High-risk billing, auth, concurrency,
-security, schema, data, or external-side-effect changes also get an
-author-vendor-excluded pass through the structured delegate launcher. Do not
-repeat a review already performed on the identical complete diff.
+security, schema, data, or external-side-effect changes also get an independent
+review through `mega-orchestration:cross-model-verification` when available;
+otherwise use a fresh reviewer that did not author the change. Do not repeat a
+review already performed on the identical complete diff.
 
 ## Dispatch Reference
 
-[dispatch-reference.md](dispatch-reference.md) carries the per-role model
-selection rules, what a dispatch prompt contains for reviewers and for fixers,
-the file handoff contract (`scripts/task-brief`, `scripts/review-package`,
+[dispatch-reference.md](dispatch-reference.md) carries what a dispatch prompt
+contains for reviewers and fixers, the file handoff contract
+(`scripts/task-brief`, `scripts/review-package`,
 `scripts/sdd-workspace`, one report channel per delegate), and a compressed
 example of one task's full loop. Read it before the first dispatch.
 
@@ -109,8 +123,11 @@ example of one task's full loop. Read it before the first dispatch.
 
 - **DONE:** proceed to review, using the BASE you recorded before dispatch, never `HEAD~1`, which silently drops all but the last commit of a multi-commit task.
 - **DONE_WITH_CONCERNS:** read the concerns first. Correctness or scope concerns get addressed before review; observations get noted and carried forward.
-- **NEEDS_CONTEXT:** on a harness with resumable subagents (Claude Code's SendMessage), resume the same implementer with the missing context; it keeps its full history. A fix after review still gets a fresh subagent, never the spent implementer.
-- **BLOCKED:** something must change before retry: more context, a more capable model, a smaller task, or escalation to the human if the plan itself is wrong. Never ignore the escalation or force the same model to retry unchanged.
+- **NEEDS_CONTEXT:** provide the missing information or reduce the task. A fix
+  after review gets an independent implementation pass.
+- **BLOCKED:** something must change before retry: more information, a smaller
+  task, or escalation to the human if the plan itself is wrong. Never retry
+  unchanged.
 
 ## Handling Reviewer Cannot-Verify Items
 
@@ -118,17 +135,16 @@ The reviewer may report items it cannot verify from the diff, requirements that 
 
 ## Durable Progress
 
-Conversation memory does not survive compaction, and a controller that loses its place re-dispatches completed tasks. The ledger at `.megapowers/sdd/progress.md` under the repo root is the recovery map.
-
-Roll the controller into a fresh context after 8 to 10 completed tasks, or
-earlier when another task would cross 80 percent of the context or cache
-budget. Persist the ledger first. Reserve the final 20 percent for integration,
-review, verification, and synthesis.
+The ledger at `.megapowers/sdd/progress.md` under the repo root is the recovery
+map. Persist it before a handoff or whenever the task state would otherwise be
+lost.
 
 - At skill start, read the ledger. Tasks marked complete there are done; never re-dispatch them. Resume at the first task not marked complete.
 - Before each dispatch, append `Task N: base <sha7> (in progress)` with the current short HEAD. The review step needs this exact BASE, and it otherwise lives only in volatile conversation memory.
-- On a clean review, append `Task N: complete (commits <base7>..<head7>, review clean)`, superseding the in-progress line.
-- On resume, an in-progress line with no matching complete line marks the task to re-check against `git log`. After compaction, trust the ledger and git history over your own recollection. `git clean -fdx` destroys the ledger (it is git-ignored scratch); if that happens, recover from `git log`.
+- On a clean review, append `Task N: complete (review clean)`, and record the
+  reviewed package path and commit range when commits exist.
+- On resume, an in-progress line with no matching complete line marks the task
+  for a complete worktree-state review. Trust the ledger and current Git state.
 
 ## Prompt Templates
 
@@ -142,6 +158,7 @@ review, verification, and synthesis.
 
 **Subagents should use** megapowers:test-driven-development for each task.
 
-**Alternative workflow:** megapowers:executing-plans for inline single-writer execution when subagents are unavailable or per-task commits do not fit.
+**Alternative workflow:** megapowers:executing-plans for inline single-writer
+execution when subagents are unavailable.
 
 Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

@@ -137,7 +137,8 @@ https://github.com/anthropics/skills.
 - Rewritten to this repo's register and renamed to avoid colliding with the
   upstream skill in shared `.agents/skills` namespaces; the calibration
   section carries a review date. This entry records the provenance and the
-  changes.
+  changes. The complete terms travel with the skill at
+  `plugins/mega-frontend/skills/designing-frontends/LICENSE.txt`.
 
 ## skill-creator (description-optimization guidance in `megapowers`)
 

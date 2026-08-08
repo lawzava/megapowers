@@ -92,20 +92,23 @@ grep -qF 'route to that provider unless you are already it' <<< "$(folded "$CONT
   ok "dispatch-contract.md keeps the per-caller reading rule for role defaults" ||
   bad "dispatch-contract.md lost the 'unless you are already it' reading rule"
 
-# The only statement of what the enforcement hook does when a role cannot reach
-# two vendors. Without it the fewer-than-two case reads as a dead end.
-grep -qF 'Stop-hook nudge' "$SKILL" && grep -qF 'human sign-off' "$SKILL" &&
-  ok "SKILL.md keeps what the Stop-hook nudge does on a single-vendor role" ||
-  bad "SKILL.md lost the Stop-hook nudge behaviour on a single-vendor role"
+# Claude Code's hook behavior belongs in its provider adapter, not the portable
+# skill body. The fewer-than-two rule itself remains in the body.
+if ! grep -qF 'Stop-hook nudge' "$SKILL" &&
+   grep -qF 'Stop-hook nudge' "$CLAUDE" &&
+   grep -qF 'human sign-off' "$CLAUDE"; then
+  ok "Claude-specific Stop-hook behavior stays in the Claude adapter"
+else
+  bad "Stop-hook behavior is missing or leaked into the portable skill body"
+fi
 
 # --- one-hop pointers -------------------------------------------------------
-# visual_verify needs a model route AND a driver, and resolution fails without
-# both. Two hops to the driver contract is one hop past a partial read.
-link="$(grep -oE '\(\.\./\.\./agents/browser-delegate\.md\)' "$SKILL" | head -1)"
-if [ -n "$link" ] && [ -f "$ROOT/plugins/mega-orchestration/agents/browser-delegate.md" ]; then
-  ok "SKILL.md reaches the browser-delegate driver contract in one hop"
+# visual_verify needs a model route AND a self-contained driver contract.
+link="$(grep -oE '\(references/providers/browser\.md\)' "$SKILL" | head -1)"
+if [ -n "$link" ] && [ -f "$SKILL_DIR/references/providers/browser.md" ]; then
+  ok "SKILL.md reaches the portable browser driver contract in one hop"
 else
-  bad "SKILL.md has no resolving one-hop link to agents/browser-delegate.md"
+  bad "SKILL.md has no resolving one-hop link to the portable browser contract"
 fi
 
 # --- provenance -------------------------------------------------------------

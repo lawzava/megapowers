@@ -6,6 +6,7 @@ script="$ROOT/scripts/check-freshness.sh"
 workflow="$ROOT/.github/workflows/freshness.yml"
 
 grep -q '^DEFAULT_MAX_AGE=30$' "$script"
+grep -q '^# validate.sh calls this with a huge --max-age-days as a format guard:' "$script"
 grep -q "cron: '17 6 \\* \\* 1'" "$workflow"
 grep -q 'reviewed within 30 days' "$workflow"
 

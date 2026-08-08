@@ -23,5 +23,4 @@ the rendered pixels, so verify in the mode the lead expects.
 
 Every visual claim (pass or fail) carries a screenshot under
 `.megapowers/evidence/`, and the lead re-reads the images before accepting the
-claim; a text-only visual verdict is not evidence. The full driver procedure is
-the browser-delegate agent (../../../../agents/browser-delegate.md).
+claim; a text-only visual verdict is not evidence.

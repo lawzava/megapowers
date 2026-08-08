@@ -9,11 +9,8 @@ license: MIT
 Reduce uncertainty until the work is ready for design or planning. Wayfinding
 is discovery and decision resolution, not delivery.
 
-## Invocation boundary
-
-On Codex, `agents/openai.yaml` disables implicit invocation: invoke
-`$wayfinding` explicitly. Other harnesses consume the portable frontmatter and
-may still invoke this skill implicitly. The explicit-only policy is Codex-only.
+Runtime invocation metadata stays outside this portable body in an
+[adapter sidecar](agents/openai.yaml).
 
 ## Local contract
 
@@ -42,19 +39,23 @@ without a tracker.
 4. Update the map after each decision: propagate consequences, revise fog and
    dependencies, then update the current frontier.
 
-Never implement, execute a plan, start an autonomous run, or automatically
-commit while wayfinding.
-
 ## Stop and hand off
 
 - **Spec-ready:** the outcome, constraints, behavior, and success criteria can
   be designed without inventing missing facts. Hand off to
-  `megapowers:brainstorming`.
+  `megapowers:brainstorming` when installed.
 - **Plan-ready:** plan-ready is valid only when an approved design already
   exists and the remaining uncertainty no longer prevents honest
-  decomposition. Hand off to `megapowers:writing-plans`.
+  decomposition. Hand off to `megapowers:writing-plans` when installed.
 - **Blocked:** name the missing external evidence, its owner, and what would
   unblock the current frontier. Leave the map ready to resume.
 
 These are terminal states. Do not hand directly to implementation or an
 autonomous run.
+
+## Safety and oracle
+
+The readiness oracle is the current map plus one decision file for every
+resolved decision. A handoff with unresolved named decisions is not spec-ready
+or plan-ready. Do not implement, execute a plan, start an autonomous run, or
+automatically commit while wayfinding.

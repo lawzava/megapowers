@@ -1,6 +1,11 @@
-# Fiber middleware baseline (perf + security out of the box)
+# Fiber v3 middleware baseline
 
-Wire these in order on every app. CORS is explicit origins, never `*`.
+Verified against Fiber v3 documentation on 2026-08-08. Recheck
+[current Fiber documentation](https://docs.gofiber.io/) before adopting this
+recipe.
+
+Use only when Fiber v3 is an intentional framework choice. Configure CORS for
+the application's known browser origins.
 
 ```go
 app.Use(recover.New())
@@ -9,7 +14,7 @@ app.Use(logger.New())                              // early: a request rejected 
                                                    // a later middleware (429, CORS)
                                                    // still gets logged
 app.Use(helmet.New())                              // security headers
-app.Use(cors.New(cors.Config{AllowOrigins: origins})) // explicit, not "*"
+app.Use(cors.New(cors.Config{AllowOrigins: origins}))
 app.Use(compress.New())
 app.Use(etag.New())
 app.Use(limiter.New(limiter.Config{               // explicit budget — the zero
@@ -18,36 +23,35 @@ app.Use(limiter.New(limiter.Config{               // explicit budget — the zer
 }))
 ```
 
-The limiter keys on `c.IP()` by default. Behind a reverse proxy every request
-arrives from the proxy's IP, so **all users share one bucket** unless you make
-Fiber trust the forwarded client IP. Set that on the app config, not the
-middleware:
+The limiter keys on `c.IP()` by default. Behind a reverse proxy, configure only
+proxies you control before reading forwarded client IPs:
 
 ```go
 app := fiber.New(fiber.Config{
-    ProxyHeader:             fiber.HeaderXForwardedFor,
-    EnableTrustedProxyCheck: true,
-    TrustedProxies:          []string{"10.0.0.0/8"}, // your proxy's CIDR
+    TrustProxy: true,
+    TrustProxyConfig: fiber.TrustProxyConfig{
+        Proxies: []string{"10.0.0.0/8"}, // your proxy's CIDR
+    },
+    ProxyHeader: fiber.HeaderXForwardedFor,
 })
 ```
 
-Only enable this when you actually sit behind a trusted proxy. Trusting
-`X-Forwarded-For` from untrusted clients lets them spoof their IP and evade the
+Without trusted-proxy configuration, `c.IP()` uses the remote TCP IP. Trusting
+uncontrolled `X-Forwarded-For` lets clients spoof their IP and evade the
 limiter.
 
-**Do not put `cache.New()` in the global chain.** Fiber's cache keys on request
-path by default, with no user/session in the key, so on an app with auth + SSR it
-serves one user's rendered `GET /dashboard` to the next user for the whole TTL: a
-cross-user data leak. Response-cache only *explicitly public, non-personalized* routes,
-and only with a key that includes everything that varies the response:
+**Do not put `cache.New()` in the global chain.** Fiber v3's default key uses
+the HTTP method, path, canonical query, and selected representation headers. It
+does not include cookies, so response-cache only *explicitly public,
+non-personalized* routes. Add cookie keying only when the route is designed for
+it, never as a way to cache authenticated pages:
 
 ```go
 public := app.Group("/assets") // or a public, auth-free route group
 public.Use(cache.New(cache.Config{
-    Expiration:   10 * time.Minute,
-    CacheControl: true,
-    // KeyGenerator MUST include anything that changes the body (path is not enough
-    // once cookies/headers/query vary the response). Never mount this on authed routes.
+    Expiration: 10 * time.Minute,
+    // v3 emits Cache-Control by default. Set DisableCacheControl only when
+    // another layer owns that header.
 }))
 ```
 For authenticated pages, rely on `etag` + per-handler `Cache-Control` instead of a

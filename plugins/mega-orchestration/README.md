@@ -15,7 +15,8 @@ config file, so swapping a backend is an edit, not a rewrite.
   decisions, or unclear sequencing prevents an honest spec or plan. It keeps a
   local uncertainty map and resolves one decision at a time, without required
   tracker or commit behavior. Codex invocation is explicit-only through the
-  skill's `agents/openai.yaml`; other harnesses may still invoke it implicitly.
+  skill's [Codex metadata](skills/wayfinding/agents/openai.yaml); other harnesses
+  may still invoke it implicitly.
 - `multi-agent-delegation`: when and how the lead (the agent session you are
   talking to, which orchestrates and owns integration) hands work to a
   delegate (a separately invoked model or CLI that returns results), plus
@@ -55,8 +56,9 @@ directory) for backend and model choices.
 | Visual / browser | codex (frontier tier, native computer use) | UI work, browser-driven checks, end-to-end testing |
 | Visual verification | codex (frontier tier) + `playwright-cli` driver | Independent cross-vendor judgment of captured UI/UX evidence |
 
-The shipped catalog leads with claude. Small implementation is caller-bound:
-Claude gets Sonnet and Codex gets Terra without crossing runtimes. Independent
+The shipped catalog's lead is a legacy fallback, not a global runtime requirement.
+Small implementation is caller-bound when the caller declares its runtime adapter.
+Independent
 roles (plan review, code review, visual verification, verify, judge, council
 member) resolve relative to the artifact's author, not to this table: an
 artifact codex wrote sends its own review back to claude through the
@@ -81,9 +83,8 @@ changing project defaults. `scripts/delegate-resolve` resolves it executably;
 
 - Roles route per `[roles]` through a channel that can honor the resolved
   provider, model, and effort.
-  Native v2 can honor only the current session model and effort, so use it for
-  same-session Codex fan-out; use a role-aware
-  or non-interactive Codex channel when those fields differ. Other providers
+  Codex supports agent defaults plus explicit model and effort spawn overrides;
+  use the resolved route when the active surface exposes them. Other providers
   use their first-party plugin, CLI, SDK, or MCP channel (see
   `references/providers/`).
 - Visual verification role: `playwright-cli` plus a vision-capable model to read

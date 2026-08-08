@@ -11,11 +11,9 @@ This is the portable subset of current OpenAI and Anthropic guidance. Use the li
 
 Agents discover skills from frontmatter metadata, load `SKILL.md` when selected, then read references or run scripts only when needed.
 
-Metadata is the scarce layer. Names and descriptions compete with the system prompt,
-conversation, and other installed skills. Codex caps its initial skill list at 2
-percent of the context window or 8,000 characters when the context size is unknown.
-It shortens descriptions first and may omit skills after the cap. Claude also keeps
-model invocable skill descriptions in context.
+Metadata is the scarce layer. Names and descriptions compete with the system
+prompt, conversation, and other installed skills. Keep descriptions concise and
+specific; different environments may impose different discovery limits.
 
 The body has no startup cost, but once loaded it remains in the conversation.
 References and scripts should keep optional detail out of the body.

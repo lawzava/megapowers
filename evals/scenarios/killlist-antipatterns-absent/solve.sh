@@ -33,7 +33,7 @@ present() { if grep -qE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "BA
   # brainstorming: the unconditional per-section ask is gone
   absent '^- Ask after each section whether it looks right so far$' "$S/brainstorming/SKILL.md" "brainstorming: no unconditional per-section ask"
   # replacements present
-  present 'opts into per-task commits'              "$S/writing-plans/SKILL.md"       "writing-plans: discloses commit cadence"
+  present 'user and repository.*authoriz'           "$S/writing-plans/SKILL.md"       "writing-plans: commits need existing authorization"
   present 'Confirm sections proportionally'         "$S/brainstorming/SKILL.md"       "brainstorming: proportional section confirm"
   # validator: tracked files only, no undeclared rg, and one source of truth for
   # the SessionStart payload transformation
@@ -46,7 +46,8 @@ present() { if grep -qE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "BA
   if [ "$(grep -c 'bash evals/run-all.sh' "$CI")" -eq 1 ]; then echo "OK  ci: eval suite runs once"; else echo "BAD ci: eval suite runs once"; fi
   absent 'Pi `references/pi-tools.md`'               "$U" "using-megapowers: no undeclared Pi harness"
   absent 'context7 before wiring'                    "$G" "greenfield-go: Context7 is not mandatory"
-  present 'if (it is )?installed'                    "$G" "greenfield-go: optional docs tooling is explicit"
+  absent 'optional documentation tooling'            "$G" "greenfield-go: no vague optional docs integration"
+  present 'current official documentation'           "$G" "greenfield-go: official docs remain the dependency authority"
   absent 'check-description-freeze\.sh'             "$WS1" "writing-skills: no dead freeze enforcement claim"
   absent 'check-description-freeze\.sh'             "$WS2" "de-prescription: no dead freeze enforcement claim"
   absent 'Everything executable is plain bash|no runtime' "$README" "README: executable runtime claim is accurate"
@@ -59,8 +60,7 @@ present() { if grep -qE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "BA
   absent 'Stop hooks \(Claude Code only\)'          "$ORCH_README" "orchestration: Stop hook scope is current"
   present 'delegate-nudge.*Claude Code and Codex'    "$ORCH_README" "orchestration: Codex nudge disclosed"
   absent 'codex-hooks\.json'                        "$CODEX_GUARD" "guard adapter: no obsolete manual wiring"
-  absent 'PreToolUse hook \(Claude Code only\)'     "$EFFECT" "effect broker: guard is not mislabeled Claude-only"
-  present 'Claude Code and Codex'                    "$EFFECT" "effect broker: guard adapter scope is current"
+  present 'hooks are optional tripwires, not authorization' "$EFFECT" "effect broker: hooks are tripwires, not authority"
   present 'outer workflow once'                     "$U" "workflow: one outer announcement"
   absent 'For every skill you invoke: announce'     "$U" "workflow: no per-skill announcement ritual"
   absent 'make a todo per checklist item'           "$U" "workflow: no checklist todo duplication"
@@ -71,17 +71,19 @@ present() { if grep -qE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "BA
   present 'exact line ranges only'                  "$S/writing-plans/plan-format.md" "plans: detail only when subtle"
   present 'Low-risk|Low risk'                       "$S/requesting-code-review/SKILL.md" "review: proportional low-risk path"
   present 'fix and re-review at three cycles'        "$S/subagent-driven-development/SKILL.md" "review: bounded cycle cap"
-  present '8 to 10 completed tasks'                 "$S/subagent-driven-development/SKILL.md" "context: controller rollover"
-  present 'final 20 percent'                        "$S/subagent-driven-development/SKILL.md" "context: synthesis reserve"
+  present 'ledger.*recovery'                        "$S/subagent-driven-development/SKILL.md" "context: durable progress ledger"
+  present 'branch-boundary verification'            "$S/subagent-driven-development/SKILL.md" "context: branch verification retained"
+  present 'whole-branch review'                     "$S/subagent-driven-development/SKILL.md" "context: final review retained"
   present 'one report channel'                      "$S/subagent-driven-development/dispatch-reference.md" "delegation: single report channel"
   present 'mechanical mode: one owner'              "$S/subagent-driven-development/SKILL.md" "delegation: bulk mechanical mode"
   present 'already stated the destination'          "$S/finishing-a-development-branch/SKILL.md" "finish: explicit intent bypasses menu"
   present 'Do not poll unchanged state'             "$ORCH" "monitoring: transition driven"
   present 'at most three turns'                     "$ORCH" "context: bounded fork inheritance"
-  present 'Autonomous execution chooses inline work' "$AUTO" "autonomy: chooses executor proportionally"
+  present 'frozen goal'                              "$AUTO" "autonomy: frozen run contract"
+  present 'append-only journal'                      "$AUTO" "autonomy: durable run record"
   # Either phrasing satisfies this: the rule is that selecting a workflow confers
   # no git authority, and 4a9bea0 restated it without changing it. The guard is on
   # the rule surviving, not on one sentence surviving.
-  present 'never grants permission to commit|grants no authorization of its own' "$AUTO" "git: workflow is not authorization"
+  present 'oversight cadence, never permission|not.*authorization' "$AUTO" "git: workflow is not authorization"
 } >> "$report"
 cat "$report"

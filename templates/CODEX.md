@@ -65,9 +65,9 @@ integration. Delegate narrow, well-specified, testable work.
 
 You lead in your own model space. `small_impl` resolves to `self`, your own
 provider, so ordinary delegated implementation makes no third-party call.
-Identify yourself with `--author-model <your model id>` and let the resolver
-derive the vendor rather than hardcoding one. Declaring yourself is safe on every
-call here: author exclusion applies only to roles carrying an `[independence]`
+Declare the running runtime with `--caller-model <your model id>` and
+`--caller-adapter codex`. `--author-*` identifies the artifact author, not the
+session. Author exclusion applies only to roles carrying an `[independence]`
 entry. (Unconditional exclusion applies only to a legacy config with neither an
 `[independence]` section nor any unshadowed `self` route; the shipped one has the
 section.)
@@ -79,14 +79,12 @@ for it rather than a `codex exec` call back into yourself; `CHANNEL` and `BINARY
 apply to `DISPATCH=cli`, where the route crosses to another runtime.
 
 `--author-*` says who wrote the artifact and drives exclusion. `--caller-model`
-says who is RUNNING and drives native dispatch only, so it never affects
+and `--caller-adapter` say who is RUNNING and drive native dispatch only, so they never affect
 independence. Pass it when reviewing someone else's work.
 
-- Same-vendor fan-out is parallelism, not independence. V2 is same-model
-  context sharding; its spawn surface selects no role, model, or effort per
-  worker. Use `fork_turns = "none"` and a self-contained brief.
-- For a named or cheaper Codex worker, use a separate role-aware surface or a
-  bounded `codex exec` run.
+- Same-vendor fan-out is parallelism, not independence. Use `fork_turns = "none"`
+  and a self-contained brief. Set explicit model and effort spawn overrides when
+  the active Codex version exposes them.
 - Cross-vendor independence (plan_review, code_review, verify, judge,
   council_member): `skills/multi-agent-delegation/scripts/delegate-run --role
   <role> --author-vendor <vendor> --artifact <worktree|file> --claim <text>`.

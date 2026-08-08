@@ -38,10 +38,11 @@ everything under it.
 ## Channels
 
 - Inside Codex: native subagents; spawn directly when same-model parallelism
-  helps. Native v2 uses the current session model and effort, and
-  `fork_turns = "none"` supplies fresh transcript context without changing
-  either. If the resolved route requires a different Codex model or effort, use
-  a role-aware surface or bounded `codex exec` run instead.
+  helps. The current agent configuration supports model and reasoning-effort
+  defaults plus explicit spawn overrides. Set them from the resolved route when
+  the native spawn surface exposes them; `fork_turns = "none"` supplies fresh
+  transcript context. See the current Codex subagent configuration docs before
+  relying on a version-specific field name.
 - From Claude Code: prefer OpenAI's first-party
   [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc). Its
   `/codex:review`, `/codex:adversarial-review`, `/codex:rescue`, and

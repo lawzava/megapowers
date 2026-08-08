@@ -1,0 +1,21 @@
+# study<TAB>skill. Each row is a manually maintained evidence association, not
+# derived proof that an oracle scores every behavior of the named skill.
+process-behavior	test-driven-development
+process-behavior	verification-before-completion
+process-behavior	systematic-debugging
+process-behavior	effect-broker
+process-behavior	brainstorming
+process-behavior	using-git-worktrees
+gauntlet	test-driven-development
+gauntlet	verification-before-completion
+gauntlet	using-git-worktrees
+autonomy-run	autonomous-run
+install-smoke	test-driven-development
+trigger-recall	test-driven-development
+trigger-recall	systematic-debugging
+trigger-recall	brainstorming
+trigger-recall	writing-plans
+trigger-recall	autonomous-run
+trigger-recall	cross-model-verification
+trigger-recall	best-of-n
+trigger-recall	orchestrating
