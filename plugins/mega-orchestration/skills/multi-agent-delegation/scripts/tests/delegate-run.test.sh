@@ -2722,12 +2722,32 @@ if [ "${1:-}" = "exec" ]; then
     echo "ERROR: Permission denied (os error 13) reading auth.json" >&2
     exit 1
   fi
-  out=""
+  out="" workdir=""
   while [ $# -gt 0 ]; do
-    [ "$1" = "--output-last-message" ] && out="$2"
-    shift
+    case "$1" in
+      --output-last-message) out="$2"; shift 2 ;;
+      -C) workdir="$2"; shift 2 ;;
+      *) shift ;;
+    esac
   done
-  jq -cn '{verdict:"needs_attention",findings:[],next_steps:[],evidence:{commands:["git diff HEAD"],screenshots:[]}}' > "$out"
+  if [ -n "${FAKE_CODEX_OMITTED_PROBE:-}" ]; then
+    : > "$FAKE_CODEX_OMITTED_PROBE"
+    if [ -n "$workdir" ] && [ -f "$workdir/review-package.txt" ]; then
+      sed -n '/^## Files omitted from this package$/,$p' "$workdir/review-package.txt" |
+        sed -n 's/^  snapshot: //p' |
+        while IFS= read -r omitted_path; do
+          if [ -f "$workdir/$omitted_path" ]; then
+            printf 'READABLE %s\n' "$omitted_path" >> "$FAKE_CODEX_OMITTED_PROBE"
+          else
+            printf 'MISSING %s\n' "$omitted_path" >> "$FAKE_CODEX_OMITTED_PROBE"
+          fi
+        done
+    else
+      printf 'MISSING review-package.txt under %s\n' "$workdir" >> "$FAKE_CODEX_OMITTED_PROBE"
+    fi
+  fi
+  jq -cn --arg verdict "${FAKE_CODEX_VERDICT:-needs_attention}" \
+    '{verdict:$verdict,findings:[],next_steps:[],evidence:{commands:["git diff HEAD"],screenshots:[]}}' > "$out"
   exit 0
 fi
 exit 0
@@ -2999,6 +3019,7 @@ if grep -q 'Files omitted from this package' "$bud_sub/prompt.txt" 2>/dev/null; 
 # id covers. Every path a reviewer is sent to has to be inside the capture.
 if printf '%s' "$bud_omitted" | grep -q "  snapshot: "; then ok; else bad "each omitted file must carry a snapshot path to read it at"; fi
 if printf '%s' "$bud_omitted" | grep -q "$budrepo"; then bad "the omitted section must not send the reviewer to the mutable worktree"; else ok; fi
+if printf '%s' "$bud_omitted" | grep -q '^  snapshot: /'; then bad "snapshot paths must be relative so TMPDIR length cannot consume the package budget"; else ok; fi
 if grep -qiE 'do not read them from the working tree' "$bud_pkg"; then ok; else bad "the omitted section must say the working tree is not what an approve covers"; fi
 if grep -q "Read those paths from the worktree" "$bud_sub/prompt.txt" 2>/dev/null; then bad "the prompt must not send the reviewer to the mutable worktree"; else ok; fi
 if grep -q "snapshot" "$bud_sub/prompt.txt" 2>/dev/null; then ok; else bad "the prompt must say the omitted paths are read from the snapshot"; fi
@@ -3047,6 +3068,27 @@ if [ -n "$big_bytes" ] && [ "$big_bytes" -le 9000 ]; then ok; else bad "the pack
 # still carries its snapshot path.
 if grep -c '^- [0-9]* lines' "$big_pkg" | grep -qv '^0$'; then ok; else bad "the bounded package must still name every file"; fi
 if grep -q '^  snapshot: ' "$big_pkg"; then ok; else bad "the bounded package must still serve the omitted files from the snapshot"; fi
+
+# Codex receives its working directory through `-C`, unlike Claude's subshell
+# `cd`. A relative snapshot pointer is safe only if that argument names the
+# package directory too, so exercise the budgeted path through the OpenAI arm.
+codex_bud_probe="$TMP/codex-budget-omitted-probe.txt"
+set +e
+(
+  cd "$bigrepo" || exit 1
+  MEGAPOWERS_REVIEW_PACKAGE_BYTES=9000 \
+    FAKE_CODEX_AUTH="$TMP/codex-auth.json" \
+    FAKE_CODEX_OMITTED_PROBE="$codex_bud_probe" \
+    FAKE_CODEX_VERDICT=approve \
+    "$RUN" --role verify --author-vendor anthropic --artifact worktree \
+    --claim "Codex follows relative omitted snapshot paths" \
+    --receipt "$TMP/codex-budget.json" --config "$codexcfg"
+) >/dev/null 2>"$TMP/codex-budget.err"
+rc=$?
+set -e
+want_rc 0 "$rc" "a budgeted Codex review dispatches"
+if grep -q '^MISSING ' "$codex_bud_probe" 2>/dev/null; then bad "Codex must resolve omitted paths from the review-package directory"; else ok; fi
+if grep -q '^READABLE ' "$codex_bud_probe" 2>/dev/null; then ok; else bad "Codex must read relative omitted snapshot paths"; fi
 
 # A budget the mandatory sections alone cannot fit is a budget that cannot be met.
 # Shipping it anyway is what makes the number decorative, so refuse, and refuse

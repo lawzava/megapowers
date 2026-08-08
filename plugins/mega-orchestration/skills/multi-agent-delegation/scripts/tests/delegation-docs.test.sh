@@ -15,6 +15,8 @@ SKILL="$SKILL_DIR/SKILL.md"
 RECEIPTS="$SKILL_DIR/references/receipts-and-rounds.md"
 CONTRACT="$SKILL_DIR/references/dispatch-contract.md"
 CODEX="$SKILL_DIR/references/providers/codex.md"
+CLAUDE="$SKILL_DIR/references/providers/claude.md"
+MODELS="$ROOT/plugins/mega-orchestration/models.toml"
 DELEGATES="$SKILL_DIR/delegates.toml"
 RUN="$SKILL_DIR/scripts/delegate-run"
 
@@ -150,6 +152,24 @@ if grep -qF "$want" <<< "$(folded "$CODEX")"; then
   ok "codex.md's effort split matches [role_efforts] ($want)"
 else
   bad "codex.md does not say '$want'; [role_efforts] moved and the prose did not"
+fi
+
+claude_efforts="$(sed -n '/^\[providers.claude\]/,/^\[/p' "$MODELS" |
+  sed -n 's/^efforts[[:space:]]*=[[:space:]]*\[\(.*\)\].*/\1/p')"
+if grep -qF '"max"' <<< "$claude_efforts" &&
+   grep -qF 'catalog declares low through max' <<< "$(folded "$CLAUDE")"; then
+  ok "claude.md documents the shipped max effort capability"
+else
+  bad "claude.md effort range does not match the shipped Claude provider"
+fi
+
+codex_efforts="$(sed -n '/^\[providers.codex\]/,/^\[/p' "$MODELS" |
+  sed -n 's/^efforts[[:space:]]*=[[:space:]]*\[\(.*\)\].*/\1/p')"
+if grep -qF '"max"' <<< "$codex_efforts" &&
+   grep -qF 'Reserve max for the hardest quality-first work' <<< "$(folded "$CODEX")"; then
+  ok "codex.md documents the shipped max effort capability"
+else
+  bad "codex.md effort range does not match the shipped Codex provider"
 fi
 
 echo "  $pass passed, $fail failed"
