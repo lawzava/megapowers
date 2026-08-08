@@ -667,7 +667,10 @@ write_omitted_section() {
     print_unit_line "$rec" || return 1
     # Its own line, because the label above it is git's own text and an untracked
     # name may legally end in a newline.
-    printf '  snapshot: %s\n' "$rec.body" || return 1
+    # Reviewers run from this package's directory, so keep the pointer relative
+    # to it. Besides making the capture relocatable, this prevents an operator's
+    # TMPDIR length from consuming an arbitrary share of the context budget.
+    printf '  snapshot: snapshot/units/%s.body\n' "$idx" || return 1
   done < "$snap/unit-order"
 }
 
@@ -1064,8 +1067,8 @@ if [ "$subject_kind" = "worktree-diff" ]; then
   if [ "$elided_files" -gt 0 ]; then
     # Said in the prompt as well as in the package, because a reviewer that reads
     # only what it was handed has to be told the handout is not the whole change.
-    review_target="$review_target The package exceeded its $review_budget byte budget, so $elided_files files ($elided_bytes bytes) are named in its 'Files omitted from this package' section instead of inlined. Each carries a 'snapshot:' path under $pkg_units holding its complete diff: read them there, not from the working tree, because only the snapshot is what this receipt binds. They are part of what an approve covers."
-    echo "delegate-run: the review package exceeded $review_budget bytes, so $elided_files files ($elided_bytes bytes) were named but not inlined, and the reviewer was told to read them from the snapshot under $pkg_units. Raise MEGAPOWERS_REVIEW_PACKAGE_BYTES to inline more." >&2
+    review_target="$review_target The package exceeded its $review_budget byte budget, so $elided_files files ($elided_bytes bytes) are named in its 'Files omitted from this package' section instead of inlined. Each carries a 'snapshot:' path relative to the review package's directory holding its complete diff: read them there, not from the working tree, because only the snapshot is what this receipt binds. They are part of what an approve covers."
+    echo "delegate-run: the review package exceeded $review_budget bytes, so $elided_files files ($elided_bytes bytes) were named but not inlined, and the reviewer was told to read them from the snapshot relative to the review package. Raise MEGAPOWERS_REVIEW_PACKAGE_BYTES to inline more." >&2
   fi
 else
   snap_artifact="$snap/artifact/$(basename "$subject_artifact")"
@@ -1680,7 +1683,7 @@ case "$vendor" in
     printf '%s' "$prompt" | MEGAPOWERS_ROLE="$role" MEGAPOWERS_PRESET=read_only MEGAPOWERS_EXACT_OUTPUT=1 \
       ${timeout_cmd[@]+"${timeout_cmd[@]}"} \
       "$binary" exec --ephemeral --ignore-user-config --skip-git-repo-check \
-      -C "$(pwd)" --sandbox read-only --model "$model" \
+      -C "$tmpdir" --sandbox read-only --model "$model" \
       --config "model_reasoning_effort=\"$effort\"" \
       --output-schema "$provider_schema" --output-last-message "$raw" - \
       >"$tmpdir/provider.log" 2>"$tmpdir/provider.err"

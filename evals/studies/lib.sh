@@ -32,10 +32,14 @@ study_agent() { case "$1" in gpt-*|codex*) printf 'codex' ;; *) printf 'claude' 
 # out of BOTH arms so ambient discipline config cannot confound the control.
 study_exec() { # <agent> <model> <repo> <prompt_file> <rundir> <run_timeout> <max_turns>
   local agent="$1" model="$2" repo="$3" prompt="$4" rundir="$5" run_timeout="$6" max_turns="$7" rc
+  local effort="${STUDY_EFFORT:-}"
+  local -a effort_args=()
   if [ "$agent" = codex ]; then
+    [ -z "$effort" ] || effort_args=(-c "model_reasoning_effort=\"$effort\"")
     ( cd "$repo" && timeout "$run_timeout" codex exec --json --ephemeral \
         --ignore-user-config --ignore-rules --skip-git-repo-check \
         -C "$repo" -s workspace-write -c approval_policy='"never"' -m "$model" \
+        "${effort_args[@]}" \
         "$(cat "$prompt")" \
         > "$rundir/transcript-raw.jsonl" 2> "$rundir/stderr.log" </dev/null )
     rc=$?
@@ -52,8 +56,10 @@ study_exec() { # <agent> <model> <repo> <prompt_file> <rundir> <run_timeout> <ma
     jq -rs '[.[] | select(.type=="item.completed") | .item | select(.type=="agent_message") | .text] | last // empty' \
       "$rundir/transcript-raw.jsonl" > "$rundir/final-message.txt" 2>/dev/null
   else
+    [ -z "$effort" ] || effort_args=(--effort "$effort")
     ( cd "$repo" && timeout "$run_timeout" claude -p "$(cat "$prompt")" \
         --safe-mode --model "$model" --max-turns "$max_turns" \
+        "${effort_args[@]}" \
         --dangerously-skip-permissions --no-session-persistence \
         --output-format stream-json --verbose \
         > "$rundir/transcript.jsonl" 2> "$rundir/stderr.log" )

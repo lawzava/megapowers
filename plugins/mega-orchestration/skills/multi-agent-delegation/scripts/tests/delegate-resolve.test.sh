@@ -463,6 +463,32 @@ check "--check names the offending effort" "max" "$out"
 out="$(DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" "$DR" --check 2>&1)"; rc=$?
 check_exit "--check shipped files with efforts exits 0" 0 "$rc"
 
+# Both frontier CLIs expose a real `max` effort rung. The shipped catalog must
+# preserve it even though no default role spends it without eval evidence.
+sed -e 's/^binary  = "claude"$/binary  = "sh"/' \
+    -e 's/^binary  = "codex"$/binary  = "sh"/' \
+    "$HERE/../../../../models.toml" > "$TMP/shipped-max.toml"
+cat >> "$TMP/shipped-max.toml" <<'EOF'
+[roles]
+claude_max = "claude"
+codex_max = "codex"
+[role_tiers]
+claude_max = "frontier"
+codex_max = "frontier"
+[role_efforts]
+claude_max = "max"
+codex_max = "max"
+EOF
+: > "$TMP/no-max-catalog.toml"
+MAX_CFG=(--config "$TMP/shipped-max.toml" --models "$TMP/no-max-catalog.toml")
+out="$("$DR" --check "${MAX_CFG[@]}" 2>&1)"; rc=$?
+check_exit "shipped catalog accepts max for both frontier providers" 0 "$rc"
+for max_role in claude_max codex_max; do
+  out="$("$DR" "$max_role" "${MAX_CFG[@]}" 2>&1)"; rc=$?
+  check_exit "$max_role resolves at max" 0 "$rc"
+  check "$max_role preserves max effort" "EFFORT=max" "$out"
+done
+
 echo "== v0.5 role-policy tests =="
 
 # The author, not the catalog lead, defines independence. With a Codex lead and
