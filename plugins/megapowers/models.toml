@@ -40,7 +40,7 @@ frontier = "lead, critic, judge, verify, hard design calls"
 # The floor's effort half (tier:effort) and each provider's default `effort`
 # speak this scale; a provider's `efforts` array lists the subset it accepts.
 [efforts]
-scale = ["low", "medium", "high", "xhigh", "ultra"]
+scale = ["low", "medium", "high", "xhigh", "max", "ultra"]
 
 # These strings render into every session, and the block is clamped to 1024 bytes
 # by hooks/render-model-catalog, so each one pays rent twice: in the clamp and in
@@ -50,7 +50,8 @@ scale = ["low", "medium", "high", "xhigh", "ultra"]
 low    = "mechanical steps, relays, latency-sensitive work"
 medium = "balanced default: in-session teammate work, and delegated roles bounded by something other than depth (scoped impl, visual, browser)"
 high   = "lead default, and every role that adjudicates or refutes"
-xhigh  = "only with eval evidence of a gain on this task; audit: xhigh ran 3x high"
+xhigh  = "eval-gated; audit found 3x high usage without evidence"
+max    = "unconstrained; eval-gated, never default"
 ultra  = "deliberate complex work; Codex only, via the complex profile"
 
 # --- Providers: which harness runs which models ---
@@ -64,7 +65,7 @@ ultra  = "deliberate complex work; Codex only, via the complex profile"
 # structured receipt, never a transcript marker.
 [providers.claude]
 effort  = "high"   # lead default; in-session teammate work runs medium
-efforts = ["low", "medium", "high", "xhigh"]  # the CLI --effort scale has no `ultra` rung
+efforts = ["low", "medium", "high", "xhigh", "max"]  # the CLI --effort scale has no `ultra` rung
 vendor  = "anthropic"
 binary  = "claude"
 channel = "claude-cli"
@@ -89,7 +90,7 @@ strong   = "claude-sonnet-5"
 # when the lead (or an --exclude) rules out the primary.
 [providers.codex]
 effort  = "high"   # default only where a role leaves effort unset; ultra is the complex profile only
-efforts = ["low", "medium", "high", "xhigh", "ultra"]  # ultra: complex profile only
+efforts = ["low", "medium", "high", "xhigh", "max", "ultra"]  # max: model effort; ultra: complex profile
 vendor  = "openai"
 binary  = "codex"
 channel = "native-or-plugin-or-mcp-or-cli"

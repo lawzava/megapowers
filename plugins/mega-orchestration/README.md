@@ -51,13 +51,14 @@ directory) for backend and model choices.
 | --- | --- | --- |
 | Plan review | codex (frontier tier) | Critiquing plans and double-checking decisions before implementing |
 | Code review | codex (frontier tier) | Reviewing diffs, adversarial "find the bug" passes |
-| Small implementation | codex (strong tier) | Well-specified, testable, single-file or isolated changes |
+| Small implementation | caller's provider (strong tier) | Well-specified, testable, single-file or isolated changes |
 | Visual / browser | codex (frontier tier, native computer use) | UI work, browser-driven checks, end-to-end testing |
 | Visual verification | codex (frontier tier) + `playwright-cli` driver | Independent cross-vendor judgment of captured UI/UX evidence |
 
-The shipped catalog leads with claude, so these defaults route away from it.
-Independent roles (plan review, code review, visual verification, verify, judge,
-council member) resolve relative to the artifact's author, not to this table: an
+The shipped catalog leads with claude. Small implementation is caller-bound:
+Claude gets Sonnet and Codex gets Terra without crossing runtimes. Independent
+roles (plan review, code review, visual verification, verify, judge, council
+member) resolve relative to the artifact's author, not to this table: an
 artifact codex wrote sends its own review back to claude through the
 `[fallbacks]` chain. Pass `--author-vendor <vendor>` and let the resolver pick.
 

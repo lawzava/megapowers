@@ -101,6 +101,17 @@ must_not_have "$README" 'Two ship here'
 must_not_have "$README" 'two delegate agents'
 must_have "$README" '`agents/model-delegate.md` is retired and does nothing.'
 
+# small_impl is caller-bound (`self`), not a permanent Codex route. The README
+# table must describe the executable resolver behavior for both lead vendors.
+must_have "$README" "| Small implementation | caller's provider (strong tier) |"
+must_have "$README" 'Small implementation is caller-bound'
+must_not_have "$README" '| Small implementation | codex (strong tier) |'
+
+# Reports are claims, not evidence. This guard keeps the orchestrator from
+# repeating the Opus 5 failure mode of accepting a clean worker summary without
+# checking the acceptance witness before integration.
+must_have "$SKILL" 'Treat delegate and subagent reports as claims: verify acceptance evidence before integration or commit.'
+
 # Anthropic's skill guidance: a reference over 100 lines opens with a table of
 # contents, because the model otherwise reads it partially and at random.
 plines=$(wc -l < "$PRIMITIVES" | tr -d ' ')

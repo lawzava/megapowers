@@ -14,8 +14,8 @@ model = "gpt-5.6-terra"
 # the lead owns integration (single-writer).
 sandbox_mode = "workspace-write"
 
-# Matches what delegates.toml resolves for small_impl (minimal|low|medium|high|
-# xhigh; ultra is the complex profile only). Medium, because GPT-5.6 guidance
+# Matches what delegates.toml resolves for small_impl (low|medium|high|xhigh|max;
+# ultra is the complex profile only). Medium, because GPT-5.6 guidance
 # makes medium the balanced starting point and asks for eval evidence before
 # high, and scoped implementation whose output the lead tests anyway does not
 # clear that bar. The saving is now on both levers: builder runs the strong tier

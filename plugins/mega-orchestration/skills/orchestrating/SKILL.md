@@ -24,9 +24,8 @@ these holds:
 - A different model or runtime is demonstrably better at a subtask.
 - Stakes times uncertainty justify multiple attempts or independent checks.
 
-Keep inline anything you cannot yet decompose, any critical path where each
-step reshapes the next, and anything you could finish in a handful of tool
-calls. The pull to delegate past that gate (Opus 5 more than 4.8) is bias, not signal.
+Keep inline unresolved critical paths and anything finishable in a handful of
+tool calls. Delegating past that gate is bias, not signal.
 
 ## Route by task shape
 
@@ -44,8 +43,8 @@ calls. The pull to delegate past that gate (Opus 5 more than 4.8) is bias, not s
 | A long, many-step or multi-session goal with minimal supervision | mega-orchestration:autonomous-run: charter, plan, journal, autonomy dial. |
 | An action that leaves the working tree (deploy, send, migrate) | mega-orchestration:effect-broker before acting. |
 
-These compose: autonomous-run milestones can each run through
-subagent-driven-development. Route the outer shape first, inner steps as they arrive.
+These compose: autonomous-run milestones can run through subagent-driven-development.
+Route the outer shape first, inner steps as they arrive.
 
 ## Delegated work: one path
 
@@ -105,8 +104,9 @@ across the ladder:
   or higher effort on your own authority, without parking the task for a human
   to approve the spend. Judge the output, not the price tag. Named, scoped
   defects earn a bounded fix pass first; structural misses earn the redo. One
-  automatic redo per artifact, then a declared cap or a human. Output that
-  clears the bar is done: never re-derive a delegate's findings.
+  automatic redo per artifact, then a declared cap or a human.
+- Treat delegate and subagent reports as claims: verify acceptance evidence
+  before integration or commit. Do not re-derive work whose evidence clears the bar.
 - Nothing that ships routes below the floor declared in models.toml
   (`[defaults] floor` in mega-orchestration:multi-agent-delegation).
 
