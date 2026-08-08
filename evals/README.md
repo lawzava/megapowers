@@ -162,6 +162,29 @@ Agent command templates live in `agents.example.toml`; copy to `agents.toml`
 and edit. The eval harness is agent-agnostic: point it at any CLI that takes
 a prompt and works in a dir.
 
+## Model-routing calibration
+
+The real-agent studies can compare current route candidates at an explicit,
+matched effort. `STUDY_EFFORT` is passed to Claude as `--effort` and to Codex as
+`model_reasoning_effort`; omit it to preserve each CLI default. Use a distinct
+output directory per effort because completed cells are resumable by path.
+
+```bash
+STUDY_EFFORT=high evals/studies/gauntlet/run-gauntlet.sh \
+  --out "$TMPDIR/route-high-gauntlet" --n 3 --modes control \
+  --models claude-opus-5,gpt-5.6-sol,gpt-5.6-terra,claude-sonnet-5
+
+STUDY_EFFORT=high evals/studies/autonomy-run/run-autonomy.sh \
+  --out "$TMPDIR/route-high-autonomy" --n 3 --modes control \
+  --models claude-opus-5,gpt-5.6-sol
+```
+
+Gauntlet measures scoped implementation, verification, honesty, and unwanted
+commits. Autonomy measures long-horizon status fidelity. Treat a three-run cell
+as directional; promote a route only after repeated runs and a role-specific
+oracle. Never compare output directories produced under different prompts,
+hardware envelopes, or CLI versions as though model were the only variable.
+
 ## Adding a scenario
 
 Create `scenarios/<id>/` with a `scenario.toml` and a `check.sh`. Make `check.sh`

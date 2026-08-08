@@ -97,16 +97,17 @@ acceptance test, the files in scope, and what to do when context is missing.
 
 Use low for latency-sensitive work when it preserves quality, medium as a
 balanced starting point, and high or xhigh only when evals show a meaningful
-gain. Effort is routed per role rather than inherited from whoever dispatches:
+gain. Reserve max for the hardest quality-first work and compare it with xhigh
+on representative evals. Effort is routed per role rather than inherited from whoever dispatches:
 `[role_efforts]` in delegates.toml is the authority, and `[providers.codex]
 effort` is only the default for a role that leaves it unset. The shipped table
 splits five high against four medium. High is what a role earns by adjudicating
 whether work ships, where a miss ships the defect. Medium is where everything
 else stays: bounded work the lead re-tests anyway, and browser work bounded by
-the evidence the driver captures rather than by reasoning depth. xhigh appears
-nowhere in the shipped table and needs eval evidence under `evals/` before it
-appears anywhere; `ultra` is the complex-profile band and never resolves through
-a delegated role.
+the evidence the driver captures rather than by reasoning depth. Neither xhigh
+nor max appears in the shipped table; each needs eval evidence under `evals/`
+before it appears anywhere. `ultra` is the complex-profile band and never
+resolves through a delegated role.
 
 The rule is written down because practice drifts up on its own. The 2026-08-05
 audit measured 6763 Codex turns at xhigh against 2298 at high, a standing

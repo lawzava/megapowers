@@ -17,6 +17,7 @@ check() {
 
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
+. "$ROOT/studies/lib.sh"
 
 runner="$scratch/fanout-runner"
 cp "$ROOT/studies/lib.sh" "$scratch/lib.sh"
@@ -33,6 +34,31 @@ EOF
 chmod +x "$runner"
 
 check "study_fanout propagates a failed worker" bash -c '"$1" >/dev/null 2>&1; [ $? -ne 0 ]' _ "$runner"
+
+# Model-routing calibration compares effort as well as model. Exercise the
+# shared runner through fake CLIs so the assertion proves the actual argv, not
+# only that a variable name appears in lib.sh.
+mkdir -p "$scratch/bin" "$scratch/repo" "$scratch/codex-run" "$scratch/claude-run"
+printf 'calibrate this model\n' > "$scratch/prompt.txt"
+cat > "$scratch/bin/codex" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$STUDY_ARGS_FILE"
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}'
+EOF
+cat > "$scratch/bin/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "$STUDY_ARGS_FILE"
+printf '%s\n' '{"type":"result","result":"ok"}'
+EOF
+chmod +x "$scratch/bin/codex" "$scratch/bin/claude"
+
+STUDY_ARGS_FILE="$scratch/codex.args" STUDY_EFFORT=max PATH="$scratch/bin:$PATH" \
+  study_exec codex gpt-test "$scratch/repo" "$scratch/prompt.txt" "$scratch/codex-run" 10 2
+check "study_exec passes Codex max effort" grep -qF 'model_reasoning_effort="max"' "$scratch/codex.args"
+
+STUDY_ARGS_FILE="$scratch/claude.args" STUDY_EFFORT=high PATH="$scratch/bin:$PATH" \
+  study_exec claude claude-test "$scratch/repo" "$scratch/prompt.txt" "$scratch/claude-run" 10 2
+check "study_exec passes Claude high effort" grep -qF -- '--effort high' "$scratch/claude.args"
 
 for script in \
   "$ROOT/studies/process-behavior/run-study.sh" \
