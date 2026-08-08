@@ -75,7 +75,8 @@ the three plugin manifests, and trust the handlers the user approves. The
 run-loop Stop and formatter PostToolUse handlers intentionally no-op on Codex.
 Do not add manual entries to `~/.codex/hooks.json`.
 
-**OpenCode, or any other Agent Skills harness** (skills only):
+**OpenCode, or any other Agent Skills harness** (portable skills only, not a
+Megapowers runtime adapter or launcher):
 
 CAUTION first: the skills CLI installs skills for many agents into SHARED skill
 directories that several harnesses read, so one global install can register the

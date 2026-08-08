@@ -84,10 +84,10 @@ differs. One-file-per-agent fan-out multiplies briefing and review cost.
 
 ## How much compute: spend by stakes times uncertainty
 
-Anchor the spend: a multi-agent structure runs roughly 15x the token cost of a
-single chat (Anthropic's multi-agent research system), so the bar is high. Size
-the fan-out to the question: 1 agent for a fact-find, 2 to 4 for a comparison,
-10 plus only for wide research, never past 20 unasked.
+Anchor the spend: a multi-agent structure can cost an order of magnitude more
+than inline work, so the bar is high. Size the fan-out to the question: 1 agent
+for a fact-find, 2 to 4 for a comparison, 10 plus only for wide research, never
+past 20 unasked.
 
 - Routine and certain: inline, verified by tests.
 - Uncertain approach, moderate stakes: one independent review
@@ -97,7 +97,7 @@ the fan-out to the question: 1 agent for a fact-find, 2 to 4 for a comparison,
 - Long horizon: autonomous-run, with external stop budgets (time, step, or token caps) declared in the charter up front.
 
 Every escalation needs a stopping rule before it starts: an oracle that ends
-the search, a candidate cap, or a fix/re-verify attempt cap. Two more rules cut
+the search, a candidate cap, or a fix/re-verify attempt cap. These rules cut
 across the ladder:
 
 - Delegate or subagent output that misses the bar: redo it on a stronger model
@@ -126,15 +126,15 @@ sequential inline work and say so; never fabricate a call it does not expose.
 
 - Decide the structure once, out loud, before dispatching anything: one journal
   or chat line ("structure: SDD, 6 tasks") makes the choice reviewable.
-- Use `fork_turns = "none"` by default. A positive count is exceptional, limited
-  to the indispensable recent continuation, at most three turns; `all` is only
-  for an explicit same-context resumption.
+- Forward no prior conversation turns by default. Include only an indispensable
+  recent continuation, at most three turns; forward the full context only for
+  an explicit same-context resumption.
 - Give each delegate one report channel. Small results return directly; bulky
   results go to a file and return only status plus the path.
 - Single-writer always: whatever the structure, one integrator owns the tree
-  and the commits (see mega-orchestration:multi-agent-delegation). Claude Code
-  stopping teammate messages from counting as approval does not make ordinary
-  subagents or workflow agents single-writer. Enforce it with sandbox, tool,
-  and worktree controls where available, plus explicit skill wording.
+  and the commits (see mega-orchestration:multi-agent-delegation). Subagent
+  acknowledgement is not approval, and no harness affordance makes a subagent a
+  second writer. Enforce the boundary with sandbox, tool, and worktree controls
+  where available, plus explicit skill wording.
 - Re-route when the shape changes: a task that stops decomposing cleanly drops
   back to inline; a task that grows milestones graduates to autonomous-run.

@@ -9,70 +9,47 @@ license: MIT
 
 # Council Adjudication
 
-For a decision no test can settle, a panel of models beats one model, but only when
-it is adjudicated correctly. The failure mode is a panel that talks until it averages
-into a bland compromise; measured, that regresses toward the weaker members. The
-council works on one principle: **answer independently, rank blind, synthesize from
-the best.** It never averages.
+Use a council for one consequential decision with several defensible answers and no
+executable oracle. Use best-of-n when a test, measurement, or other oracle can select
+a work product.
 
-## When to use it
+## Inputs and output
 
-- A real decision (design, architecture, tradeoff, strategy) with more than one
-  defensible answer and no executable oracle.
-- Stakes high enough to justify several models' time. A decision one competent pass
-  settles does not need a council.
-- If an executable oracle exists, use mega-orchestration:best-of-n instead;
-  selection by oracle beats any panel of opinions.
+Input: a decision question, constraints, decision criteria, and the authority that may
+accept the recommendation. Output: a recommendation with its selected rationale,
+specific adopted points, dissent, and a reviewable record of the question, anonymous
+answers, rankings, and final rationale.
 
-## Procedure
+## Method
 
-1. **One sharp question.** State the decision criteria with it: constraints,
-   priorities, what must not break. Everything downstream is judged against them.
+1. Ask members for independent answers. They receive the same question and criteria,
+   but not one another's answers or reasoning. Answer generation is not review: it has
+   no artifact author, and must not require one.
+2. Remove authorship and self-advocacy before ranking. Publish an anonymous set only
+   after every copy and removal succeeds; on any error, publish nothing. Keep the
+   label-to-author mapping private from judges. Use best-of-n's
+   `scripts/anonymize-candidates` in a writer-controlled output parent; it publishes
+   an ordinary directory atomically, which the lead removes after ranking.
+3. Rank the same anonymous set against the stated criteria. Prefer judges independent
+   of the answer authors. Exclude self-rankings if a member ranks its own answer, and
+   counter order bias with randomized or reversed presentation.
+4. Select the strongest answer as the recommendation's spine. Add only concrete points
+   that strengthen it. Record material conflicts and dissent. Do not average positions.
 
-2. **Independent answers.** Ask N members for a full answer with its reasoning and
-   tradeoffs. Use different models or vendors where available (resolve the
-   `council_member` role via `multi-agent-delegation`'s
-   `scripts/delegate-resolve council_member`), or one model from deliberately
-   different starting angles. Members answer blind to each other: no shared thread,
-   no building on a previous answer. Independence gives the panel its range.
+## Dispatch and accounting boundary
 
-3. **An anonymized set.** Blind the answers with mega-orchestration:best-of-n's
-   `scripts/anonymize-candidates`, naming the exact authorship markers to strip, and
-   keep the label→author manifest private. Strip any self-advocacy as well. Every
-   reviewer sees the same de-identified set.
+Dispatch each answer through the authorless `council_member` generation role: record the
+member identity and question, but supply no artifact author. Give the anonymized set to
+the `judge` role with every answer author excluded. The lead records stable panel, scope,
+and member identities, then closes one panel cycle only after every member reports rather
+than treating it as serial review rounds. `scripts/delegate-run` records one artifact
+review only; it does not supply panel receipts or accounting. If the lead cannot preserve those
+boundaries, use a single accountable decision maker instead of claiming independent
+panel behavior.
 
-4. **Blind ranking.** Each member, or one independent judge, ranks the anonymized
-   answers against the stated criteria without seeing authorship or the others'
-   rankings. Blindness does not remove self-preference: models favor their own
-   generations even without author labels (arXiv 2410.21819). Prefer a non-author
-   independent judge; when members rank a set containing their own answer, exclude
-   each member's score of its own answer from the aggregate. Counter position bias
-   by randomizing answer order, or by ranking twice with the order swapped and
-   treating an order-flipped verdict as a tie.
+## Safety and oracle
 
-5. **Synthesis from the best, never an average.** The top-ranked answer is the spine
-   of the decision. Graft in specific, concrete points from runner-ups where they
-   clearly strengthen it, as deliberate additions, never by splitting the difference
-   between conflicting positions. Where answers conflict, choose the better-argued
-   one against the criteria; record why, and record the dissent.
-
-## Guardrails
-
-- Synthesis is selection plus grafting, never averaging. A recommendation that reads
-  as "a bit of everyone's view" is the anti-pattern.
-- Independence at answer time, blindness at ranking time. Lose either and the panel
-  collapses toward one anchored view.
-- Keep the trail: the question, the anonymized answers, the ranking, and the
-  reasoning for the final call, so the decision is reviewable.
-- The council advises; a human stays in the loop for high-blast-radius or
-  irreversible decisions.
-
-## Cheap reference
-
-| You have | Use |
-|---|---|
-| An executable oracle | mega-orchestration:best-of-n (select by oracle) |
-| One artifact + a claim to check | mega-orchestration:cross-model-verification |
-| A decision, no oracle, wide space | this skill (answer → rank blind → synthesize from best) |
-| Tempted to "average the panel's advice" | Don't: pick the strongest answer, graft the best points |
-| Unsure a council is the right structure | mega-orchestration:orchestrating routes task shapes to structures |
+The council is advisory. A human or delegated authority decides actions with significant
+external impact. The oracle is criterion-traceability: every conclusion and graft maps
+back to a ranked anonymous answer or a recorded decision reason. A confident majority
+is not an oracle.

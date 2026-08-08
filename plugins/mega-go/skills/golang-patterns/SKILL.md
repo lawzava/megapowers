@@ -1,54 +1,28 @@
 ---
 name: golang-patterns
 description: >
-  Use for Go in an existing project when choosing interfaces, dependency
-  injection, goroutines, channels, context, errors, functional options, or
-  package layout. Skip mechanical edits.
+  Use for Go in an existing project when behavior depends on context
+  cancellation, error inspection, or goroutine lifecycle. Skip mechanical edits.
 license: MIT
 ---
 
 # Go Patterns
 
-> **Measured:** current frontier *and* small Claude models already write the
-> common concurrency mechanics here (worker pools, pipeline stages, channel
-> closing) correctly single-shot without this skill — a controlled study found
-> zero correctness headroom, 184/184 passing in both arms (the repo's
-> `evals/RESULTS.md` §2). Reach for this skill for the design *choices* as a
-> review checklist, or when driving weaker models; not because a current
-> model would otherwise deadlock.
+Follow the repository's existing package boundaries, constructors, and test
+style. Use this skill only when local code does not settle a concurrency,
+context, or error-handling choice.
 
-Scope: Go files, `go.mod`, and `go.sum`.
-Origin: Derived from Everything Claude Code (MIT, (c) 2026 Affaan Mustafa).
+- **Context:** use it when a contract needs cancellation, a deadline, or
+  request-scoped propagation. Check cancellation at loop boundaries; do not add
+  it to purely in-memory helpers without one of those needs.
+- **Errors:** add operation context when returning an error. Use wrapping when
+  callers need to inspect the cause; use a sentinel or typed error only for a
+  stable caller-facing condition.
+- **Goroutines:** give every goroutine a termination path. Have producers signal
+  completion with `sync.WaitGroup`, or `errgroup.Group` when errors propagate.
+  Close a shared results channel from one goroutine that waits for every
+  producer, never from a producer. Receivers range until close; if one stops
+  early, cancellation must prevent producers from blocking forever.
 
-## Design-Choice Checklist
-
-Defaults for this stack; deviate when the surrounding code already chose
-otherwise, and say so.
-
-- **Interfaces:** small, defined at the point of use, not next to the
-  implementation. Accept interfaces, return structs.
-- **Dependencies:** constructor injection (`New*` functions with explicit
-  parameters, validated in the constructor). No global service state.
-- **Constructor configuration:** functional options (`Option func(*T)`,
-  `WithX(...)`) when a constructor has optional knobs; plain parameters when
-  everything is required.
-- **Context:** first parameter on anything that blocks, calls out, or loops;
-  honor cancellation at loop boundaries.
-- **Errors:** wrap with `fmt.Errorf("...: %w", err)` and context about the
-  operation; sentinel errors (`errors.Is`) for expected conditions callers
-  branch on; typed errors (`errors.As`) only when callers need fields.
-- **Goroutine lifecycle:** every goroutine has a known terminator (waitgroup,
-  context, channel close). Close a results channel from a goroutine that
-  waits on the workers, never inline before the reader drains it.
-- **Package layout:** `cmd/` for mains (kept minimal), `internal/` for
-  private code, `pkg/` only for genuinely public libraries. Lowercase
-  single-word package names; no stutter (`user.User`, not `user.UserModel`).
-- **Tests:** table-driven with subtests (`t.Run`); helpers marked
-  `t.Helper()` with `t.Cleanup` for teardown. SQLite test databases and the
-  `:memory:` pooling footgun live in mega-go:greenfield-go-stack.
-
-## When to Use This Skill
-
-- Designing Go APIs and packages
-- Structuring or refactoring Go projects
-- Reviewing Go code for idiom drift
+For a new module's layout, select a project shape with
+mega-go:greenfield-go-stack rather than imposing one here.

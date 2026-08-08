@@ -128,7 +128,6 @@ code_review    = "author_vendor"
 visual_verify  = "author_vendor"
 verify         = "author_vendor"
 judge          = "all_author_vendors"
-council_member = "author_vendor"
 
 # Drivers gather evidence. They are not model providers and cannot satisfy a
 # review role, vendor-independence claim, model tier, or ship floor.

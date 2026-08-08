@@ -35,8 +35,9 @@ mechanics behind them.
 `--author-vendor <vendor>` once per artifact-author vendor for independent
 roles, `--author-model <id>` to name an author by model id and let the resolver
 derive the vendor, `--author-provider <name>` to name the author's own backend
-when an id is not unique, `--caller-model <id>` / `--caller-provider <name>` to
-say which session is RUNNING (native dispatch only, never exclusion),
+when an id is not unique, `--caller-model <id>` / `--caller-provider <name>` /
+`--caller-adapter <name>` to say which model backend and runtime session are
+RUNNING (native dispatch only, never exclusion),
 `--exclude <vendor|provider>` to drop a backend, `--exclude-lead` as a
 compatibility exclusion, `--models <file>` to pin the catalog, `--lead` to print
 the declared orchestrator, `--where` to print the active config layers,
@@ -71,8 +72,8 @@ setting are compared by tier only.
 - `DISPATCH=cli`: the route crosses to another provider. Use `CHANNEL`/`BINARY`
   and the resolved provider's reference file.
 
-`CALLER` says how that was decided. `declared` means you named yourself (or, on
-a `self` role, named the author, who is the caller). `assumed-lead` means nobody
+`CALLER` says how that was decided; `CALLER_ADAPTER` names the runtime adapter.
+`declared` means you named the running session. `assumed-lead` means nobody
 did, so `native` rests on the catalog `[lead]` default and the resolver says so
 on stderr. That distinction matters on a machine where more than one harness
 leads: an undeclared non-lead session reading `native` would run its own
@@ -89,16 +90,20 @@ outage takes independent review with it.
 
 ## Identity: who wrote it, who is running
 
-Identity splits along two axes. **Who wrote the artifact** (`--author-*`) drives
+Identity splits along three axes. **Who wrote the artifact** (`--author-*`) drives
 exclusion and receipt provenance. **Who is running** (`--caller-model` /
-`--caller-provider`) drives native dispatch only, never exclusion, so declaring
+`--caller-provider` / `--caller-adapter`) drives native dispatch only, never exclusion, so declaring
 the caller can never make a review look independent. The two coincide for a
 `self` role and differ for every review of someone else's work: the author is
 excluded while the route lands on the caller, which is a native dispatch. With
 no caller declared the session is assumed to be the catalog `[lead]`.
 
-Announce your own identity rather than assuming it. A harness always knows the
-model id it is running, so `--author-model claude-opus-5` works from any session
+`--caller-adapter` alone names only a launch surface. It cannot prove which
+model provider that runtime configured, so the resolver keeps routes CLI until
+`--caller-model` or `--caller-provider` supplies the model-provider identity.
+
+Announce the running identity rather than assuming it. A harness always knows the
+model id it is running, so `--caller-model claude-opus-5` works from any session
 without hardcoding a vendor name per harness. This matters for BYO-model
 runtimes (OpenCode, Cursor CLI, pi), which have no fixed vendor: their vendor is
 whichever model is configured, so it can only be reported at runtime, never

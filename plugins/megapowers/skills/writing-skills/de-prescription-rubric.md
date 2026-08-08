@@ -1,8 +1,7 @@
 # De-prescription rubric
 
-How to trim a skill for frontier models without losing what the evals prove
-matters. Guidance written for an older model generation degrades output on a
-newer one, so remove it where default behavior is now better. Measured gates:
+How to trim a skill without losing what evaluations prove matters. Remove
+guidance only when current evidence shows it adds no value. Measured gates:
 evals/RESULTS.md.
 
 ## Remove

@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Generate a review package: commit list, stat summary, and the net
-# diff with extended context, written to a file the reviewer reads in one
-# call. Using the recorded per-task BASE (not HEAD~1) keeps multi-commit
-# tasks intact.
+# Generate a review package containing the committed range and every current
+# task change. This permits review before a task is committed.
 #
 # Usage: review-package BASE HEAD [OUTFILE]
 # Default OUTFILE: <repo-root>/.megapowers/sdd/review-<base7>..<head7>.diff
@@ -28,6 +26,8 @@ else
   out="$dir/review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"
 fi
 
+tmp="$(mktemp "${out}.tmp.XXXXXX")"
+trap 'rm -f -- "$tmp"' EXIT
 {
   echo "# Review package: ${base}..${head}"
   echo
@@ -39,7 +39,36 @@ fi
   echo
   echo "## Diff"
   git diff -U10 "${base}..${head}"
-} > "$out"
+  echo
+  echo "## Staged changes"
+  git diff --cached -U10
+  echo
+  echo "## Unstaged changes"
+  git diff -U10
+  echo
+  echo "## Untracked changes"
+  found_untracked=false
+  while IFS= read -r -d '' file; do
+    [[ "$file" -ef "$out" ]] && continue
+    [[ "$file" -ef "$tmp" ]] && continue
+    found_untracked=true
+    if git diff --no-index -- /dev/null "$file"; then
+      :
+    else
+      diff_rc=$?
+      if [ "$diff_rc" -ne 1 ]; then
+        printf 'review-package: git diff failed for untracked path %q (exit %d)\n' \
+          "$file" "$diff_rc" >&2
+        exit "$diff_rc"
+      fi
+    fi
+  done < <(git ls-files --others --exclude-standard -z)
+  if [ "$found_untracked" = false ]; then
+    echo "(none)"
+  fi
+} > "$tmp"
+mv -f -- "$tmp" "$out"
+trap - EXIT
 
 commits=$(git rev-list --count "${base}..${head}")
 echo "wrote ${out}: ${commits} commit(s), $(wc -c < "$out" | tr -d ' ') bytes"

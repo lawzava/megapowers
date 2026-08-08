@@ -19,7 +19,7 @@
 #   gpt-5.6-sol       frontier: plan review, code review, verify, judge, research
 #   gpt-5.6-terra     strong: scoped implementation
 
-# --- Lead: what orchestrates ---
+# --- Legacy lead fallback ---
 # delegate-resolve --lead prints it. Artifact reviews use --author-vendor rather
 # than assuming the lead authored the artifact.
 [lead]
@@ -54,19 +54,37 @@ xhigh  = "eval-gated; audit found 3x high usage without evidence"
 max    = "unconstrained; eval-gated, never default"
 ultra  = "deliberate complex work; Codex only, via the complex profile"
 
-# --- Providers: which harness runs which models ---
-# A provider is a HARNESS, not an endpoint. `binary` is the CLI delegate-resolve
+# --- Runtime adapters and model providers ---
+# An adapter is the HARNESS launch surface. A provider is the model/vendor identity
+# used for tiers and independence. `binary` is the CLI delegate-resolve
 # probes with `command -v`, and that CLI brings its own stored login: this catalog
 # holds no endpoints, keys, or token names, and adding them is out of scope by
 # design. A model reachable only by hand-wiring a base URL and a token is not
 # reachable here. `reference` names the channel-mechanics file, resolved relative to
 # the multi-agent-delegation skill directory (the reference files ship with that
 # skill). `use` is shown in the session block. Stop-hook approval reads a current
-# structured receipt, never a transcript marker.
+# structured receipt, never a transcript marker. Older override layers without
+# [adapters] remain provider-keyed for compatibility.
+[adapters.claude]
+binary = "claude"
+channel = "claude-cli"
+reference = "references/providers/claude.md"
+
+[adapters.codex]
+binary = "codex"
+channel = "native-or-plugin-or-mcp-or-cli"
+reference = "references/providers/codex.md"
+
+[adapters.opencode]
+binary = "opencode"
+channel = "opencode-native"
+reference = "references/providers/opencode.md"
+
 [providers.claude]
 effort  = "high"   # lead default; in-session teammate work runs medium
 efforts = ["low", "medium", "high", "xhigh", "max"]  # the CLI --effort scale has no `ultra` rung
 vendor  = "anthropic"
+adapter = "claude"
 binary  = "claude"
 channel = "claude-cli"
 default_tier = "frontier"
@@ -92,6 +110,7 @@ strong   = "claude-sonnet-5"
 effort  = "high"   # default only where a role leaves effort unset; ultra is the complex profile only
 efforts = ["low", "medium", "high", "xhigh", "max", "ultra"]  # max: model effort; ultra: complex profile
 vendor  = "openai"
+adapter = "codex"
 binary  = "codex"
 channel = "native-or-plugin-or-mcp-or-cli"
 default_tier = "frontier"

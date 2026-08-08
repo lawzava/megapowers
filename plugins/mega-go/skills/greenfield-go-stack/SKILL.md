@@ -1,106 +1,60 @@
 ---
 name: greenfield-go-stack
 description: >
-  Use to start or scaffold a Go project, service, SaaS, backend, or server
-  rendered app, or choose its framework, database, auth, payments, hosting, and
+  Use to start or scaffold a Go project, service, SaaS, backend, or
+  server-rendered app, or choose its framework, database, auth, payments,
+  hosting, and
   architecture.
 license: MIT
 ---
 
 # Greenfield Go Stack
 
-Scope: greenfield Go repositories and projects with `go.mod`.
+Choose the project shape before choosing a framework or provider. Establish the
+deliverable, interfaces, runtime constraints, persistence, deployment target,
+and integrations. If an answer affects the choice and is unknown, ask before
+scaffolding.
 
-For a non-trivial new project, run megapowers:brainstorming and
-megapowers:writing-plans first (if installed) — this skill supplies the stack,
-not the process.
+## Select a shape
 
-One predictable, opinionated, secure-by-default stack for new Go projects.
-**Pick only the layers the project needs from the fixed menu below — do not
-substitute unfamiliar libraries for these defaults.** Performance and security
-come from the baseline middleware and minimal images, not bolted on later.
+| Need | Start with |
+|---|---|
+| Importable library | A root package; add `internal/` only for implementation packages callers must not import. |
+| Small CLI | A root `main` package. |
+| Multiple commands or a mixed library and CLI module | `cmd/<command>/` entry points and shared `internal/` packages. |
+| HTTP service | A thin command entry point and `internal/` service packages. Choose `net/http` unless a framework solves a stated need. |
+| Server-rendered web app | The HTTP service shape; choose templates and client-side behavior from the interaction requirements. |
+| Service-to-service RPC | A separately defined contract and an RPC transport when independent clients, streaming, or generated clients justify it. |
+| Edge or platform function | The host's Go runtime and deployment constraints first; do not assume containers or a long-lived server. |
 
-## Core principles
+The [official Go module layout guide](https://go.dev/doc/modules/layout) is the
+layout authority. Keep packages private in `internal/` until external callers
+need a supported API; split a package into its own module only when it needs an
+independent versioning and release boundary.
 
-- **SSR by default** — templ + templui. Add client JS only where SSR genuinely
-  can't do it (HTMX-style partials before reaching for a SPA).
-- **gRPC for internal/service-to-service APIs**, HTTP (Fiber) for the
-  browser-facing edge. Prefer gRPC over hand-rolled REST between services.
-- **Pure-Go everything** so binaries stay static (CGO off → tiny, secure Wolfi
-  images, no glibc).
-- **Consult current official docs before wiring each library** using the docs or
-  browser tools available in the active harness. Use Context7 if it is installed.
+## Add capabilities only when required
 
-## The stack (fixed menu — include only what's needed)
+- Select a database and driver from durability, concurrency, query, and hosting
+  constraints. Keep migrations and production backup/restore requirements in
+  the initial design.
+- Select auth, payment, email, and observability providers only for stated
+  product requirements. Keep provider-specific calls behind an application
+  boundary where replacement is plausible.
+- Keep credentials out of source and checked-in configuration. Load them from
+  the deployment's secret store or ignored local configuration.
+- Add a container image only when the target runs one. Match build settings,
+  base image, user, and health checks to the selected runtime.
+- Consult current official documentation before adding any dependency.
 
-| Layer | Default | Notes |
-|---|---|---|
-| Language / layout | Go + golang-standards/project-layout | `cmd/ internal/ pkg/` |
-| Web edge | GoFiber | fasthttp; SSR + REST |
-| RPC | gRPC (grpc-go + buf) | internal & service-to-service |
-| Templating | templ (`github.com/a-h/templ`) | typed, compiled SSR components |
-| Components | templui (shadcn-style) | `templui add <c>` copies source in |
-| CSS | Tailwind (templui dependency) | |
-| DB | SQLite, `modernc.org/sqlite` | **pure Go, no CGO** |
-| ORM | Bun (`github.com/uptrace/bun`) | SQL-first; `sqlitedialect` |
-| Auth | Clerk (`github.com/clerk/clerk-sdk-go/v2`) | |
-| Payments | Stripe (`github.com/stripe/stripe-go/v86`) | Checkout/Elements + webhooks |
-| Email | Cloudflare | see Email section (send + receive) |
-| Hosting | Docker + docker compose | Wolfi base images |
-| Lint | golangci-lint | Uber Go Style Guide config |
+## Optional recipes
 
-## Conventions
+Read a recipe only after selecting its technology. They record dated integration
+details and should be rechecked against the linked official documentation.
 
-- **Style:** Uber Go Style Guide, enforced by golangci-lint (`.golangci.yml`).
-- **Layout:** golang-standards/project-layout. Keep `main` thin in
-  `cmd/<app>/`; all logic in `internal/`.
-- **SQL:** follow the SQL Style Guide (https://www.sqlstyle.guide/) — UPPERCASE
-  keywords, snake_case identifiers, consistent layout. Applies to schema,
-  migrations, and any raw queries (incl. Bun `bun.Raw`).
-- For idiomatic errors / interfaces / functional options / concurrency, use the
-  `golang-patterns` skill — don't restate it here.
+- [references/fiber-baseline.md](references/fiber-baseline.md): Fiber v3 HTTP
+  middleware and trusted proxies.
+- [references/sqlite-bun.md](references/sqlite-bun.md): SQLite and Bun.
+- [references/docker-wolfi.md](references/docker-wolfi.md): static Go binary
+  in a Wolfi image.
 
-## Reference recipes
-
-Read the file for the layer you are wiring:
-
-- [references/fiber-baseline.md](references/fiber-baseline.md): the ordered
-  middleware chain, explicit rate-limit budget, trusted-proxy config for
-  `c.IP()`, and why a global `cache.New()` leaks one user's rendered page to the
-  next.
-- [references/sqlite-bun.md](references/sqlite-bun.md): pure-Go driver choice,
-  open pragmas, and the single-connection in-memory test database.
-- [references/docker-wolfi.md](references/docker-wolfi.md): the multi-stage
-  `CGO_ENABLED=0` build on a Wolfi base.
-
-## gRPC + SSR split
-
-- **Browser:** Fiber + templ/templui SSR.
-- **Internal/API:** gRPC, codegen with `buf`. Fiber is fasthttp (HTTP/1.x) — run
-  gRPC on its own listener. If a browser must call gRPC, use Connect or
-  grpc-gateway / grpc-web.
-
-## Email (Cloudflare)
-
-- **Receive:** Cloudflare Email Routing → Email Worker → webhook into the app.
-- **Send:** Cloudflare Email Service / Worker `send_email` binding (SPF+DKIM).
-  Note: Email Service is **beta** — keep a provider (Resend) behind an interface
-  as the production-stable fallback. The old MailChannels free integration is
-  deprecated; do not use it.
-
-## Bootstrap order
-
-1. `go mod init`; scaffold golang-standards layout.
-2. `.golangci.yml` (Uber style); make lint a CI gate.
-3. Fiber app + middleware baseline (references/fiber-baseline.md).
-4. `templ` + `templui init`; Tailwind.
-5. SQLite (`modernc.org/sqlite`) + Bun; migrations (references/sqlite-bun.md).
-6. Add only the needed integrations: Clerk / Stripe / gRPC / Cloudflare email.
-7. Dockerfile (Wolfi) + `docker compose` (references/docker-wolfi.md).
-
-## Caveats
-
-- Cloudflare Email Service is beta — verify current limits before relying on it
-  for critical transactional mail.
-- Confirm current majors using available official documentation (Fiber v2/v3,
-  `stripe-go`, `clerk-sdk-go`); use Context7 if it is installed.
+For context, errors, and goroutine lifecycles, use mega-go:golang-patterns.

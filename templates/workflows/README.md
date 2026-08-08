@@ -9,4 +9,6 @@ components: copy one into `.claude/workflows/` (project, shared via the repo) or
 `~/.claude/workflows/` (personal) and it runs as `/best-of-n` or `/audit-fanout`.
 A plugin cannot ship a workflow (the plugin component list has no workflows
 entry), so the marketplace distributes these as files you copy in rather than
-installing them for you.
+installing them for you. They intentionally inherit the runtime-selected model;
+set an explicit model only in the consuming workflow when that environment has
+approved it.

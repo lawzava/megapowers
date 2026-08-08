@@ -33,6 +33,10 @@ gracefully and still works without it.
 /plugin install mega-go@megapowers
 ```
 
+For Codex installation and OpenCode's portable-skills-only setup, use the
+canonical [setup guide](../../docs/setup.md). OpenCode does not load this as a
+native plugin bundle.
+
 ## Attribution
 
 The `golang-patterns` skill is vendored from Everything Claude Code

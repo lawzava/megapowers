@@ -8,8 +8,8 @@ megapowers is a marketplace of seven optional plugins for coding agents. It
 adds process skills, deterministic hook backstops, model routing, language
 guidance, and frontend design guidance to Claude Code, Codex, and OpenCode.
 
-The repository publishes measured results, including null results, with the
-protocols needed to reproduce them: [`evals/RESULTS.md`](./evals/RESULTS.md).
+The repository publishes measured results, including null results, with current
+protocols and clearly labeled historical measurements: [`evals/RESULTS.md`](./evals/RESULTS.md).
 
 ## Quickstart (Claude Code)
 
@@ -98,9 +98,9 @@ The committed studies currently show two useful boundaries:
 - Test-first ordering changed from 0/36 control runs to 36/36 runs with the
   TDD skill in context across the tested Claude and GPT models. Both groups
   completed the implementation task.
-- Single-shot code correctness did not improve. All 184 generated programs
-  passed with and without the skill. That null result is published alongside
-  the positive process result.
+- Historical single-shot code correctness did not improve: 184 generated
+  programs passed with and without the skill. The exact protocol was not
+  preserved, so this null is a recorded measurement, not currently rerunnable.
 
 Trigger selection is measured separately. The tuned trigger set reached 100%
 recall with no false fires; held-out and orchestration variants are committed

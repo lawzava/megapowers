@@ -27,6 +27,14 @@ its own work does not use this channel; it routes to Codex.
 - Independent review is deliberately one-shot. Use a separate non-review
   workflow if a task genuinely needs a resumable session.
 
+## Claude Code plugin surfaces
+
+The SessionStart catalog renders the live routing config. The Stop-hook nudge
+reads the same role-scoped vendor count; when an independence role can reach
+fewer than two vendors, it asks for human sign-off instead of suggesting a
+command that cannot succeed. Both are advisory surfaces. Resolver output and
+the receipt remain authoritative.
+
 ## Prompting
 
 Because both modes remove ordinary ambient context, make the prompt self-contained. Use

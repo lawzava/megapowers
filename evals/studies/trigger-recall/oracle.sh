@@ -8,6 +8,7 @@
 # what must stay quiet on off-topic work is the domain skills).
 set -uo pipefail
 DIR="${1:?usage: oracle.sh <results-dir>}"
+[ "${STUDY_SKIP_PROVENANCE:-0}" = 1 ] || "$(dirname "$0")/../provenance-check.sh" "$DIR" || exit $?
 rows="$(mktemp)"; trap 'rm -f "$rows"' EXIT
 
 for meta in "$DIR"/*/run-*/meta.json; do

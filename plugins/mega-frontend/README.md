@@ -17,8 +17,13 @@ pass.
 /plugin install mega-frontend@megapowers
 ```
 
+For Codex installation and OpenCode's portable-skills-only setup, use the
+canonical [setup guide](../../docs/setup.md). OpenCode does not load this as a
+native plugin bundle.
+
 ## Attribution
 
 `designing-frontends` is adapted from **frontend-design** in Anthropic's
 skills repo (https://github.com/anthropics/skills), used under Apache-2.0 and
-rewritten. See the repository `ATTRIBUTION.md`.
+rewritten. Its [Apache-2.0 terms](skills/designing-frontends/LICENSE.txt) travel
+with the standalone skill; see the repository `ATTRIBUTION.md` for provenance.

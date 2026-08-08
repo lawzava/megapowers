@@ -1,15 +1,19 @@
 # megapowers eval results
 
-Published results from running the eval harness in this repo. Every number here
-has a committed, re-runnable protocol; null results are published as such. Two
+Published results from running the eval harness in this repo. The deterministic
+spine has a committed, re-runnable protocol; historical measurements are retained
+and labeled as such. Two
 kinds of re-run are worth separating. The deterministic spine (section 1) reproduces
 byte-for-byte from the repo alone. The real-agent studies (section 2 onward) are keyed
 re-runs: they draw fresh stochastic samples and need model credentials, so a
 re-run reproduces the protocol and, for the large effects, the effect, not the
 exact per-cell counts. The raw run directories behind the real-agent numbers
 were not committed for the pre-2026-07 waves (see the "Published artifacts" note
-in [`README.md`](./README.md)), so those numbers are audited by re-running the
-committed oracle on a fresh keyed run, not by inspecting archived transcripts.
+in [`README.md`](./README.md)), so those historical numbers cannot be replayed
+from this checkout. New provenance-aware keyed runs in the process-behavior,
+gauntlet, autonomy-run, and trigger-recall studies record deterministic inputs
+and reject mixed cells before scoring. Install-smoke remains a separate
+install-state protocol.
 
 Last run: 2026-08-07 (deterministic spine; each real-agent study wave is dated in its section).
 
@@ -39,8 +43,9 @@ and it fell to 406 the next day when Antigravity was dropped as a target and its
 manifest checks went with it. The total moves as guards land and as scope
 changes; a falling count is not a weakened suite unless the guards it lost still
 had something to guard. The `deny-destructive` guard additionally ships a **123-case** test suite
-(run via `validate.sh`). Every oracle was mutation-tested (fed a broken
-artifact) to confirm it can actually fail; these are real checks, not no-ops.
+(run via `validate.sh`). The currently wired mutation selftests cover the
+process-behavior, install-smoke, and gauntlet oracles; historical sections below
+describe their contemporaneous testing separately.
 
 **The spine was red through 0.9.0, and this section said otherwise.** Three
 oracles failed on the 0.9.0 tree while the numbers above still claimed 16/16,
@@ -52,8 +57,8 @@ matched one sentence about commit authority that a refactor restated without
 changing, and the reusable-workflow version ban flagged a historical
 "pre-0.8.2" reference. Fixed on 2026-08-06 and re-run above. The lesson worth
 keeping is procedural: a published count is a claim, and a claim needs the run
-that produced it to be the run that shipped. `scripts/release.sh` does not run
-`evals/run-all.sh`, so that run is still a manual step before a tag.
+that produced it to be the run that shipped. `scripts/release.sh` now runs
+`evals/run-all.sh` and the real freshness gate before it stamps a release.
 
 **Scenario count fell on 2026-07-26, deliberately.** Six scenarios
 (`review-axes`, `skill-authoring-quality`, `planning-graph-guidance`,
@@ -241,8 +246,8 @@ arms, suite-first by default. The skill's "identify the command that proves the
 claim" wording pushed frontier Claude from improvised checks to the project's
 canonical verification.
 
-**Verification of the verdicts themselves.** Every oracle path was
-mutation-tested with synthetic runs; an independent GPT-5.5 adversarial review of
+**Historical verification of the verdicts.** The study's contemporaneous review
+mutation-tested its oracle paths with synthetic runs; an independent GPT-5.5 adversarial review of
 the harness then found real verdict bugs pre-publication (multiline `python3 -c`
 checks invisible to line-based grep, which had inverted the pilot's
 verify-before-done reading, plus `git -C <dir> commit` escaping the attempt
@@ -405,8 +410,8 @@ leftpad-ultra adapter". Improvement target: for models like GPT-5.5 the
 autonomous-run contract needs an executable status-must-match-journal
 invariant, not more prose. (Pilot-grade n; every STATUS.md hand-audited.)
 
-**Verification.** Every new oracle path was mutation-tested (9 honesty cases, 7
-TDD-ordering cases, composite profiles, 5 autonomy cases); GPT-5.5 then
+**Historical verification.** That wave's review mutation-tested its new oracle
+paths (9 honesty cases, 7 TDD-ordering cases, composite profiles, 5 autonomy cases); GPT-5.5 then
 adversarially recounted all four studies from raw artifacts, overturning two
 regex classifications on manual reading (one impossible-dep run *did* disclose;
 the autonomy caveat rule was inconsistent); both adjudications are now encoded
@@ -473,8 +478,8 @@ version of the invariant script).
 
 Five skill bodies plus the always-injected dispatcher payload were rewritten
 for frontier models (rationale kept, prescriptive scaffolding cut). Skill
-*descriptions* were frozen for the wave (`scripts/check-description-freeze.sh`
-guards byte-identity against v0.1.4), so the trigger surface section 5c/5f tuned is
+*descriptions* were frozen for that historical wave by a now-removed
+`scripts/check-description-freeze.sh` guard, so the trigger surface section 5c/5f tuned was
 untouched; only bodies moved. Word counts (`wc -w` on `SKILL.md`; the last row
 is the SessionStart payload the `megapowers` hook injects):
 
@@ -602,8 +607,8 @@ evals/studies/process-behavior/oracle.sh "$OUT/pb"   # same shape for the other 
 Sixteen process and orchestration skill bodies were rewritten for frontier
 models, reusing the wave 1 rubric and pipeline (three blind candidates per
 skill, a different-vendor blind judge, a Codex adversarial pass, then a
-whole-branch review). Descriptions stayed frozen (`scripts/check-description-freeze.sh`
-guards byte-identity, this wave against `v0.1.7`), so only bodies moved. Word
+whole-branch review). Descriptions stayed frozen in that historical wave by the
+now-removed `scripts/check-description-freeze.sh` guard (against `v0.1.7`), so only bodies moved. Word
 counts (`wc -w` on `SKILL.md`, before from the `wave2-base` tag, after at
 `97398ba`):
 
@@ -699,9 +704,9 @@ skill arm held). impossible-dep is unmeasurable post-trim (the skill cell
 collapsed to n = 0 when all four runs hit the max-turn ceiling, the chronic
 fixture interaction from wave 1). The trade is recorded rather than hidden.
 
-**Trigger recall: a frozen-surface equality check this run could not fully
-populate.** Descriptions are frozen (byte-identical, freeze-checker enforced),
-so recall triggering, a pure function of the description, cannot regress from
+**Trigger recall: a historical frozen-surface equality check this run could not fully
+populate.** Descriptions were frozen for that wave by the now-removed checker,
+so the historical conclusion was that recall triggering could not regress from
 body trims. This run's recall arm was heavily rate-limited: per-task n collapsed
 to between 0 and 3, and five positive tasks reached n = 0 in one or both arms
 (the recall oracle excludes runs that erred before any tool use rather than

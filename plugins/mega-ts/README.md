@@ -1,6 +1,6 @@
 # mega-ts
 
-Two skills for greenfield TypeScript: an opinionated stack picker and
+Two skills for greenfield TypeScript: project-shape-driven stack selection and
 idiomatic TypeScript patterns. No hooks; plain skills that work on any
 harness.
 
@@ -8,8 +8,8 @@ harness.
 
 | Skill | What it gives you |
 | --- | --- |
-| `greenfield-ts-stack` | A 2026 stack (pnpm, strict tsconfig, vitest, Hono + zod) with layout, the security/perf middleware baseline, and a correct test setup. |
-| `typescript-patterns` | Discriminated unions, result-vs-throw error handling, promise/async correctness (no floating promises), testing. |
+| `greenfield-ts-stack` | Selects a current stack from project constraints, then gives a matching layout, middleware baseline, and test setup. |
+| `typescript-patterns` | Discriminated unions, result-vs-throw error handling, promise/async correctness, and testing patterns chosen for the project. |
 
 ## Install
 

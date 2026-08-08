@@ -8,92 +8,75 @@ license: MIT
 
 # Python Patterns
 
-> **Measured:** current frontier *and* small Claude models already write the
-> common async/DB mechanics here (asyncio pools and queue termination, shared
-> in-memory SQLite) correctly single-shot without this skill — a controlled
-> study found zero correctness headroom, 184/184 passing in both arms (the
-> repo's `evals/RESULTS.md` §2). Reach for this skill for idiomatic typing and
-> error-shaping *choices*, as a review checklist, or when driving weaker
-> models; not because a current model would otherwise hang a consumer loop.
+Follow the repository's supported Python version, formatter, type checker,
+validation library, and test conventions before introducing a new pattern.
 
-Idioms for correct, readable Python. Each is a default, not a law.
+## Boundaries and data
 
-## Typing
+Type exported APIs and data that crosses module boundaries. Let local inference
+carry obvious implementation details. Use the collection abstraction matching
+the contract, such as `Sequence` for read-only input and `list` for owned,
+mutable data. Model a closed set with an `Enum`, `Literal`, or tagged structure
+when callers must handle every case.
 
-- Type public functions fully; let inference handle locals. Run the type checker in
-  strict mode (see greenfield-python-stack) — an untyped boundary hides bugs.
-- Prefer precise types: `Sequence`/`Mapping` for read-only params, `list`/`dict` for
-  what you own and mutate. Use `X | None` (not bare `Optional` guesswork) and handle
-  the `None` branch.
-- Model closed sets with a discriminated union (`Literal` tag + `match`) or an `Enum`,
-  so the type checker forces you to handle every case.
+Use dataclasses, Pydantic, attrs, or plain classes according to the surrounding
+code and boundary needs. Immutability, slots, and schema models solve specific
+problems, they are not universal defaults. Parse or validate untrusted input at
+the boundary once, then pass domain values inward.
 
-## Data
+## Errors and resources
 
-- `@dataclass(frozen=True, slots=True)` for internal value objects; **pydantic** models
-  at the boundaries (request/response/config) where you need validation and parsing.
-- Don't hand-roll validation you can declare on a pydantic model.
+Use the project's error convention. Return an ordinary value such as `None` for
+an expected absence when that makes the call site clear; raise a specific
+exception for failures that should interrupt normal flow. Preserve a caught
+exception as the cause when translating it, and use context managers or
+`try`/`finally` for resources that must close.
 
-## Errors
+## Async choices
 
-- Raise specific exceptions; don't `except Exception:` and swallow. Catch the narrowest
-  type, add context, and re-raise with `raise NewError(...) from err` to keep the chain.
-- Use `try/finally` or a context manager (`with`) for cleanup; write your own with
-  `@contextmanager` for a resource you open and must close.
-- Return a value for an *expected* absence (a lookup miss → `None` or a result type);
-  reserve exceptions for the genuinely exceptional.
+Write `async def` only when its framework and dependencies expose awaitable
+work. A synchronous function is simpler and correct when its work is
+synchronous. Within async code, use an async library for network or database
+I/O where available. `asyncio.to_thread` is typically appropriate for blocking
+I/O. It does not make CPU-bound Python parallel on the default GIL-enabled
+build; free-threaded builds differ, so confirm the interpreter before relying
+on either behavior.
 
-## Async correctness
-
-- **Nothing blocking inside `async def`.** A sync HTTP call, a blocking DB driver,
-  `time.sleep`, or heavy CPU stalls the whole event loop. Use an async library or
-  `await asyncio.to_thread(fn, ...)`.
-- Run independent work concurrently with `asyncio.gather` or a `TaskGroup` — not a
-  sequential await loop.
-
-### A bounded-concurrency worker pool that does not deadlock
-
-Cap concurrency with a semaphore and gather the results. This completes because each
-worker is a self-contained coroutine — there is no unbounded queue nobody drains and
-no wait on a channel nobody closes (the classic pitfalls):
+Start independent awaitable operations together only when their concurrency
+improves the required behavior and their resource use is bounded. Choose
+`TaskGroup`, `gather`, a semaphore, or a queue based on cancellation, failure,
+streaming, and backpressure needs, rather than applying a worker-pool recipe to
+every fan-out.
 
 ```python
 import asyncio
-from collections.abc import Iterable, Awaitable, Callable
-from typing import TypeVar
+from collections.abc import Awaitable
+from pathlib import Path
+from typing import Protocol
 
-T = TypeVar("T")
-R = TypeVar("R")
+class Response(Protocol):
+    text: str
 
-async def worker_pool(
-    items: Iterable[T],
-    work: Callable[[T], Awaitable[R]],
-    concurrency: int = 8,
-) -> list[R]:
-    sem = asyncio.Semaphore(concurrency)
+class AsyncClient(Protocol):
+    def get(self, path: str) -> Awaitable[Response]: ...
 
-    async def run(item: T) -> R:
-        async with sem:            # bound in-flight work
-            return await work(item)
+async def read_pair(client: AsyncClient) -> tuple[str, str]:
+    first, second = await asyncio.gather(client.get("/first"), client.get("/second"))
+    return first.text, second.text
 
-    # gather preserves input order and propagates the first exception
-    return await asyncio.gather(*(run(i) for i in items))
+def read_file(path: Path) -> str:
+    return path.read_text()
+
+async def load_config(path: Path) -> str:
+    return await asyncio.to_thread(read_file, path)
 ```
 
-For a streaming producer/consumer, use `asyncio.Queue`; always ensure every consumer
-can exit (e.g. send one sentinel per consumer, or cancel the `TaskGroup`) so you don't
-block forever on `queue.get()`.
-
-## Testing
-
-- pytest with plain functions and fixtures; parametrize instead of copy-pasting cases.
-- Test the `domain/` logic without a server. For the DB, share one in-memory
-  connection (see greenfield-python-stack's `StaticPool` helper) so schema persists
-  across queries.
-- `pytest-asyncio` for `async def` tests; don't call `asyncio.run` inside a test.
+Test the domain behavior directly. Use the repository's test runner and async
+test support; do not add an async test framework merely because a function has
+`async def`.
 
 ## When to use this skill
 
-- Writing or reviewing Python for correctness and idiom.
-- Untangling async/concurrency bugs.
-- For a new project's stack choices, use mega-python:greenfield-python-stack.
+- Writing or reviewing Python in an existing project.
+- Choosing typing, error, data-boundary, or async patterns.
+- For a new project's shape and tooling, use mega-python:greenfield-python-stack.

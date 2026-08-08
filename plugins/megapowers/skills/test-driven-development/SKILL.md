@@ -43,7 +43,7 @@ Every argument for code-first ends the same way: a test written after the code p
 
 ## Bug Fixes
 
-Fix bugs with a test, not without one. Write a failing test that reproduces the bug, then follow the cycle; the test proves the fix and guards against regression. If the cause is still unknown, diagnose with systematic-debugging first, then return here.
+Fix bugs with a test, not without one. Write a failing test that reproduces the bug, then follow the cycle; the test proves the fix and guards against regression. If the cause is still unknown, diagnose with `megapowers:systematic-debugging` first, then return here.
 
 ## Testing Anti-Patterns
 

@@ -98,7 +98,8 @@ for phrase in \
   done
 done
 
-must_have "$SDD" 'Recursive coordinator mode is guidance for native Codex and Claude Code subagents, not an execution runtime.'
+must_have "$SDD" 'Recursive coordinator mode is a shared-checkout exception'
+must_have "$SDD" "platform's supported nested delegation mechanism"
 must_have "$SDD" 'recursive multi-writer'
 must_have "$SDD" 'All writers share the current checkout; recursive mode creates no worktrees.'
 must_have "$SDD" 'A coordinator may subdivide only the ownership it inherited.'
@@ -108,10 +109,8 @@ must_have "$SDD" 'the requirement to wait for its direct children and return one
 must_have "$SDD" 'Overlapping ownership, shared interface changes, and dependencies stay sequential.'
 must_have "$SDD" 'Concurrent children do not run Git index or ref mutations.'
 must_have "$SDD" 'Only the top-level lead performs any authorized Git action'
-must_have "$SDD" 'fork_turns = "none"'
-must_have "$SDD" 'nested Agent calls'
-must_have "$SDD" 'agent teams because teams cannot nest'
-must_have "$SDD" 'scripts/ownership-preflight PLAN_FILE'
+must_have "$SDD" 'scripts/ownership-preflight'
+must_have "$SDD" 'run it with `PLAN_FILE`'
 
 must_have "$PLANS" '**Parallel safety:**'
 must_have "$PLANS" '**Ownership:**'
@@ -122,13 +121,13 @@ must_have "$PLANS" '**May decompose:**'
 # restating it verbatim in a starter file bought duplication, not safety.
 must_have "$CODEX" 'disjoint owned paths in the shared checkout'
 must_have "$CODEX" 'Do not create worktrees for this mode.'
-must_have "$CLAUDE" 'nested Agent calls, not agent teams'
+must_have "$CLAUDE" 'disjoint paths in the shared checkout'
 must_have "$CLAUDE" 'Do not create worktrees for this mode.'
 must_have "$CLAUDE" 'Children must not perform Git index or ref operations.'
 must_have "$PRIMITIVES" 'Recursive coordinator mode is guidance over native nested subagents.'
 must_have "$SUPPORT" 'Megapowers runs a plan preflight before dispatch'
 must_have "$SUPPORT" 'no registry, scheduler, or worktree manager participates.'
-must_have "$README" 'native recursive coordinator guidance for Codex and Claude Code'
+must_have "$README" 'native recursive coordinator guidance'
 must_have "$AGENT_INSTALL" 'Recursive coordinator mode is the explicit shared-checkout exception; do not create worktrees for it.'
 must_have "$SETUP" 'Recursive coordinator mode is the explicit shared-checkout exception; do not create worktrees for it.'
 

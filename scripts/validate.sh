@@ -580,6 +580,8 @@ if [[ -d evals/scenarios ]]; then
   for st in evals/studies/process-behavior/run-study.sh evals/studies/install-smoke/run-smoke.sh; do
     if [[ -x $st ]] && "$st" --selftest >/dev/null 2>&1; then ok "study selftest $st"; else bad "study selftest $st"; fi
   done
+  if evals/studies/gauntlet/oracle.sh --selftest >/dev/null 2>&1; then ok "study selftest evals/studies/gauntlet/oracle.sh"; else bad "study selftest evals/studies/gauntlet/oracle.sh"; fi
+  if evals/coverage-inventory.sh >/dev/null 2>&1; then ok "eval coverage inventory generated"; else bad "eval coverage inventory failed"; fi
 else
   echo "  (no evals/ dir — skipped)"
 fi
@@ -700,6 +702,8 @@ else
     esac
   done
 fi
+
+if evals/check-portability-boundary.sh >/dev/null 2>&1; then ok "semantic skills keep harness mechanics at the routing boundary"; else bad "semantic skill contains harness-specific command or model ID"; fi
 if grep -qF 'did not run' "$skill_body" 2>/dev/null; then
   ok "upgrading-megapowers distinguishes a failed drift check from no drift"
 else

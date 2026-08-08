@@ -4,15 +4,17 @@ description: >-
   Use to build or redesign a rendered UI when visual direction, palette,
   typography, layout, motion, or UX copy matters, especially if output looks
   templated or AI generated.
-license: MIT
+license: Complete terms in LICENSE.txt
 ---
 
 # Designing Frontends
 
-Design like a studio whose clients pay for an identity that could not be
-mistaken for anyone else's. The templated proposal has already been rejected.
-Make deliberate, opinionated choices about palette, typography, and layout
-that are specific to this brief, and take one aesthetic risk you can justify.
+Calibration reviewed: 2026-08-08.
+
+For identity-led briefs, make deliberate choices about palette, typography, and
+layout that are specific to the subject. For utilitarian, accessibility-first,
+or dense applications, prioritize comprehension and task completion over a
+signature aesthetic.
 
 ## Ground it in the subject
 
@@ -40,42 +42,29 @@ brief's real content throughout.
 - Match complexity to the vision. Maximalist directions need elaborate
   execution; minimal directions need precision in spacing, type, and detail.
 
-## Calibration: the current default looks
+## Process: plan, critique, then build
 
-Calibration reviewed: 2026-07-07. AI-generated design currently clusters
-around three looks: (1) warm cream background (near #F4F1EA), high-contrast
-serif display, terracotta accent; (2) near-black background with a single
-acid-green or vermilion accent; (3) broadsheet layout with hairline rules,
-zero border-radius, dense columns. Each is legitimate when the brief asks for
-it, and the brief's own words always win. Where the brief leaves an axis
-free, do not spend that freedom on one of these defaults.
-
-## Process: plan as tokens, critique, then build
-
-Work in two passes. First write a compact token system: Color as 4 to 6 named
-hex values; Type as faces for two or more roles (a characterful display face
-used with restraint, a complementary body face, a utility face if data needs
-one); Layout as a one-sentence concept, with ASCII wireframes to compare
-options; Signature as the single element this page will be remembered by.
+Work in two passes. First write a compact direction: palette, typography roles,
+and a one-sentence layout concept. For an identity-led brief, add the single
+element the page should be remembered by. Use wireframes when they clarify
+competing layout options.
 
 Then review the plan against the brief before writing code: any part that
 reads like the generic default for a similar page gets revised, with the
 change stated. Build only from the revised plan, deriving every color and
-type decision from it. When writing CSS, watch selector specificity: type
-selectors and class selectors that overlap (a .section rule against a .cta
-rule) quietly cancel each other, most often on section padding and margins.
+type decision from it. When writing CSS, inspect the cascade in order: origin
+and importance, layer order, specificity, then source order. In layered styles,
+a later layer can beat a more specific rule in an earlier one, so overlapping
+classes can override padding and margins unexpectedly.
 
 ## Restraint and self-critique
 
-Spend the boldness in one place: the signature element is the one memorable
-thing, everything around it stays quiet, and decoration that does not serve
-the brief gets cut. Hold a quality floor without announcing it: responsive
-down to mobile, visible keyboard focus, reduced motion respected. Critique
-your own render: take screenshots where the environment supports it (a
-picture is worth a thousand tokens), and before shipping, remove one
-accessory. For an independent pass on the rendered result, route the
-visual_verify role through mega-orchestration:multi-agent-delegation, if
-installed.
+When the brief calls for a signature element, keep surrounding decoration quiet
+and cut anything that does not serve the brief. Hold a quality floor without
+announcing it: responsive down to mobile, visible keyboard focus, reduced motion
+respected, and WCAG AA contrast for text and controls in every shipped theme.
+Critique your own render: take screenshots where the environment supports it (a
+screenshot beats a description), and before shipping, remove one accessory.
 
 ## Writing in the design
 
@@ -89,6 +78,8 @@ what went wrong and how to fix it, without apologizing and without vagueness.
 An empty screen is an invitation to act. Each element does one job: a label
 labels, an example demonstrates, nothing quietly does double duty.
 
+For framework, bundler, and project layout choices, use
+`mega-ts:greenfield-ts-stack`; this skill covers visual direction.
+
 Origin: Adapted from frontend-design in Anthropic's skills repo
-(https://github.com/anthropics/skills, Apache-2.0); rewritten, with the
-calibration section dated for re-review.
+(https://github.com/anthropics/skills, Apache-2.0).

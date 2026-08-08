@@ -12,7 +12,7 @@ A plan is a handoff artifact. Write it for a skilled engineer who has zero
 context for this codebase and must not guess binding decisions. Give the
 outcome, owned files, dependencies, interfaces, acceptance oracle,
 verification commands, and relevant docs. Use the
-senior-engineer register (see using-megapowers, Communication): declarative,
+senior-engineer register (see `megapowers:using-megapowers`, Communication): declarative,
 self-contained, readable by an agent with no conversation context.
 DRY. YAGNI. TDD.
 
@@ -67,10 +67,9 @@ emulator, normal-user, published-release, or target-environment witness with a
 neighboring unit test.
 
 **Commit cadence is the executor's policy, not a plan mandate.** Selecting a
-workflow never grants permission to commit. Choosing subagent-driven
-development opts into per-task commits only when the user and repository
-already authorize them. Otherwise checkpoints persist through the ledger and
-working tree.
+workflow never grants permission to commit. `megapowers:subagent-driven-development`
+uses per-task commits only when the user and repository already authorize them.
+Otherwise checkpoints persist through the ledger and working tree.
 
 ## Parallel Safety and Ownership
 
@@ -79,7 +78,7 @@ after Task N`, followed by one sentence explaining the dependency boundary.
 
 **Ownership:** List exact files or non-overlapping directory roots. Parallel
 tasks must not own the same path or a parent and child path. Plans intended for
-recursive coordinator mode must pass subagent-driven-development's
+recursive coordinator mode must pass `megapowers:subagent-driven-development`'s
 `scripts/ownership-preflight PLAN_FILE` before dispatch.
 
 **May decompose:** Write `Yes` only when a coordinator can split this task into
@@ -117,30 +116,30 @@ Fix issues inline and move on; no re-review pass.
 Under an active autonomous run (a `.megapowers/run/<id>/charter.md` governs
 this work; see mega-orchestration:autonomous-run, if installed) at level
 `autonomous` or `on-the-loop`: do not ask. Choose subagent-driven
-development when subagents are available (its per-task commits are part of
-that choice; they land on the run's branch), otherwise inline execution;
-journal the choice and proceed. The question below is for interactive work
-and `in-the-loop` runs.
+development when subagents are available, otherwise inline execution. Commit
+only if the charter, user, and repository already authorize it; otherwise use
+the ledger and working tree as checkpoints. Journal the choice and proceed.
+The question below is for interactive work and `in-the-loop` runs.
 
-After saving the plan, offer the execution choice:
+After saving the plan, offer this execution choice verbatim:
 
-**"Plan complete and saved to `docs/megapowers/plans/<filename>.md`. Execution options:**
+```
+Plan complete and saved to `docs/megapowers/plans/<filename>.md`. Execution options:
 
-**1. Subagent-Driven (recommended):** when the plan's tasks are mostly independent, use fresh subagents per task with review
-between tasks, via megapowers:subagent-driven-development. It commits each
-task after it passes review, so choosing it opts into per-task commits.
+1. Subagent-Driven (recommended): when the plan's tasks are mostly independent,
+use fresh subagents per task with review between tasks, via
+megapowers:subagent-driven-development. Checkpoints use authorized commits when
+available; otherwise they remain in the ledger and working tree.
 
-**2. Inline Execution:** run tasks inline in this session via
-megapowers:executing-plans; checkpoints at task boundaries, committed per
-your own commit policy, not automatically.
+2. Inline Execution: run tasks inline in this session via
+megapowers:executing-plans; checkpoints stay at task boundaries and follow your
+commit policy.
 
-**3. Autonomous Run:** for long or multi-session work, wrap execution in
-mega-orchestration:autonomous-run (if installed): a frozen charter with
-done-when criteria and an autonomy level, per-milestone execution without
-per-task check-ins. This plan becomes the run's milestone source (see that
-skill's "Where the charter comes from").
+3. Autonomous Run: for long or multi-session work, use
+mega-orchestration:autonomous-run when installed. It uses a frozen charter,
+done-when criteria, and per-milestone execution without per-task check-ins.
 
-**Which approach?"** (If you don't want per-task commits, choose Inline or
-say so.)
+Which approach?
+```
 
 Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.

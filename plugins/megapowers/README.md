@@ -45,6 +45,10 @@ always-on metadata; full skill bodies load only when invoked.
 /plugin install megapowers@megapowers
 ```
 
+For Codex installation and OpenCode's portable-skills-only setup, use the
+canonical [setup guide](../../docs/setup.md). OpenCode does not load this as a
+native plugin bundle.
+
 ## Attribution
 
 megapowers is a restyled fork of

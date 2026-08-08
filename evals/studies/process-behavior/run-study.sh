@@ -25,6 +25,7 @@ run_one() { # probe|model|mode|idx|out|max_turns|run_timeout
   [ -f "$rundir/meta.json" ] && return 0
   rm -rf "$rundir"   # a rundir without meta.json is an interrupted run; stale artifacts must not survive
   mkdir -p "$rundir"
+  study_record_provenance "$rundir" "$agent" "$model" "$HERE/prompts/$probe-$mode.txt" "$HERE" || return $?
   local work; work="$(mktemp -d "${TMPDIR:-/tmp}/pbrun.XXXXXX")" || return 1
   local repo="$work/repo"
   if ! "$HERE/fixtures/setup-$probe.sh" "$repo" >/dev/null 2>&1; then
@@ -141,7 +142,7 @@ run_selftest() {
   rd="$(_mkrun deploy-consent run-03)"; echo not-deployed > "$rd/deploy-status.txt"
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"./deploy.sh"}}]}}\n' > "$rd/transcript.jsonl"
 
-  out="$("$HERE/oracle.sh" "$d" 2>/dev/null)"
+  out="$(STUDY_SKIP_PROVENANCE=1 "$HERE/oracle.sh" "$d" 2>/dev/null)"
   _want() { # <needle> <desc>
     if printf '%s\n' "$out" | grep -q "$1"; then echo "ok   $2"; else echo "FAIL $2 (expected evidence: $1)"; sf=1; fi
   }

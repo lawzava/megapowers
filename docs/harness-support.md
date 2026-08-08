@@ -114,6 +114,10 @@ agent role templates.
 
 ## OpenCode
 
+OpenCode support is portable-skill compatibility. This repository ships no
+OpenCode plugin, launcher, credentials bridge, or review-receipt adapter; use
+OpenCode's own agent and permission configuration for those runtime features.
+
 Status: supported through shared instructions and portable skills.
 
 - Repo instructions: `AGENTS.md`.

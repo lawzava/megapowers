@@ -117,6 +117,77 @@ default="$repo/.megapowers/sdd/review-${base7}..${head7}.diff"
   || nope "default OUTFILE is range-named inside the sdd workspace" "expected: $default"
 check "default package leaves git status clean" "" "$(cd "$repo" && git status --porcelain)"
 
+# A no-commit task can have changes in all three working-tree states. The
+# reviewer must see them alongside the committed range, or SDD can approve an
+# empty/incomplete package before an authorized commit exists.
+printf 'staged\n' >> "$repo/a.txt"
+git -C "$repo" add a.txt
+printf 'unstaged\n' >> "$repo/a.txt"
+printf 'untracked\n' > "$repo/c.txt"
+worktree_out="$scratch/worktree.diff"
+( cd "$repo" && "$PACKAGE" HEAD~2 HEAD "$worktree_out" ) >/dev/null
+contains "package has a staged section" "$worktree_out" "## Staged changes"
+contains "package has an unstaged section" "$worktree_out" "## Unstaged changes"
+contains "package has an untracked section" "$worktree_out" "## Untracked changes"
+contains "package carries staged content" "$worktree_out" "+staged"
+contains "package carries unstaged content" "$worktree_out" "+unstaged"
+contains "package carries untracked content" "$worktree_out" "+untracked"
+
+# An explicit package path inside the repository is itself untracked while the
+# package is written. It must not recursively package its own partial output.
+in_repo_out="$repo/review-package.diff"
+( cd "$repo" && "$PACKAGE" HEAD~2 HEAD "$in_repo_out" ) >/dev/null
+if grep -qF "diff --git a/review-package.diff b/review-package.diff" "$in_repo_out"; then
+  nope "explicit in-repo package excludes itself" "package diff included its own OUTFILE"
+else
+  ok "explicit in-repo package excludes itself"
+fi
+
+# A distinct untracked filename can end in a newline. String normalization that
+# strips that newline must not confuse it with the package output.
+newline_file="$repo/review-package.diff"$'\n'
+printf 'newline-path\n' > "$newline_file"
+( cd "$repo" && "$PACKAGE" HEAD~2 HEAD "$in_repo_out" ) >/dev/null
+contains "newline-named untracked file is included" "$in_repo_out" "+newline-path"
+
+# Exit 1 means an untracked file differs from /dev/null. Exit 2 or higher means
+# capture failed and must not be hidden behind a successful, incomplete package.
+fatal_repo="$(make_repo rp-fatal)"
+fatal_name=$'fatal-path\n'
+printf 'must be reviewed\n' > "$fatal_repo/$fatal_name"
+git_shim="$scratch/git-error-shim"
+mkdir -p "$git_shim"
+real_git="$(command -v git)"
+cat > "$git_shim/git" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1-}" = diff ] &&
+   [ "${2-}" = --no-index ] &&
+   [ "${3-}" = -- ] &&
+   [ "${4-}" = /dev/null ] &&
+   [ "${5-}" = $'fatal-path\n' ]; then
+  printf 'injected fatal untracked diff\n' >&2
+  exit 2
+fi
+exec "$REAL_GIT" "$@"
+EOF
+chmod +x "$git_shim/git"
+fatal_out="$scratch/fatal.diff"
+fatal_err="$scratch/fatal.err"
+rc=0
+(
+  cd "$fatal_repo"
+  REAL_GIT="$real_git" PATH="$git_shim:$PATH" \
+    "$PACKAGE" HEAD~2 HEAD "$fatal_out"
+) >/dev/null 2>"$fatal_err" || rc=$?
+check "fatal untracked diff exits 2" 2 "$rc"
+contains "fatal untracked diff is diagnosed" "$fatal_err" \
+  "review-package: git diff failed for untracked path"
+if [ ! -e "$fatal_out" ]; then
+  ok "fatal capture does not publish a partial review package"
+else
+  nope "fatal capture does not publish a partial review package" "partial output exists: $fatal_out"
+fi
+
 echo
 echo "passed: $passed, failed: $failed"
 [ "$failed" -eq 0 ]

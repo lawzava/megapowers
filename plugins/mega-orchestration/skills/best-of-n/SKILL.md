@@ -9,74 +9,57 @@ license: MIT
 
 # Best-of-N
 
-Generate several candidate solutions independently, then select one. This beats
-a single iterated attempt when the solution space is wide and a wrong path is
-expensive. The evidence favors selection over blending: deliberating teams
-regress toward their weaker members, losing up to 41% against their best member
-(arXiv 2602.01011), while non-interactive answer voting stays valid. So this
-skill picks ONE winner; it never merges opinions into a compromise.
+Use this for a wide, costly solution space where selecting one work product is better
+than iterating a single attempt. Do not use it for routine work or to manufacture a
+consensus.
 
-## Sizing N
+## Inputs and output
 
-Scale N to stakes and uncertainty, and declare a stopping rule up front.
-Routine, low-uncertainty work does not need this skill. An uncertain approach
-at moderate stakes warrants 2 or 3 candidates. High stakes and a wide solution
-space (a tricky algorithm, a public API shape, a security or money touching
-change) warrant 3 to 5. Stop early once an oracle-passing candidate cannot be
-beaten on the oracle, and stop adding candidates when new ones stop differing;
-log it if you cap.
+Input: one precise brief, acceptance criteria, an executable oracle where possible,
+candidate count, and a stopping budget. Output: one selected candidate, its oracle or
+blind-comparison evidence, and a record of why alternatives lost.
 
-## Procedure
+## Method
 
-1. **One precise brief, and an executable oracle if one can exist.** The oracle
-   (a test suite, a compile or type check, a property test, a benchmark
-   threshold) decides correctness without a human or model opinion. Effort
-   spent here makes selection objective.
+1. Define the oracle before candidates start. A test suite, property, type check,
+   benchmark threshold, or reproducible check selects correctness. State a tie-breaker
+   for multiple passing candidates and a stop condition for diminishing diversity.
+2. Produce candidates independently. Each candidate has isolated write space and no
+   visibility into another candidate's artifacts, reasoning, or scratch state.
+3. Run the oracle independently for every candidate. A self-reported result is not
+   selection evidence. A sole full pass wins; otherwise prefer the simplest complete
+   pass or proceed to blind comparison.
+4. If judgment is necessary, anonymize copies, not source candidates. Refuse to publish
+   a set if copying, stripping, or verification fails. Source candidates remain
+   immutable; marker-stripped copies are the content judges see.
+   `scripts/anonymize-candidates` performs that publication gate; its
+   `scripts/tests/anonymize-candidates.test.sh` characterizes copy and scan failures.
+   Use a writer-controlled output parent. Its `--out` path is the ordinary directory
+   atomically published after validation. After judgment, remove that directory:
 
-2. **N candidates, isolated and blind.** Dispatch N implementers from the same
-   brief, each in its own worktree, each a single writer that returns a patch
-   or works only inside its worktree; candidates never write to the repo tree.
-   Vary the angle for real diversity: different models where available (resolve
-   the `small_impl` role via multi-agent-delegation's `scripts/delegate-resolve
-   small_impl`), or same model under different framings. Information restriction
-   is mandatory: each candidate is produced blind to the others, with no shared
-   scratch space and no sight of another candidate's output. A worker that sees
-   another attempt anchors to it, and that collapses your N into 1; this is the
-   failure mode the whole structure exists to avoid.
+   ```bash
+   out="<exact --out path passed to anonymize-candidates>"
+   [ -d "$out" ] && [ ! -L "$out" ] || { echo "anonymous set missing: $out" >&2; exit 1; }
+   rm -rf -- "$out"
+   ```
 
-3. **Select by oracle first.** The lead runs every candidate through the oracle
-   in that candidate's worktree; a candidate's self-reported pass is never
-   trusted. Failures are out. A sole passer wins. Among several passers, prefer
-   the simplest full pass, or break the tie in step 4.
+   Give the judge only that set and the criteria.
+5. Integrate one winner through the designated single writer. A runner-up idea becomes
+   a separately reviewed change, never a blended candidate diff.
 
-4. **Blind judge only for ties or when no oracle exists.** Anonymize the set
-   with `scripts/anonymize-candidates`: it copies candidates to
-   `candidate-A..N` in randomized order, strips the authorship markers you
-   name, and refuses if any marker survives; the label to author manifest it
-   prints stays private and the judge never sees it. Hand an independent judge
-   the anonymized artifacts alone, with no author labels, reasoning traces, or
-   deliberation, and have it rank them against the brief's criteria, not
-   length. Mitigate position bias: randomize presentation order, or run the
-   ranking twice with the order swapped and treat an order-flipped verdict as a
-   tie. Blindness is what makes the judgment independent. Prefer a judge from a
-   different vendor than the authors, resolved via `scripts/delegate-resolve
-   judge` (see mega-orchestration:cross-model-verification).
+## Routing contract
 
-5. **High stakes with no oracle: aggregate verifiers, not one judge.** A single
-   judge is one point of failure. Run several aspect verifiers (correctness,
-   security, simplicity) over the anonymized set and aggregate their approvals,
-   reusing cross-model-verification's panel via `scripts/delegate-resolve
-   judge`. Diverse verifiers scale better than one judge or self-consistency
-   (BoN-MAV, arXiv 2502.20379).
+Hard candidates require a routing request that states candidate stakes, required
+capabilities, isolation, and independence constraints. The router must choose a route
+whose policy admits that work. It must not silently reuse a route reserved for cheap,
+ordinary implementation merely because the route is available. If no qualifying route
+exists, reduce the task, obtain authorization for a suitable route, or use one explicit
+implementation path. Route the blind judge away from every candidate author; otherwise
+label the result as a non-independent comparison.
 
-6. **Integrate as single writer.** The lead applies the winning candidate. A
-   specific better idea from a runner-up may be grafted as a deliberate,
-   reviewed change, never by blending diffs.
+## Safety and oracle
 
-## Guardrails
-
-- This is SELECTION, not consensus. Never average candidates or merge their
-  diffs to combine strengths; that reintroduces the failure mode above.
-- Candidates live in worktrees or as patches; only the lead lands the winner.
-- Record what was compared and why the winner won (the oracle result or the
-  judge's ranking) so the choice is reviewable.
+Selection is not synthesis: never merge candidates to create a compromise. Preserve
+candidate provenance and test output until selection is reviewable. An executable
+oracle outranks model preference; blind comparison is a fallback, not proof of runtime
+correctness.

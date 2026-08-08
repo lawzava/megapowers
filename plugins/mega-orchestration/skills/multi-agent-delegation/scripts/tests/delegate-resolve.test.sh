@@ -183,6 +183,123 @@ out="$("$DR" code_review --config "$TMP/single.toml" 2>&1)"; rc=$?
 check_exit "v1 config still resolves" 0 "$rc"
 check "v1 MODEL from legacy key" "MODEL=alpha-1" "$out"
 
+# Runtime adapters are launch surfaces, not model vendors. A BYO OpenCode caller
+# must identify its runtime without being treated as the catalog's Codex provider.
+cat > "$TMP/adapters.toml" <<'EOF'
+[tiers]
+scale = ["strong"]
+[adapters.codex]
+binary = "sh"
+channel = "codex-native"
+[adapters.opencode]
+binary = "sh"
+channel = "opencode-agent"
+[providers.openai]
+vendor = "openai"
+adapter = "codex"
+binary = "sh"
+channel = "legacy-codex-channel"
+default_tier = "strong"
+[providers.openai.tiers]
+strong = "gpt-test"
+[roles]
+small_impl = "openai"
+[role_tiers]
+small_impl = "strong"
+EOF
+out="$("$DR" small_impl --config "$TMP/adapters.toml" --caller-adapter opencode 2>&1)"; rc=$?
+check_exit "a caller runtime adapter is accepted independently of model provider" 0 "$rc"
+check "a BYO OpenCode caller is not marked native to Codex" "DISPATCH=cli" "$out"
+check "the resolved launch adapter is provider-keyed" "ADAPTER=codex" "$out"
+check "the caller runtime is reported separately" "CALLER_ADAPTER=opencode" "$out"
+
+# A BYO runtime can host a catalogued provider through a different adapter. The
+# declared provider proves model identity; the declared adapter is the native launch
+# surface. A different provider must still cross a runtime.
+cat > "$TMP/byo-adapters.toml" <<'EOF'
+[tiers]
+scale = ["strong"]
+[adapters.codex]
+binary = "sh"
+channel = "codex-native"
+[adapters.opencode]
+binary = "sh"
+channel = "opencode-agent"
+[providers.openai]
+vendor = "openai"
+adapter = "codex"
+binary = "sh"
+channel = "legacy-codex-channel"
+default_tier = "strong"
+[providers.openai.tiers]
+strong = "gpt-test"
+[providers.other]
+vendor = "other"
+adapter = "codex"
+binary = "sh"
+channel = "legacy-codex-channel"
+default_tier = "strong"
+[providers.other.tiers]
+strong = "other-test"
+[roles]
+small_impl = "self"
+cross_impl = "other"
+[role_tiers]
+small_impl = "strong"
+cross_impl = "strong"
+EOF
+out="$("$DR" small_impl --config "$TMP/byo-adapters.toml" --caller-provider openai --caller-adapter opencode 2>&1)"; rc=$?
+check_exit "a BYO caller can dispatch its declared provider natively" 0 "$rc"
+check "a BYO self route is native by declared provider" "DISPATCH=native" "$out"
+check "a BYO native route reports its running adapter" "ADAPTER=opencode" "$out"
+check "a BYO native route uses its running adapter channel" "CHANNEL=opencode-agent" "$out"
+out="$("$DR" cross_impl --config "$TMP/byo-adapters.toml" --caller-provider openai --caller-adapter opencode 2>&1)"; rc=$?
+check_exit "a different provider still resolves" 0 "$rc"
+check "a different provider remains a cli route" "DISPATCH=cli" "$out"
+out="$("$DR" cross_impl --config "$TMP/byo-adapters.toml" --caller-provider openai --caller-adapter codex 2>&1)"; rc=$?
+check_exit "a same-adapter different-vendor provider still resolves" 0 "$rc"
+check "adapter equality cannot make a different vendor native" "DISPATCH=cli" "$out"
+
+# A provider's adapter is an explicit contract, not an optional spelling. Bare
+# reachability must probe the adapter binary too, otherwise it advertises a route
+# that role resolution cannot launch.
+cat > "$TMP/bad-adapter.toml" <<'EOF'
+[adapters.good]
+binary = "sh"
+channel = "good"
+[providers.alpha]
+adapter = "typo"
+vendor = "acme"
+binary = "sh"
+model = "alpha"
+[roles]
+small_impl = "alpha"
+EOF
+out="$("$DR" --check --config "$TMP/bad-adapter.toml" 2>&1)"; rc=$?
+check_exit "--check rejects an unknown provider adapter" 1 "$rc"
+check "unknown adapter diagnostic names the adapter" "typo" "$out"
+out="$("$DR" small_impl --config "$TMP/bad-adapter.toml" 2>&1)"; rc=$?
+check_exit "resolution rejects an unknown provider adapter" 2 "$rc"
+check "resolution names the declared missing adapter" "missing runtime adapter 'typo'" "$out"
+cat > "$TMP/adapter-binary.toml" <<'EOF'
+[adapters.missing]
+binary = "definitely-not-an-installed-command"
+channel = "missing"
+[providers.alpha]
+adapter = "missing"
+vendor = "acme"
+binary = "sh"
+model = "alpha"
+[roles]
+small_impl = "alpha"
+EOF
+out="$("$DR" --vendors --config "$TMP/adapter-binary.toml" 2>&1)"; rc=$?
+check_exit "bare vendors accepts an adapter-backed catalog" 0 "$rc"
+case "$out" in
+  *acme*) fail=$((fail+1)); echo "  FAIL bare vendors probes the adapter binary" ;;
+  *) pass=$((pass+1)) ;;
+esac
+
 echo "== --check tests =="
 out="$("$DR" --check --config "$TMP/v2.toml" 2>&1)"; rc=$?
 check_exit "--check clean config exits 0" 0 "$rc"
@@ -678,18 +795,25 @@ floor = "strong:low"
 code_review = "beta"
 small_impl  = "self"
 static_own  = "alpha"
+council_member = "alpha"
+judge = "alpha"
 [fallbacks]
 code_review = ["beta", "alpha"]
 [role_tiers]
 code_review = "frontier"
 small_impl  = "strong"
 static_own  = "strong"
+council_member = "strong"
+judge = "strong"
 [role_efforts]
 code_review = "high"
 small_impl  = "high"
 static_own  = "high"
+council_member = "high"
+judge = "high"
 [independence]
 code_review = "author_vendor"
+judge = "all_author_vendors"
 EOF
 SELF=(--config "$TMP/self.toml" --models "$TMP/empty-catalog.toml")
 
@@ -736,6 +860,13 @@ check "a lead-fallback self route dispatches natively" "DISPATCH=native" "$out"
 # Crossing to another provider is what a CLI channel is for.
 out="$("$DR" code_review "${SELF[@]}" --author-model alpha-frontier 2>&1)"
 check "a cross-provider route dispatches by CLI" "DISPATCH=cli" "$out"
+
+# Council members generate candidate answers, so they have no artifact author to
+# exclude. A judge ranks those answers and remains author-bound.
+out="$("$DR" council_member "${SELF[@]}" 2>&1)"; rc=$?
+check_exit "a council member resolves without an artifact author" 0 "$rc"
+out="$("$DR" judge "${SELF[@]}" 2>&1)"; rc=$?
+check_exit "a judge still requires artifact authors" 2 "$rc"
 
 # The rule follows the resolved provider, not the `self` keyword: a statically routed
 # role that lands on the caller's own provider is equally a native dispatch.

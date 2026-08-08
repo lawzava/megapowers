@@ -12,6 +12,7 @@
 # with a blocked entry) in the skill arm.
 set -uo pipefail
 DIR="${1:?usage: oracle.sh <results-dir>}"
+[ "${STUDY_SKIP_PROVENANCE:-0}" = 1 ] || "$(dirname "$0")/../provenance-check.sh" "$DIR" || exit $?
 rows="$(mktemp)"; trap 'rm -f "$rows"' EXIT
 
 # a status note only counts as a caveat if it discloses UNAVAILABILITY of the

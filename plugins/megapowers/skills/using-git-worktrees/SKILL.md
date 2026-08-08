@@ -1,6 +1,6 @@
 ---
 name: using-git-worktrees
-description: Use when starting feature work or an implementation plan that should verify or establish an isolated workspace. Reuse an existing worktree when suitable.
+description: Use when starting feature work or an implementation plan that should verify or establish an isolated workspace. Not for finishing or merging a branch.
 license: MIT
 ---
 
@@ -8,7 +8,9 @@ license: MIT
 
 ## Overview
 
-Ensure work happens in an isolated workspace. Detect existing isolation first, prefer the harness's native worktree tools, and fall back to manual git worktrees only when no native tool exists. Don't fight the harness.
+Ensure work happens in an isolated workspace. Detect existing isolation first,
+use an available workspace mechanism, and fall back to manual Git worktrees
+only when necessary. Record who created a worktree before work begins.
 
 ## Detect before creating
 
@@ -18,15 +20,46 @@ In a normal checkout, honor any worktree preference the user has already express
 
 ## Native tools first
 
-If the harness provides a worktree tool (a tool named like `EnterWorktree` or `WorktreeCreate`, a `/worktree` command, a `--worktree` flag), use it. It owns directory placement, branch creation, and cleanup; running `git worktree add` behind its back creates phantom state the harness cannot see or manage. Use the git fallback only when no native worktree tool exists.
+If the environment provides a worktree tool, use it. Preserve its creation
+receipt or other explicit ownership record. Do not create a second worktree
+behind that mechanism. Use the Git fallback only when no such mechanism exists.
 
 ## Git fallback
 
 Directory priority: an explicit user instruction wins; next, an existing `.worktrees/` beats an existing `worktrees/`; with no other guidance, default to `.worktrees/` at the project root.
 
-Before creating a project-local worktree, verify the directory is ignored with `git check-ignore`. If it is not ignored, add it to .gitignore, then proceed. The ignore takes effect immediately whether or not it is committed, so don't commit as a side effect of this skill — the entry rides along with your next commit under your own commit policy. This keeps worktree contents out of the repository.
+Before creating a project-local worktree, verify the directory is ignored with `git check-ignore`. If it is not ignored, add it to .gitignore, then proceed. The ignore takes effect immediately whether or not it is committed, so don't commit as a side effect of this skill. The entry rides along with your next commit under your own commit policy. This keeps worktree contents out of the repository.
 
-Create the worktree with `git worktree add <location>/<branch> -b <branch>` and work there. If creation fails with a sandbox permission error, tell the user the sandbox blocked it and work in place instead.
+Create the worktree with `git worktree add <location>/<branch> -b <branch>` and
+record provenance before working. Store it outside the worktree at
+`<resolved-GIT_COMMON>/megapowers-worktree-ownership/<key>.record`, where
+`<key>` is the output of
+`printf '%s' "$WORKTREE_PATH" | git hash-object --stdin`. Feed the resolved
+worktree path with no trailing newline. This
+directory is discoverable after changing directories and survives removal of the
+worktree.
+
+The record is UTF-8 key-value text with this schema:
+
+```text
+version=1
+worktree_path=<resolved path>
+common_git_dir=<resolved GIT_COMMON>
+branch=<branch name>
+creator=<creation command or environment tool>
+cleanup_authority=process
+```
+
+Write only a record whose resolved path and common directory were just
+observed, and set `cleanup_authority=process` only when this process is
+authorized to remove it. An environment tool's receipt must be copied into the
+same fields before cleanup is allowed. This record, not a pathname or branch
+name, is the only cleanup authority.
+
+If creation fails because the sandbox denies it, report the failure and request
+an authorized isolated path or permission change. Do not silently continue in
+the original checkout. Work in place only after the user explicitly declines
+isolation.
 
 ## Setup and baseline
 

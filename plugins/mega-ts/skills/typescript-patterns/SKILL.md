@@ -8,79 +8,60 @@ license: MIT
 
 # TypeScript Patterns
 
-Idioms for correct, readable TypeScript. Each is a default, not a law.
+Follow the repository's TypeScript target, module system, validation approach,
+error conventions, and test tooling before adding a new abstraction.
 
-> **Measured:** in this repo's skill-effect study, current frontier *and* small
-> Claude models already write correct versions of common concurrency/data
-> patterns without pattern skills (zero correctness headroom; see
-> `evals/RESULTS.md`). The value here is consistency of *design choices*
-> (types at boundaries, error shape, module layout), not single-shot
-> correctness.
+## Types and boundaries
 
-## Types
-
-- Turn on `strict` and `noUncheckedIndexedAccess`. Let inference handle locals; type
-  the public boundaries (exported functions, request/response, module APIs).
-- Prefer `unknown` over `any` at a boundary, then narrow. `any` disables the checker
-  and hides bugs; if you must, isolate it behind a typed function.
-- Model closed sets with a **discriminated union** (a literal `kind` field) and switch
-  on it exhaustively — add a `never` default so the compiler flags a missing case:
+Type exported APIs and external-data boundaries. Prefer `unknown` to `any` for
+untrusted values, then narrow or validate before use. Let inference carry local
+details. Use a discriminated union when callers must branch exhaustively over a
+closed set, not as a default replacement for simple objects.
 
 ```ts
-type Shape = { kind: 'circle'; r: number } | { kind: 'rect'; w: number; h: number }
-function area(s: Shape): number {
-  switch (s.kind) {
-    case 'circle': return Math.PI * s.r ** 2
-    case 'rect':   return s.w * s.h
-    default: { const _exhaustive: never = s; return _exhaustive }
+type Shape = { kind: 'circle'; radius: number } | { kind: 'rect'; width: number; height: number }
+
+export function area(shape: Shape): number {
+  switch (shape.kind) {
+    case 'circle': return Math.PI * shape.radius ** 2
+    case 'rect': return shape.width * shape.height
   }
 }
 ```
 
-- Derive types from a single source of truth: `z.infer<typeof Schema>` for validated
-  data, `as const` + `typeof` for literal config. Don't hand-maintain a parallel type.
+Derive static types from a validator or literal configuration when the project
+already has a single source of truth. Otherwise keep the boundary parser and its
+type close enough to change together.
 
 ## Errors
 
-- For an *expected* failure (a lookup miss, a parse failure), return a **result** the
-  caller must handle rather than throwing — a
-  `type Result<T, E> = { ok: true; value: T } | { ok: false; error: E }` union, or a
-  library's Result. Reserve `throw` for the genuinely exceptional.
-- When you do throw, throw `Error` (or a subclass), never a string; preserve the cause
-  with `new Error(msg, { cause: err })`.
-- Narrow a caught `unknown`: `catch (e) { if (e instanceof SomeError) ... }`.
+Use the surrounding API's failure style. An expected lookup miss may be `null`,
+`undefined`, a result-like value, or a domain error depending on the caller's
+contract. For thrown failures, throw `Error` or an appropriate subclass and
+preserve a cause when translating another error. Narrow caught values before
+using them.
 
-## Promises & async correctness
+## Promises and concurrency
 
-- **No floating promises.** Every promise is `await`ed, `return`ed, or explicitly
-  handled with `.catch(...)`. Turn on `@typescript-eslint/no-floating-promises`. An
-  unhandled rejection can take down the process.
-- Run independent async work concurrently, not sequentially:
+Return, await, or deliberately observe promises whenever their outcome affects
+correctness. Some runtimes expose a lifecycle hook for intentional background
+work, such as `ctx.waitUntil`. Use that hook and attach error reporting; an
+unattached floating promise remains a defect. Do not rely on `await` inside `forEach`; use `for...of`
+for ordered work or map into promises for concurrent work.
 
 ```ts
-// sequential (slow): each await blocks the next
-const seqA = await fetchA()
-const seqB = await fetchB()
-// concurrent: start both, then await together
-const [a, b] = await Promise.all([fetchA(), fetchB()])
-// need every outcome even if some reject:
-const results = await Promise.allSettled([fetchA(), fetchB()])
+const [profile, settings] = await Promise.all([loadProfile(id), loadSettings(id)])
 ```
 
-- Don't mix `await` inside `.forEach` (it won't wait) — use a `for...of` loop with
-  `await`, or `Promise.all(items.map(...))` for concurrency.
-- Bound concurrency for large fan-out (a small pool / `p-limit`) so you don't open
-  ten thousand sockets at once.
+Start work concurrently only when it is independent, desired, and bounded.
+Choose `Promise.all` for fail-fast work, `Promise.allSettled` when every outcome
+is required, and a limiter for large fan-out.
 
-## Testing
-
-- vitest with plain functions; `test.each` to parametrize instead of copy-paste.
-- Test `domain/` logic without a server. Share one in-memory DB connection across a
-  test so schema persists (see greenfield-ts-stack).
-- Prefer real modules to mocks; mock only at true boundaries (network, clock).
+Test domain behavior with the repository's selected runner and test conventions.
+Avoid adding a validation, result, or lint library solely to follow this skill.
 
 ## When to use this skill
 
-- Writing or reviewing TypeScript for correctness and idiom.
-- Untangling promise/async bugs.
-- For a new project's stack choices, use mega-ts:greenfield-ts-stack.
+- Writing or reviewing TypeScript in an existing project.
+- Choosing types, error contracts, promise handling, or concurrency patterns.
+- For a new project's shape and tooling, use mega-ts:greenfield-ts-stack.

@@ -55,9 +55,9 @@ override layer, which survives plugin updates.
 
 You lead in your own model space. `small_impl` resolves to `self`, your own
 provider, so ordinary delegated implementation makes no third-party call.
-Identify yourself with `--author-model <your model id>` and let the resolver
-derive the vendor; do not hardcode a vendor name. Declaring yourself is safe on
-every call here: author exclusion applies only to roles carrying an
+Declare the running runtime with `--caller-model <your model id>` and
+`--caller-adapter claude`. `--author-*` identifies the artifact author, not the
+session. Author exclusion applies only to roles carrying an
 `[independence]` entry. (Unconditional exclusion applies only to a legacy config
 with neither an `[independence]` section nor any unshadowed `self` route; the
 shipped one has the section.) Two roles leave your vendor for
@@ -71,7 +71,7 @@ made delegating worthwhile, and pays twice. `CHANNEL` and `BINARY` are for
 `DISPATCH=cli`, where the route actually crosses to another runtime.
 
 `--author-*` says who wrote the artifact and drives exclusion. `--caller-model`
-says who is RUNNING and drives native dispatch only, so it can never make a
+and `--caller-adapter` say who is RUNNING and drive native dispatch only, so they can never make a
 review look independent. Pass it when reviewing someone else's work: the author
 is excluded, the route comes back to you, and that is a native dispatch.
 

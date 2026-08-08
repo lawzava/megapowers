@@ -1,5 +1,8 @@
 # SQLite + Bun (CGO-free)
 
+Vendor behavior and versions change. Recheck the selected driver's and Bun's
+official documentation before adopting this recipe.
+
 Use `modernc.org/sqlite` so the binary is fully static and builds on minimal
 Wolfi/static images. Bun over a `database/sql` handle with `sqlitedialect`.
 Set pragmas on open: `_pragma=journal_mode(WAL)`, `_pragma=foreign_keys(ON)`,

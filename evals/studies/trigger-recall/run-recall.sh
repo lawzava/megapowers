@@ -45,6 +45,7 @@ run_one() { # task|expected|fixarg|idx|out|model|template
   local rundir; rundir="$out/$task/run-$(printf '%02d' "$idx")"
   [ -f "$rundir/meta.json" ] && return 0
   rm -rf "$rundir"; mkdir -p "$rundir"
+  study_record_provenance "$rundir" claude "$model" "$HERE/prompts/$task.txt" "$HERE" || return $?
   local work; work="$(mktemp -d "${TMPDIR:-/tmp}/trig.XXXXXX")" || return 1
   cp -r "$tpl" "$work/cfg"
   if ! "$HERE/fixtures/setup-project.sh" "$work/repo" $fixarg >/dev/null 2>&1; then

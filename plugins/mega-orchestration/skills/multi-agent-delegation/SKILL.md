@@ -29,8 +29,8 @@ Both resolve the same way: a project `.megapowers/<file>` or user
 `~/.config/megapowers/<file>` layer overrides the shipped copy per key, so a new
 model release is one tier-map line in a file that survives plugin updates.
 `scripts/delegate-resolve --where` shows the active layers. Edit an override
-layer to change routing: the skill, the browser delegate, and the session-start
-catalog block read the config live. What the docs claim about routing is pinned
+layer to change routing: every resolver and dispatch path reads the config live.
+What the docs claim about routing is pinned
 by `scripts/tests/delegation-docs.test.sh`.
 
 The nine roles: plan_review, code_review, small_impl, visual, browser_test,
@@ -56,7 +56,9 @@ before you dispatch, not after.
 
 ## Declare Who Is Running
 
-Pass `--caller-model <your model id>` whenever you are not the catalog `[lead]`.
+Pass `--caller-model <your model id>` and `--caller-adapter <runtime>` whenever
+you resolve a route. The caller identifies the running runtime; it is not the
+artifact author and never enters the independence exclusion set.
 It sets `DISPATCH` and nothing else. `DISPATCH=native` means the route landed on
 your OWN provider: run it with the harness's own primitive, a subagent or a
 saved workflow, because invoking your own CLI spawns a cold session, throws away
@@ -71,7 +73,7 @@ home.
 
 A delegate's value is that it is a different model or runtime from the one
 orchestrating; that difference is what makes an independent review independent.
-For plan_review, code_review, visual_verify, verify, judge, and council_member
+For plan_review, code_review, visual_verify, verify, and judge
 it is executable, not advisory: pass every artifact author with repeatable
 `--author-vendor <vendor>`, or `--author-model <id>` to let the resolver derive
 the vendor, and the chain walks past every matching vendor. A missing author
@@ -83,9 +85,7 @@ Independence needs two reachable vendors. `<role> --vendors` prints the ones
 that role could actually resolve to; fewer than two means no `--author-vendor`
 choice can route away from the author and the role exits 3. That is a real
 limit, not a misconfiguration: say the cross-vendor check did not run rather
-than reporting a review that never happened. The Stop-hook nudge reads the same
-role-scoped signal and asks for human sign-off instead of prescribing a command
-that cannot succeed.
+than reporting a review that never happened.
 
 ## One Dispatch
 
@@ -101,6 +101,14 @@ writes a provenance receipt bound to that identity. Stdout is the receipt JSON
 and nothing else; the `=== VERDICT ===` block on stderr carries the verdict, the
 round, and the receipt path.
 
+`delegate-run` dispatches one reviewer and writes one receipt. Council panels,
+generation identifiers, and member scope are lead-managed orchestration state,
+not launcher protocol. Do not claim those fields are receipt-backed.
+
+`council_member` generates an answer before an artifact exists and therefore
+does not require an author declaration. `judge` ranks those generated artifacts
+and requires every author vendor, preserving the blind-ranking boundary.
+
 ## Where the Rest Lives
 
 | Reference | Carries |
@@ -109,11 +117,11 @@ round, and the receipt path.
 | references/receipts-and-rounds.md | the delegate-run exit map, what a receipt binds, the round ledger and its cap |
 | references/providers/codex.md | Codex channels and how to word a dispatch |
 | references/providers/claude.md | Claude channels and how to word a dispatch |
+| references/providers/opencode.md | OpenCode runtime identity and portable-skill compatibility boundary |
 | references/providers/browser.md | the browser driver, which is a driver and not a model provider |
 
 Read the resolved provider's file, and the driver's when the role needs one,
 before dispatching. `visual_verify` is the role that needs two things at once:
-an independent vision-capable model route AND the `playwright-cli` driver, whose
-capture contract is [browser-delegate](../../agents/browser-delegate.md).
-Resolution fails without either, so read that file from here rather than
-discovering the driver half after the model half already resolved.
+an independent vision-capable model route and the `playwright-cli` driver. Read
+the [browser driver](references/providers/browser.md) for its capture and
+evidence contract. Resolution fails without either.
