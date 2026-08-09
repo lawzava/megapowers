@@ -180,21 +180,27 @@ if [[ -f $codex_mp ]]; then
 fi
 
 echo "== scratch storage guidance =="
+# Marker phrases are prose, so match them against the file with newlines
+# collapsed. A line-anchored grep for a sentence passes or fails on where the
+# paragraph happens to wrap, which makes a reflow look like a policy change.
+flat_file() { tr '\n' ' ' < "$1" | tr -s ' '; }
 for template in templates/CODEX.md templates/CLAUDE.md; do
   # Three semantic markers, not the paragraph verbatim: the rules have to be
   # there, the wording is the template author's to tune.
+  flat="$(flat_file "$template")"
   if grep -q '^## Scratch storage$' "$template" &&
-     grep -qF "Honor \`\$TMPDIR\`" "$template" &&
-     grep -qF 'writable in the current sandbox' "$template" &&
-     grep -qF "Do not silently fall back to \`/tmp\`" "$template"; then
+     [[ $flat == *"Honor \`\$TMPDIR\`"* ]] &&
+     [[ $flat == *'writable in the current sandbox'* ]] &&
+     [[ $flat == *"Do not silently fall back to \`/tmp\`"* ]]; then
     ok "$template has portable scratch storage guidance"
   else
     bad "$template must guide agents to a writable, capacity-checked \$TMPDIR"
   fi
 done
 review_rubric="plugins/megapowers/skills/requesting-code-review/review-rubric.md"
+rubric_flat="$(flat_file "$review_rubric")"
 if grep -qF "git worktree add \"\$TMPDIR/review-<sha>\" <sha>" "$review_rubric" &&
-   grep -qF "Do not silently fall back to \`/tmp\` for a large checkout." "$review_rubric" &&
+   [[ $rubric_flat == *"Do not silently fall back to \`/tmp\` for a large checkout."* ]] &&
    ! grep -qF '/tmp/review-<sha>' "$review_rubric"; then
   ok "review worktrees honor TMPDIR"
 else
