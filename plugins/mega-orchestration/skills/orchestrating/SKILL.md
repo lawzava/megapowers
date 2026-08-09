@@ -85,9 +85,9 @@ differs. One-file-per-agent fan-out multiplies briefing and review cost.
 ## How much compute: spend by stakes times uncertainty
 
 Anchor the spend: a multi-agent structure can cost an order of magnitude more
-than inline work, so the bar is high. Size the fan-out to the question: 1 agent
-for a fact-find, 2 to 4 for a comparison, 10 plus only for wide research, never
-past 20 unasked.
+than inline work, so the bar is high. Size fan-out by where output lands: 3 to 5
+children returning into your context, wider only when each returns a bounded
+summary to a file, never past 20. Past that, a runner, not more children.
 
 - Routine and certain: inline, verified by tests.
 - Uncertain approach, moderate stakes: one independent review
