@@ -131,10 +131,10 @@ sequential inline work and say so; never fabricate a call it does not expose.
   an explicit same-context resumption.
 - Give each delegate one report channel. Small results return directly; bulky
   results go to a file and return only status plus the path.
-- Single-writer always: whatever the structure, one integrator owns the tree
-  and the commits (see mega-orchestration:multi-agent-delegation). Subagent
-  acknowledgement is not approval, and no harness affordance makes a subagent a
-  second writer. Enforce the boundary with sandbox, tool, and worktree controls
-  where available, plus explicit skill wording.
+- Single-writer always: one integrator owns the tree, the commits, and the
+  oracle (see mega-orchestration:multi-agent-delegation). Subagent
+  acknowledgement is not approval, no affordance makes a subagent a second
+  writer, and a delegate never writes the test it is judged by. Enforce with
+  sandbox, tool, and worktree controls where available, plus skill wording.
 - Re-route when the shape changes: a task that stops decomposing cleanly drops
   back to inline; a task that grows milestones graduates to autonomous-run.

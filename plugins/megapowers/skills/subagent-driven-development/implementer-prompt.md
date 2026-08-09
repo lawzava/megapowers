@@ -46,6 +46,21 @@ Subagent (general-purpose):
     While iterating, run the focused test for what you're changing; run the
     canonical suite once at the task boundary, not after every edit.
 
+    ## The Acceptance Oracle Is Not Yours To Move
+
+    Any test this brief names as your acceptance criterion is fixed. Do not
+    edit, relax, skip, retarget, or delete it, and do not change a fixture or
+    config so that it passes differently. If you believe it is wrong, stop and
+    say so in your report with the evidence; that is a decision for whoever
+    owns the requirement, not a change you make on the way past.
+
+    Tests you write for your own new behavior are yours and are expected. The
+    line is whether the check was handed to you as the definition of done.
+    Making a failing acceptance test pass by changing the test is the single
+    failure mode that makes every other verification in this process worthless,
+    because it converts "the work is correct" into "the work agrees with
+    itself."
+
     ## Code Organization
 
     Keep edits focused:
