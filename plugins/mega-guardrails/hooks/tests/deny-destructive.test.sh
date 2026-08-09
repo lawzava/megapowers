@@ -78,9 +78,9 @@ check ALLOW 'dd if=/dev/zero of=/dev/loop-control'                 # control nod
 # part of it, so a read-only tail behind cd must stay silent. If any of these starts asking,
 # the guard has moved into the approval path for ordinary inspection, and a guard that
 # prompts on `cd repo && ls` is a guard the user switches off.
-check ALLOW 'cd /home/z/Code/lawzava && ls -la'
-check ALLOW 'cd /home/z/Code && find . -type d -name ats'
-check ALLOW 'git -C /home/z/Code/lawzava/megapowers status'        # -C target, not a subcommand
+check ALLOW 'cd /home/alice/Code/acme && ls -la'
+check ALLOW 'cd /home/alice/Code && find . -type d -name testdata'
+check ALLOW 'git -C /home/alice/Code/acme/webapp status'           # -C target, not a subcommand
 check ALLOW 'cd plugins && wc -l hooks/*.sh'
 check ALLOW 'cd /repo && git log --oneline -5 && git diff --stat'
 

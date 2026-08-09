@@ -42,19 +42,19 @@ affected task not execution-ready until that condition is met.
 
 **Files:** exact paths, grouped as Create, Modify, and Test. Prefer symbols or
 section names over unstable line ranges. Include exact line ranges only when a
-subtle algorithm, protocol, or interface cannot be implemented reliably
-without them.
+subtle algorithm, protocol, or interface cannot be implemented reliably without
+them.
 
 **Interfaces:** what the task consumes from earlier tasks and produces for
 later ones, with exact function names, parameter and return types. A task's
-implementer sees only their own task; this block is how they learn the
-names and types neighboring tasks use.
+implementer sees only their own task; this block is how they learn the names
+and types neighboring tasks use.
 
 For a broad compatibility-sensitive replacement whose consumers cannot change
 atomically, order separate expand, migrate, and contract tasks. Expand adds the
 compatible path, migrate moves every consumer while both paths work, and
-contract removes the old path only after migration is verified. Each stage
-must leave tests and deployment green for every supported mixed state.
+contract removes the old path only after migration is verified. Each stage must
+leave tests and deployment green for every supported mixed state.
 
 **Steps:** each names one observable outcome. State the failing behavior, the
 minimal implementation target, and the exact verification command with its

@@ -19,10 +19,17 @@ ORCH="$ROOT/plugins/mega-orchestration/skills/orchestrating/SKILL.md"
 AUTO="$ROOT/plugins/mega-orchestration/skills/autonomous-run/SKILL.md"
 report="lint.out"; : > "$report"
 
+# Both helpers match against the file with newlines collapsed. Every pattern
+# here asks whether a rule is stated, never where its paragraph breaks, so a
+# line-oriented grep answers a question nobody asked: a reflow that changed no
+# guidance flips `present` to BAD, and worse, it flips `absent` to OK once a
+# banned sentence wraps. Flattening removes both, and it is the same convention
+# scripts/tests/delegation-routing.test.sh already uses.
+flat() { tr '\n' ' ' < "$1" 2>/dev/null | tr -s ' '; }
 # absent() PATTERN FILE LABEL  -> BAD if the pattern is present
-absent() { if grep -qE "$1" "$2" 2>/dev/null; then echo "BAD $3"; else echo "OK  $3"; fi; }
+absent() { if flat "$2" | grep -qE "$1"; then echo "BAD $3"; else echo "OK  $3"; fi; }
 # present() PATTERN FILE LABEL -> BAD if the pattern is missing
-present() { if grep -qE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "BAD $3"; fi; }
+present() { if flat "$2" | grep -qE "$1"; then echo "OK  $3"; else echo "BAD $3"; fi; }
 
 {
   # worktree: no auto-commit of the .gitignore edit (neither prose nor quick-ref table)
@@ -31,7 +38,7 @@ present() { if grep -qE "$1" "$2" 2>/dev/null; then echo "OK  $3"; else echo "BA
   # writing-skills: no baked-in commit-and-push deployment step
   absent 'Commit skill to git and push'             "$S/writing-skills/SKILL.md"      "writing-skills: no commit-and-push step"
   # brainstorming: the unconditional per-section ask is gone
-  absent '^- Ask after each section whether it looks right so far$' "$S/brainstorming/SKILL.md" "brainstorming: no unconditional per-section ask"
+  absent '\- Ask after each section whether it looks right so far' "$S/brainstorming/SKILL.md" "brainstorming: no unconditional per-section ask"
   # replacements present
   present 'user and repository.*authoriz'           "$S/writing-plans/SKILL.md"       "writing-plans: commits need existing authorization"
   present 'Confirm sections proportionally'         "$S/brainstorming/SKILL.md"       "brainstorming: proportional section confirm"

@@ -24,7 +24,11 @@ or uncertain change may be reviewed earlier regardless of tier.
 
 ## The Review
 
-**Scope the diff correctly.** BASE_SHA is the branch point, `git merge-base <base-branch> HEAD`, or the exact commit you recorded before the work began; HEAD_SHA is the current commit. Never default to `HEAD~1`: it silently drops all but the last commit of a multi-commit task, so the reviewer sees a fraction of the change and approves work it never read.
+**Scope the diff correctly.** BASE_SHA is the branch point, `git merge-base
+<base-branch> HEAD`, or the exact commit you recorded before the work began;
+HEAD_SHA is the current commit. Never default to `HEAD~1`: it silently drops
+all but the last commit of a multi-commit task, so the reviewer sees a fraction
+of the change and approves work it never read.
 
 **Package the complete task surface (preferred).** Generate a review package
 with committed range changes plus every staged, unstaged, and untracked change.
@@ -39,22 +43,24 @@ staged diff, unstaged diff, and untracked file diffs. If the helper is
 unavailable, build an equivalent file. A reviewer must not approve until every
 section is present or explicitly empty.
 
-**Dispatch the reviewer.** Fill the template at [code-reviewer.md](code-reviewer.md)
-and dispatch it as a reviewer. It takes a brief description of what you built,
-the plan or requirements, complete review package path, BASE_SHA, and HEAD_SHA.
+**Dispatch the reviewer.** Fill the template at
+[code-reviewer.md](code-reviewer.md) and dispatch it as a reviewer. It takes a
+brief description of what you built, the plan or requirements, complete review
+package path, BASE_SHA, and HEAD_SHA.
 
 **Act on the findings.** Handle them per megapowers:receiving-code-review and
 keep the axes distinct. A Specification Compliance Fail blocks proceeding
 regardless of local finding severity: correct the implementation or obtain
 explicit requirement-owner authorization, then re-review. For Engineering
 Standards, fix Critical issues immediately, fix Important issues before
-proceeding, and record Minor issues for later. Do not argue with valid feedback;
-push back only when the reviewer is factually wrong, backed by the code or tests
-that prove the behavior.
+proceeding, and record Minor issues for later. Do not argue with valid
+feedback; push back only when the reviewer is factually wrong, backed by the
+code or tests that prove the behavior.
 
 ## Escalation
 
 Changes touching billing, auth, concurrency, or security get an independent
 review through mega-orchestration:cross-model-verification when available.
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.

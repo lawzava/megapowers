@@ -53,46 +53,35 @@ floor at start, so model choices need no skill invocation.
 project `.megapowers/models.toml` or user `~/.config/megapowers/models.toml`
 override layer, which survives plugin updates.
 
-You lead in your own model space. `small_impl` resolves to `self`, your own
-provider, so ordinary delegated implementation makes no third-party call.
-Declare the running runtime with `--caller-model <your model id>` and
-`--caller-adapter claude`. `--author-*` identifies the artifact author, not the
-session. Author exclusion applies only to roles carrying an
-`[independence]` entry. (Unconditional exclusion applies only to a legacy config
-with neither an `[independence]` section nor any unshadowed `self` route; the
-shipped one has the section.) Two roles leave your vendor for
-capability and cost rather than independence, `visual` and `browser_test`; check
-`[roles]` rather than assuming.
+Two flags, two jobs. `--author-model` or `--author-vendor` names whoever wrote
+the artifact, and that is what routes a review away from its own author; pass
+it on the independence roles (plan_review, code_review, visual_verify, verify,
+judge, council_member), which fire on risky logic: auth, billing, concurrency,
+security, data integrity. `--caller-model` and `--caller-adapter` name who is
+running and drive native dispatch only, so they can never make a review look
+independent. `visual` and `browser_test` leave your vendor for capability and
+cost, not independence. When `<role> --vendors` reports fewer than two, say the
+cross-vendor check did not run rather than reporting a review that never
+happened.
 
-A route with `DISPATCH=native` landed on your own provider. Run it with the
-harness's own primitive, a subagent or a saved workflow, not by invoking the
-`claude` CLI on yourself: that spawns a cold session, discards the context that
-made delegating worthwhile, and pays twice. `CHANNEL` and `BINARY` are for
-`DISPATCH=cli`, where the route actually crosses to another runtime.
-
-`--author-*` says who wrote the artifact and drives exclusion. `--caller-model`
-and `--caller-adapter` say who is RUNNING and drive native dispatch only, so they can never make a
-review look independent. Pass it when reviewing someone else's work: the author
-is excluded, the route comes back to you, and that is a native dispatch.
+A route with `DISPATCH=native` landed on your own provider, `small_impl`
+included. Run it with your harness's own primitive, a subagent or a saved
+workflow, not by invoking the `claude` CLI on yourself: that spawns a cold
+session, discards the context that made delegating worthwhile, and pays twice.
+`CHANNEL` and `BINARY` are for `DISPATCH=cli`, where the route crosses to
+another runtime.
 
 Delegates write only inside worktrees or return patches. The lead owns review,
 integration, and Git. Run the tests yourself; never trust a self-reported pass.
-Independence is per artifact author: resolve with `--author-model` or
-`--author-vendor`, not `--exclude-lead`, so a review routes away from whoever
-actually wrote it. The independence roles (plan_review, code_review,
-visual_verify, verify, judge, council_member) fire on risky logic: auth, billing,
-concurrency, security, data integrity.
-When `<role> --vendors` reports fewer than two, say the cross-vendor check did
-not run rather than reporting a review that never happened.
 
 Recursive coordinator mode uses nested Agent calls, not agent teams. Children
-get disjoint paths in the shared checkout; overlapping work stays sequential. Do
-not create worktrees for this mode. Children must not perform Git index or ref
-operations. Full contract: megapowers:subagent-driven-development.
+get disjoint paths in the shared checkout; overlapping work stays sequential.
+Do not create worktrees for this mode. Children must not perform Git index or
+ref operations. Full contract: megapowers:subagent-driven-development.
 
 For very large audits, migrations, or repeatable multi-agent research, prefer
-the harness's own workflow runner over hand-managed delegation. If the runner is
-off in this environment, mega-orchestration's `best-of-n` and `audit-fanout`
+the harness's own workflow runner over hand-managed delegation. If the runner
+is off in this environment, mega-orchestration's `best-of-n` and `audit-fanout`
 skills run the same patterns through ordinary subagents.
 
 ## Git
@@ -122,9 +111,13 @@ sandbox and not a security boundary. Think before you run.
 
 ## Scratch storage
 
-Honor `$TMPDIR` and tool-specific temporary or cache variables. Do not hard-code `/tmp` for worktrees, build caches, browser profiles, or other large artifacts.
-Before a large scratch job, confirm the directory exists, is writable in the current sandbox, and has enough capacity.
-Do not silently fall back to `/tmp` for large output: request scoped access or use an ignored workspace directory. Keep `/tmp` for small, short-lived OS temporary files and IPC state.
+Honor `$TMPDIR` and tool-specific temporary or cache variables. Do not
+hard-code `/tmp` for worktrees, build caches, browser profiles, or other large
+artifacts. Before a large scratch job, confirm the directory exists, is
+writable in the current sandbox, and has enough capacity. Do not silently fall
+back to `/tmp` for large output: request scoped access or use an ignored
+workspace directory. Keep `/tmp` for small, short-lived OS temporary files and
+IPC state.
 
 ## Code
 

@@ -23,7 +23,10 @@ authorization. When commits are authorized, the ledger records their ranges.
 Otherwise the ledger and working tree are the recovery mechanism. Recursive
 children never perform Git index or ref operations.
 
-**Continuous execution:** do not check in with your human partner between tasks. Stop only for a BLOCKED status you cannot resolve, ambiguity that prevents progress, or completion of all tasks. Narrate at most one short line between tool calls; the ledger and tool results carry the record.
+**Continuous execution:** do not check in with your human partner between
+tasks. Stop only for a BLOCKED status you cannot resolve, ambiguity that
+prevents progress, or completion of all tasks. Narrate at most one short line
+between tool calls; the ledger and tool results carry the record.
 
 **Repository-wide verification is the lead's, once, at the boundary.** Give
 each implementer the focused suite for the files it owns, never the
@@ -34,16 +37,15 @@ as unverified either way.
 
 ## When to Use
 
-Use this skill when a written plan exists, its tasks are mostly independent, and
-subagents are available. Use the ordinary sequential process by default.
+Use this skill when a written plan exists, its tasks are mostly independent,
+and subagents are available. Use the ordinary sequential process by default.
 Select recursive coordinator mode only when every concurrent writer can receive
 disjoint ownership. With no plan, tightly coupled tasks, or no safe ownership
 split, execute manually or use megapowers:executing-plans.
 
-For deterministic mechanical changes that share one oracle, use bulk
-mechanical mode: one owner, one bounded batch, one focused verification set,
-and one proportional review. Do not create an implementer and reviewer loop per
-file.
+For deterministic mechanical changes that share one oracle, use bulk mechanical
+mode: one owner, one bounded batch, one focused verification set, and one
+proportional review. Do not create an implementer and reviewer loop per file.
 
 ## Recursive Coordinator Mode
 
@@ -52,25 +54,51 @@ execution runtime. Select it explicitly when a plan has several independent
 roots and coordinators can assign exclusive paths before dispatch. The ordinary
 sequential process remains the fallback.
 
-All writers share the current checkout; recursive mode creates no worktrees. Each child receives exclusive ownership of exact files or non-overlapping directory roots. A coordinator may subdivide only the ownership it inherited. Overlapping ownership, shared interface changes, and dependencies stay sequential. If independence cannot be stated in one concise ownership sentence, keep the work under one writer.
+All writers share the current checkout; recursive mode creates no worktrees.
+Each child receives exclusive ownership of exact files or non-overlapping
+directory roots. A coordinator may subdivide only the ownership it inherited.
+Overlapping ownership, shared interface changes, and dependencies stay
+sequential. If independence cannot be stated in one concise ownership sentence,
+keep the work under one writer.
 
 Before any recursive dispatch, resolve `scripts/ownership-preflight` from this
-skill's installed directory and run it with `PLAN_FILE`. Do not dispatch if it reports missing,
-ambiguous, globbed, duplicated, or parent-child-overlapping ownership among
-parallel tasks. Correct the plan or execute the affected work sequentially.
-The executable parser contract is
+skill's installed directory and run it with `PLAN_FILE`. Do not dispatch if it
+reports missing, ambiguous, globbed, duplicated, or parent-child-overlapping
+ownership among parallel tasks. Correct the plan or execute the affected work
+sequentially. The executable parser contract is
 `scripts/tests/ownership-preflight.test.sh`.
 
-The lead launches one native coordinator per independent root. A coordinator may launch native children for independent pieces of its own scope. It waits for every required child, reviews the combined diff, resolves integration issues within its ownership, runs the required verification, and returns one synthesized result to its parent. The lead coordinates only its direct children. Descendants report to the coordinator that spawned them.
+The lead launches one native coordinator per independent root. A coordinator
+may launch native children for independent pieces of its own scope. It waits
+for every required child, reviews the combined diff, resolves integration
+issues within its ownership, runs the required verification, and returns one
+synthesized result to its parent. The lead coordinates only its direct
+children. Descendants report to the coordinator that spawned them.
 
 Use the platform's supported nested delegation mechanism. Respect available
 capacity and depth. When capacity is unavailable, continue inline or serially.
 
-Each child brief contains the assignment, done criteria, owned paths, relevant interfaces and constraints, required verification, whether it may subdivide, and the requirement to wait for its direct children and return one synthesized subtree result. Do not copy the parent transcript, full plan, repository tests, or descendant chatter into the brief.
+Each child brief contains the assignment, done criteria, owned paths, relevant
+interfaces and constraints, required verification, whether it may subdivide,
+and the requirement to wait for its direct children and return one synthesized
+subtree result. Do not copy the parent transcript, full plan, repository tests,
+or descendant chatter into the brief.
 
-A brief's required verification is a fixed oracle, not an owned path. Say so in the brief: the child writes tests for its own new behavior and does not edit, relax, or retarget the check that defines its task as done. A returned patch that changes an acceptance test alongside the implementation it asserts goes back rather than in; the test change is a separate decision, taken by whoever owns the requirement. You re-run the verification yourself either way, which is what makes the rule enforceable rather than advisory.
+A brief's required verification is a fixed oracle, not an owned path. Say so in
+the brief: the child writes tests for its own new behavior and does not edit,
+relax, or retarget the check that defines its task as done. A returned patch
+that changes an acceptance test alongside the implementation it asserts goes
+back rather than in; the test change is a separate decision, taken by whoever
+owns the requirement. You re-run the verification yourself either way, which is
+what makes the rule enforceable rather than advisory.
 
-Separate top-level sessions may share the checkout only when their exclusive ownership was partitioned before launch. There is no cross-session lock or automatic conflict resolution. Concurrent children do not run Git index or ref mutations. They do not commit, merge, rebase, reset, switch branches, update refs, push, or clean the checkout. Only the top-level lead performs any authorized Git action, after its direct children return and repository policy permits it.
+Separate top-level sessions may share the checkout only when their exclusive
+ownership was partitioned before launch. There is no cross-session lock or
+automatic conflict resolution. Concurrent children do not run Git index or ref
+mutations. They do not commit, merge, rebase, reset, switch branches, update
+refs, push, or clean the checkout. Only the top-level lead performs any
+authorized Git action, after its direct children return and repository policy
+permits it.
 
 Use done, blocked, and needs-context results. The parent decides whether to add
 information, retry, reduce the task, continue inline, or surface the blocker.
@@ -99,10 +127,10 @@ Per task, in order:
    boundary. High-risk tasks get a fresh task reviewer for each risky boundary.
    A requested review reports specification compliance and engineering quality
    as separate verdicts.
-3. Send all actionable findings for an artifact in one fix wave, then re-review.
-   Cap fix and re-review at three cycles per artifact. After the third unresolved
-   verdict, mark the task blocked and surface the remaining findings. Never loop
-   until clean without a stopping rule.
+3. Send all actionable findings for an artifact in one fix wave, then
+   re-review. Cap fix and re-review at three cycles per artifact. After the
+   third unresolved verdict, mark the task blocked and surface the remaining
+   findings. Never loop until clean without a stopping rule.
 4. Append the completion line to the ledger (see Durable Progress), and check
    the plan box when the plan carries one.
 
@@ -117,14 +145,18 @@ review already performed on the identical complete diff.
 
 [dispatch-reference.md](dispatch-reference.md) carries what a dispatch prompt
 contains for reviewers and fixers, the file handoff contract
-(`scripts/task-brief`, `scripts/review-package`,
-`scripts/sdd-workspace`, one report channel per delegate), and a compressed
-example of one task's full loop. Read it before the first dispatch.
+(`scripts/task-brief`, `scripts/review-package`, `scripts/sdd-workspace`, one
+report channel per delegate), and a compressed example of one task's full loop.
+Read it before the first dispatch.
 
 ## Handling Implementer Status
 
-- **DONE:** proceed to review, using the BASE you recorded before dispatch, never `HEAD~1`, which silently drops all but the last commit of a multi-commit task.
-- **DONE_WITH_CONCERNS:** read the concerns first. Correctness or scope concerns get addressed before review; observations get noted and carried forward.
+- **DONE:** proceed to review, using the BASE you recorded before dispatch,
+  never `HEAD~1`, which silently drops all but the last commit of a
+  multi-commit task.
+- **DONE_WITH_CONCERNS:** read the concerns first. Correctness or scope
+  concerns get addressed before review; observations get noted and carried
+  forward.
 - **NEEDS_CONTEXT:** provide the missing information or reduce the task. A fix
   after review gets an independent implementation pass.
 - **BLOCKED:** something must change before retry: more information, a smaller
@@ -133,7 +165,11 @@ example of one task's full loop. Read it before the first dispatch.
 
 ## Handling Reviewer Cannot-Verify Items
 
-The reviewer may report items it cannot verify from the diff, requirements that live in unchanged code or span tasks. These do not block the rest of the review, but resolve each one yourself before marking the task complete; you hold the plan and cross-task context the reviewer lacks. A confirmed gap is a failed spec review: back to a fix subagent, then re-review.
+The reviewer may report items it cannot verify from the diff, requirements that
+live in unchanged code or span tasks. These do not block the rest of the
+review, but resolve each one yourself before marking the task complete; you
+hold the plan and cross-task context the reviewer lacks. A confirmed gap is a
+failed spec review: back to a fix subagent, then re-review.
 
 ## Durable Progress
 
@@ -141,8 +177,11 @@ The ledger at `.megapowers/sdd/progress.md` under the repo root is the recovery
 map. Persist it before a handoff or whenever the task state would otherwise be
 lost.
 
-- At skill start, read the ledger. Tasks marked complete there are done; never re-dispatch them. Resume at the first task not marked complete.
-- Before each dispatch, append `Task N: base <sha7> (in progress)` with the current short HEAD. The review step needs this exact BASE, and it otherwise lives only in volatile conversation memory.
+- At skill start, read the ledger. Tasks marked complete there are done; never
+  re-dispatch them. Resume at the first task not marked complete.
+- Before each dispatch, append `Task N: base <sha7> (in progress)` with the
+  current short HEAD. The review step needs this exact BASE, and it otherwise
+  lives only in volatile conversation memory.
 - On a clean review, append `Task N: complete (review clean)`, and record the
   reviewed package path and commit range when commits exist.
 - On resume, an in-progress line with no matching complete line marks the task
@@ -151,16 +190,25 @@ lost.
 ## Prompt Templates
 
 - [implementer-prompt.md](implementer-prompt.md) for the implementer subagent
-- [task-reviewer-prompt.md](task-reviewer-prompt.md) for the task reviewer (spec compliance + code quality)
-- Final whole-branch review: megapowers:requesting-code-review's [code-reviewer.md](../requesting-code-review/code-reviewer.md)
+- [task-reviewer-prompt.md](task-reviewer-prompt.md) for the task reviewer
+  (spec compliance + code quality)
+- Final whole-branch review: megapowers:requesting-code-review's
+  [code-reviewer.md](../requesting-code-review/code-reviewer.md)
 
 ## Integration
 
-**Required workflow skills:** for the ordinary sequential process, megapowers:using-git-worktrees ensures an isolated workspace. Recursive coordinator mode is the shared-checkout exception and creates no worktrees. megapowers:writing-plans creates the plan this skill executes; megapowers:requesting-code-review supplies the final whole-branch review template; megapowers:finishing-a-development-branch completes the branch after all tasks.
+**Required workflow skills:** for the ordinary sequential process,
+megapowers:using-git-worktrees ensures an isolated workspace. Recursive
+coordinator mode is the shared-checkout exception and creates no worktrees.
+megapowers:writing-plans creates the plan this skill executes;
+megapowers:requesting-code-review supplies the final whole-branch review
+template; megapowers:finishing-a-development-branch completes the branch after
+all tasks.
 
 **Subagents should use** megapowers:test-driven-development for each task.
 
 **Alternative workflow:** megapowers:executing-plans for inline single-writer
 execution when subagents are unavailable.
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.

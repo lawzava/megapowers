@@ -25,4 +25,5 @@ Push back with concrete compatibility, behavior, or test evidence when a
 suggestion is wrong. The goal is a correct implementation, not performative
 agreement.
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.
