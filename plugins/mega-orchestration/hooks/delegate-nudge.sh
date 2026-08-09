@@ -22,40 +22,28 @@ command -v jq >/dev/null 2>&1 || exit 0
 stop_context_is_exempt "$input" && exit 0
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
-# One definition of pending, four call sites (compute, retry, diagnose, and the
-# reduced rescan), so the command lives in one place: a flag, a base, or a leg
-# added to only some of them is the kind of drift that silently narrows what the
-# gate reads. Redirection stays at the call sites, because each one wants something
-# different from stderr.
+# One definition of pending, four call sites (compute, retry, diagnose, reduced
+# rescan). A flag or a leg added to only some of them silently narrows what the
+# gate reads. Redirection stays at the call sites; each wants different stderr.
 #
-# THE SUBJECT IS THE INDEX AND THE WORKTREE, NOT THE WORKTREE ALONE. `git diff HEAD`
-# renders HEAD against the WORKTREE and says nothing about what is staged, so
-# staging `billing()` and then restoring the worktree copy to its committed bytes
-# made the two changes cancel: the diff came back empty, the gate exited clean, and
-# the risky content sat in the index one plain `git commit` from shipping. The
-# policy file got a `--cached` check of its own for this and nothing else did,
-# which left the hole open everywhere else.
+# THE SUBJECT IS THE INDEX AND THE WORKTREE, NOT THE WORKTREE ALONE. `git diff
+# HEAD` says nothing about what is staged, so staging `billing()` and restoring
+# the worktree copy to its committed bytes made the two cancel: empty diff, clean
+# exit, risky content one plain `git commit` from shipping. Two hops instead,
+# base to index and index to worktree, because their UNION is what a commit now
+# would carry. It is also the decomposition review-diff-id fingerprints and
+# delegate-run renders (staged, unstaged, untracked), so the scan, the subject
+# id, and the bytes the reviewer reads describe one tree.
 #
-# Two hops instead, base to index and index to worktree, because a path can differ
-# in either or in both and their UNION is everything a commit now would carry. It
-# is also the exact decomposition review-diff-id fingerprints and delegate-run
-# renders into the review package (staged, unstaged, untracked), so the keyword
-# scan, the subject id, and the bytes the reviewer reads describe one tree. A
-# receipt binds what the reviewer read, so scanning a different tree than the
-# package describes would let a receipt clear content nobody was shown.
+# THE PATHSPEC CARRIES ONLY PATHS GIT CANNOT HASH, and only on the WORKTREE hop:
+# `--cached` never stats the worktree, and excluding a path there would drop its
+# INDEX content, ordinary reviewable text, from the scan.
 #
-# THE PATHSPEC CARRIES ONLY PATHS GIT CANNOT HASH, filled in below, and only on the
-# WORKTREE hop. `git diff --cached` never stats the worktree, so no unhashable path
-# can make it abort, and excluding one there would drop that path's INDEX content,
-# which is ordinary reviewable text, from the scan.
-#
-# What the keyword scan is allowed to LOOK at is a separate decision, taken against
-# the rules file further down, and it is deliberately not taken here: a path the
-# scan ignores must still reach this diff, because the review package a reviewer
-# reads is built from the same pending tree. Narrowing the diff would hide the file
-# from the reviewer as well, which is a different and worse thing than declining to
-# be triggered by it. `dropspec` carries that narrowing for the reduced rescan
-# alone and is empty for every other read.
+# What the scan may LOOK at is decided against the rules file further down, never
+# here. A path the scan ignores must still reach this diff, because the review
+# package is built from the same pending tree; narrowing here would hide the file
+# from the reviewer too. `dropspec` carries that narrowing for the reduced rescan
+# alone and is empty everywhere else.
 base=HEAD
 skipspec=()
 dropspec=()
@@ -77,34 +65,26 @@ tracked_diff() {
 root="$(git rev-parse --show-toplevel 2>/dev/null)"
 
 # --- WHAT THIS GATE MAY DO, AND WHAT IT MAY READ -----------------------------
-# Both answers live in plugins/mega-orchestration/enforcement.toml, layered
-# exactly like models.toml: a project .megapowers/enforcement.toml, then a user
+# Both answers live in plugins/mega-orchestration/enforcement.toml, layered like
+# models.toml: project .megapowers/enforcement.toml, then user
 # ${XDG_CONFIG_HOME:-~/.config}/megapowers/enforcement.toml, then the shipped
-# copy, with the first layer that DEFINES a key winning for that key. Layer
-# precedence is the caller's business per lib-toml.sh's own header, so the walk
-# lives here rather than behind a shared helper.
+# copy, first layer that DEFINES a key winning for that key. Layer precedence is
+# the caller's business per lib-toml.sh's header, so the walk lives here.
 #
-# This was an inline keyword alternation grepped over the whole raw diff until
-# the 2026-08-05 audit measured what that cost: the gate fired 141 times and 47
-# of those landed in this repository, which ships markdown and shell and has no
-# auth or billing code to change. One session absorbed 37 consecutive blocks. A
-# gate that cannot be narrowed per repository is a gate sessions learn to route
-# around, and a gate routed around protects nothing.
+# Why it is configurable at all, and what the 2026-08-05 audit measured:
+# hooks/risky-logic-gate.md.
 lib_toml="$here/../skills/multi-agent-delegation/scripts/lib-toml.sh"
 rules_layers=()
 # THE PROJECT LAYER IS READ FROM THE BASE COMMIT, NEVER FROM THE WORKTREE.
 #
-# The pending tree is the thing being judged, so policy taken from it is policy
-# written by the change under review. One unreviewed commit can add
-# `state = "off"` to .megapowers/enforcement.toml beside new billing or auth
-# logic and silence the gate evaluating that very change, and every read below
-# happens before the diff is even computed, so nothing else would notice.
-# Committed content is different in kind: it is content a previous stop already
-# gated and a human already accepted. `git show HEAD:` therefore resolves this
-# layer. A repository with no commits has no reviewed content at all, so it has
-# no trustworthy project layer and the shipped defaults apply.
+# Policy taken from the pending tree is policy written by the change under
+# review: one commit adding `state = "off"` beside new billing logic silences the
+# gate judging it, and every read here happens before the diff is computed, so
+# nothing else would notice. Committed content is content a previous stop already
+# gated, so `git show HEAD:` resolves this layer. No commits means no trustworthy
+# project layer, and the shipped defaults apply.
 #
-# The user layer stays worktree-readable. It lives outside the repository, reaches
+# The user layer stays worktree-readable: it sits outside the repository, reaches
 # no diff, and is the machine owner speaking rather than the change speaking.
 project_layer=".megapowers/enforcement.toml"
 project_rules=""
@@ -121,24 +101,20 @@ hit=0
 binary_note=""
 unscannable_risky=""
 # EVERY SCRATCH FILE THIS HOOK MAKES IS DECLARED HERE AND REMOVED FROM ONE TRAP.
-# The committed policy copy is materialized to a temp file because lib-toml.sh
-# reads files rather than strings, two hold staged blobs further down, and two hold
-# the index enumeration the assume-unchanged and submodule checks read. All five
-# were freed inline after their last read, which leaks a file in TMPDIR whenever
-# the hook leaves before that line: the state check below exits on any repository
-# that opts out, and a stop the user interrupts leaves through a signal. The two
-# index temps were the ones the claim above was not true of, and a killed hook left
-# one behind. The inline removals stay, so a long stop does not hold scratch it has
-# finished with; the trap is what covers every other way out.
+# Five temps: the committed policy copy (lib-toml.sh reads files, not strings),
+# two staged blobs, two index enumerations. Freeing them inline only leaks
+# whenever the hook leaves early, which the opt-out exit and any interrupted stop
+# both do. The inline removals stay so a long stop does not hold finished
+# scratch; the trap covers every other way out.
 #
 # A NAME IS FREE THE MOMENT THE FILE IS GONE, so an inline removal nulls its
-# variable as well. mktemp in another process can take that name back, and a trap
-# still holding it would delete a file this hook does not own.
+# variable too: mktemp elsewhere can take that name back, and a trap still
+# holding it would delete a file this hook does not own.
 #
-# EXIT alone, with no signal traps beside it: bash runs the EXIT trap on a fatal
-# signal before it dies, so an interrupted stop is already covered and a TERM
-# handler would only add a second way to leave. SIGKILL cannot be caught, so nothing
-# here claims to survive one.
+# EXIT alone, no signal traps beside it: bash runs EXIT on a fatal signal before
+# dying, so an interrupted stop is covered and a TERM handler would only add a
+# second way to leave. SIGKILL cannot be caught and nothing here claims to
+# survive one.
 pending_staged=""
 staged_blob=""
 index_lines=""
@@ -243,24 +219,18 @@ state="$(rule_scalar rules.risky-logic-review state)" || state=""
 [ -n "$state" ] || state="enforced"
 
 # A PENDING POLICY EDIT IS NEVER SILENT, whether or not anything else fired.
+# The committed-layer rule had a two-step bypass: a pending file carrying only
+# `state = "off"` holds no keyword, so it tripped nothing, and once committed it
+# exempted the whole repository with the gate never emitting a word. Tightening
+# was as quiet, because the state check leaves before any block can carry
+# project_note. The design trusts committed content because a human reviewed it,
+# so the moment of change has to reach that human.
 #
-# The committed-layer rule had a two-step bypass. A lone .megapowers/enforcement.toml
-# carrying only `state = "off"` holds no keyword, so it tripped nothing while it
-# was pending; committed, it exempted every later change in the repository with
-# this gate emitting nothing at all, ever. The reverse was as quiet: a pending
-# edit TIGHTENING a committed `off` back to `enforced` was ignored with no word
-# said, because the state check leaves before any block can carry project_note.
-# The design trusts committed content because a human reviewed it, and this is
-# what makes the moment of the change reach that human.
-#
-# A NOTICE, NOT A BLOCK, on the ordinary path. The pending layer already buys
-# nothing, since the committed one governs, so there is no risky change here to
-# stop. Blocking would re-fire at every stop until the edit is committed, which
-# makes editing the policy file unworkable and teaches sessions to route around
-# the gate: that is the exact failure this rules file exists to undo. What was
-# missing was visibility, not force. `systemMessage` carries it to the human, who
-# is the reader that has to judge a policy change, without spending another turn.
-# A stop that blocks for a real finding still names the edit in its reason.
+# A NOTICE, NOT A BLOCK: the pending layer buys nothing while the committed one
+# governs, so there is nothing to stop, and blocking would re-fire every stop
+# until the edit is committed, which is how a gate gets routed around. What was
+# missing was visibility, not force. A stop that blocks for a real finding still
+# names the edit in its reason.
 project_notice=""
 if [ "$project_changed" -eq 1 ]; then
   # The pending file's own state, so the notice says which DIRECTION the edit
@@ -382,51 +352,33 @@ path_is_risky() {
 }
 
 # exclude_globs decides what the KEYWORD SCAN reads and nothing else. `*` crosses
-# `/` in a bash case pattern, so `docs/*` already covers `docs/**` and the two
-# shipped forms agree.
+# `/` in a bash case pattern, so `docs/*` already covers `docs/**`.
 #
-# AN EXTENSION IS A CLAIM, NOT A PROOF. exclude_globs is justified by "prose does
-# not execute", and an extension establishes nothing about what a file is: an
-# executable shell payload named billing.md was omitted from the name scan and
-# from the content scan alike, so `git mv` was the whole bypass. A file the
-# operating system will RUN is not prose whatever it is called, and that is
-# checkable from the same enumeration these callers already walk.
+# AN EXTENSION IS A CLAIM, NOT A PROOF: an executable shell payload named
+# billing.md made `git mv` the whole bypass. So two cheap properties about the
+# bytes are checked, and either one contradicting the exclusion means the file is
+# scanned like any other source: the mode bit (the kernel may run it) and a `#!`
+# first line (the only in-band claim a text file makes about being a program).
+# `read -n 2`, not a full line, or a single-line multi-megabyte document is
+# slurped whole on every stop.
 #
-# Two properties are checked, both cheap and both about the bytes rather than the
-# name. The mode bit says the kernel may execute the file. A `#!` on the first
-# line says which interpreter runs it, which is the only in-band claim a text file
-# makes about being a program. Either one contradicts the exclusion, so the file is
-# scanned like any other source.
+# An UNREADABLE excluded file is scanned too: not read is not prose, and the name
+# is chosen by whoever adds the file. A deletion keeps the exclusion, because
+# removed content executes nowhere. A worktree copy that is a fifo, a device, or
+# a directory cannot answer, so the claim goes to the STAGED bytes, which are
+# what a plain `git commit` ships.
 #
-# An UNREADABLE excluded file is scanned too, for the reason the untracked leg
-# already decides readability ahead of exclusion: not read is not the same as
-# prose, and the name is chosen by whoever adds the file. A path with no worktree
-# file left (a deletion) keeps the exclusion, because removed content executes
-# nowhere. A path whose worktree copy is neither of those, a fifo or a character
-# device or a directory, is a copy that cannot answer at all, so the claim is put
-# to the STAGED bytes instead: those are what a plain `git commit` ships.
+# THE MODE BIT IS A CLAIM THE FILESYSTEM MAKES, AND SOME MAKE IT FOR EVERYTHING.
+# FAT, many network mounts, and a permissive umask report every file executable;
+# read there, the bit revokes every prose exclusion at once and the gate fires on
+# documentation. git writes HEAD without the execute bit, so a filesystem
+# reporting HEAD executable is reporting noise. Probed once, and only when some
+# excluded file claims the bit.
 #
-# `read -n 2` and not a full line: a single-line multi-megabyte document would
-# otherwise be slurped whole on every stop, and two bytes is all `#!` needs.
-#
-# THE MODE BIT IS A CLAIM THE FILESYSTEM MAKES, AND SOME FILESYSTEMS MAKE IT FOR
-# EVERYTHING. FAT and many network mounts report every file executable, and so does
-# a tree unpacked under a permissive umask. Read there, the bit revokes every prose
-# exclusion at once and the gate fires on documentation, which is the false positive
-# the rules file names as the one that kills a gate: 47 of the audit's 141 blocks
-# were markdown. Failing toward false positives is the direction that gets a gate
-# routed around, so the bit has to be checked for meaning before it is believed.
-#
-# git's own files answer that cheaply. git writes HEAD without the execute bit, so
-# a filesystem reporting HEAD executable is reporting noise rather than a program.
-# Probed once, and only when some excluded file claims the bit, so an ordinary tree
-# pays nothing.
-#
-# Where the bit is noise the INDEX MODE is the signal that survives: 100755 is what
-# a commit ships, and the filesystem cannot fake it. An untracked path has no index
-# entry, so on such a filesystem the shebang below is the only claim left about it.
-# That is a real narrowing, and it is stated here rather than hidden: the cost of
-# reading the bit anyway is every excluded document in the repository scanned.
+# Where the bit is noise the INDEX MODE survives: 100755 is what a commit ships
+# and the filesystem cannot fake it. An untracked path has no index entry, so
+# there the shebang is the only claim left. A real narrowing, stated rather than
+# hidden: reading the bit anyway costs every excluded document in the tree.
 exec_bit_ok=-1
 exec_bit_reliable() {
   local probe
@@ -478,38 +430,24 @@ exclude_claim_holds() {
   return 0
 }
 
-# self_exclude names THIS PLUGIN's own files, so it is ANCHORED rather than suffix
-# matched. An unanchored suffix excluded any path that merely ended the same way:
-# `services/payments/hooks/delegate-nudge.sh` in an unrelated repository, and an
-# `enforcement.toml` at any depth, both stopped being scanned, so a blind spot was
-# available to whoever picks a filename.
+# self_exclude names THIS PLUGIN's own files, so it is ANCHORED rather than
+# suffix matched: a suffix let anyone claim the exemption with a filename, and a
+# directory merely named `mega-orchestration` let them claim it with an mkdir.
+# hooks/risky-logic-gate.md carries why. A prefix has to be PROVEN to hold this
+# plugin, by one of exactly two facts:
 #
-# ANCHORING ON A DIRECTORY NAME WAS THE SAME DEFECT ONE LEVEL UP. Matching any path
-# under a directory called `mega-orchestration` trusts a name anyone can spell, so
-# risky code planted at `vendor/x/mega-orchestration/hooks/delegate-nudge.sh` in an
-# unrelated repository went unscanned for the price of an mkdir. A prefix now has
-# to be PROVEN to hold this plugin, by one of exactly two facts:
-#
-#   1. It is the running installation. The hook resolves its own plugin directory
-#      physically; when that directory lies inside the repository being reviewed,
-#      its repository-relative path is this plugin by construction.
-#   2. The repository DECLARES this plugin there in committed content, as a
+#   1. It is the running installation, resolved physically, and it lies inside
+#      the repository under review, so the relative path is ours by construction.
+#   2. The repository DECLARES this plugin there in committed content, a
 #      .claude-plugin/plugin.json at that prefix whose `name` equals the running
-#      installation's own. `git show HEAD:` reads it, never the worktree, for the
-#      reason the project policy layer is read the same way: a pending tree must
-#      not be able to mint the anchor that exempts it. Planting the anchor costs a
-#      commit a human already accepted, which is the strongest available claim when
-#      the hook runs from an installed copy outside the repository, as it normally
-#      does.
+#      installation's. `git show HEAD:`, never the worktree: a pending tree must
+#      not mint the anchor that exempts it.
 #
-# A PATH WITH NO PREFIX IS NOT SELF-EVIDENTLY OURS EITHER, and it was taken as
-# such: an exact repository-relative match returned excluded outright, so an
-# unrelated repository holding a root `enforcement.toml`, a root
-# `hooks/delegate-nudge.sh`, or any other listed exact path went unscanned for the
-# price of a filename, with no manifest committed and without being the running
-# installation. That is the same defect the prefix branch already closed, so the
-# empty prefix is held to the same standard through self_root_anchored: the
-# repository has to BE this plugin, or say in committed content that it ships it.
+# A PATH WITH NO PREFIX IS HELD TO THE SAME STANDARD, through
+# self_root_anchored. An exact repository-relative match used to return excluded
+# outright, so an unrelated repository with a root `enforcement.toml` went
+# unscanned for the price of a filename. The repository has to BE this plugin, or
+# say in committed content that it ships it.
 plugin_dir="$(cd "$here/.." 2>/dev/null && pwd -P)" || plugin_dir=""
 plugin_id=""
 [ -z "$plugin_dir" ] ||
@@ -552,24 +490,16 @@ self_anchored() {
   return 1
 }
 # THE EMPTY PREFIX: is the repository under review the one whose files this list
-# names? Three ways to prove it, and each one costs more than picking a filename.
+# names? Three ways to prove it, each costing more than picking a filename.
 #
-#   1. The running installation IS the repository root, compared physically, which
-#      is the exact-path case the list was written for.
-#   2. The root carries a COMMITTED .claude-plugin/plugin.json naming this plugin,
-#      which is fact 2 above with an empty prefix.
+#   1. The running installation IS the repository root, compared physically.
+#   2. The root carries a COMMITTED .claude-plugin/plugin.json naming this plugin.
 #   3. The root carries a COMMITTED .claude-plugin/marketplace.json declaring this
-#      plugin, at a source prefix that itself proves out by fact 1 or fact 2. This
-#      is the plugin's own SOURCE repository, where the entries that carry no
-#      plugin prefix live: a marketplace keeps the plugin under plugins/<name>/ and
-#      its own test fixtures for this gate outside it, at repository-relative paths
-#      like scripts/tests/enforcement.test.sh. Without this the source repository
-#      loses the exclusions its fixtures exist for and the gate fires on its own
-#      test data, which is the false-positive spiral this rules file exists to end.
-#      It is not a name anyone can spell: it takes a committed marketplace entry
-#      naming this plugin AND a committed plugin manifest at the prefix it points
-#      to, both read with `git show HEAD:` so a pending tree cannot mint its own
-#      exemption.
+#      plugin at a source prefix that itself proves out by 1 or 2. This is the
+#      plugin's own SOURCE repository, where the entries carrying no plugin prefix
+#      live (its fixtures sit outside plugins/<name>/, at paths like
+#      scripts/tests/enforcement.test.sh). It takes two committed facts, both read
+#      with `git show HEAD:`, so a pending tree cannot mint its own exemption.
 #
 # Memoized in one variable rather than a list, because there is exactly one root.
 root_anchor=-1
@@ -723,40 +653,31 @@ fi
 
 # THE INDEX CAN HIDE A MODIFICATION FROM EVERY READ ABOVE.
 #
-# `git update-index --assume-unchanged P` tells git to trust the index entry for
-# P and stop stat'ing the worktree. An edit to P after that appears in no
-# `git diff`, in no `git status`, in no untracked listing, and in no fingerprint:
-# this gate reads a clean tree and exits, or keeps honoring a receipt written
-# before the edit. That is a tracked-file change shipping with no review at all.
+# `git update-index --assume-unchanged P` tells git to trust the index entry and
+# stop stat'ing the worktree, so a later edit to P appears in no `git diff`, no
+# `git status`, no untracked listing, and no fingerprint: a tracked change ships
+# with no review at all. skip-worktree is NOT the same thing and is not refused
+# with it, because sparse checkout sets it on every path outside the cone. `git
+# ls-files -v` separates them: LOWERCASE tag is assume-unchanged, 'S' is
+# skip-worktree, 's' is both. Content is the trigger, not the bit: a bit on a
+# path whose content still matches the index hides nothing at this stop, and
+# refusing on the bit alone fires on every stop in a repository that merely uses
+# the feature.
 #
-# The neighbouring skip-worktree bit is NOT the same thing and is not refused
-# with it. Sparse checkout sets skip-worktree on every path outside the cone, so
-# a blanket refusal would block every stop in a sparse checkout. `git ls-files -v`
-# separates them: a LOWERCASE tag is assume-unchanged, uppercase 'S' is
-# skip-worktree, and 's' is both.
-#
-# Content is the trigger, not the bit. A bit set on a path whose worktree content
-# still matches the index hides nothing at this stop, and this runs again at the
-# next one, so a later edit is caught then. Refusing on the bit alone would fire
-# on every stop in a repository that merely uses the feature, and a gate that
-# fires on nothing is a gate that gets disabled.
 # ONE index pass serves this check AND the submodule scan below. `-s -v -z`
-# prints `<tag> <mode> <sha> <stage>\t<path>\0`, so the flag, the recorded blob
-# and the gitlink mode all arrive together and the gate does not read the index
-# three times on every stop.
-# PREFILTER, because this runs on every stop. A NUL-delimited bash read loop over
-# a whole index costs about half a second on twenty thousand paths, and almost
-# every repository has neither an index flag nor a gitlink, so the loop is doing
-# nothing in the case that matters for latency. `git ls-files` C-QUOTES a name
-# holding a newline (it does so regardless of core.quotePath), so a
-# newline-delimited listing puts every index entry on exactly one line: grep can
-# then decide whether anything here is worth a precise pass, with no false
-# negatives, at C speed. This is only ever a gate on doing the work; the precise
-# pass below reads the NUL form and remains the only thing that parses a path.
+# delivers the flag, the recorded blob, and the gitlink mode together.
 #
-# `--full-name`, in both listings. Without it `git ls-files` prints names relative
+# PREFILTER, because this runs on every stop: a NUL-delimited bash read loop over
+# a whole index costs about half a second on twenty thousand paths, and almost no
+# repository has an index flag or a gitlink. `git ls-files` C-quotes a name
+# holding a newline regardless of core.quotePath, so a newline-delimited listing
+# puts every entry on one line and grep can decide at C speed whether the precise
+# pass is worth it, with no false negatives. The precise pass reads the NUL form
+# and stays the only thing that parses a path.
+#
+# `--full-name` in both listings: without it `git ls-files` prints names relative
 # to the CURRENT DIRECTORY and lists only what sits under it, so a stop from a
-# subdirectory would test the wrong paths and see none of the gitlinks above it.
+# subdirectory would test the wrong paths and miss every gitlink above it.
 index_lines="$(mktemp 2>/dev/null)" || index_lines=""
 index_list=""
 hidden=""
@@ -835,26 +756,9 @@ if [ -n "$index_list" ]; then
       fi
     fi
 
-    # THE INDEX CAN HIDE A MODIFICATION FROM EVERY READ ABOVE.
-    #
-    # `git update-index --assume-unchanged P` tells git to trust the index entry
-    # for P and stop stat'ing the worktree. An edit to P after that appears in no
-    # `git diff`, in no `git status`, in no untracked listing, and in no
-    # fingerprint: this gate reads a clean tree and exits, or keeps honoring a
-    # receipt written before the edit. That is a tracked-file change shipping with
-    # no review at all.
-    #
-    # The neighbouring skip-worktree bit is NOT the same thing and is not refused
-    # with it. Sparse checkout sets skip-worktree on every path outside the cone,
-    # so a blanket refusal would block every stop in a sparse checkout. The tag
-    # separates them: a LOWERCASE tag is assume-unchanged, uppercase 'S' is
-    # skip-worktree, and 's' is both.
-    #
-    # Content is the trigger, not the bit. A bit set on a path whose worktree
-    # content still matches the index hides nothing at this stop, and this runs
-    # again at the next one, so a later edit is caught then. Refusing on the bit
-    # alone would fire on every stop in a repository that merely uses the feature,
-    # and a gate that fires on nothing is a gate that gets disabled.
+    # The assume-unchanged check, stated in full at the index pass above:
+    # LOWERCASE tag is assume-unchanged, 'S' is skip-worktree, 's' is both, and
+    # content is the trigger rather than the bit.
     case "$tag" in
       [a-z]) assume=1 ;;
       S) assume=0 ;;
@@ -907,77 +811,35 @@ fi
 # in the shared part, so it cannot apply to a tracked change and not to an
 # untracked one.
 #
-# `skip_comments`: a comment cannot authenticate a user or charge a card, and
-# prose ABOUT this gate quoting its own keyword list was the audit's single
-# largest false-positive cluster. Only the line's FIRST non-whitespace run counts,
-# so `handler() { /* oauth */ }` is still code and still scanned.
+# `skip_comments`: a comment cannot authenticate a user or charge a card. Only
+# the line's FIRST non-whitespace run counts, so `handler() { /* oauth */ }` is
+# still code and still scanned.
 #
-# COMMENT MARKERS ARE LANGUAGE SPECIFIC, and three of the common ones are
-# executable syntax somewhere: `#` opens a C preprocessor directive
-# (`#define AUTHZ_DISABLED 1`), `--` decrements in JavaScript
-# (`--paymentAttempts`), and `;` opens a statement in JavaScript and C
-# (`; paymentProcessor.charge()`). One marker set across every language reads all
-# three as comments and scans them clean, which is a hole chosen by the language
-# the change is written in. The table below picks the set from the file EXTENSION,
-# and an extension it does not know scans EVERY line: an unrecognized language
-# must cost a false positive, never a silent pass. It is a table and not a parser
-# because a parser per language is a far larger surface than the false positives
-# it removes, and being wrong in the scanning direction is survivable.
+# COMMENT MARKERS ARE LANGUAGE SPECIFIC, and `#`, `--`, and `;` are executable
+# syntax somewhere, so the set is picked from the file EXTENSION and an unknown
+# extension scans EVERY line. Every entry owes a proof that its marker cannot be
+# executable syntax in that language, and an extension naming more than one
+# language proves nothing: it must scan. hooks/risky-logic-gate.md records the
+# seven removals that rule cost, the two entries audited and kept (`.yml`/`.yaml`
+# and `.css`), and why this is a table rather than a parser. Read it before
+# adding an entry.
 #
-# EVERY ENTRY OWES A PROOF THAT ITS MARKER CANNOT BE EXECUTABLE SYNTAX in that
-# language, and an extension that names more than one language proves nothing:
-# it must scan. That is the same rule the exclusion globs are held to, and it is
-# what these seven removals cost. `.asm` named no assembler, and GNU as reads `;`
-# as a STATEMENT SEPARATOR, so `; call payment_processor` assembles while
-# is_comment dropped it; `.nasm` names one assembler and keeps `;`. `.cl` is
-# Common Lisp and OpenCL C, where `; chargeCard();` is a statement. `.r` is R,
-# REBOL and Rez, and Rez runs a C preprocessor, so `#define AUTHZ_DISABLED 1` is
-# a directive. `.m` is Objective-C, MATLAB, Mercury and Wolfram, where `//` is
-# the postfix application operator and `// chargePayment` is a call. `.pl` is Perl
-# and Prolog, and Prolog comments with `%`, so `#` there is not comment syntax at
-# all; `.pm` is a Perl module and keeps `#`. `.cfg` and `.conf` name a PURPOSE
-# rather than a language, which is the same defect one step further out: anything
-# at all can be spelled with them, so nothing about their syntax is known.
-# Whoever adds an entry here has to meet that standard: when the language cannot
-# be established from the extension alone, the answer is to scan, never to assume
-# the line is inert.
-#
-# TWO ENTRIES WERE AUDITED AND KEPT, because removing them would trade a narrow
-# miss for a broad false positive, which is the trade the rules file forbids.
-# `.yml` and `.yaml` keep `#`: inside a literal block scalar a `#` line is document
-# DATA rather than YAML syntax, so a keyword there can reach whatever consumes the
-# document. Reaching it needs that consumer to read `#` as code, and dropping the
-# entry costs every comment in every pipeline file, so the miss is named here and
-# left. `.css` keeps the C-family set for `/* */`, which really is CSS comment
-# syntax; the `//` half of that set matches nothing CSS executes, since a `//` line
-# is a parse error rather than a statement, so honoring it costs no safety and
-# splitting a marker set to remove it would buy none.
-#
-# A MARKER IS NOT A PROOF EITHER: SOME COMMENT-SHAPED LINES EXECUTE. A shebang
-# picks the interpreter, `//go:build` picks what compiles, an Emacs file-local
-# `eval:` runs on open, and a server-side include runs on request. Every one of
-# them is written in the file's comment syntax, so the marker set said "comment"
-# and the scanner skipped the line that carried the semantics. They are listed and
-# excepted in is_comment. `.sql` is split off the dash set for the same reason from
-# the other direction: MySQL and PostgreSQL disagree about whether `--payment` is a
-# comment at all, so one rule for both was a rule for neither.
+# A MARKER IS NOT A PROOF EITHER: SOME COMMENT-SHAPED LINES EXECUTE. A shebang,
+# `//go:build`, an Emacs file-local `eval:`, a server-side include. All are
+# written in the file's comment syntax, so they are listed and excepted in
+# is_comment. `.sql` is split off the dash set because MySQL and PostgreSQL
+# disagree about whether `--payment` is a comment at all.
 #
 # A MARKER THAT CLOSES ON THE SAME LINE PROVES NOTHING ABOUT THE REST OF IT.
-# `/* note */ chargeCard()` and `<!-- note --> <script>go()</script>` both start
-# with an opener and both execute, so a block opener counts only when the line
-# does not also close it. `-->` is out of the table entirely, for the reason `*`
-# is: it CLOSES a comment rather than opening one, and everything after it on the
-# line is live. Haskell ends the dash run at the first symbol character, so `-->`
-# is an operator there and a continuation line may legally begin with one.
+# `/* note */ chargeCard()` executes, so a block opener counts only when the line
+# does not also close it. `-->` is out of the table for the reason `*` is.
 #
-# `*` IS NOT A COMMENT OPENER and is not in the C-family set. It opens nothing: it
-# only continues a block comment some earlier line already opened, and a scanner
-# that judges one line at a time cannot tell that state. Meanwhile it dereferences
-# a pointer (`*paymentTotal = 0`), starts a generator method
-# (`*paymentIterator() {}`), and multiplies, in exactly the languages that set
-# covers. Reading it as a comment scanned all three clean. Scanning a real
-# continuation line costs at most one false positive; missing a dereference costs
-# a risky change nobody reads, so the line is scanned.
+# `*` IS NOT A COMMENT OPENER and is not in the C-family set. It only continues a
+# block some earlier line opened, which a one-line-at-a-time scanner cannot know,
+# while it dereferences (`*paymentTotal = 0`), starts a generator method, and
+# multiplies in exactly the languages that set covers. Scanning a real
+# continuation line costs one false positive; missing a dereference costs a risky
+# change nobody reads.
 markers_prog='
   function markers(p,   e, n, a) {
     n = split(p, a, "/"); p = a[n]
@@ -1147,39 +1009,31 @@ scan_lines() { awk -v pat="$risky" -v skipc="$1" "$file_scan_prog"; }
 
 # A NUL byte is the test git itself uses to call content binary, so this needs no
 # new dependency and no extension list. An extension list would let a rename
-# decide what goes unread, which is the same hole the self_exclude anchoring
-# closed.
+# decide what goes unread, the same hole the self_exclude anchoring closed.
 #
-# A BOUNDED PREFIX IS NOT A CLASSIFICATION. This read one 8192 character window
-# and called everything without a NUL in it text, so a file whose first NUL sits
-# at byte 8193 passed as ordinary source in BOTH legs: git sniffs only its own
-# first 8000 bytes and renders the same shape as a text diff, and bash strips the
-# later NUL out of the captured diff, so awk saw a keyword-free file. Both were
-# reproduced. The scan runs to the end of the file now, and where it cannot
-# finish it says UNDECIDED rather than text: a narrowing whose safe default is
-# skip is the defect this file keeps being audited for, and text is the answer
-# that skips.
+# A BOUNDED PREFIX IS NOT A CLASSIFICATION. Reading one 8192 character window and
+# calling everything without a NUL text let a file whose first NUL sits at byte
+# 8193 pass as source in BOTH legs: git sniffs only its own first 8000 bytes and
+# renders a text-shaped diff, and bash strips the later NUL out of the captured
+# diff, so awk saw a keyword-free file. Both reproduced. The scan runs to the end
+# now, and where it cannot finish it says UNDECIDED rather than text, because
+# text is the answer that skips.
 #
-# Status 0 the content holds a NUL, 1 it does not, 2 it could not be established.
-# Every caller treats 2 exactly like 0, because "not known to be text" is the
-# only honest reading of a file this could not finish.
+# Status 0 holds a NUL, 1 does not, 2 could not be established. Every caller
+# treats 2 like 0: "not known to be text" is the only honest reading.
 #
 # BUILTINS ONLY, no pipeline. This runs once per untracked path and once per
-# changed tracked path, and the untracked-cap test holds the scan to a budget
-# precisely so nobody reintroduces per-file processes; a head/tr/wc sniff costs
-# three of them per file and blew that budget at 1424ms against a 1000ms limit,
-# which is the constraint every version of this function has had to meet.
-# `read -d ''` stops at the first NUL and reports success when it found that
-# delimiter, and `-n` takes the file one window at a time so a multi-gigabyte
-# artifact is never slurped whole. The two success cases are told apart by
-# length: short means the NUL ended the read, a full window means the window did.
-# Command substitution could not carry the byte back anyway, since bash drops NUL
-# from strings.
+# changed tracked path; a head/tr/wc sniff costs three processes per file and
+# blew the untracked-cap budget at 1424ms against a 1000ms limit, which every
+# version of this function has had to meet. `read -d ''` stops at the first NUL
+# and reports success when it found that delimiter; `-n` takes one window at a
+# time so a multi-gigabyte artifact is never slurped whole. The two success cases
+# are told apart by LENGTH, short means the NUL ended the read, because command
+# substitution cannot carry the byte back: bash drops NUL from strings.
 #
-# $2 windows is the work bound, and it is a bound on TIME rather than a claim
-# about content: the builtin reads about a mebibyte every 15ms on the machine
-# this was measured on, so 16 windows is one mebibyte per file. A file bigger
-# than that carrying no NUL in the part that was read is undecided, which gates.
+# $2 windows bounds TIME, not content: the builtin reads about a mebibyte every
+# 15ms here, so 16 windows is one mebibyte per file. A larger file with no NUL in
+# the part read is undecided, which gates.
 nul_window=65536
 nul_limit=16
 nul_scan() {
@@ -1226,27 +1080,17 @@ nul_scan() {
 
 # AN UNSCANNABLE CHANGE IS ANNOUNCED, NOT BLOCKED, UNLESS ITS PATH SAYS OTHERWISE.
 #
-# Round 3 found the real hole here: a binary patch scanned as EMPTY and passed in
-# silence, so staging a compiled artifact bought a clean bill of health. The fix
-# made every unscannable file a hit, and that overcorrected into the failure the
-# rules file names as the one that kills a gate. Adding a favicon, a tarball, an
-# object file, a test fixture blob, or a generated report past the classification
-# bound then forced a full cross-vendor review with no risky keyword and no risky
-# path anywhere in the tree. A gate that fires on adding an image is a gate
-# sessions learn to route around, and a gate routed around protects nothing.
+# NOT SCANNED is a FACT and goes out on the non-blocking systemMessage, the same
+# channel a pending policy edit uses. RISKY is a CLAIM needing evidence, and the
+# only evidence left when the bytes cannot be read is the path, so a path
+# matching the keyword list still blocks: a changed payment_processor.bin is a
+# different proposition from a changed favicon.png.
 #
-# So the two halves are separated. NOT SCANNED is a FACT, and the reviewer still
-# has to learn it: it goes out on the non-blocking systemMessage this hook already
-# uses for a pending policy edit, which exists for exactly this case where a human
-# should see something but stopping the session is disproportionate. RISKY is a
-# CLAIM, and it needs evidence. The only evidence left when the bytes cannot be
-# read is the path, so a path matching the keyword list still blocks: a changed
-# payment_processor.bin is a different proposition from a changed favicon.png.
-#
-# Silence is never the outcome, which is what keeps the round-3 hole closed. When
-# something else blocks, these sentences ride in the block preamble; when nothing
-# else does, they go out as a notice. Either way the reviewer learns that content
-# nobody could scan changed, and that is precisely what round 3 lost.
+# Silence is never the outcome. When something else blocks, these sentences ride
+# in the block preamble; when nothing else does, they go out as a notice. Both
+# halves are load-bearing and hooks/risky-logic-gate.md records why: blocking
+# everything unscannable fired on adding a favicon, and blocking nothing let a
+# staged compiled artifact buy a clean bill of health.
 hit="$sub_risky"
 if [ "$hit" -eq 0 ] && [ -n "$diff" ]; then
   # Excluded paths are dropped from a SECOND diff, never from the one computed
@@ -1471,28 +1315,19 @@ if [ "$hit" -eq 0 ] && [ "${#untracked[@]}" -gt 0 ]; then
   untracked_unreadable=""
   for f in "${untracked[@]}"; do
     # UNREADABLE IS DECIDED BEFORE EXCLUDED. An exclusion is a statement about
-    # content the gate CAN read: prose does not execute. A regular file it cannot
-    # open is not known to be prose, only known to be unread, and the name is
-    # chosen by whoever adds the file. Ordering the exclusion first would make
-    # `notes.md` at mode 000 pass while the same bytes as `notes.go` go through the
-    # scan, which is a name deciding what goes unread.
+    # content the gate CAN read. A regular file it cannot open is not known to be
+    # prose, only known to be unread, and the name is chosen by whoever adds the
+    # file: ordering the exclusion first let `notes.md` at mode 000 pass while the
+    # same bytes as `notes.go` were scanned.
     #
-    # WHAT IS DECIDED HERE IS "WAS THIS READ", NOT "IS THIS RISKY", and separating
-    # the two is what lets the early position survive the announce-not-block rule.
-    # This leg set `hit` outright, so an ordinary `notes.md` at mode 000 demanded a
-    # full cross-vendor review with no risky word and no risky path anywhere: the
-    # same false positive the binary leg was corrected for one round earlier, left
-    # behind because it arrives through a different door. An unreadable file is
-    # unscannable content exactly as a binary one is, so it takes the same route:
-    # recorded here, announced by the note below, and promoted to a block only by
-    # `unscannable_risky` when the path names a risky category. Not scanned is a
-    # fact this position establishes; risky is a claim, and the path is the only
-    # evidence left for it.
+    # WHAT IS DECIDED HERE IS "WAS THIS READ", NOT "IS THIS RISKY". Separating
+    # them is what lets the early position survive the announce-not-block rule
+    # above: recorded here, announced by the note below, promoted to a block only
+    # by `unscannable_risky` when the path names a risky category.
     #
-    # SILENCE IS STILL NEVER THE OUTCOME, which is the hole the old `hit` closed.
-    # The scan loop below skips a file it cannot open, so without this record the
-    # file would reach neither the scanner nor the reader. The note is emitted
-    # unconditionally and names the path.
+    # SILENCE IS STILL NEVER THE OUTCOME. The scan loop below skips a file it
+    # cannot open, so without this record the file would reach neither the scanner
+    # nor the reader. The note is emitted unconditionally and names the path.
     if [ -f "$root/$f" ] && [ ! -r "$root/$f" ]; then
       [ -n "$untracked_unreadable" ] || untracked_unreadable="$f"
       path_is_risky "$f" && unscannable_risky="$f"
