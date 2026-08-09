@@ -5,7 +5,7 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## Unreleased
+## 0.10.0 - 2026-08-09
 
 Alignment pass against four independently compiled August 2026 harness/model
 research reports and the primary sources behind them: Artificial Analysis's
@@ -13,6 +13,11 @@ Coding Agent Index, tbench.ai Terminal-Bench 2.1, arXiv 2603.12123
 (Cross-Context Review), and METR's GPT-5.6 Sol evaluation. Most of what those
 reports prescribe was already shipped here; these are the places they disagreed
 with the config or found it silent.
+
+Then a pre-publish pass over the whole repository: a routing bug that only
+showed up where the provider CLIs are absent, the accumulated duplication in the
+always-on templates, and the design record that had grown into the config files
+it documented.
 
 ### Added
 
