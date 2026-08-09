@@ -17,9 +17,14 @@ its own work does not use this channel; it routes to Codex.
   `--bare` excludes project instructions, plugins, hooks, and MCP servers; put the task,
   output contract, verification, constraints, and any required project-guidance
   paths in the prompt. The effort flag speaks a low/medium/high/xhigh/max scale;
-  the catalog declares low through max for this provider, so every EFFORT it can
-  resolve passes through unmapped (the catalog's top rung, `ultra`, is Codex-only
-  and never resolves here). For machine-checkable output add
+  the catalog declares low through xhigh for this provider, so every EFFORT it
+  can resolve passes through unmapped. Two of the CLI's rungs never resolve here.
+  `ultra` is Codex-only. `max` is excluded on measurement rather than on cost:
+  Artificial Analysis puts Opus 5 at max below its own xhigh on composite score,
+  dollars, wall time, and code comprehension at the same time, so it is dominated
+  by the cheaper rung rather than being an escalation above it. Passing
+  `--effort max` by hand is still possible and still a worse setting.
+  For machine-checkable output add
   `--output-format json` and state the required JSON shape in the prompt.
 - Read-only reviews: append `--permission-mode plan --tools Read,Glob,Grep`
   after the other flags, pass the artifact inline or by path, and instruct no
