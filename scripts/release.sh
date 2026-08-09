@@ -44,6 +44,10 @@ done
 sedi "s|/v[0-9]+\.[0-9]+\.[0-9]+/docs/agent-install\.md|/v${version}/docs/agent-install.md|g" README.md
 sedi "s|@v[0-9]+\.[0-9]+\.[0-9]+|@v${version}|g" docs/agent-install.md docs/setup.md
 sedi "s|\"ref\": \"v[0-9]+\.[0-9]+\.[0-9]+\"|\"ref\": \"v${version}\"|g" docs/setup.md
-sedi "s|through \`v[0-9]+\.[0-9]+\.[0-9]+\` are the release pin range|through \`v${version}\` are the release pin range|" docs/setup.md
+# The release-certification examples pin the tag in a shell variable so the rest
+# of the command derives from it. That is one string per file to restamp, and it
+# has to be restamped: an example naming the previous tag tells the next
+# maintainer to certify the wrong release.
+sedi "s|^tag=v[0-9]+\.[0-9]+\.[0-9]+|tag=v${version}|" docs/setup.md evals/studies/install-smoke/README.md
 
 echo "release.sh: stamped $version into plugin manifests and doc pins"
