@@ -51,20 +51,28 @@ fi
 
 # --- file discovery --------------------------------------------------------
 list_default_scope() {
-  find "$ROOT/plugins" -name 'SKILL.md' -type f 2>/dev/null
-  find "$ROOT/plugins" -path '*/hooks/*' -type f 2>/dev/null
-  find "$ROOT/templates" -type f 2>/dev/null
+  find "$ROOT/plugins" -name 'SKILL.md' -type f -print0 2>/dev/null || return 2
+  find "$ROOT/plugins" -path '*/hooks/*' -type f -print0 2>/dev/null || return 2
+  find "$ROOT/templates" -type f -print0 2>/dev/null || return 2
 }
 
 list_args_scope() {
   local p
   for p in "$@"; do
     if [ -d "$p" ]; then
-      find "$p" -type f 2>/dev/null
+      find "$p" -type f -print0 2>/dev/null || return 2
     elif [ -f "$p" ]; then
-      printf '%s\n' "$p"
+      printf '%s\0' "$p"
+    else
+      printf 'security-lint: input is missing or unsupported: %s\n' "$p" >&2
+      return 2
     fi
   done
+}
+
+path_sorts_after() {
+  local LC_ALL=C
+  [[ "$1" > "$2" ]]
 }
 
 # repo-relative path for allowlist lookup and reporting
@@ -95,68 +103,114 @@ logical_lines() {
 HITS=0
 emit() { printf '%s:%s: %s\n' "$1" "$2" "$3"; HITS=$((HITS + 1)); }
 
-check_fetch() {
-  # Any executable fetch requires an exact file-level allowlist entry. Trusting
-  # a whole hosting domain would let attacker-controlled paths bypass the lint.
-  local rel="$1" stream="$2" ln rest
-  while IFS=$'\t' read -r ln rest; do
-    printf '%s' "$rest" | grep -qEi '(^|[^[:alnum:]_])(curl|wget|fetch)([^[:alnum:]_]|$)' || continue
-    printf '%s' "$rest" | grep -qEi 'https?://' || continue
-    emit "$rel" "$ln" "fetch of remote content in executable context"
-  done < <(printf '%s\n' "$stream")
-}
+check_text_rules() {
+  # One awk process checks every text rule for the file. The old implementation
+  # forked grep once or twice per logical line, making clean files the slow path.
+  local rel="$1" stream="$2" ln msg findings
+  if ! findings="$(printf '%s\n' "$stream" | awk '
+    {
+      line=$0
+      sub(/^[0-9]+\t/, "", line)
+      start=$0
+      sub(/\t.*/, "", start)
+      lower=tolower(line)
 
-check_regex() {
-  # emit a hit for every logical line matching an extended regex
-  local rel="$1" stream="$2" pat="$3" msg="$4" ln rest
-  while IFS=$'\t' read -r ln rest; do
+      if (lower ~ /(^|[^[:alnum:]_])(curl|wget|fetch)([^[:alnum:]_]|$)/ &&
+          lower ~ /https?:\/\//)
+        fetch_hits=fetch_hits start "\tfetch of remote content in executable context\n"
+      if (lower ~ /base64([[:space:]]+[^|]*)?(-d|-di|--decode)[^|]*\|[[:space:]]*(env[[:space:]]+)?([^[:space:]]*\/)?(sh|bash|zsh|dash|ksh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)/)
+        base64_hits=base64_hits start "\tbase64-decoded blob piped into a shell\n"
+      if (lower ~ /eval[^#]*(\$\(|`)[^)]*(curl|wget|fetch)/)
+        eval_hits=eval_hits start "\teval of fetched remote content\n"
+      if (lower ~ /ignore (all |the )?(previous|prior) (instruction|message|context)|disregard (all |the )?(previous|prior|the above)|disable (the )?(sandbox|safety|guardrail|security)|bypass (the )?permission|bypass permissions|turn off (the )?(sandbox|safety)/)
+        safety_hits=safety_hits start "\tinstruction to disable a safety mechanism\n"
+    }
+    END { printf "%s%s%s%s", fetch_hits, base64_hits, eval_hits, safety_hits }
+  ')"; then
+    printf 'security-lint: text-rule scan failed: %s\n' "$rel" >&2
+    return 2
+  fi
+  [ -n "$findings" ] || return 0
+  while IFS=$'\t' read -r ln msg; do
     emit "$rel" "$ln" "$msg"
-  done < <(printf '%s\n' "$stream" | grep -iE -- "$pat" || true)
+  done <<< "$findings"
 }
 
 check_unicode() {
   # bidi / direction-override code points (Trojan Source)
   local rel="$1" stream="$2" ln rest
-  [ "$BIDI_GREP" -eq 1 ] || return 0
   while IFS=$'\t' read -r ln rest; do
-    emit "$rel" "$ln" "unicode direction-override / bidi control character"
-  done < <(printf '%s\n' "$stream" \
-    | grep -nP '[\x{202a}-\x{202e}\x{2066}-\x{2069}\x{200e}\x{200f}\x{061c}]' 2>/dev/null \
-    | sed -E 's/^[0-9]+://' || true)
+    case "$rest" in
+      *$'\xE2\x80\xAA'*|*$'\xE2\x80\xAB'*|*$'\xE2\x80\xAC'*|*$'\xE2\x80\xAD'*|*$'\xE2\x80\xAE'*|\
+      *$'\xE2\x81\xA6'*|*$'\xE2\x81\xA7'*|*$'\xE2\x81\xA8'*|*$'\xE2\x81\xA9'*|\
+      *$'\xE2\x80\x8E'*|*$'\xE2\x80\x8F'*|*$'\xD8\x9C'*)
+        emit "$rel" "$ln" "unicode direction-override / bidi control character" ;;
+    esac
+  done <<< "$stream"
 }
 
-B64_PAT='base64([[:space:]]+[^|]*)?(-d|-di|--decode)[^|]*\|[[:space:]]*(env[[:space:]]+)?([^[:space:]]*/)?(sh|bash|zsh|dash|ksh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)'
-EVAL_PAT='eval[^#]*(\$\(|`)[^)]*(curl|wget|fetch)'
-INJECT_PAT='ignore (all |the )?(previous|prior) (instruction|message|context)|disregard (all |the )?(previous|prior|the above)|disable (the )?(sandbox|safety|guardrail|security)|bypass (the )?permission|bypass permissions|turn off (the )?(sandbox|safety)'
-
-BIDI_GREP=0
-if printf 'x\n' | grep -P 'x' >/dev/null 2>&1; then
-  BIDI_GREP=1
-else
-  echo "security-lint: warning: grep lacks -P; unicode bidi scan skipped" >&2
-fi
-
 # --- scan ------------------------------------------------------------------
-if [ "$#" -gt 0 ]; then
-  files="$(list_args_scope "$@")"
-else
-  files="$(list_default_scope)"
+if ! discovery_file="$(mktemp)"; then
+  printf 'security-lint: could not create discovery file\n' >&2
+  exit 2
 fi
-files="$(printf '%s\n' "$files" | sort -u)"
+trap 'rm -f -- "$discovery_file"' EXIT
 
-while IFS= read -r f; do
-  [ -n "$f" ] || continue
+if [ "$#" -gt 0 ]; then
+  if ! list_args_scope "$@" > "$discovery_file"; then
+    printf 'security-lint: input discovery failed\n' >&2
+    exit 2
+  fi
+else
+  if ! list_default_scope > "$discovery_file"; then
+    printf 'security-lint: default-scope discovery failed\n' >&2
+    exit 2
+  fi
+fi
+
+declare -A SEEN_FILES=()
+files=()
+while IFS= read -r -d '' f; do
+  [ -z "${SEEN_FILES[$f]+set}" ] || continue
+  SEEN_FILES["$f"]=1
+  files+=("$f")
+done < "$discovery_file"
+
+# Preserve the prior bytewise lexical reporting order without flattening paths
+# through a newline-delimited external sort.
+for ((i = 1; i < ${#files[@]}; i++)); do
+  key="${files[i]}"
+  j=$((i - 1))
+  while ((j >= 0)) && path_sorts_after "${files[j]}" "$key"; do
+    files[j + 1]="${files[j]}"
+    j=$((j - 1))
+  done
+  files[j + 1]="$key"
+done
+
+for f in "${files[@]}"; do
   [ -f "$f" ] || continue
-  grep -Iq . "$f" 2>/dev/null || continue   # skip binary files
   rel="$(relpath "$f")"
   [ -n "${ALLOW[$rel]:-}" ] && continue
-  stream="$(logical_lines "$f")"
-  check_fetch "$rel" "$stream"
-  check_regex "$rel" "$stream" "$B64_PAT" "base64-decoded blob piped into a shell"
-  check_regex "$rel" "$stream" "$EVAL_PAT" "eval of fetched remote content"
-  check_regex "$rel" "$stream" "$INJECT_PAT" "instruction to disable a safety mechanism"
+  if [ ! -r "$f" ]; then
+    printf 'security-lint: unreadable input: %s\n' "$rel" >&2
+    exit 2
+  fi
+  if grep -Iq . "$f" 2>/dev/null; then
+    :
+  else
+    probe_rc=$?
+    [ "$probe_rc" -eq 1 ] && continue       # skip binary or empty files
+    printf 'security-lint: input probe failed: %s\n' "$rel" >&2
+    exit 2
+  fi
+  if ! stream="$(logical_lines "$f")"; then
+    printf 'security-lint: logical-line scan failed: %s\n' "$rel" >&2
+    exit 2
+  fi
+  check_text_rules "$rel" "$stream" || exit 2
   check_unicode "$rel" "$stream"
-done < <(printf '%s\n' "$files")
+done
 
 if [ "$HITS" -gt 0 ]; then
   printf 'security-lint: %d finding(s)\n' "$HITS" >&2

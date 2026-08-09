@@ -1,0 +1,32 @@
+# Test path<TAB>reviewed isolation evidence. Every manifest entry needs a row.
+evals/studies/tests/provenance-check.test.sh	Private fixture and checker temporary trees have EXIT cleanup; oracle children are synchronous; no Git, ports, or credentials.
+evals/tests/coverage-inventory.test.sh	Read only repository inventory; no mutable state, Git operations, ports, credentials, or background children.
+evals/tests/portability-boundary.test.sh	Private temporary fixtures and child scratch cleanup; root scan is read only; no Git, ports, credentials, or background children.
+evals/tests/run-failclosed.test.sh	Copied harness and workdirs stay under private temporary roots with EXIT cleanup; child phases are synchronous and offline.
+plugins/mega-guardrails/hooks/tests/allow-read-only.test.sh	Pure JSON fixture dispatch and read only manifest checks; no mutable state, Git operations, ports, credentials, or background children.
+plugins/mega-guardrails/hooks/tests/auto-format.test.sh	Private temporary fixtures and executable shims with EXIT cleanup; hook children are synchronous and receive only private paths.
+plugins/mega-guardrails/hooks/tests/codex-deny-destructive.test.sh	Commands remain inert JSON strings passed to the adapter; no filesystem mutation, external clients, ports, or credentials.
+plugins/mega-guardrails/hooks/tests/deny-destructive.test.sh	Generated JSON and private executable shims with EXIT cleanup; apparent network and credential commands are inert fixture strings.
+plugins/mega-guardrails/hooks/tests/dispatch.test.sh	Synchronous dispatcher calls only; no mutable state, Git operations, ports, credentials, or background children.
+plugins/mega-orchestration/hooks/tests/delegate-nudge-prose.test.sh	Private temporary repository with EXIT cleanup; all Git and index writes stay inside it; no ports, credentials, or background children.
+plugins/mega-orchestration/hooks/tests/delegate-nudge-scope.test.sh	Private temporary repository with EXIT cleanup and explicit scoped Git calls; no ports, credentials, or background children.
+plugins/mega-orchestration/hooks/tests/delegate-nudge-worktree.test.sh	Private repository and linked worktree under one temporary root with EXIT cleanup; receipts stay worktree local.
+plugins/mega-orchestration/hooks/tests/delegate-nudge.test.sh	Private temporary state and local submodule fixture with EXIT cleanup; the sole background hook is released, killed, and waited on.
+plugins/mega-orchestration/hooks/tests/dispatch.test.sh	Private temporary Git repository with EXIT cleanup; dispatcher children are synchronous and use no ports or credentials.
+plugins/mega-orchestration/hooks/tests/run-loop.test.sh	Private run state and Git repository with EXIT cleanup; all index mutation remains under that root and children are synchronous.
+plugins/megapowers/hooks/tests/codex-session-catalog.test.sh	Synchronous read only hook invocations; missing catalog uses an inert fixture path; no mutable state or external clients.
+plugins/megapowers/hooks/tests/dispatch.test.sh	Synchronous read only dispatcher calls; no mutable state, Git operations, ports, credentials, or background children.
+plugins/megapowers/hooks/tests/render-model-catalog.test.sh	Private model, HOME, and XDG fixtures with EXIT cleanup; all child invocations are synchronous and explicitly scoped.
+plugins/megapowers/hooks/tests/session-start.test.sh	Unique catalog and hostile input fixtures with cleanup; children are synchronous and use no Git, ports, or credentials.
+plugins/mega-orchestration/skills/autonomous-run/scripts/tests/runbook-template.test.sh	Private scratch with EXIT cleanup; every generated run and copy stays beneath it; no Git, ports, credentials, or children.
+plugins/mega-orchestration/skills/best-of-n/scripts/tests/anonymize-candidates.test.sh	Private sources, outputs, and shims under scratch with EXIT cleanup; no Git, ports, credentials, or background children.
+plugins/mega-orchestration/skills/multi-agent-delegation/scripts/tests/delegation-docs.test.sh	Strictly read only repository artifact checks; no mutable state, Git operations, ports, credentials, or background children.
+plugins/mega-orchestration/skills/multi-agent-delegation/scripts/tests/review-diff-id.test.sh	Private repositories, HOME, and Git configuration with cleanup; all twelve concurrent children are explicitly awaited.
+plugins/megapowers/skills/subagent-driven-development/scripts/tests/ownership-preflight.test.sh	Every fixture and output stays under private scratch with cleanup; no Git, ports, credentials, or background children.
+scripts/tests/delegation-routing.test.sh	Static reads and read only Git grep only; no mutable state, ports, credentials, or background children.
+scripts/tests/enforcement.test.sh	Private temporary fixture tree with EXIT cleanup; no Git mutation, ports, credentials, or background children.
+scripts/tests/freshness.test.sh	Static repository grep checks only; no mutable state, Git operations, ports, credentials, or background children.
+scripts/tests/recursive-guidance.test.sh	Static find, ripgrep, and awk checks only; no mutable state, Git operations, ports, credentials, or children.
+scripts/tests/release-preflight.test.sh	Private copied release fixture with EXIT cleanup; no real Git release, network, ports, credentials, or background children.
+scripts/tests/security-lint.test.sh	Private fixtures and command shims under one temporary root; no Git mutation, ports, credentials, or background children.
+scripts/tests/session-metrics.test.sh	Private metrics, config, HOME, and XDG roots with fixture commands; no ambient credentials, ports, Git writes, or children.
