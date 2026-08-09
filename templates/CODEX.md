@@ -11,10 +11,10 @@ in charge.
 
 The exception is narrow and explicit: when another agent dispatches you with a
 task brief, you are that brief's delegate for its duration. Then the brief sets
-the scope, you write only where it says, and you report to a lead rather than to
-a human. Compress harder than the Answers section below: verdict in the first
-line (done, blocked, or the finding), assumptions stated once, no preamble and
-no closing summary. Absent a brief, you orchestrate.
+the scope, you write only where it says, and you report to a lead rather than
+to a human. Compress harder than the Answers section below: verdict in the
+first line (done, blocked, or the finding), assumptions stated once, no
+preamble and no closing summary. Absent a brief, you orchestrate.
 
 ## Answers
 
@@ -36,8 +36,9 @@ Length comes from content, never from manner.
 
 The model catalog must say Codex leads, or the routing helpers keep treating
 your vendor as a delegate route. Check with `delegate-resolve --lead`; if it
-does not print a codex provider, put this in a project `.megapowers/models.toml`
-or user `~/.config/megapowers/models.toml` override layer:
+does not print a codex provider, put this in a project
+`.megapowers/models.toml` or user `~/.config/megapowers/models.toml` override
+layer:
 
 ```toml
 [lead]
@@ -63,35 +64,29 @@ and effort scales, delegate providers, ship floor. If the block is missing
 Hold the broad context: plan, decompose, do the bulk reads, own final
 integration. Delegate narrow, well-specified, testable work.
 
-You lead in your own model space. `small_impl` resolves to `self`, your own
-provider, so ordinary delegated implementation makes no third-party call.
-Declare the running runtime with `--caller-model <your model id>` and
-`--caller-adapter codex`. `--author-*` identifies the artifact author, not the
-session. Author exclusion applies only to roles carrying an `[independence]`
-entry. (Unconditional exclusion applies only to a legacy config with neither an
-`[independence]` section nor any unshadowed `self` route; the shipped one has the
-section.)
-`visual` and `browser_test` route by capability and cost, not independence; from
-a Codex lead they land in-vendor anyway, but read `[roles]` rather than assuming.
+Two flags, two jobs. `--author-model` or `--author-vendor` names whoever wrote
+the artifact, and that is what routes a review away from its own author; pass
+it on the roles carrying an `[independence]` entry. `--caller-model` and
+`--caller-adapter codex` name who is running and drive native dispatch only, so
+they never affect independence. `visual` and `browser_test` route by capability
+and cost, not independence; from a Codex lead they land in-vendor anyway, but
+read `[roles]` rather than assuming.
 
-A route with `DISPATCH=native` landed on your own provider. Use native subagents
-for it rather than a `codex exec` call back into yourself; `CHANNEL` and `BINARY`
-apply to `DISPATCH=cli`, where the route crosses to another runtime.
+A route with `DISPATCH=native` landed on your own provider, `small_impl`
+included. Use native subagents for it rather than a `codex exec` call back into
+yourself; `CHANNEL` and `BINARY` apply to `DISPATCH=cli`, where the route
+crosses to another runtime.
 
-`--author-*` says who wrote the artifact and drives exclusion. `--caller-model`
-and `--caller-adapter` say who is RUNNING and drive native dispatch only, so they never affect
-independence. Pass it when reviewing someone else's work.
-
-- Same-vendor fan-out is parallelism, not independence. Use `fork_turns = "none"`
-  and a self-contained brief. Set explicit model and effort spawn overrides when
-  the active Codex version exposes them.
+- Same-vendor fan-out is parallelism, not independence. Use `fork_turns =
+  "none"` and a self-contained brief. Set explicit model and effort spawn
+  overrides when the active Codex version exposes them.
 - Cross-vendor independence (plan_review, code_review, verify, judge,
   council_member): `skills/multi-agent-delegation/scripts/delegate-run --role
   <role> --author-vendor <vendor> --artifact <worktree|file> --claim <text>`.
   The fallback chain routes away from every declared author and the launcher
-  records a subject-bound receipt. These roles are the only ones that leave your
-  vendor by default, and they fire on risky logic: auth, billing, concurrency,
-  security, data integrity.
+  records a subject-bound receipt. These roles are the only ones that leave
+  your vendor by default, and they fire on risky logic: auth, billing,
+  concurrency, security, data integrity.
 - Visual verification: an independent vision-model route judges evidence
   captured by the `playwright-cli` driver. Re-read the screenshots yourself.
 
@@ -124,9 +119,13 @@ before deletes, resets, and force pushes.
 
 ## Scratch storage
 
-Honor `$TMPDIR` and tool-specific temporary or cache variables. Do not hard-code `/tmp` for worktrees, build caches, browser profiles, or other large artifacts.
-Before a large scratch job, confirm the directory exists, is writable in the current sandbox, and has enough capacity.
-Do not silently fall back to `/tmp` for large output: request scoped access or use an ignored workspace directory. Keep `/tmp` for small, short-lived OS temporary files and IPC state.
+Honor `$TMPDIR` and tool-specific temporary or cache variables. Do not
+hard-code `/tmp` for worktrees, build caches, browser profiles, or other large
+artifacts. Before a large scratch job, confirm the directory exists, is
+writable in the current sandbox, and has enough capacity. Do not silently fall
+back to `/tmp` for large output: request scoped access or use an ignored
+workspace directory. Keep `/tmp` for small, short-lived OS temporary files and
+IPC state.
 
 ## Git and style
 
