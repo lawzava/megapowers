@@ -157,11 +157,15 @@ else
   bad "codex.md does not say '$want'; [role_efforts] moved and the prose did not"
 fi
 
+# The Claude CLI's own scale and what this catalog will route are different facts,
+# and the prose has to keep them apart: the flag accepts `max`, the catalog stops
+# at `xhigh` on measured evidence. Pin the narrower claim, which is the one a
+# session acts on.
 claude_efforts="$(sed -n '/^\[providers.claude\]/,/^\[/p' "$MODELS" |
   sed -n 's/^efforts[[:space:]]*=[[:space:]]*\[\(.*\)\].*/\1/p')"
-if grep -qF '"max"' <<< "$claude_efforts" &&
-   grep -qF 'catalog declares low through max' <<< "$(folded "$CLAUDE")"; then
-  ok "claude.md documents the shipped max effort capability"
+if ! grep -qF '"max"' <<< "$claude_efforts" &&
+   grep -qF 'catalog declares low through xhigh' <<< "$(folded "$CLAUDE")"; then
+  ok "claude.md documents the shipped effort ceiling"
 else
   bad "claude.md effort range does not match the shipped Claude provider"
 fi

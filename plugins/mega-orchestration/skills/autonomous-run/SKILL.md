@@ -70,3 +70,19 @@ The milestone's declared acceptance check is the completion oracle. Preserve its
 in the journal and evidence map. Derive status from those records, verify it before a
 completion claim, and retain the charter and journal unchanged so a later session can
 audit the claim.
+
+The oracle belongs to the charter, not to the session working the milestone. A run that
+edits its own acceptance check has certified nothing, so record such a change as a
+deliberate replan before the milestone resumes, never as part of the work that makes it
+pass. Keep oracle output small in the session and detailed in the file: verbose test
+output displaces the state that decides what happens next.
+
+## Context
+
+Durable files, not a long conversation, carry a run. Budget the working set well under
+the nominal window and treat a context reset that reloads the charter, plan, journal,
+and derived status as the normal way to continue a long run, not as recovery from a
+mistake. Effective capacity is a fraction of the advertised number, and a session near
+what it believes is its limit begins wrapping up prematurely, which reads as a milestone
+finishing early rather than as an error. Compaction carries that pressure across; a
+reset backed by the file contract does not, which is what the file contract is for.

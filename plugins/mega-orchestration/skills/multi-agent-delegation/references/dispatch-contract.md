@@ -39,7 +39,9 @@ when an id is not unique, `--caller-model <id>` / `--caller-provider <name>` /
 `--caller-adapter <name>` to say which model backend and runtime session are
 RUNNING (native dispatch only, never exclusion),
 `--exclude <vendor|provider>` to drop a backend, `--exclude-lead` as a
-compatibility exclusion, `--models <file>` to pin the catalog, `--lead` to print
+compatibility exclusion, `--allow-context-separation` to authorize the degraded
+same-vendor tier described under `INDEPENDENCE` below,
+`--models <file>` to pin the catalog, `--lead` to print
 the declared orchestrator, `--where` to print the active config layers,
 `--check` to validate the table, `--list` and `--list-presets` to enumerate, and
 `--vendors` to print reachable vendors.
@@ -87,6 +89,37 @@ name or hide a blank identity inside a joined string.
 `ALTERNATES` appears on independence roles and counts the vendors that could
 still serve the role with the authors excluded. `ALTERNATES=1` means the next
 outage takes independent review with it.
+
+`INDEPENDENCE` appears on independence roles and says which separation the route
+actually achieved:
+
+- `cross-vendor`: the reviewer's vendor authored none of the artifact. The
+  shipped default and the only value that satisfies the risky-logic Stop gate.
+- `context-separation`: no cross-vendor route was reachable, and `--allow-context-separation`
+  authorized a fresh same-vendor session instead. `ALTERNATES=0` always
+  accompanies it.
+
+The degraded tier is opt-in, never automatic, and it is the better-evidenced
+half of the policy rather than a consolation prize. The controlled study behind
+independent review (arXiv 2603.12123, 360 reviews over 150 injected errors)
+varied context, not model: fresh-session artifact-only review scored 28.6% F1
+against 24.6% for same-session self-review, and handing the reviewer the
+generation transcript scored 23.8%, worse than doing nothing. Cross-vendor
+review is a motivated prior about uncorrelated blind spots, not a measured
+result, which is why it remains the default and remains mandatory where
+correlated blind spots are the specific risk. When the other vendor is simply
+unreachable, a fresh same-vendor session is the proven condition, and taking it
+beats skipping review, provided nobody reports it as the cross-vendor pass.
+
+Two limits keep that honest. A `judge` role (`all_author_vendors`) refuses the
+tier outright, because blind ranking fails on self-preference and a fresh
+session does not repair that. And `delegate-run` writes `independent: false`
+alongside `independence: "context-separation"`, so the risky-logic gate on auth,
+billing, payment, and concurrency keeps blocking: those are exactly the changes
+where the vendor prior is worth paying for.
+
+Even the best measured condition caught under 30% of injected errors. No review
+is an oracle at either tier; the tests are.
 
 ## Identity: who wrote it, who is running
 

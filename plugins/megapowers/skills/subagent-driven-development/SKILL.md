@@ -68,6 +68,8 @@ capacity and depth. When capacity is unavailable, continue inline or serially.
 
 Each child brief contains the assignment, done criteria, owned paths, relevant interfaces and constraints, required verification, whether it may subdivide, and the requirement to wait for its direct children and return one synthesized subtree result. Do not copy the parent transcript, full plan, repository tests, or descendant chatter into the brief.
 
+A brief's required verification is a fixed oracle, not an owned path. Say so in the brief: the child writes tests for its own new behavior and does not edit, relax, or retarget the check that defines its task as done. A returned patch that changes an acceptance test alongside the implementation it asserts goes back rather than in; the test change is a separate decision, taken by whoever owns the requirement. You re-run the verification yourself either way, which is what makes the rule enforceable rather than advisory.
+
 Separate top-level sessions may share the checkout only when their exclusive ownership was partitioned before launch. There is no cross-session lock or automatic conflict resolution. Concurrent children do not run Git index or ref mutations. They do not commit, merge, rebase, reset, switch branches, update refs, push, or clean the checkout. Only the top-level lead performs any authorized Git action, after its direct children return and repository policy permits it.
 
 Use done, blocked, and needs-context results. The parent decides whether to add

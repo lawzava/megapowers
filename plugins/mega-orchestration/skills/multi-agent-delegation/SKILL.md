@@ -87,6 +87,21 @@ choice can route away from the author and the role exits 3. That is a real
 limit, not a misconfiguration: say the cross-vendor check did not run rather
 than reporting a review that never happened.
 
+Which leaves a choice, and the evidence decides it. Context separation is the
+proven half: a fresh session reading only the artifact measured 28.6% F1 against
+24.6% for same-session self-review, while handing the reviewer the generation
+transcript measured 23.8%, worse than doing nothing (arXiv 2603.12123). That
+study never varied the model, so the vendor swap is a motivated prior about
+uncorrelated blind spots rather than a result. `--allow-context-separation`
+therefore lets an unreachable cross-vendor route fall back to a fresh same-vendor
+session, labeled `INDEPENDENCE=context-separation` on the route and in the
+receipt, with `independent: false`. Reach for it when the alternative is no
+review; do not reach for it on auth, billing, or concurrency, where the prior is
+what you are paying for and the Stop gate will keep blocking anyway. `judge`
+refuses the tier: a fresh session does not remove self-preference from a blind
+ranking. Neither tier is an oracle, since the best measured condition still
+caught under 30% of injected errors. The tests are.
+
 ## One Dispatch
 
 A Claude-authored change going out for independent code review, in one call:

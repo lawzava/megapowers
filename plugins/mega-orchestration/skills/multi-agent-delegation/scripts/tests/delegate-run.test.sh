@@ -232,6 +232,84 @@ set -e
 want_rc 0 "$rc" "--author-model runs an independent review"
 want_jq "$receipt_am" '.author_vendors == ["openai"]' "receipt binds the vendor derived from --author-model"
 want_jq "$receipt_am" '.independent == true' "derived authorship still proves independence"
+# A cross-vendor receipt names its separation rather than leaving a consumer to
+# infer it from `independent`.
+want_jq "$receipt" '.independence == "cross-vendor"' "a cross-vendor receipt labels its separation"
+
+# --- the context-separation tier -------------------------------------------------
+# `verify` is single-route to the anthropic-vendored reviewer here, so declaring an
+# anthropic author is what makes the cross-vendor route unreachable.
+receipt_cs="$TMP/receipt-context-separation.json"
+set +e
+"$RUN" --role verify --author-vendor anthropic --artifact worktree \
+  --claim 'billing remains idempotent' \
+  --receipt "$receipt_cs" --config "$cfg" >/dev/null 2>"$TMP/run-cs-nofl.err"
+rc=$?
+set -e
+want_rc 3 "$rc" "an unreachable cross-vendor route still refuses by default"
+[ ! -e "$receipt_cs" ] && ok || bad "a refused review must not write a receipt"
+
+set +e
+"$RUN" --role verify --author-vendor anthropic --artifact worktree \
+  --claim 'billing remains idempotent' --allow-context-separation \
+  --receipt "$receipt_cs" --config "$cfg" >/dev/null 2>"$TMP/run-cs.err"
+rc=$?
+set -e
+want_rc 0 "$rc" "--allow-context-separation runs the fresh same-vendor review"
+want_jq "$receipt_cs" '.independence == "context-separation"' "the degraded receipt records which check ran"
+# The Stop gate reads `independent`, so the degraded tier has to be false there or
+# it would clear a risky-logic block it never earned.
+want_jq "$receipt_cs" '.independent == false' "the degraded receipt is not the cross-vendor claim"
+want_jq "$receipt_cs" '.author_vendors == ["anthropic"] and .reviewer.vendor == "anthropic"' "the degraded receipt admits the shared vendor"
+grep -q 'cross-vendor check did NOT run' "$TMP/run-cs.err" && ok || bad "the degraded verdict block must say the cross-vendor check did not run"
+
+# Fail closed: a route labeled context-separation that nobody authorized must not
+# be accepted just because the resolver produced it. Its own stub tree, because the
+# shared one below is not built yet at this point in the file.
+cs_stub="$TMP/stub-context-separation"
+cp -r "$(dirname "$RUN")" "$cs_stub"
+cat > "$cs_stub/delegate-resolve" <<'EOF'
+#!/usr/bin/env bash
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "VENDOR=openai"
+echo "BINARY=${FAKE_BINARY:-sh}"
+echo "INDEPENDENCE=context-separation"
+echo "AUTHOR_VENDOR=openai"
+EOF
+chmod +x "$cs_stub/delegate-resolve"
+set +e
+FAKE_BINARY="$fake" "$cs_stub/delegate-run" --role verify --author-vendor openai --artifact worktree \
+  --claim c --receipt "$TMP/receipt-unauthorized.json" --config "$cfg" >/dev/null 2>"$TMP/run-unauth.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "an unauthorized context-separation route is refused"
+grep -q 'was not passed' "$TMP/run-unauth.err" && ok || bad "the refusal must name the missing flag"
+
+# And the reverse: a same-vendor route carrying no label stays fatal, so the check
+# cannot be defeated by simply omitting the field.
+cat > "$cs_stub/delegate-resolve" <<'EOF'
+#!/usr/bin/env bash
+echo "ROLE=verify"
+echo "PROVIDER=reviewer"
+echo "MODEL=fake-frontier"
+echo "TIER=frontier"
+echo "EFFORT=high"
+echo "VENDOR=openai"
+echo "BINARY=${FAKE_BINARY:-sh}"
+echo "AUTHOR_VENDOR=openai"
+EOF
+chmod +x "$cs_stub/delegate-resolve"
+set +e
+FAKE_BINARY="$fake" "$cs_stub/delegate-run" --role verify --author-vendor openai --artifact worktree \
+  --claim c --allow-context-separation --receipt "$TMP/receipt-unlabeled.json" --config "$cfg" \
+  >/dev/null 2>"$TMP/run-unlabeled.err"
+rc=$?
+set -e
+want_rc 2 "$rc" "an unlabeled same-vendor route stays fatal even with the flag"
 
 # An id no provider declares is a usage error, not a silently unbound review.
 set +e
