@@ -1,0 +1,37 @@
+# Tests audited for concurrent execution by scripts/validate.sh.
+#
+# Listed tests must keep mutable state in a private temporary directory, avoid
+# fixed ports and the shared Git index, avoid ambient credentials, and clean up
+# child processes. Unlisted and newly added tests run in the quiet lane.
+
+evals/studies/tests/provenance-check.test.sh
+evals/tests/coverage-inventory.test.sh
+evals/tests/portability-boundary.test.sh
+evals/tests/run-failclosed.test.sh
+plugins/mega-guardrails/hooks/tests/allow-read-only.test.sh
+plugins/mega-guardrails/hooks/tests/auto-format.test.sh
+plugins/mega-guardrails/hooks/tests/codex-deny-destructive.test.sh
+plugins/mega-guardrails/hooks/tests/deny-destructive.test.sh
+plugins/mega-guardrails/hooks/tests/dispatch.test.sh
+plugins/mega-orchestration/hooks/tests/delegate-nudge-prose.test.sh
+plugins/mega-orchestration/hooks/tests/delegate-nudge-scope.test.sh
+plugins/mega-orchestration/hooks/tests/delegate-nudge-worktree.test.sh
+plugins/mega-orchestration/hooks/tests/delegate-nudge.test.sh
+plugins/mega-orchestration/hooks/tests/dispatch.test.sh
+plugins/mega-orchestration/hooks/tests/run-loop.test.sh
+plugins/mega-orchestration/skills/autonomous-run/scripts/tests/runbook-template.test.sh
+plugins/mega-orchestration/skills/best-of-n/scripts/tests/anonymize-candidates.test.sh
+plugins/mega-orchestration/skills/multi-agent-delegation/scripts/tests/delegation-docs.test.sh
+plugins/mega-orchestration/skills/multi-agent-delegation/scripts/tests/review-diff-id.test.sh
+plugins/megapowers/hooks/tests/codex-session-catalog.test.sh
+plugins/megapowers/hooks/tests/dispatch.test.sh
+plugins/megapowers/hooks/tests/render-model-catalog.test.sh
+plugins/megapowers/hooks/tests/session-start.test.sh
+plugins/megapowers/skills/subagent-driven-development/scripts/tests/ownership-preflight.test.sh
+scripts/tests/delegation-routing.test.sh
+scripts/tests/enforcement.test.sh
+scripts/tests/freshness.test.sh
+scripts/tests/recursive-guidance.test.sh
+scripts/tests/release-preflight.test.sh
+scripts/tests/security-lint.test.sh
+scripts/tests/session-metrics.test.sh

@@ -11,6 +11,9 @@ fail=0
 ok()  { printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass + 1)); }
 bad() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail + 1)); }
 
+# shellcheck source=lib/validate-helpers.sh
+source "$ROOT/scripts/lib/validate-helpers.sh"
+
 # Render a SKILL.md frontmatter description to a single line, resolving both
 # single-line values and folded/literal YAML block scalars (>, >-, |, |-, >+,
 # |+). Used by the context-budget checks; the plain skills check only needs to
@@ -349,7 +352,7 @@ SKILL_STACK_DEPTH=6      # the deepest routine stack: using-megapowers -> orches
 head_over=0; body_peak=0; body_peak_name=""
 while IFS= read -r sk; do
   [[ -z $sk ]] && continue
-  n="$(byte_len "$(cat "$sk")")"
+  n="$(validate_skill_body_bytes "$sk")"
   if (( n > body_peak )); then body_peak=$n; body_peak_name="$(basename "$(dirname "$sk")")"; fi
   if (( n > SKILL_HEAD_MAX )); then
     bad "skill body over the post-compaction head budget of ${SKILL_HEAD_MAX}B: $(basename "$(dirname "$sk")") (${n}B) — everything past it is dropped at the first compaction"
@@ -374,10 +377,7 @@ fi
 
 echo "== hooks (shellcheck) =="
 if command -v shellcheck >/dev/null 2>&1; then
-  while IFS= read -r h; do
-    [ -n "$h" ] || continue
-    if shellcheck -S warning "$h" >/dev/null 2>&1; then ok "shellcheck $h"; else bad "shellcheck $h"; fi
-  done < <(git ls-files --cached --others --exclude-standard -- plugins scripts evals | while IFS= read -r f; do
+  run_shellcheck_group < <(git ls-files --cached --others --exclude-standard -- plugins scripts evals | while IFS= read -r f; do
     [ -f "$f" ] || continue
     case "$f" in
       *.sh) printf '%s\n' "$f" ;;
@@ -512,57 +512,38 @@ if jq -e '.permissions.deny | all(test("\\*"; "") | not)' templates/settings.exa
 else
   bad "templates/settings.example.json permission denies must not use ineffective wildcard paths"
 fi
-
-# Run one test file. On failure, SHOW the last of its output: a suite that reports
-# only "this file failed" is a suite that cannot be diagnosed from CI, where the
-# working tree is gone by the time anyone reads the log. That cost a full
-# investigation once, against a failure that reproduced on the hosted runner and
-# nowhere else.
-run_test_file() {  # $1=label $2=path
-  local out
-  out="$(mktemp)"
-  if bash "$2" >"$out" 2>&1; then
-    ok "$1 $2"
-  else
-    bad "$1 $2"
-    sed -n '$!{/FAIL/p};${p}' "$out" | tail -15 | sed 's/^/      /'
-  fi
-  rm -f "$out"
-}
+validate_parallel_manifest
 
 echo "== hook tests =="
-ht_found=0
-while IFS= read -r t; do
-  [ -n "$t" ] || continue
-  ht_found=1
-  run_test_file "hook test" "$t"
-done < <(find plugins -type f -path '*/hooks/tests/*.test.sh' 2>/dev/null | sort)
-[[ $ht_found -eq 1 ]] || bad "no hook tests found (expected plugins/*/hooks/tests/*.test.sh)"
+run_test_group "hook test" "no hook tests found (expected plugins/*/hooks/tests/*.test.sh)" < <(
+  find plugins -type f -path '*/hooks/tests/*.test.sh' 2>/dev/null | sort
+)
 
 echo "== skill script tests =="
-st_found=0
-while IFS= read -r t; do
-  [ -n "$t" ] || continue
-  st_found=1
-  run_test_file "skill script test" "$t"
-done < <(find plugins -type f -path '*/skills/*/scripts/tests/*.test.sh' 2>/dev/null | sort)
-[[ $st_found -eq 1 ]] || bad "no skill script tests found (expected plugins/*/skills/*/scripts/tests/*.test.sh)"
+run_test_group "skill script test" "no skill script tests found (expected plugins/*/skills/*/scripts/tests/*.test.sh)" < <(
+  find plugins -type f -path '*/skills/*/scripts/tests/*.test.sh' 2>/dev/null | sort
+)
 
 echo "== repository script tests =="
-rt_found=0
-while IFS= read -r t; do
-  [ -n "$t" ] || continue
-  rt_found=1
-  run_test_file "repository script test" "$t"
-done < <(find scripts/tests -type f -name '*.test.sh' 2>/dev/null | sort)
-[[ $rt_found -eq 1 ]] || bad "no repository script tests found (expected scripts/tests/*.test.sh)"
+scheduler_contract="scripts/tests/validate-helpers.test.sh"
+if scheduler_output="$(mktemp)"; then
+  scheduler_status=0
+  bash "$scheduler_contract" >"$scheduler_output" 2>&1 || scheduler_status=$?
+  validate_report_test "repository script test" "$scheduler_contract" "$scheduler_output" "$scheduler_status"
+  rm -f "$scheduler_output"
+else
+  bad "cannot create temporary file for repository script test $scheduler_contract"
+fi
+run_test_group "repository script test" "no repository script tests found (expected scripts/tests/*.test.sh)" < <(
+  find scripts/tests -type f -name '*.test.sh' ! -path "$scheduler_contract" 2>/dev/null | sort
+)
 
 echo "== evals =="
 if [[ -d evals/scenarios ]]; then
-  while IFS= read -r t; do
-    [ -n "$t" ] || continue
-    run_test_file "eval harness test" "$t"
-  done < <(find evals/tests evals/studies/tests -type f -name '*.test.sh' 2>/dev/null | sort)
+  # A scenario suite without its harness contracts is an incomplete gate.
+  run_test_group "eval harness test" "no eval harness tests found" < <(
+    find evals/tests evals/studies/tests -type f -name '*.test.sh' 2>/dev/null | sort
+  )
   ev_bad=0; ev_n=0
   for sd in evals/scenarios/*/; do
     [[ -d $sd ]] || continue
@@ -576,9 +557,9 @@ if [[ -d evals/scenarios ]]; then
   for f in evals/run.sh evals/run-all.sh evals/score.go; do
     [[ -f $f ]] && ok "eval harness present: $f" || bad "eval harness missing: $f"
   done
-  # study oracle mutation selftests: offline-deterministic, no credentials
-  for st in evals/studies/process-behavior/run-study.sh evals/studies/install-smoke/run-smoke.sh; do
-    if [[ -x $st ]] && "$st" --selftest >/dev/null 2>&1; then ok "study selftest $st"; else bad "study selftest $st"; fi
+  # Study oracle mutation selftests are offline-deterministic and credential-free.
+  for study_selftest in evals/studies/process-behavior/run-study.sh evals/studies/install-smoke/run-smoke.sh; do
+    if [[ -x $study_selftest ]] && "$study_selftest" --selftest >/dev/null 2>&1; then ok "study selftest $study_selftest"; else bad "study selftest $study_selftest"; fi
   done
   if evals/studies/gauntlet/oracle.sh --selftest >/dev/null 2>&1; then ok "study selftest evals/studies/gauntlet/oracle.sh"; else bad "study selftest evals/studies/gauntlet/oracle.sh"; fi
   if evals/coverage-inventory.sh >/dev/null 2>&1; then ok "eval coverage inventory generated"; else bad "eval coverage inventory failed"; fi
