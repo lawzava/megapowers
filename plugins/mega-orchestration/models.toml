@@ -1,5 +1,5 @@
 # megapowers model catalog: what orchestrates, what models exist, what each is for.
-# Last reviewed: 2026-08-06 (model IDs age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-08-09 (model IDs age; scripts/check-freshness.sh guards this date).
 # Edit an OVERRIDE LAYER, not this shipped file: a project .megapowers/models.toml or
 # user ~/.config/megapowers/models.toml wins per key and survives plugin updates.
 # Two identical copies ship (plugins/megapowers/models.toml and
@@ -105,7 +105,11 @@ notes   = "The lead runs as the session itself; the headless channel is for a de
 # Two models, two tiers; the role's tier picks which. Sonnet 5 carries the strong
 # tier so "least capable model that can do the role" has somewhere cheaper to land:
 # Anthropic's 2026-07-24 guidance puts Sonnet 5 paired with a frontier advisor
-# within 10 percent of frontier quality at 63 percent of the price. Effort is the
+# within 10 percent of frontier quality at 63 percent of the price. That ratio is
+# dated: Sonnet 5's introductory $2/$10 ends 2026-08-31 and lists at $3/$15 after,
+# against Opus 5's unchanged $5/$25, so the gap narrows from roughly 40 to 60
+# percent on 2026-09-01. The tier survives the change, the number does not; re-read
+# it at the next freshness review rather than treating it as current. Effort is the
 # other lever, and it crosses tiers: frontier at low effort can beat strong at
 # high effort, so raise the tier before raising effort on hard work. Haiku is
 # never routed.
