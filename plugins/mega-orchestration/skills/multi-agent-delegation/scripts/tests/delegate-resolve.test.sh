@@ -281,6 +281,11 @@ check "unknown adapter diagnostic names the adapter" "typo" "$out"
 out="$("$DR" small_impl --config "$TMP/bad-adapter.toml" 2>&1)"; rc=$?
 check_exit "resolution rejects an unknown provider adapter" 2 "$rc"
 check "resolution names the declared missing adapter" "missing runtime adapter 'typo'" "$out"
+# Reachability probes the binary dispatch will actually use, which is the
+# provider's when it declares one and the adapter's otherwise. Both directions
+# are pinned below, because either one alone passes under a resolver that reads
+# only its own half. Here the provider declares no binary, so the adapter's
+# uninstalled one is what would launch and the vendor must not be advertised.
 cat > "$TMP/adapter-binary.toml" <<'EOF'
 [adapters.missing]
 binary = "definitely-not-an-installed-command"
@@ -288,7 +293,6 @@ channel = "missing"
 [providers.alpha]
 adapter = "missing"
 vendor = "acme"
-binary = "sh"
 model = "alpha"
 [roles]
 small_impl = "alpha"
@@ -297,6 +301,28 @@ out="$("$DR" --vendors --config "$TMP/adapter-binary.toml" 2>&1)"; rc=$?
 check_exit "bare vendors accepts an adapter-backed catalog" 0 "$rc"
 case "$out" in
   *acme*) fail=$((fail+1)); echo "  FAIL bare vendors probes the adapter binary" ;;
+  *) pass=$((pass+1)) ;;
+esac
+
+# The mirror: an installed adapter binary cannot rescue a provider that names an
+# uninstalled one. Without this case the resolver could ignore provider-level
+# binaries entirely and still pass the case above.
+cat > "$TMP/provider-binary.toml" <<'EOF'
+[adapters.present]
+binary = "sh"
+channel = "present"
+[providers.alpha]
+adapter = "present"
+vendor = "acme"
+binary = "definitely-not-an-installed-command"
+model = "alpha"
+[roles]
+small_impl = "alpha"
+EOF
+out="$("$DR" --vendors --config "$TMP/provider-binary.toml" 2>&1)"; rc=$?
+check_exit "bare vendors accepts a provider-binary catalog" 0 "$rc"
+case "$out" in
+  *acme*) fail=$((fail+1)); echo "  FAIL bare vendors probes the provider binary" ;;
   *) pass=$((pass+1)) ;;
 esac
 
@@ -398,6 +424,13 @@ frontier = "user-catalog-model"
 EOF
 out="$(cd "$TMP/home" && "$DR" code_review --author-vendor anthropic 2>&1)"
 check "user catalog layer overrides shipped tier map" "MODEL=user-catalog-model" "$out"
+# The same layer's `binary` has to land too, and it is the half that used to be
+# dropped. The shipped provider declares an adapter, the resolver read every
+# value from that adapter section, and so a provider-keyed layer was read,
+# parsed, and ignored: the exact case models.toml's header promises still works.
+# Nothing caught it, because on a machine with the real CLI installed the route
+# still resolves, just to the binary the layer was trying to replace.
+check "user catalog layer overrides the provider binary" "BINARY=sh" "$out"
 rm -f "$XDG_CONFIG_HOME/megapowers/models.toml"
 
 # --check spans both stacks.

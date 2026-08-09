@@ -329,8 +329,19 @@ provider_model() {  # $1=provider ; prints "model<TAB>tier"
 provider_adapter() { local a; a="$(cat_val "providers.$1" adapter)"; printf '%s\n' "${a:-$1}"; }
 adapter_exists() { cat_exists "adapters.$1"; }
 adapter_val() { # $1=provider $2=key
-  local a declared; declared="$(cat_val "providers.$1" adapter)"; a="${declared:-$1}"
-  if [ -n "$declared" ]; then cat_val "adapters.$a" "$2"; else cat_val "providers.$1" "$2"; fi
+  # An explicit provider-level value wins over the adapter default. The adapter
+  # section is the launch surface shared by every provider that names it, so its
+  # value is the fallback, not the authority. Reading the adapter section first
+  # broke the compatibility models.toml promises in its own header ("older
+  # override layers without [adapters] remain provider-keyed"): a layer setting
+  # providers.<p>.binary was read and parsed and then dropped, because the
+  # SHIPPED provider declares an adapter even when the layer does not. It stayed
+  # invisible wherever the real CLI happened to be installed, since the route
+  # still resolved, just to the binary the layer was trying to replace.
+  local a declared v
+  declared="$(cat_val "providers.$1" adapter)"; a="${declared:-$1}"
+  v="$(cat_val "providers.$1" "$2")"
+  if [ -n "$v" ]; then printf '%s\n' "$v"; else cat_val "adapters.$a" "$2"; fi
 }
 
 scale_list="$(cat_array tiers scale)"   # empty on v1 configs
