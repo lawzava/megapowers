@@ -580,8 +580,13 @@ check "--check names the offending effort" "max" "$out"
 out="$(DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" "$DR" --check 2>&1)"; rc=$?
 check_exit "--check shipped files with efforts exits 0" 0 "$rc"
 
-# Both frontier CLIs expose a real `max` effort rung. The shipped catalog must
-# preserve it even though no default role spends it without eval evidence.
+# Both frontier CLIs expose a real `max` rung, and the catalog treats them
+# differently on purpose. Codex keeps it: no default role spends it without eval
+# evidence, but the rung still buys something when one does. Claude does not,
+# because Artificial Analysis measures Opus 5 at max scoring below its own xhigh
+# on composite, cost, latency, and comprehension simultaneously. A rung that is
+# worse on every axis than the rung beneath it is not an escalation, so the
+# catalog must refuse to resolve it rather than merely decline to default to it.
 sed -e 's/^binary  = "claude"$/binary  = "sh"/' \
     -e 's/^binary  = "codex"$/binary  = "sh"/' \
     "$HERE/../../../../models.toml" > "$TMP/shipped-max.toml"
@@ -598,13 +603,24 @@ codex_max = "max"
 EOF
 : > "$TMP/no-max-catalog.toml"
 MAX_CFG=(--config "$TMP/shipped-max.toml" --models "$TMP/no-max-catalog.toml")
-out="$("$DR" --check "${MAX_CFG[@]}" 2>&1)"; rc=$?
-check_exit "shipped catalog accepts max for both frontier providers" 0 "$rc"
-for max_role in claude_max codex_max; do
-  out="$("$DR" "$max_role" "${MAX_CFG[@]}" 2>&1)"; rc=$?
-  check_exit "$max_role resolves at max" 0 "$rc"
-  check "$max_role preserves max effort" "EFFORT=max" "$out"
-done
+out="$("$DR" codex_max "${MAX_CFG[@]}" 2>&1)"; rc=$?
+check_exit "codex_max resolves at max" 0 "$rc"
+check "codex_max preserves max effort" "EFFORT=max" "$out"
+
+out="$("$DR" claude_max "${MAX_CFG[@]}" 2>&1)"; rc=$?
+check_exit "claude refuses a max-effort role" 2 "$rc"
+check "and names the effort it will not route" "does not support role 'claude_max' effort 'max'" "$out"
+
+# The refusal has to come from the catalog, not from a role table nobody ships:
+# assert the shipped efforts list itself, so an override layer restoring `max`
+# is a deliberate act rather than something this test would keep quiet about.
+claude_efforts_line="$(sed -n '/^\[providers.claude\]/,/^\[/p' "$HERE/../../../../models.toml" |
+  sed -n 's/^efforts[[:space:]]*=.*/&/p')"
+case "$claude_efforts_line" in
+  *'"max"'*) fail=$((fail+1)); printf '  FAIL shipped claude provider still lists max\n    got: %s\n' "$claude_efforts_line" ;;
+  *'"xhigh"'*) pass=$((pass+1)) ;;
+  *) fail=$((fail+1)); printf '  FAIL could not read the shipped claude efforts list\n    got: %s\n' "$claude_efforts_line" ;;
+esac
 
 echo "== v0.5 role-policy tests =="
 

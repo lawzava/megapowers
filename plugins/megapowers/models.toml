@@ -82,7 +82,16 @@ reference = "references/providers/opencode.md"
 
 [providers.claude]
 effort  = "high"   # lead default; in-session teammate work runs medium
-efforts = ["low", "medium", "high", "xhigh", "max"]  # the CLI --effort scale has no `ultra` rung
+# `max` is deliberately absent, and it is the one effort here removed on external
+# evidence rather than on a spend argument. Artificial Analysis's Coding Agent
+# Index (v1.3, read 2026-08-09) measures Claude Code + Opus 5 at max scoring BELOW
+# its own xhigh on four axes at once: composite 66 against 67, $8.95 against $8.23,
+# 23.7 min against 23.6, and SWE-Atlas-QnA 49 against 55. A rung that costs more,
+# takes longer, and answers worse than the rung beneath it is not an escalation,
+# so nothing can route to it and no override layer should add it back without a
+# newer measurement. This is a claim about Opus 5 specifically, not about `max` as
+# a concept: codex keeps its own top rungs below because they still buy something.
+efforts = ["low", "medium", "high", "xhigh"]
 vendor  = "anthropic"
 adapter = "claude"
 binary  = "claude"
