@@ -106,6 +106,16 @@ with the config or found it silent.
 
 ### Fixed
 
+- An override layer setting `providers.<p>.binary` was read, parsed, and then
+  dropped. A shipped provider declares an `adapter`, and `adapter_val` sourced
+  every value from that adapter section whenever the declaration existed, so
+  the provider-keyed form models.toml's own header promises still works could
+  not reach `binary` or `channel`. Nothing caught it for two reasons worth
+  keeping: the shipped catalog sets both keys to the same value in both places,
+  and on any machine with the real CLI installed the route still resolved, just
+  to the binary the layer was trying to replace. An explicit provider-level
+  value now wins and the adapter supplies the default. This is what turned 19
+  `delegate-resolve` tests red on CI while they passed locally.
 - `docs/setup.md` cited `v0.8.2`, a version that was never tagged; the
   `sandbox.credentials` object form shipped in 0.9.0. The release-certification
   and install-smoke commands no longer carry a stale `v0.5.0` example, and the
