@@ -27,10 +27,10 @@ Or run `/plugin` and browse Discover.
 Verify the install: run `/plugin` and confirm the plugin is listed as
 installed. Then, from a fresh session (the session-start rule and hooks only
 appear in sessions started after the install, and this setup doc is not in that
-session's context), ask the agent to "load the test-driven-development skill and
-quote its core principle". This doc and `agent-install.md` quote the sentence
-too, so probe from a session that has neither in context; there the expected
-sentence lives only in the skill body:
+session's context), ask the agent to "load the test-driven-development skill
+and quote its core principle". This doc and `agent-install.md` quote the
+sentence too, so probe from a session that has neither in context; there the
+expected sentence lives only in the skill body:
 
 > if you didn't watch the test fail, you don't know whether it tests the
 > right thing
@@ -38,9 +38,9 @@ sentence lives only in the skill body:
 A correct quote proves skills are discoverable and loadable. The probe needs
 the `megapowers` bundle (that skill ships in it); for other plugins, confirm
 the `/plugin` listing or ask for one of their skills instead. This is exactly
-what the install-smoke study asserts; see `evals/studies/install-smoke/`.
-What visibly changes in day-to-day sessions is listed in the
-[README quickstart](../README.md#quickstart-claude-code).
+what the install-smoke study asserts; see `evals/studies/install-smoke/`. What
+visibly changes in day-to-day sessions is listed in the [README
+quickstart](../README.md#quickstart-claude-code).
 
 ## Per-plugin prerequisites
 
@@ -52,82 +52,85 @@ escalates into delegation, verification, and autonomous runs when both are
 present.
 
 - mega-orchestration: each role needs the CLI of the provider it resolves to
-  (`delegate-resolve <role>` prints BINARY). The Codex routes need Codex
-  native subagents when running in Codex. From Claude Code, prefer OpenAI's
+  (`delegate-resolve <role>` prints BINARY). The Codex routes need Codex native
+  subagents when running in Codex. From Claude Code, prefer OpenAI's
   first-party `codex-plugin-cc`; other harnesses use the Codex CLI, SDK, or MCP
-  server as documented in the Codex provider reference. The Claude routes (plan review, and the cross-vendor
-  review/verify chains under a non-Anthropic lead) need the Claude CLI. The
-  visual/browser role needs `playwright-cli` plus a vision-capable model to
-  read the screenshots: `npm i -g @playwright/cli`, then `playwright-cli
-  install --skills` installs Microsoft's own playwright-cli skill into
-  `.claude/skills/`. megapowers does not vendor that skill: Playwright
-  distributes and updates it, and a shipped copy would register twice. Roles
-  you don't use don't need their tools installed.
+  server as documented in the Codex provider reference. The Claude routes (plan
+  review, and the cross-vendor review/verify chains under a non-Anthropic lead)
+  need the Claude CLI. The visual/browser role needs `playwright-cli` plus a
+  vision-capable model to read the screenshots: `npm i -g @playwright/cli`,
+  then `playwright-cli install --skills` installs Microsoft's own
+  playwright-cli skill into `.claude/skills/`. megapowers does not vendor that
+  skill: Playwright distributes and updates it, and a shipped copy would
+  register twice. Roles you don't use don't need their tools installed.
 - mega-go: `greenfield-go-stack` optionally uses the context7 MCP server to
-  fetch current library docs while scaffolding; it degrades gracefully without it.
+  fetch current library docs while scaffolding; it degrades gracefully without
+  it.
 - mega-guardrails: the hooks require `jq`. The auto-format hook additionally
   uses gofmt/goimports (Go) and a project-local prettier (JS/TS/etc.) when
   present, and skips them quietly otherwise.
 
 ### Optional: skipping the prompt on inspection commands
 
-`mega-guardrails` ships `hooks/allow-read-only.sh`, which is **not registered**.
-It is a PreToolUse(Bash) hook that auto-approves a command when the command
-string carries no write construct and names an inspection command that does not
-write, optionally behind one `cd <path> &&` prefix. It never denies and never
-asks; anything else is passed through untouched to the normal permission flow.
+`mega-guardrails` ships `hooks/allow-read-only.sh`, which is **not
+registered**. It is a PreToolUse(Bash) hook that auto-approves a command when
+the command string carries no write construct and names an inspection command
+that does not write, optionally behind one `cd <path> &&` prefix. It never
+denies and never asks; anything else is passed through untouched to the normal
+permission flow.
 
 It exists because a `permissions.allow` rule cannot do this job. `Bash(ls:*)`
-matches on the command prefix, so it also approves `ls -la > ~/.bashrc` and
-`ls "$(sh -c 'touch owned')"`. There is no read-only prefix, which is why the
-settings template ships no allow rules at all. A hook is the only mechanism that
-sees the whole string before deciding.
+matches on the command prefix, so it also approves `ls -la > ~/.bashrc` and `ls
+"$(sh -c 'touch owned')"`. There is no read-only prefix, which is why the
+settings template ships no allow rules at all. A hook is the only mechanism
+that sees the whole string before deciding.
 
 What it removes: across 22,201 observed Bash calls the most common shape was
-`cd X && ...` at 4,348 occurrences, and the interruptions read "This Bash command
-contains multiple operations. The following part requires approval:" over parts
-like `ls -la` and `wc -l`. It approves `ls`, `wc`, `stat`, `file`, `head`, and
-`tail`, plus a single `cd <path> && <command>` prefix.
+`cd X && ...` at 4,348 occurrences, and the interruptions read "This Bash
+command contains multiple operations. The following part requires approval:"
+over parts like `ls -la` and `wc -l`. It approves `ls`, `wc`, `stat`, `file`,
+`head`, and `tail`, plus a single `cd <path> && <command>` prefix.
 
 Not every flag of those six, though, and the difference will look arbitrary the
 first time you hit it. A flag is on the list only when its documented behavior
 can neither write nor run a program, checked one flag at a time against the
 manual and then under `strace`. So a few ordinary-looking ones still prompt:
-`file -p` writes, because restoring the access time is a `utimensat` on the file
-you just inspected; `file -z` runs a decompressor that the operand's own first
-bytes name; `file -C` compiles a magic cache to disk; `stat --cached=never` can
-make a network filesystem write data back; and `tail -f` never returns. A flag
-the hook does not recognize prompts as well, rather than being guessed at, so a
-flag from a future coreutils release fails closed.
+`file -p` writes, because restoring the access time is a `utimensat` on the
+file you just inspected; `file -z` runs a decompressor that the operand's own
+first bytes name; `file -C` compiles a magic cache to disk; `stat
+--cached=never` can make a network filesystem write data back; and `tail -f`
+never returns. A flag the hook does not recognize prompts as well, rather than
+being guessed at, so a flag from a future coreutils release fails closed.
 
 To enable it, add a PreToolUse(Bash) entry pointing at
-`${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh allow-read-only.sh` in your
-own settings, alongside the destructive-command hook rather than replacing it.
+`${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh allow-read-only.sh` in
+your own settings, alongside the destructive-command hook rather than replacing
+it.
 
 Read this before enabling it. Two things it does not do.
 
-**It does not approve git, including `git status`.** That looks like an omission
-and it is not. `git status` and `git diff` rewrite `.git/index` whenever the
-cached stat data is stale, which is any worktree you just edited, and `git
-status`, `git diff`, and `git ls-files` run whatever program the repository's
-`core.fsmonitor` names, while `git log -p`, `git show`, and `git diff` run
-`diff.external`, a textconv filter, or `core.pager`. All of that lives in
-`.git/config` and `.gitattributes`, which the hook never reads. Whether a git
-command writes is a property of the repository, not of the command you typed, so
-it is not a question this hook can answer. `git -C <path> status` will keep
-prompting.
+**It does not approve git, including `git status`.** That looks like an
+omission and it is not. `git status` and `git diff` rewrite `.git/index`
+whenever the cached stat data is stale, which is any worktree you just edited,
+and `git status`, `git diff`, and `git ls-files` run whatever program the
+repository's `core.fsmonitor` names, while `git log -p`, `git show`, and `git
+diff` run `diff.external`, a textconv filter, or `core.pager`. All of that
+lives in `.git/config` and `.gitattributes`, which the hook never reads.
+Whether a git command writes is a property of the repository, not of the
+command you typed, so it is not a question this hook can answer. `git -C <path>
+status` will keep prompting.
 
-**It does not prove the command is harmless, and it does not prove which program
-runs.** It approves `head -n 5 .env` and `wc -l /home/you/.ssh/id_rsa` without a
-prompt, because reading a secret is not a write. Note the second one is spelled
-out: a `~` makes the hook pass the command through to the normal prompt, since
-tilde expansion is not in its inert byte set, but the expanded path an agent
-usually writes is approved. On a machine whose
-sandbox denies those paths the read still fails; what you give up is the prompt.
-And approval is a statement about the command string, not about the executable:
-an `ls` earlier on your `PATH`, or an exported shell function named `ls`, passes
-every check. That is the same hole the prompt has, since approving `ls -la` by
-hand never told you which binary answered either, but it is the reason the hook
+**It does not prove the command is harmless, and it does not prove which
+program runs.** It approves `head -n 5 .env` and `wc -l /home/you/.ssh/id_rsa`
+without a prompt, because reading a secret is not a write. Note the second one
+is spelled out: a `~` makes the hook pass the command through to the normal
+prompt, since tilde expansion is not in its inert byte set, but the expanded
+path an agent usually writes is approved. On a machine whose sandbox denies
+those paths the read still fails; what you give up is the prompt. And approval
+is a statement about the command string, not about the executable: an `ls`
+earlier on your `PATH`, or an exported shell function named `ls`, passes every
+check. That is the same hole the prompt has, since approving `ls -la` by hand
+never told you which binary answered either, but it is the reason the hook
 claims a property of the string and stops there. If either trade is wrong for
 your setup, leave the hook unregistered. It ships off for exactly this reason.
 
@@ -160,8 +163,8 @@ test-driven-development core principle in a fresh session).
 
 Install `megapowers`, `mega-go`, `mega-python`, `mega-ts`, `mega-frontend`,
 `mega-orchestration`, or `mega-guardrails` from the `megapowers` marketplace.
-Under Codex, mega-guardrails supplies the destructive-command adapter only;
-its formatter and statusline remain Claude Code features.
+Under Codex, mega-guardrails supplies the destructive-command adapter only; its
+formatter and statusline remain Claude Code features.
 
 ### Contributor or fork variant
 
@@ -179,11 +182,11 @@ Update it with `git pull` in the checkout.
 ### Codex native agents and v2
 
 Codex native multi-agent support is stable and enabled by default. This repo's
-baseline deliberately opts into the under-development `multi_agent_v2`
-surface. V2 is a same-model context-sharding surface: its native spawn call
-does not expose a per-spawn role, model, or effort selector, so workers inherit
-the active session model. It does not automatically select this repo's
-`builder` (Terra) or `reviewer` (Sol) profiles.
+baseline deliberately opts into the under-development `multi_agent_v2` surface.
+V2 is a same-model context-sharding surface: its native spawn call does not
+expose a per-spawn role, model, or effort selector, so workers inherit the
+active session model. It does not automatically select this repo's `builder`
+(Terra) or `reviewer` (Sol) profiles.
 
 `mega-orchestration` still packages those optional profiles under
 `assets/codex-agents/` for Codex surfaces that support named role selection.
@@ -213,36 +216,36 @@ Treat the canonical task path as the nesting counter. If it already has five tas
 """
 ```
 
-The v2 cap includes the root thread, so 11 permits ten subagents. Remove the
-v1 `agents.max_threads` key when enabling v2; Codex rejects that combination.
-The six-worker ordinary-batch limit preserves root capacity for integration and
+The v2 cap includes the root thread, so 11 permits ten subagents. Remove the v1
+`agents.max_threads` key when enabling v2; Codex rejects that combination. The
+six-worker ordinary-batch limit preserves root capacity for integration and
 recovery; ten is a ceiling, not a target. For independent work, fresh context
 avoids copying the root's transcript and compactions into every worker. Use a
 small positive `fork_turns` count only for essential recent turns, and reserve
 `all` for a genuine continuation of the same context. Reuse an idle worker only
 for the same assignment; start a fresh worker for a new problem. As observed in
-Codex 0.144.4, v2 does not enforce `agents.max_depth`, so the depth-five limit is
-a model-visible system policy, not a hard runtime cap.
+Codex 0.144.4, v2 does not enforce `agents.max_depth`, so the depth-five limit
+is a model-visible system policy, not a hard runtime cap.
 
-Pin the Codex session model to `gpt-5.6-sol`. Under the shipped catalog Codex is
-the critic rather than the lead. Roles that adjudicate or refute run at `high`;
-roles bounded by something other than reasoning depth (scoped implementation,
-visual, browser) run at `medium`, following OpenAI's GPT-5.6 guidance that medium
-is the balanced starting point and that `high` or `xhigh` want eval evidence of a
-meaningful gain. `templates/codex-config.toml` ships `high` as the Codex session
-default for the same reason; raise it per task, with a reason, rather than
-standing at `xhigh`. A 2026-08-05 audit of 1,623 rollouts found `xhigh` running
-roughly three times as often as `high`, which is the drift that default exists to
-stop. The current bundled Sol model also
-supports `ultra`, which adds automatic task delegation. Named profiles
-live in separate `$CODEX_HOME/<name>.config.toml` files and are selected with
+Pin the Codex session model to `gpt-5.6-sol`. Under the shipped catalog Codex
+is the critic rather than the lead. Roles that adjudicate or refute run at
+`high`; roles bounded by something other than reasoning depth (scoped
+implementation, visual, browser) run at `medium`, following OpenAI's GPT-5.6
+guidance that medium is the balanced starting point and that `high` or `xhigh`
+want eval evidence of a meaningful gain. `templates/codex-config.toml` ships
+`high` as the Codex session default for the same reason; raise it per task,
+with a reason, rather than standing at `xhigh`. A 2026-08-05 audit of 1,623
+rollouts found `xhigh` running roughly three times as often as `high`, which is
+the drift that default exists to stop. The current bundled Sol model also
+supports `ultra`, which adds automatic task delegation. Named profiles live in
+separate `$CODEX_HOME/<name>.config.toml` files and are selected with
 `--profile`; do not put `[profiles.*]` tables in the main config. Copy
 `templates/codex-complex.config.toml` to `$CODEX_HOME/complex.config.toml` for
 deliberate complex work, then start it with `codex --profile complex`. Complex
-plan/spec review can still route independently to Claude (Opus 5). A Codex lead should
-not register `codex mcp-server` under `[mcp_servers.codex]`: that channel is
-for another harness delegating into Codex, while native subagents are the
-direct path inside Codex.
+plan/spec review can still route independently to Claude (Opus 5). A Codex lead
+should not register `codex mcp-server` under `[mcp_servers.codex]`: that
+channel is for another harness delegating into Codex, while native subagents
+are the direct path inside Codex.
 
 ### Codex hooks
 
@@ -259,8 +262,8 @@ payload while retaining the Claude Code behavior from the same manifest:
   through and leaves reversible-risk approval to Codex.
 
 No manual `~/.codex/hooks.json` wiring is needed. Before a non-managed command
-hook runs, Codex asks you to trust its exact definition; trust is hash-bound, so
-an upgraded hook is skipped until reviewed again. Use `/hooks` in Codex to
+hook runs, Codex asks you to trust its exact definition; trust is hash-bound,
+so an upgraded hook is skipped until reviewed again. Use `/hooks` in Codex to
 review and trust the installed definitions. Do not use
 `--dangerously-bypass-hook-trust` for an interactive installation.
 
@@ -278,14 +281,15 @@ codex --version
 ```
 
 The app-server and CLI versions should match. In a fresh session, confirm the
-rendered model-catalog block appears and `/hooks` lists five hook handlers across three plugins:
-one SessionStart, two Stop, one PreToolUse, and one PostToolUse. The run-loop
-Stop handler and formatter PostToolUse handler intentionally no-op under Codex;
-the other three are active. Confirm `codex plugin list` reports one source for
-each megapowers plugin. If a skill appears twice, remove the older
-shared-directory or legacy standalone install. Install language
-plugins only where needed; loading every language bundle globally can exceed
-the initial skill-description budget even though each plugin is valid alone.
+rendered model-catalog block appears and `/hooks` lists five hook handlers
+across three plugins: one SessionStart, two Stop, one PreToolUse, and one
+PostToolUse. The run-loop Stop handler and formatter PostToolUse handler
+intentionally no-op under Codex; the other three are active. Confirm `codex
+plugin list` reports one source for each megapowers plugin. If a skill appears
+twice, remove the older shared-directory or legacy standalone install. Install
+language plugins only where needed; loading every language bundle globally can
+exceed the initial skill-description budget even though each plugin is valid
+alone.
 
 ## Pinning to a release
 
@@ -295,9 +299,9 @@ want change-controlled updates can pin instead. Two facts govern what a pin
 does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
-  Pin to a published tag with
-  `codex plugin marketplace add lawzava/megapowers@v0.9.1`, or, for Claude Code,
-  add `"ref": "v0.9.1"` to the `extraKnownMarketplaces` source (see
+  Pin to a published tag with `codex plugin marketplace add
+  lawzava/megapowers@v0.9.1`, or, for Claude Code, add `"ref": "v0.9.1"` to the
+  `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
 pin, remove the marketplace and re-add it at the new tag.
@@ -309,15 +313,16 @@ pin, remove the marketplace and re-add it at the new tag.
 Neither is an integrity pin (no sha in the ref), so a pin controls when you
 move, not cryptographic provenance. Release tags from `v0.1.3` on are
 GPG-signed and can be verified out of band (see SECURITY.md, Release
-integrity). Tags `v0.1.1` through `v0.9.1` are the release pin range once this
-version is published.
+integrity). Every tag from `v0.1.1` on is a valid pin; `git ls-remote --tags
+https://github.com/lawzava/megapowers` lists the ones currently published, so
+this page never has to name the newest.
 
 ## Every other harness: the skills CLI
 
 For harnesses without a native plugin marketplace (OpenCode, plus the rest of
 the Agent Skills ecosystem, which is not supported here but can still read
-these skills), use the open
-[skills CLI](https://github.com/vercel-labs/skills) (published at skills.sh):
+these skills), use the open [skills CLI](https://github.com/vercel-labs/skills)
+(published at skills.sh):
 
 ```bash
 npx skills add lawzava/megapowers                # pick skills interactively
@@ -335,37 +340,36 @@ the first-task probe in a fresh session: ask the agent to load
 `test-driven-development` and quote its core-principle sentence (the one quoted
 under [Claude Code marketplace](#claude-code-marketplace) above).
 
-The CLI reads this repo's `.claude-plugin/marketplace.json` and discovers
-every plugin's skills, grouped by plugin. A skill's `scripts/` and
-`references/` install with it: the whole skill directory is copied. Installs
-are recorded in `skills-lock.json`, which makes the same skill set
-reproducible on another machine (restore is `npx skills
-experimental_install`, still marked experimental upstream).
+The CLI reads this repo's `.claude-plugin/marketplace.json` and discovers every
+plugin's skills, grouped by plugin. A skill's `scripts/` and `references/`
+install with it: the whole skill directory is copied. Installs are recorded in
+`skills-lock.json`, which makes the same skill set reproducible on another
+machine (restore is `npx skills experimental_install`, still marked
+experimental upstream).
 
 Two rules:
 
-- Skills only. Hooks and delegate agents do not travel this channel. On
-  Claude Code and Codex, prefer the native marketplaces above, which ship the
-  full bundle. On other harnesses these hook scripts are not ported anyway (see
+- Skills only. Hooks and delegate agents do not travel this channel. On Claude
+  Code and Codex, prefer the native marketplaces above, which ship the full
+  bundle. On other harnesses these hook scripts are not ported anyway (see
   [`docs/harness-support.md`](./harness-support.md)), so nothing real is lost.
-- One channel per agent per machine. Never install the same skill via a
-  native marketplace and the skills CLI: a skill registered twice fires
-  twice.
+- One channel per agent per machine. Never install the same skill via a native
+  marketplace and the skills CLI: a skill registered twice fires twice.
 
 The second rule has a trap on mixed machines: the skills CLI installs several
-agents (OpenCode and Codex among them) into the SHARED
-`~/.agents/skills/` directory, and Claude Code scans that directory too. If
-the Claude Code plugins are installed on the same machine, a global skills-CLI
-install into `~/.agents/skills/` double-registers every skill for Claude Code.
-Found the hard way on this project's own machine. On a machine that runs
-Claude Code with the plugins, give other harnesses a tool-specific path
-instead: the symlink fallback below into e.g. `~/.config/opencode/skills/`,
-or project-level installs (`npx skills add` without `-g`).
+agents (OpenCode and Codex among them) into the SHARED `~/.agents/skills/`
+directory, and Claude Code scans that directory too. If the Claude Code plugins
+are installed on the same machine, a global skills-CLI install into
+`~/.agents/skills/` double-registers every skill for Claude Code. Found the
+hard way on this project's own machine. On a machine that runs Claude Code with
+the plugins, give other harnesses a tool-specific path instead: the symlink
+fallback below into e.g. `~/.config/opencode/skills/`, or project-level
+installs (`npx skills add` without `-g`).
 
 ### Manual fallback: symlinks from a checkout
 
-Where you'd rather track a checkout (or a fork) directly, symlink the
-canonical skill directories you want from `plugins/*/skills/*`:
+Where you'd rather track a checkout (or a fork) directly, symlink the canonical
+skill directories you want from `plugins/*/skills/*`:
 
 ```bash
 # from the checkout root; adjust the target to your runtime's skill path
@@ -400,54 +404,53 @@ being hand-configured:
   }
   ```
 
-- Codex: add the remote marketplace in your dotfiles bootstrap
-  (`codex plugin marketplace add lawzava/megapowers` +
-  `codex plugin add <plugin>@megapowers` per plugin) and update with
-  `codex plugin marketplace upgrade megapowers`.
+- Codex: add the remote marketplace in your dotfiles bootstrap (`codex plugin
+  marketplace add lawzava/megapowers` + `codex plugin add <plugin>@megapowers`
+  per plugin) and update with `codex plugin marketplace upgrade megapowers`.
 - Everything else: commit `skills-lock.json` where your dotfiles bootstrap
   runs, and restore from it with `npx skills experimental_install` (the verb
   that consumes the lockfile, still marked experimental upstream). To bootstrap
-  without a committed lockfile, install fresh instead:
-  `npx skills add lawzava/megapowers -s '*' -y`.
+  without a committed lockfile, install fresh instead: `npx skills add
+  lawzava/megapowers -s '*' -y`.
 
-Whatever the channel, follow [Updating](#updating) below before rolling a
-fleet forward.
+Whatever the channel, follow [Updating](#updating) below before rolling a fleet
+forward.
 
 ## Optional templates
 
 `templates/` holds copyable examples, not files to install wholesale:
 
 - `templates/CLAUDE.md` and `templates/CODEX.md` are starter instruction files,
-  one per harness. Both are lead charters: each harness leads in its own runtime
-  and they dispatch each other on demand, so which one is running is which one
-  is in charge. Neither ships a delegate variant. A session dispatched with a
-  task brief is that brief's delegate for its duration, and both templates carry
-  the same paragraph saying so.
+  one per harness. Both are lead charters: each harness leads in its own
+  runtime and they dispatch each other on demand, so which one is running is
+  which one is in charge. Neither ships a delegate variant. A session
+  dispatched with a task brief is that brief's delegate for its duration, and
+  both templates carry the same paragraph saying so.
 - `templates/codex-config.toml` is a minimal Codex baseline with no
   user-configured MCP bridge requirement. Its `[features]` table turns off
   `tool_suggest`, `apps`, and `image_generation`, which a lead does not use and
   which cost 1,782 tokens of context per turn on codex-cli 0.146.0. Keep that
   table above `[features.multi_agent_v2]`: a bare `[features]` header captures
-  every top-level key written after it, which would silently move `sandbox_mode`
-  and `approval_policy` inside it.
+  every top-level key written after it, which would silently move
+  `sandbox_mode` and `approval_policy` inside it.
 - `templates/codex-complex.config.toml` is the optional named Sol ultra layer;
-  save it as `$CODEX_HOME/complex.config.toml` and select it with
-  `codex --profile complex`.
-- `templates/playwright-mcp-settings.json` is a starter MCP registration for the
-  Playwright browser server, for harnesses that drive the browser through an MCP
-  rather than `playwright-cli` directly.
-- `templates/codex-mcp-settings.json` is a starter MCP registration for
-  `codex mcp-server` for a non-Codex lead. Register the server as `codex` so its
-  tools resolve as `mcp__codex__codex` / `mcp__codex__codex-reply`. Full auth,
+  save it as `$CODEX_HOME/complex.config.toml` and select it with `codex
+  --profile complex`.
+- `templates/playwright-mcp-settings.json` is a starter MCP registration for
+  the Playwright browser server, for harnesses that drive the browser through
+  an MCP rather than `playwright-cli` directly.
+- `templates/codex-mcp-settings.json` is a starter MCP registration for `codex
+  mcp-server` for a non-Codex lead. Register the server as `codex` so its tools
+  resolve as `mcp__codex__codex` / `mcp__codex__codex-reply`. Full auth,
   sandbox, and thread mechanics live in mega-orchestration's Codex provider
   reference.
 - `templates/settings.example.json` holds conservative, generic Claude Code
   defaults (no attribution trailers, secret-path denies, sandbox credential
   blocks). It sets no `defaultMode` and carries no `permissions.allow` entries,
   so copying it never loosens your permission posture. A read-only inspection
-  allowlist was drafted for it and then dropped: a `Bash(cmd:*)` rule matches on
-  the command prefix, so `Bash(ls:*)` also matches `ls -la > ~/.bashrc`,
-  `ls "$(curl -fsS URL)"`, and `ls "$(sh -c 'touch owned')"`. No prefix rule can
+  allowlist was drafted for it and then dropped: a `Bash(cmd:*)` rule matches
+  on the command prefix, so `Bash(ls:*)` also matches `ls -la > ~/.bashrc`, `ls
+  "$(curl -fsS URL)"`, and `ls "$(sh -c 'touch owned')"`. No prefix rule can
   express "this command, without redirection, substitution, or control
   operators", which means no shell command is read-only at the prefix level and
   the whole shape is unsafe. Copy the keys you want into your own
@@ -478,10 +481,11 @@ fleet forward.
     `.claude/settings.json`; project scope beats user scope. Left off,
     mega-orchestration's `best-of-n` and `audit-fanout` skills still run the
     same patterns through ordinary subagents, just without the runner.
-  - `includeGitInstructions: false` assumes you also took `templates/CLAUDE.md`,
-    whose Git section and the finishing-a-development-branch skill carry the
-    same rules. Flip it back first if commit or PR quality slips.
-  - `skillOverrides` is per skill, not all-or-nothing:  `"off"` hides a bundled
+  - `includeGitInstructions: false` assumes you also took
+    `templates/CLAUDE.md`, whose Git section and the
+    finishing-a-development-branch skill carry the same rules. Flip it back
+    first if commit or PR quality slips.
+  - `skillOverrides` is per skill, not all-or-nothing: `"off"` hides a bundled
     skill from everyone, `"user-invocable-only"` keeps `/name` typable while
     hiding it from the model, `"name-only"` drops just the description. Prefer
     it over `disableBundledSkills`, which also removes `claude-api`, `loop`,
@@ -490,9 +494,9 @@ fleet forward.
     fetched and connected at startup. Servers you configure yourself, in
     `.mcp.json`, `~/.claude.json`, or `--mcp-config`, are untouched. Drop the
     key if you drive connectors from claude.ai rather than from local config.
-  - `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY` suppresses the session quality survey.
-    Use `feedbackSurveyRate` (0 to 1) instead if you would rather see it
-    occasionally than never.
+  - `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY` suppresses the session quality
+    survey. Use `feedbackSurveyRate` (0 to 1) instead if you would rather see
+    it occasionally than never.
 - `sandbox.credentials` takes objects, not strings: `{"path": "~/.ssh", "mode":
   "deny"}` for files and `{"name": "GITHUB_TOKEN", "mode": "deny"}` for
   variables, with `"mask"` as the other mode. Bare strings do not parse, and on
@@ -501,17 +505,16 @@ fleet forward.
   31,446 tokens, the same file with `{"path": "~/.ssh", "mode": "deny"}`
   measured 25,432. The published reference says invalid entries are stripped
   individually, so this may be version specific; check yours against your own
-  build if you copied this template before v0.8.2.
-- The `autoMode` block in the same file teaches the permission classifier
-  your environment instead of leaving it to guess: which hosts are
-  production (write statements get a confirm), what is routine here (fewer
-  prompts). Replace the three REPLACE lines with facts about your machine;
-  the `$defaults` entries keep the built-in rules. Copied verbatim it is
-  harmless, just useless.
+  build if you copied this template before v0.9.0.
+- The `autoMode` block in the same file teaches the permission classifier your
+  environment instead of leaving it to guess: which hosts are production (write
+  statements get a confirm), what is routine here (fewer prompts). Replace the
+  three REPLACE lines with facts about your machine; the `$defaults` entries
+  keep the built-in rules. Copied verbatim it is harmless, just useless.
 - `templates/agent-notify/` pushes a notification (Telegram by default,
   transport swappable) when an agent needs input or finishes, with a
-  noise-filtering wrapper for Claude Code hooks and a Codex notify program.
-  See its [README](../templates/agent-notify/README.md).
+  noise-filtering wrapper for Claude Code hooks and a Codex notify program. See
+  its [README](../templates/agent-notify/README.md).
 - `templates/codex-agents/` holds the source copies of the Terra-pinned Codex
   native subagent roles. The same files ship inside mega-orchestration under
   `assets/codex-agents/`, so upstream plugin users can copy them into
@@ -547,29 +550,25 @@ reference.
 Without the skill, refresh only the channel already in use, update the existing
 installed set, and verify it before adding anything. Marketplace installs use
 the harness plugin manager; skills CLI installs name the approved skills and
-preserve detected scope with `npx skills update <names> -p -y` or
-`npx skills update <names> -g -y`; symlinked checkouts use `git pull --ff-only`
-only on a clean floating branch with an upstream. Explicit pins fetch and
-select only an approved ref. Forks integrate upstream under their existing
-merge policy and run `scripts/validate.sh` plus `bash evals/run-all.sh`.
-Managed plugin copies can overwrite local edits, so preserve customizations in
-a fork.
+preserve detected scope with `npx skills update <names> -p -y` or `npx skills
+update <names> -g -y`; symlinked checkouts use `git pull --ff-only` only on a
+clean floating branch with an upstream. Explicit pins fetch and select only an
+approved ref. Forks integrate upstream under their existing merge policy and
+run `scripts/validate.sh` plus `bash evals/run-all.sh`. Managed plugin copies
+can overwrite local edits, so preserve customizations in a fork.
 
 ## Uninstalling
 
-- Claude Code: `/plugin` → installed → remove the plugin. Removal
-  unregisters its skills, hooks, and agents; confirm no `megapowers`-named
-  entries remain under `/plugin`. To drop the marketplace registration too:
-  `claude plugin marketplace remove megapowers`. If you enabled the
-  statusline or the Fleet settings block, also delete the `statusLine`,
-  `extraKnownMarketplaces`, and `enabledPlugins` keys you added to
-  `settings.json`.
-- Codex: remove the plugin in `/plugins`; remove the marketplace with
-  `codex plugin marketplace remove megapowers` if you no longer want the repo
-  listed.
-- skills CLI installs: `npx skills remove` (interactive) removes the
-  skill from every agent directory it was installed to and updates
-  `skills-lock.json`.
+- Claude Code: `/plugin` → installed → remove the plugin. Removal unregisters
+  its skills, hooks, and agents; confirm no `megapowers`-named entries remain
+  under `/plugin`. To drop the marketplace registration too: `claude plugin
+  marketplace remove megapowers`. If you enabled the statusline or the Fleet
+  settings block, also delete the `statusLine`, `extraKnownMarketplaces`, and
+  `enabledPlugins` keys you added to `settings.json`.
+- Codex: remove the plugin in `/plugins`; remove the marketplace with `codex
+  plugin marketplace remove megapowers` if you no longer want the repo listed.
+- skills CLI installs: `npx skills remove` (interactive) removes the skill from
+  every agent directory it was installed to and updates `skills-lock.json`.
 - OpenCode: delete the symlinks or copied skill directories you created.
 - Runtime state the skills wrote lives under `.megapowers/` in each project
   (run journals, SDD ledgers, evidence). It is plain text and git-ignored;
@@ -605,9 +604,10 @@ For release certification, a local marketplace is insufficient. After the
 signed tag is public, run the strict exact-ref study:
 
 ```bash
+tag=v0.9.1   # the tag you just signed and pushed
 evals/studies/install-smoke/run-smoke.sh \
-  --out "${TMPDIR:-/tmp}/megapowers-install-v0.5.0" \
-  --source lawzava/megapowers --ref v0.5.0 --version 0.5.0 \
+  --out "${TMPDIR:-/tmp}/megapowers-install-$tag" \
+  --source lawzava/megapowers --ref "$tag" --version "${tag#v}" \
   --harnesses claude,codex
 ```
 
