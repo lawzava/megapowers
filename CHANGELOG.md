@@ -104,6 +104,17 @@ with the config or found it silent.
   template, and reference, which the repository's own `using-megapowers` rule
   and `auto-format` hook already required of them.
 
+- The risky-logic gate's design record moved out of the config and the hook into
+  `plugins/mega-orchestration/hooks/risky-logic-gate.md`: the audit numbers, the
+  four rejected `exclude_globs`, the seven removed marker-table extensions with
+  the proof each failed, and the five audit rounds in order. `enforcement.toml`
+  goes from 239 lines to 95 and now carries what an editor needs at the point of
+  edit; `delegate-nudge.sh` drops 165 lines, including one 20-line invariant that
+  was spelled out twice. Executable content in both files is byte-identical, and
+  the comments that state a line's correctness property stayed with the line:
+  this gate has been re-broken by simplifying a narrowing into a hole, so the
+  reasons live next to the code that depends on them.
+
 ### Fixed
 
 - An override layer setting `providers.<p>.binary` was read, parsed, and then
