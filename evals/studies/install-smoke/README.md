@@ -38,13 +38,14 @@ fails. Exact-ref remote release mode is strict: any SKIP or FAIL fails the run.
 ## Run
 
 ```bash
-evals/studies/install-smoke/run-smoke.sh --out /tmp/install-smoke
+evals/studies/install-smoke/run-smoke.sh --out "${TMPDIR:-/tmp}/install-smoke"
 # subset: --harnesses claude,codex
 
 # post-publish release gate: fetch and test the exact public tag
+tag=v0.9.1   # the tag you just signed and pushed
 evals/studies/install-smoke/run-smoke.sh \
-  --out /tmp/install-smoke-v0.5.0 \
-  --source lawzava/megapowers --ref v0.5.0 --version 0.5.0 \
+  --out "${TMPDIR:-/tmp}/install-smoke-$tag" \
+  --source lawzava/megapowers --ref "$tag" --version "${tag#v}" \
   --harnesses claude,codex
 ```
 

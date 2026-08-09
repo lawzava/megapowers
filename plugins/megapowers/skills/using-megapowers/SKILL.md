@@ -22,8 +22,8 @@ todos. Use one durable progress surface for work that needs one.
 Process skills set the approach. If scope, area, oracle, and risk are clear,
 take the scoped fast path through test-driven development. Ambiguous features
 start with `megapowers:brainstorming`; unknown failures start with
-`megapowers:systematic-debugging`.
-For non-trivial structure, use mega-orchestration:orchestrating when installed.
+`megapowers:systematic-debugging`. For non-trivial structure, use
+mega-orchestration:orchestrating when installed.
 
 ## Communication
 
@@ -50,4 +50,5 @@ User instructions (CLAUDE.md, AGENTS.md, direct requests) take precedence over
 skills, which override default behavior. Skip a skill only when explicitly told
 to.
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.

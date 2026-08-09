@@ -36,11 +36,12 @@ scripts/mem-recall <query>
 Start with the index, then read only records whose hooks match the work. A
 memory is historical evidence, not current truth. Before acting on any
 referenced file, flag, command, or external detail, verify it still exists.
-Surface contradictions with current sources or observed behavior for resolution;
-do not silently choose between them.
+Surface contradictions with current sources or observed behavior for
+resolution; do not silently choose between them.
 
 Keep personal and shared memory stores distinct so each fact has one source of
 truth. Set `MEGAPOWERS_MEMORY_DIR` to a committed shared location when needed;
 do not force ignored personal notes into version control.
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.

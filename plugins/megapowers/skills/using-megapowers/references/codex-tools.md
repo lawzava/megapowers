@@ -3,16 +3,16 @@
 Codex loads `AGENTS.md` automatically and supports skills, plugins, hooks, and
 explicit subagent workflows. Stable subagents require no `multi_agent` feature
 flag. This repo's optional v2 baseline enables `multi_agent_v2`, removes the v1
-`agents.max_threads` key, and uses v2's session-thread cap instead. Codex 0.144.4
-does not hard-enforce `agents.max_depth` under v2, so the template uses
+`agents.max_threads` key, and uses v2's session-thread cap instead. Codex
+0.144.4 does not hard-enforce `agents.max_depth` under v2, so the template uses
 `multi_agent_mode_hint_text` for its depth-five policy.
 
 ## Subagents
 
 Use Codex subagents only when the user explicitly asks for parallel agent work
-or when a task is naturally independent across files, risks, or research tracks.
-Keep prompts narrow and ask for summaries, file references, and verification
-evidence instead of raw transcripts.
+or when a task is naturally independent across files, risks, or research
+tracks. Keep prompts narrow and ask for summaries, file references, and
+verification evidence instead of raw transcripts.
 
 Treat v2 as same-model context sharding. Its spawn surface exposes a task name,
 brief, and `fork_turns`, not a per-worker role, model, or effort selector. For
@@ -33,7 +33,8 @@ with isolated artifact ownership, not routine fan-out.
 
 Good fits:
 
-- independent code review passes such as security, test gaps, and maintainability
+- independent code review passes such as security, test gaps, and
+  maintainability
 - read-only exploration of separate modules
 - isolated implementation tasks in separate worktrees
 
@@ -69,7 +70,10 @@ BRANCH=$(git branch --show-current)
 - `GIT_DIR != GIT_COMMON`: already in a linked worktree; skip creation
 - empty `BRANCH`: detached HEAD; cannot branch, push, or PR from sandbox
 
-See the detect-before-creating rule in `using-git-worktrees` (comparing resolved git-dir and git-common-dir, with the submodule guard) and the test-verification requirement before `finishing-a-development-branch`'s option menu for how each skill uses these signals.
+See the detect-before-creating rule in `using-git-worktrees` (comparing
+resolved git-dir and git-common-dir, with the submodule guard) and the
+test-verification requirement before `finishing-a-development-branch`'s option
+menu for how each skill uses these signals.
 
 ## Record & Replay
 

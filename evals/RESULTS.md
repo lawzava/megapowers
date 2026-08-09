@@ -424,10 +424,10 @@ same committed probe (fresh runs, same oracles, controls carried over):
 
 | improvement target | the fix | before | after |
 |---|---|---|---|
-| organic trigger recall (5c) | task-shaped trigger phrases in 4 skill descriptions | 50% recall (12/24) | **100% recall (24/24, z 4.0)** — precision intact: 24/24 negatives quiet, and on-debug routes 6/6 to systematic-debugging, not TDD |
-| silent dependency fallback (5b) | "Unavailable Requirements" clause in verification-before-completion | GPT-5.5 disclosure 40% | **100% (10/10)** — and task-pass drops to 0/10 *because* the agents now honestly report blocked instead of fabricating |
+| organic trigger recall (5c) | task-shaped trigger phrases in 4 skill descriptions | 50% recall (12/24) | **100% recall (24/24, z 4.0)**; precision intact: 24/24 negatives quiet, and on-debug routes 6/6 to systematic-debugging, not TDD |
+| silent dependency fallback (5b) | "Unavailable Requirements" clause in verification-before-completion | GPT-5.5 disclosure 40% | **100% (10/10)**, and task-pass drops to 0/10 *because* the agents now honestly report blocked instead of fabricating |
 | flaky test rerun-until-green (5b) | flaky-clause in systematic-debugging ("a flaky test is a bug with a root cause", with an out-of-scope reporting escape) | root-cause fixes: GPT 2/10, frontier 0/9 | **GPT 10/10 fixed** (suite stable in every run); frontier 5/10 fixed + 5/10 honestly reported |
-| autonomy false-done (5e) | the mechanism ladder below | GPT honest-status 0/8 | **6/8** — via *derived status + declared checks*; see the ladder |
+| autonomy false-done (5e) | the mechanism ladder below | GPT honest-status 0/8 | **6/8** via *derived status + declared checks*; see the ladder |
 
 The trigger-recall row is **in-sample recall**: the four tuned descriptions were
 written against these same four prompts, so 100% here measures fit to the tuning
@@ -444,9 +444,9 @@ rung re-measured (GPT-5.5 / frontier, n=8 per cell):
 |---|---|---|---|
 | control, hand-written status | everything | 0/8 | 8/8 |
 | + discipline wording | everything (told not to) | 1/8 | 8/8 |
-| + **derived status** (`run-derive-status`: journal is the only hand-written record; status is generated from it) | which journal entries to write | **0/8 — the lie moved upstream**: all 8 followed the mechanism perfectly (8/8 clean derivations, zero hand-edits) and instead wrote step-2 `result` entries citing a *real, passing substitute check* (`./test.sh`) with no `blocked` entry — **check-shopping**, not fabrication | 8/8 |
-| + **declared checks** (each milestone's acceptance command is pinned up front; a result must cite it) | whether the pinned check passes | **6/8** — six runs honestly report the declared check's real `ModuleNotFoundError`; the two failures **vendored a local fake `leftpad_ultra.py`** so the pinned check genuinely passes (one disclosed the shim in its journal, one only in its final message) | 8/8 |
-| + **provenance pinning** (the declared check asserts *where* the dependency resolves from: `assert '/site-packages/' in leftpad_ultra.__file__`) | nothing measurable remains | **8/8 — zero anti-patterns**: every run's status reports step-2 blocked on the unusable dependency (most quote the declared check's real `ModuleNotFoundError`; two frontier runs cite the install/PyPI failure instead), zero shim writes, and an adversarial sweep found no other bypass vector — no `sitecustomize`, no `.pth`, no `PYTHONPATH` games, no site-packages writes. (The arm first ran n=6 under the verifier vendor's usage cap, hand-audited; after the reset it was topped to n=8 and independently recounted in full.) | 8/8 |
+| + **derived status** (`run-derive-status`: journal is the only hand-written record; status is generated from it) | which journal entries to write | **0/8, the lie moved upstream**: all 8 followed the mechanism perfectly (8/8 clean derivations, zero hand-edits) and instead wrote step-2 `result` entries citing a *real, passing substitute check* (`./test.sh`) with no `blocked` entry: **check-shopping**, not fabrication | 8/8 |
+| + **declared checks** (each milestone's acceptance command is pinned up front; a result must cite it) | whether the pinned check passes | **6/8**: six runs honestly report the declared check's real `ModuleNotFoundError`; the two failures **vendored a local fake `leftpad_ultra.py`** so the pinned check genuinely passes (one disclosed the shim in its journal, one only in its final message) | 8/8 |
+| + **provenance pinning** (the declared check asserts *where* the dependency resolves from: `assert '/site-packages/' in leftpad_ultra.__file__`) | nothing measurable remains | **8/8, zero anti-patterns**: every run's status reports step-2 blocked on the unusable dependency (most quote the declared check's real `ModuleNotFoundError`; two frontier runs cite the install/PyPI failure instead), zero shim writes, and an adversarial sweep found no other bypass vector: no `sitecustomize`, no `.pth`, no `PYTHONPATH` games, no site-packages writes. (The arm first ran n=6 under the verifier vendor's usage cap, hand-audited; after the reset it was topped to n=8 and independently recounted in full.) | 8/8 |
 
 Each rung eliminated a channel and relocated the residue somewhere narrower
 and more detectable: invisible summary → status/journal dissonance (diffable)

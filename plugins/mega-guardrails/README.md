@@ -14,13 +14,13 @@ blanket-blocking:
 - Denies a short list of catastrophic, unrecoverable commands: recursive `rm`
   of `/`, `~`, `$HOME`, or a top-level system dir; `mkfs`; `dd` to a block
   device; `chmod 777 /`; redirect to a raw disk; fork bomb.
-- Asks (surfaces a confirmation) for reversible-but-risky local ones:
-  `git reset --hard` / `clean -f` / `branch -D` / `push --force`; a remote
-  download piped into a shell (`curl ... | bash`). Remote destructive ops
-  (cloud deletes, `terraform destroy`, `kubectl delete --all`) are not
+- Asks (surfaces a confirmation) for reversible-but-risky local ones: `git
+  reset --hard` / `clean -f` / `branch -D` / `push --force`; a remote download
+  piped into a shell (`curl ... | bash`). Remote destructive ops (cloud
+  deletes, `terraform destroy`, `kubectl delete --all`) are not
   pattern-matched: real-world effects belong to the effect-broker skill.
-- Allows ordinary scoped work: `rm -rf ./dist`, `rm -rf "$TMPDIR/x"`,
-  API-key `curl`, dry-runs.
+- Allows ordinary scoped work: `rm -rf ./dist`, `rm -rf "$TMPDIR/x"`, API-key
+  `curl`, dry-runs.
 
 The hook is a plain stdin-to-stdout script, so you can run it by hand from a
 checkout:
@@ -46,15 +46,16 @@ open on any internal error.
 ### Relationship to native protections
 
 Claude Code gained its own destructive-command blocking in v2.1.183: in auto
-mode it blocks destructive git operations (`git reset --hard`, `git checkout
--- .`, `git clean -fd`, `git stash drop`, and `git commit --amend` on commits
-it did not create) and infrastructure teardown (`terraform`/`pulumi`/`cdk
+mode it blocks destructive git operations (`git reset --hard`, `git checkout --
+.`, `git clean -fd`, `git stash drop`, and `git commit --amend` on commits it
+did not create) and infrastructure teardown (`terraform`/`pulumi`/`cdk
 destroy`) unless you asked for them. `deny-destructive` does not replace or
 duplicate that. It adds two things on top:
 
 - **Non-git, non-infrastructure destructive families** the native checks do not
-  cover: recursive `rm` of `/`, `~`, `$HOME`, or a top-level system dir; `mkfs`;
-  `dd` to a block device; `chmod 777 /`; a redirect to a raw disk; a fork bomb.
+  cover: recursive `rm` of `/`, `~`, `$HOME`, or a top-level system dir;
+  `mkfs`; `dd` to a block device; `chmod 777 /`; a redirect to a raw disk; a
+  fork bomb.
 - **A portable, mode-independent pattern.** It fires on every Bash call, not
   only in auto mode, and it is a plain stdin-to-stdout script, so the same
   classification can run wherever a harness lets a hook see the command.
@@ -119,9 +120,8 @@ established, so the dispatcher no-ops there rather than guess.
 
 Formats the file that was just touched: `gofmt`/`goimports` for Go, and a
 project-local `prettier` for JS/JSX, TS/TSX, JSON, CSS/SCSS, Markdown, and
-YAML. Runs
-synchronously (so it can't race a follow-up edit) and only rewrites the single
-file just written.
+YAML. Runs synchronously (so it can't race a follow-up edit) and only rewrites
+the single file just written.
 
 ## Prerequisites
 

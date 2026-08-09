@@ -82,24 +82,18 @@ for role in visual browser_test; do
   fi
 done
 
-# The retired wrapper may still ship until the lead removes it, but the harness
-# loads it into the agent selector regardless, so its description is the only
-# thing standing between a session and a dispatch into a no-op. It must read as
-# a tombstone and must not advertise the live commands: naming delegate-run or
-# delegate-resolve there is what makes the selector offer it for review work.
-if [[ -f $RETIRED ]]; then
-  desc=$(grep -m1 '^description:' "$RETIRED") || fail 'model-delegate.md has no description line'
-  [[ $desc == 'description: "Retired.'* ]] || fail 'model-delegate description does not lead with Retired.'
-  [[ $desc == *'Do not invoke this agent.'* ]] || fail 'model-delegate description does not forbid invocation'
-  [[ $desc != *'delegate-run'* && $desc != *'delegate-resolve'* ]] ||
-    fail 'model-delegate description advertises the live commands and attracts the selector'
-fi
+# The retired wrapper must stay deleted. A tombstone file does not sit inert:
+# the harness loads every agent definition into the selector, so shipping one
+# spends description tokens in every session to describe a no-op and puts a name
+# in front of the model that it must then be told never to pick. Removal is the
+# only version of that with no cost.
+[[ ! -e $RETIRED ]] || fail 'model-delegate.md is back; the agent selector loads it in every session'
 
-# The README is the plugin's shipped inventory, so it must not describe the
-# retired agent as a working one.
+# The README is the plugin's shipped inventory, so it must not name an agent
+# that no longer ships, in either direction.
 must_not_have "$README" 'Two ship here'
 must_not_have "$README" 'two delegate agents'
-must_have "$README" '`agents/model-delegate.md` is retired and does nothing.'
+must_not_have "$README" 'model-delegate'
 
 # small_impl is caller-bound (`self`), not a permanent Codex route. The README
 # table must describe the executable resolver behavior for both lead vendors.

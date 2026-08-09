@@ -17,7 +17,7 @@ app.Use(helmet.New())                              // security headers
 app.Use(cors.New(cors.Config{AllowOrigins: origins}))
 app.Use(compress.New())
 app.Use(etag.New())
-app.Use(limiter.New(limiter.Config{               // explicit budget — the zero
+app.Use(limiter.New(limiter.Config{               // explicit budget: the zero
     Max:        120,                               // value (~5/min) breaks real
     Expiration: 1 * time.Minute,                   // pages (each pulls many assets)
 }))

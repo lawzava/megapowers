@@ -1,10 +1,12 @@
 # Testing Anti-Patterns
 
-Load this reference when writing or changing tests, adding mocks, or considering test-only methods on production code.
+Load this reference when writing or changing tests, adding mocks, or
+considering test-only methods on production code.
 
 ## Overview
 
-Tests should verify real behavior, not mock behavior. Mocks are a way to isolate the code under test, not the thing being tested.
+Tests should verify real behavior, not mock behavior. Mocks are a way to
+isolate the code under test, not the thing being tested.
 
 Core principle: test what the code does, not what the mocks do.
 
@@ -32,7 +34,8 @@ Why this is wrong:
 - The test passes when the mock is present and fails when it's not
 - It tells you nothing about real behavior
 
-A useful check from your human partner: "Are we testing the behavior of a mock?"
+A useful check from your human partner: "Are we testing the behavior of a
+mock?"
 
 The fix:
 ```typescript
@@ -46,7 +49,9 @@ test('renders sidebar', () => {
 // Don't assert on the mock - test Page's behavior with sidebar present
 ```
 
-Gate: before asserting on any mock element, ask whether you're testing real component behavior or just mock existence. If it's mock existence, delete the assertion or unmock the component, and test real behavior instead.
+Gate: before asserting on any mock element, ask whether you're testing real
+component behavior or just mock existence. If it's mock existence, delete the
+assertion or unmock the component, and test real behavior instead.
 
 ## Anti-Pattern 2: Test-Only Methods in Production
 
@@ -87,7 +92,10 @@ export async function cleanupSession(session: Session) {
 afterEach(() => cleanupSession(session));
 ```
 
-Gate: before adding any method to a production class, ask whether it's only used by tests. If so, put it in test utilities instead. Also ask whether the class actually owns this resource's lifecycle; if not, it's the wrong class for the method.
+Gate: before adding any method to a production class, ask whether it's only
+used by tests. If so, put it in test utilities instead. Also ask whether the
+class actually owns this resource's lifecycle; if not, it's the wrong class for
+the method.
 
 ## Anti-Pattern 3: Mocking Without Understanding
 
@@ -122,9 +130,17 @@ test('detects duplicate server', () => {
 });
 ```
 
-Gate: before mocking any method, work through it first. Ask what side effects the real method has, whether the test depends on any of those side effects, and whether you fully understand what the test needs. If the test depends on side effects, mock at a lower level (the actual slow or external operation) or use a test double that preserves the necessary behavior — not the high-level method the test relies on. If you're unsure what the test depends on, run it against the real implementation first, observe what needs to happen, then add minimal mocking at the right level.
+Gate: before mocking any method, work through it first. Ask what side effects
+the real method has, whether the test depends on any of those side effects, and
+whether you fully understand what the test needs. If the test depends on side
+effects, mock at a lower level (the actual slow or external operation) or use a
+test double that preserves the necessary behavior, not the high-level method
+the test relies on. If you're unsure what the test depends on, run it against
+the real implementation first, observe what needs to happen, then add minimal
+mocking at the right level.
 
-Rationalizations to watch for: "I'll mock this to be safe," "this might be slow, better mock it," and mocking without knowing the dependency chain.
+Rationalizations to watch for: "I'll mock this to be safe," "this might be
+slow, better mock it," and mocking without knowing the dependency chain.
 
 ## Anti-Pattern 4: Incomplete Mocks
 
@@ -141,12 +157,16 @@ const mockResponse = {
 ```
 
 Why this is wrong:
-- Partial mocks hide structural assumptions — you only mocked fields you know about
-- Downstream code may depend on fields you didn't include, causing silent failures
-- Tests pass but integration fails, because the mock is incomplete and the real API isn't
-- It gives false confidence — the test proves nothing about real behavior
+- Partial mocks hide structural assumptions: you only mocked fields you know
+  about
+- Downstream code may depend on fields you didn't include, causing silent
+  failures
+- Tests pass but integration fails, because the mock is incomplete and the real
+  API isn't
+- It gives false confidence: the test proves nothing about real behavior
 
-Rule: mock the complete data structure as it exists in reality, not just the fields your immediate test uses.
+Rule: mock the complete data structure as it exists in reality, not just the
+fields your immediate test uses.
 
 The fix:
 ```typescript
@@ -159,7 +179,12 @@ const mockResponse = {
 };
 ```
 
-Gate: before creating a mock response, check what fields the real API response contains. Examine an actual response from docs or examples, include every field the system might consume downstream, and verify the mock matches the real schema completely. If you're creating a mock, you need to understand the entire structure — partial mocks fail silently when code depends on omitted fields. When uncertain, include all documented fields.
+Gate: before creating a mock response, check what fields the real API response
+contains. Examine an actual response from docs or examples, include every field
+the system might consume downstream, and verify the mock matches the real
+schema completely. If you're creating a mock, you need to understand the entire
+structure, because partial mocks fail silently when code depends on omitted
+fields. When uncertain, include all documented fields.
 
 ## Anti-Pattern 5: Integration Tests as Afterthought
 
@@ -198,4 +223,7 @@ Integration tests with real components are often simpler than complex mocks.
 
 ## TDD Prevents These Anti-Patterns
 
-Write the test first and watch it fail against real code: that confirms the test checks real behavior, keeps test-only methods from creeping in, and shows what the test actually needs before you mock. If you find yourself testing mock behavior, TDD got skipped somewhere.
+Write the test first and watch it fail against real code: that confirms the
+test checks real behavior, keeps test-only methods from creeping in, and shows
+what the test actually needs before you mock. If you find yourself testing mock
+behavior, TDD got skipped somewhere.

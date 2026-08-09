@@ -7,8 +7,9 @@ license: MIT
 # Upgrading Megapowers
 
 Inspect first, preserve the existing installation policy, approve one exact
-plan, then verify observed state. Read [the channel reference](references/channels.md)
-and use only the detected installation channel.
+plan, then verify observed state. Read [the channel
+reference](references/channels.md) and use only the detected installation
+channel.
 
 ## 1. Inspect: read only
 
@@ -20,10 +21,10 @@ report the conflict.
 
 ## 2. Classify
 
-Keep a floating install on its source's latest stable release. Preserve source and scope,
-and preserve a pin unless the user explicitly approves changing it. Treat a
-checkout with local edits, a fork, or a duplicate as a separate decision, never
-an overwrite or cleanup implied by an upgrade.
+Keep a floating install on its source's latest stable release. Preserve source
+and scope, and preserve a pin unless the user explicitly approves changing it.
+Treat a checkout with local edits, a fork, or a duplicate as a separate
+decision, never an overwrite or cleanup implied by an upgrade.
 
 Classify a user-owned baseline as absent, unrelated, or adopted. For an adopted
 baseline, compare the shipped baseline at the inferred installed ref with the
@@ -55,6 +56,8 @@ versions or refs, pins, scopes, sources, duplicate status, and required restart
 or hook state. On partial failure, stop before optional additions and report
 applied, failed, and not attempted actions with the safest recovery step.
 
-Do not remove stale cached versions until every session using them has restarted.
+Do not remove stale cached versions until every session using them has
+restarted.
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.

@@ -2,7 +2,8 @@
 
 Use this template when dispatching a code reviewer subagent.
 
-**Purpose:** Review completed work against requirements and engineering standards as separate axes before it cascades into more work.
+**Purpose:** Review completed work against requirements and engineering
+standards as separate axes before it cascades into more work.
 
 Assign a reviewer with capability proportionate to the change's size and risk.
 
@@ -33,18 +34,14 @@ Subagent (general-purpose):
     no-commit task empty.
     If no package path is given above, derive the diff yourself from the range:
 
-    **Base:** [BASE_SHA]  (the branch point — never `HEAD~1` for a multi-commit task)
+    **Base:** [BASE_SHA]  (the branch point, never `HEAD~1` for a multi-commit task)
     **Head:** [HEAD_SHA]
 
     ```bash
-    git diff --stat [BASE_SHA]..[HEAD_SHA]
-    git diff [BASE_SHA]..[HEAD_SHA]
-    git diff --cached
-    git diff
-    git ls-files --others --exclude-standard -z |
-      while IFS= read -r -d '' file; do
-        git diff --no-index -- /dev/null "$file" || true
-      done
+    git diff --stat [BASE_SHA]..[HEAD_SHA] git diff [BASE_SHA]..[HEAD_SHA] git
+    diff --cached git diff git ls-files --others --exclude-standard -z | while
+    IFS= read -r -d '' file; do git diff --no-index -- /dev/null "$file" ||
+    true done
     ```
 
     ## Ground Rules
@@ -196,11 +193,18 @@ Subagent (general-purpose):
 ```
 
 **Placeholders:**
-- `[RUBRIC_FILE]` — absolute path to `review-rubric.md` in this skill's directory
-- `[DESCRIPTION]` — brief summary of what was built
-- `[PLAN_OR_REQUIREMENTS]` — what it should do (plan file path, task text, or requirements)
-- `[REVIEW_PACKAGE_PATH]` — path to the pre-generated complete task package; leave blank only when the reviewer can derive committed, staged, unstaged, and untracked changes
-- `[BASE_SHA]` — starting commit (branch point, not `HEAD~1`)
-- `[HEAD_SHA]` — ending commit
+- `[RUBRIC_FILE]`: absolute path to `review-rubric.md` in this skill's
+  directory
+- `[DESCRIPTION]`: brief summary of what was built
+- `[PLAN_OR_REQUIREMENTS]`: what it should do (plan file path, task text, or
+  requirements)
+- `[REVIEW_PACKAGE_PATH]`: path to the pre-generated complete task package;
+  leave blank only when the reviewer can derive committed, staged, unstaged,
+  and untracked changes
+- `[BASE_SHA]`: starting commit (branch point, not `HEAD~1`)
+- `[HEAD_SHA]`: ending commit
 
-**Reviewer returns:** Specification Compliance and Engineering Standards, each with Strengths, Findings (Critical / Important / Minor), Recommendations, and a local Pass / Fail verdict; then one final `Ready to merge?` assessment that reports both verdicts without merging, averaging, or reranking their findings.
+**Reviewer returns:** Specification Compliance and Engineering Standards, each
+with Strengths, Findings (Critical / Important / Minor), Recommendations, and a
+local Pass / Fail verdict; then one final `Ready to merge?` assessment that
+reports both verdicts without merging, averaging, or reranking their findings.

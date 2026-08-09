@@ -57,7 +57,7 @@ Read only the runtime you are running in, plus the last section:
   `codex exec -s read-only` for reads, a worktree for writes). Putting that Bash
   call in a subagent is a context decision, never a routing one: hand it the
   already-resolved route, and never let it resolve its own. A subagent that
-  picks the model is the retired model-delegate again, which is what
+  picks the model is a routing wrapper by another name, which is what
   orchestrating's one-path rule forbids.
 - **Scheduling and unattended**: cloud routines (`/schedule`: cron, HTTP
   endpoint, and GitHub triggers) run fully autonomously with no permission
