@@ -58,9 +58,17 @@ council_member = "codex"     # council-adjudication: independent answer + blind 
 # Chain length is not the same as reachable length. Claude is the lead's vendor, so
 # --author-vendor anthropic skips it, which leaves anthropic-authored work exactly
 # ONE reachable alternate: codex. Independence is therefore SINGLE-ROUTE, and the
-# next outage takes independent review with it rather than degrading it. A resolved
-# independence route reports this as ALTERNATES=1, which is the number to watch;
-# `<role> --vendors` printing fewer than two says the same thing before dispatch.
+# next outage takes CROSS-VENDOR review with it. A resolved independence route
+# reports this as ALTERNATES=1, which is the number to watch; `<role> --vendors`
+# printing fewer than two says the same thing before dispatch.
+#
+# What survives the outage is context separation, which is the half with a
+# controlled result behind it: `delegate-resolve --allow-context-separation` falls
+# back to a fresh same-vendor session, labeled INDEPENDENCE=context-separation and
+# recorded as independent=false. That keeps ordinary review happening while leaving
+# the risky-logic gate refusing anything but a real cross-vendor pass. It is a
+# narrower claim, not a replacement, so the third-vendor argument below still
+# stands.
 #
 # A third vendor is the fix and it is deliberately not in this table. Supported
 # providers are the harnesses this repo targets, and a provider earns a row by being

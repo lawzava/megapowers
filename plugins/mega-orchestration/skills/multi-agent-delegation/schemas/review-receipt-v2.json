@@ -1,10 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Megapowers Review Receipt v2",
-  "description": "v2 adds subject.base, required for a worktree-diff subject, and the optional supplemental subject.submodules. subject.id fingerprints the pending delta only, so a delta on its own names a shape that unrelated repositories share. Base plus delta determines the complete tracked content, which is what a receipt has to bind. A gitlink is outside that: it diffs as a bare commit pointer and its untracked content does not diff at all, so subject.submodules binds the content behind it. The Stop hook honors v2 receipts only: a v1 receipt records no base and cannot say which tree state its reviewer read.",
+  "description": "v2 adds subject.base, required for a worktree-diff subject, and the optional supplemental subject.submodules. subject.id fingerprints the pending delta only, so a delta on its own names a shape that unrelated repositories share. Base plus delta determines the complete tracked content, which is what a receipt has to bind. A gitlink is outside that: it diffs as a bare commit pointer and its untracked content does not diff at all, so subject.submodules binds the content behind it. The Stop hook honors v2 receipts only: a v1 receipt records no base and cannot say which tree state its reviewer read. The optional `independence` field names WHICH separation the review achieved; absent means cross-vendor, which is what every receipt written before the field existed recorded, so older receipts keep validating unchanged.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "role", "subject", "author_vendors", "reviewer", "independent", "result", "evidence", "created_at"],
+  "allOf": [
+    {
+      "description": "independent:true is the cross-vendor claim and nothing else may assert it. A context-separation receipt records a fresh same-vendor session, which is the proven half of independent review but not the vendor-independent one, so it must not be able to spell itself as the stronger claim.",
+      "if": {"properties": {"independence": {"const": "context-separation"}}, "required": ["independence"]},
+      "then": {"properties": {"independent": {"const": false}}},
+      "else": {"properties": {"independent": {"const": true}}}
+    }
+  ],
   "properties": {
     "schema": {"const": "megapowers.review-receipt.v2"},
     "role": {"type": "string"},
@@ -53,7 +61,11 @@
         "effort": {"type": "string"}
       }
     },
-    "independent": {"const": true},
+    "independent": {"type": "boolean"},
+    "independence": {
+      "enum": ["cross-vendor", "context-separation"],
+      "description": "Which separation the reviewer actually had. cross-vendor: the reviewer's vendor authored none of the artifact. context-separation: no cross-vendor route was reachable and the review ran as a fresh same-vendor session, the condition arXiv 2603.12123 measured at 28.6% F1 against 24.6% for same-session self-review. Absent is cross-vendor, for receipts written before this field."
+    },
     "result": {"$ref": "review-verdict-v1.json"},
     "evidence": {
       "type": "object",
