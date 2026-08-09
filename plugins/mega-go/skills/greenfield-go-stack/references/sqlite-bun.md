@@ -12,7 +12,7 @@ Test databases:
 
 ```go
 // Import the pure-Go driver: _ "modernc.org/sqlite" (registers as "sqlite").
-// Do NOT use "sqlite3" (mattn/go-sqlite3) — it needs CGO and breaks
+// Do NOT use "sqlite3" (mattn/go-sqlite3): it needs CGO and breaks
 // CGO_ENABLED=0 static builds.
 func testDB(t *testing.T) *sql.DB {
     t.Helper()
@@ -25,7 +25,7 @@ func testDB(t *testing.T) *sql.DB {
     // database, so a table created on one connection is missing on the next.
     // Pinning the pool to one connection makes the whole test share one
     // in-memory DB. Caveat: with a single connection, while a tx is open
-    // (db.Begin) that tx holds the only connection — route ALL work through
+    // (db.Begin) that tx holds the only connection, so route ALL work through
     // the tx until Commit/Rollback; a concurrent db.Query on the pool would
     // block waiting for it. If a test genuinely needs multiple live
     // connections, use a shared-cache DSN instead

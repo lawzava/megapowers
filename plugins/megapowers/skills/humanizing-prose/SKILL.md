@@ -22,4 +22,5 @@ them only when they make the prose less precise.
 Do not rewrite quotations, code, command names, or text that discusses a phrase
 rather than using it. Leave clear, appropriately dry writing alone.
 
-Origin: Adapted from humanizer (MIT, (c) 2025 Siqi Chen), https://github.com/blader/humanizer.
+Origin: Adapted from humanizer (MIT, (c) 2025 Siqi Chen),
+https://github.com/blader/humanizer.

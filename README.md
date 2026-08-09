@@ -1,7 +1,8 @@
 # megapowers
 
 [![CI](https://github.com/lawzava/megapowers/actions/workflows/ci.yml/badge.svg)](https://github.com/lawzava/megapowers/actions/workflows/ci.yml)
-[![Latest tag](https://img.shields.io/github/v/tag/lawzava/megapowers?label=release)](https://github.com/lawzava/megapowers/tags)
+[![Latest
+tag](https://img.shields.io/github/v/tag/lawzava/megapowers?label=release)](https://github.com/lawzava/megapowers/tags)
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
 megapowers is a marketplace of seven optional plugins for coding agents. It
@@ -9,7 +10,8 @@ adds process skills, deterministic hook backstops, model routing, language
 guidance, and frontend design guidance to Claude Code, Codex, and OpenCode.
 
 The repository publishes measured results, including null results, with current
-protocols and clearly labeled historical measurements: [`evals/RESULTS.md`](./evals/RESULTS.md).
+protocols and clearly labeled historical measurements:
+[`evals/RESULTS.md`](./evals/RESULTS.md).
 
 ## Quickstart (Claude Code)
 
@@ -20,8 +22,8 @@ protocols and clearly labeled historical measurements: [`evals/RESULTS.md`](./ev
 ```
 
 Start a new session after installation. The agent will check for relevant
-skills before acting, announce the skill it uses, and follow its checklist.
-For example, a request for a function with unit tests triggers a failing test
+skills before acting, announce the skill it uses, and follow its checklist. For
+example, a request for a function with unit tests triggers a failing test
 before implementation.
 
 Full install, update, verification, and uninstall instructions are in
@@ -39,16 +41,16 @@ The guide asks before changing permissions or settings.
   agent; full bodies load only when selected.
 - A SessionStart hook reminds the agent to check for a skill and injects the
   current model catalog.
-- Stop and PreToolUse hooks backstop autonomous runs, independent review, and
-  a small set of catastrophic shell commands. Claude Code receives the full
-  hook set. Codex receives the compatible session catalog, review nudge, and
+- Stop and PreToolUse hooks backstop autonomous runs, independent review, and a
+  small set of catastrophic shell commands. Claude Code receives the full hook
+  set. Codex receives the compatible session catalog, review nudge, and
   destructive-command guard. OpenCode is skills-only.
 - `models.toml` and `delegates.toml` route review, verification, browser work,
   and other roles to installed agent CLIs. megapowers adds no API key or hosted
   service.
 
-Hooks and most helper scripts are Bash; the eval scorer is Go. Each can be
-read and run from a checkout.
+Hooks and most helper scripts are Bash; the eval scorer is Go. Each can be read
+and run from a checkout.
 
 ## Plugins
 
@@ -68,8 +70,9 @@ UI work, or `mega-guardrails` for hook backstops.
 
 On Codex, installing all seven plugins approaches the initial skills-list
 budget, although each plugin fits by itself. `wayfinding` is intentionally
-explicit-only and remains available through `$wayfinding`; `scripts/validate.sh`
-reports the current aggregate, so prefer an à-la-carte install when possible.
+explicit-only and remains available through `$wayfinding`;
+`scripts/validate.sh` reports the current aggregate, so prefer an à-la-carte
+install when possible.
 
 ## Other harnesses
 
@@ -95,8 +98,8 @@ exact paths and mixed-harness caveats.
 
 The committed studies currently show two useful boundaries:
 
-- Test-first ordering changed from 0/36 control runs to 36/36 runs with the
-  TDD skill in context across the tested Claude and GPT models. Both groups
+- Test-first ordering changed from 0/36 control runs to 36/36 runs with the TDD
+  skill in context across the tested Claude and GPT models. Both groups
   completed the implementation task.
 - Historical single-shot code correctness did not improve: 184 generated
   programs passed with and without the skill. The exact protocol was not
@@ -115,10 +118,11 @@ Full methods, tables, prompts, and reproduction commands:
   agent or malicious dependency. Read [`SECURITY.md`](./SECURITY.md) before
   installation.
 - OpenCode receives no hook enforcement.
-- Current frontier models already handle much single-shot coding correctly.
-  The measured gains here concern process ordering and verification.
+- Current frontier models already handle much single-shot coding correctly. The
+  measured gains here concern process ordering and verification.
 - Model IDs, stack picks, and harness capabilities age. Their review dates and
-  support matrix live in [`docs/harness-support.md`](./docs/harness-support.md).
+  support matrix live in
+  [`docs/harness-support.md`](./docs/harness-support.md).
 
 ## Fork and adapt
 

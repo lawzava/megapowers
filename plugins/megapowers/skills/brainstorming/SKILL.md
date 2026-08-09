@@ -7,21 +7,21 @@ license: MIT
 # Brainstorming Ideas Into Designs
 
 Turn an unclear request into an agreed design. When scope, affected area,
-acceptance oracle, and risk are clear for a reversible change, skip brainstorming and planning;
-proceed through `megapowers:test-driven-development`.
+acceptance oracle, and risk are clear for a reversible change, skip
+brainstorming and planning; proceed through
+`megapowers:test-driven-development`.
 
 Inspect the relevant project context first. Ask only the questions needed to
-establish the goal, constraints, success criteria, and material tradeoffs.
-For an ambiguous approach, present a small set of viable options and recommend
-one.
+establish the goal, constraints, success criteria, and material tradeoffs. For
+an ambiguous approach, present a small set of viable options and recommend one.
 
 ## Approval Gate
 
 For reversible, low-stakes work, present the design and use the proceed path as
 acceptance. For a hard-to-reverse or high-stakes change, including data or
 public-contract changes and work affecting security, payments, or concurrency,
-obtain explicit approval before implementation. Confirm sections proportionally:
-do not turn a small reversible change into approval interrupts.
+obtain explicit approval before implementation. Confirm sections
+proportionally: do not turn a small reversible change into approval interrupts.
 
 ## Design and Handoff
 
@@ -36,4 +36,5 @@ contradictions. Do not implement while the decision remains unapproved.
 Hand a multi-step approved design to `megapowers:writing-plans`; hand a small
 approved change to `megapowers:test-driven-development`.
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.

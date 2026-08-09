@@ -1,7 +1,7 @@
 # agent-notify (template)
 
-Push a notification when an agent needs you or finishes, so supervision costs
-a glance at your phone instead of watching a terminal. Three small scripts,
+Push a notification when an agent needs you or finishes, so supervision costs a
+glance at your phone instead of watching a terminal. Three small scripts,
 copied and adapted from a working setup:
 
 - `agent-notify`: the transport. Sends a Telegram message (and rings the
@@ -10,14 +10,14 @@ copied and adapted from a working setup:
 - `agent-notify-claude`: Claude Code hook wrapper. Filters noise so a ping
   means "genuinely finished or blocked": only permission prompts notify from
   the Notification event, questions and plan approvals notify from PreToolUse
-  (a subagent's plan approval returns to its lead, so it stays silent),
-  and "done" only fires from interactive sessions (headless `claude -p` / SDK
+  (a subagent's plan approval returns to its lead, so it stays silent), and
+  "done" only fires from interactive sessions (headless `claude -p` / SDK
   children spawned by delegates, workflows, or cron are silent), only when no
   background task is still running, and only for turns that ran at least
   `AGENT_NOTIFY_MIN_TURN_SECS` (default 120), so quick chat replies don't ping.
   `AGENT_NOTIFY_FORCE=1` bypasses the filters for a deliberate unattended run.
-- `agent-notify-codex`: Codex `notify` program. Maps `agent-turn-complete`
-  to "done". Silent when Codex runs as a delegate under a Claude lead
+- `agent-notify-codex`: Codex `notify` program. Maps `agent-turn-complete` to
+  "done". Silent when Codex runs as a delegate under a Claude lead
   (`CLAUDECODE` is set): the lead consumes the result, not the human.
 
 ## Install
@@ -62,7 +62,7 @@ Test without an agent: `agent-notify need "hello from the template"`.
 ## Swapping the transport
 
 Telegram is one choice, not the design. To use ntfy, Slack, or anything else,
-replace the final `curl` block in `agent-notify`; the event mapping, tmux
-bell, and hook wrappers stay as they are. Keep the two properties that make
-it safe to wire into hooks: exit 0 on delivery failure, and a hard timeout on
-the network call.
+replace the final `curl` block in `agent-notify`; the event mapping, tmux bell,
+and hook wrappers stay as they are. Keep the two properties that make it safe
+to wire into hooks: exit 0 on delivery failure, and a hard timeout on the
+network call.

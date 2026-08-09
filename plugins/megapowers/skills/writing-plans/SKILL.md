@@ -10,17 +10,16 @@ license: MIT
 
 A plan is a handoff artifact. Write it for a skilled engineer who has zero
 context for this codebase and must not guess binding decisions. Give the
-outcome, owned files, dependencies, interfaces, acceptance oracle,
-verification commands, and relevant docs. Use the
-senior-engineer register (see `megapowers:using-megapowers`, Communication): declarative,
-self-contained, readable by an agent with no conversation context.
-DRY. YAGNI. TDD.
+outcome, owned files, dependencies, interfaces, acceptance oracle, verification
+commands, and relevant docs. Use the senior-engineer register (see
+`megapowers:using-megapowers`, Communication): declarative, self-contained,
+readable by an agent with no conversation context. DRY. YAGNI. TDD.
 
-**Save plans to:** `docs/megapowers/plans/YYYY-MM-DD-<feature-name>.md`.
-User preferences for plan location override this default.
+**Save plans to:** `docs/megapowers/plans/YYYY-MM-DD-<feature-name>.md`. User
+preferences for plan location override this default.
 
-If the work needs an isolated worktree, megapowers:using-git-worktrees
-creates it at execution time.
+If the work needs an isolated worktree, megapowers:using-git-worktrees creates
+it at execution time.
 
 ## Input and Source Pass
 
@@ -40,11 +39,11 @@ subsystem. Each plan must produce working, testable software on its own.
 ## File Structure
 
 Before defining tasks, map which files will be created or modified and what
-each is responsible for; this is where decomposition gets locked in. One
-clear responsibility per file, smaller focused files over sprawling ones,
-files that change together live together. In existing codebases follow
-established patterns; include a split only for a file you are already
-modifying that has grown unwieldy.
+each is responsible for; this is where decomposition gets locked in. One clear
+responsibility per file, smaller focused files over sprawling ones, files that
+change together live together. In existing codebases follow established
+patterns; include a split only for a file you are already modifying that has
+grown unwieldy.
 
 ## Task Boundaries
 
@@ -54,11 +53,10 @@ documentation into the task whose deliverable needs them; split only where a
 reviewer could reject one task while approving its neighbor. Every task ends
 with an independently testable deliverable.
 
-Within a task, each step states an outcome the executor can verify: the
-failing test exists, its failure is confirmed for the right reason, minimal
-code makes it pass, the pass is confirmed, a checkpoint marks the task
-boundary. Each step covers one action; a step bundling several actions
-obscures which one failed.
+Within a task, each step states an outcome the executor can verify: the failing
+test exists, its failure is confirmed for the right reason, minimal code makes
+it pass, the pass is confirmed, a checkpoint marks the task boundary. Each step
+covers one action; a step bundling several actions obscures which one failed.
 
 Before decomposing tasks, create an acceptance evidence map. Copy each
 criterion verbatim and assign its implementation target, local oracle, required
@@ -67,9 +65,10 @@ emulator, normal-user, published-release, or target-environment witness with a
 neighboring unit test.
 
 **Commit cadence is the executor's policy, not a plan mandate.** Selecting a
-workflow never grants permission to commit. `megapowers:subagent-driven-development`
-uses per-task commits only when the user and repository already authorize them.
-Otherwise checkpoints persist through the ledger and working tree.
+workflow never grants permission to commit.
+`megapowers:subagent-driven-development` uses per-task commits only when the
+user and repository already authorize them. Otherwise checkpoints persist
+through the ledger and working tree.
 
 ## Parallel Safety and Ownership
 
@@ -101,13 +100,13 @@ the placeholder patterns that fail a plan.
 After writing the complete plan, check it against the spec with fresh eyes.
 This is a checklist you run yourself, not a subagent dispatch:
 
-1. **Spec coverage:** every spec requirement points to a task that
-   implements it. A requirement with no task means adding the task.
-2. **Placeholder scan:** search the plan for the No Placeholders patterns
-   in [plan-format.md](plan-format.md) and fix them.
-3. **Type consistency:** names, signatures, and types used in later tasks
-   match what earlier tasks defined. A function called `clearLayers()` in
-   Task 3 but `clearFullLayers()` in Task 7 is a bug.
+1. **Spec coverage:** every spec requirement points to a task that implements
+   it. A requirement with no task means adding the task.
+2. **Placeholder scan:** search the plan for the No Placeholders patterns in
+   [plan-format.md](plan-format.md) and fix them.
+3. **Type consistency:** names, signatures, and types used in later tasks match
+   what earlier tasks defined. A function called `clearLayers()` in Task 3 but
+   `clearFullLayers()` in Task 7 is a bug.
 
 Fix issues inline and move on; no re-review pass.
 
@@ -115,11 +114,11 @@ Fix issues inline and move on; no re-review pass.
 
 Under an active autonomous run (a `.megapowers/run/<id>/charter.md` governs
 this work; see mega-orchestration:autonomous-run, if installed) at level
-`autonomous` or `on-the-loop`: do not ask. Choose subagent-driven
-development when subagents are available, otherwise inline execution. Commit
-only if the charter, user, and repository already authorize it; otherwise use
-the ledger and working tree as checkpoints. Journal the choice and proceed.
-The question below is for interactive work and `in-the-loop` runs.
+`autonomous` or `on-the-loop`: do not ask. Choose subagent-driven development
+when subagents are available, otherwise inline execution. Commit only if the
+charter, user, and repository already authorize it; otherwise use the ledger
+and working tree as checkpoints. Journal the choice and proceed. The question
+below is for interactive work and `in-the-loop` runs.
 
 After saving the plan, offer this execution choice verbatim:
 
@@ -142,4 +141,5 @@ done-when criteria, and per-milestone execution without per-task check-ins.
 Which approach?
 ```
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.

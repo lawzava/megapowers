@@ -1,15 +1,19 @@
 # Cross-harness skill authoring best practices
 
-This is the portable subset of current OpenAI and Anthropic guidance. Use the live sources for harness specific details:
+This is the portable subset of current OpenAI and Anthropic guidance. Use the
+live sources for harness specific details:
 
 * [OpenAI: Build skills](https://developers.openai.com/codex/skills)
-* [Anthropic: Skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
-* [Anthropic: Skills in Claude Code](https://code.claude.com/docs/en/slash-commands)
+* [Anthropic: Skill authoring best
+  practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
+* [Anthropic: Skills in Claude
+  Code](https://code.claude.com/docs/en/slash-commands)
 * [Agent Skills specification](https://agentskills.io/specification)
 
 ## Progressive disclosure
 
-Agents discover skills from frontmatter metadata, load `SKILL.md` when selected, then read references or run scripts only when needed.
+Agents discover skills from frontmatter metadata, load `SKILL.md` when
+selected, then read references or run scripts only when needed.
 
 Metadata is the scarce layer. Names and descriptions compete with the system
 prompt, conversation, and other installed skills. Keep descriptions concise and
@@ -22,15 +26,17 @@ References and scripts should keep optional detail out of the body.
 
 Portable skills require `name` and `description`.
 
-`name` uses lowercase letters, numbers, and hyphens, with at most 64 characters.
-Prefer a specific gerund or action name over `helper` or `tools`.
+`name` uses lowercase letters, numbers, and hyphens, with at most 64
+characters. Prefer a specific gerund or action name over `helper` or `tools`.
 
 `description` states what task the skill handles and when to use it. Write in
-third person and put the main use case and trigger terms first. Include concrete
-symptoms, technologies, or request language that distinguish the skill. Add a
-neighboring skill boundary only when it prevents a plausible collision.
+third person and put the main use case and trigger terms first. Include
+concrete symptoms, technologies, or request language that distinguish the
+skill. Add a neighboring skill boundary only when it prevents a plausible
+collision.
 
-Do not summarize the workflow in the description. It selects the skill; the body defines the procedure.
+Do not summarize the workflow in the description. It selects the skill; the
+body defines the procedure.
 
 Do not add invocation fields that only one harness understands. Keep harness
 specific UI or policy metadata in that harness's configuration surface.
@@ -47,12 +53,13 @@ wording that prevents a likely mistake. Otherwise the unit is a no-op; delete
 it.
 
 For scan-heavy workflow guidance, prefer a leading observable predicate,
-action, artifact, gate, or concrete concept term when that improves recognition.
-Define a nonstandard term at first use. Replace leading intensifiers and
-mental-state prompts such as `carefully` or `think deeply` with that concrete
-vocabulary.
+action, artifact, gate, or concrete concept term when that improves
+recognition. Define a nonstandard term at first use. Replace leading
+intensifiers and mental-state prompts such as `carefully` or `think deeply`
+with that concrete vocabulary.
 
-State what to do. Explain why only where it prevents a likely mistake. Match instruction precision to risk:
+State what to do. Explain why only where it prevents a likely mistake. Match
+instruction precision to risk:
 
 * Use broad goals and heuristics when several approaches are valid.
 * Use a preferred pattern when variation is acceptable.
@@ -61,8 +68,8 @@ State what to do. Explain why only where it prevents a likely mistake. Match ins
 
 Keep one skill focused on one job. Use imperative steps with explicit inputs,
 outputs, and completion evidence. Quality critical workflows need a feedback
-loop: run the check, fix the reported issue, and rerun until it passes or a real
-blocker is reported.
+loop: run the check, fix the reported issue, and rerun until it passes or a
+real blocker is reported.
 
 Keep `SKILL.md` under 500 lines. This is a ceiling, not a target. Move detailed
 reference material, examples, templates, and large schemas into supporting
@@ -70,8 +77,9 @@ files.
 
 ## References and scripts
 
-Link every required reference directly from `SKILL.md`. Avoid reference chains; agents
-may preview a nested file instead of reading it fully. Give long reference files a short contents section.
+Link every required reference directly from `SKILL.md`. Avoid reference chains;
+agents may preview a nested file instead of reading it fully. Give long
+reference files a short contents section.
 
 Use scripts when correctness is deterministic or repeated code generation would
 waste context. State whether the agent should run a script or read it. Verify
