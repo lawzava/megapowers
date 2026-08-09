@@ -46,6 +46,7 @@ plugins/mega-orchestration/enforcement.toml|Last reviewed:
 plugins/megapowers/enforcement.toml|Last reviewed:
 plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml|Last reviewed:
 plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/codex.md|Last reviewed:|30
+plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/opencode.md|Last reviewed:|30
 plugins/megapowers/models.toml|Last reviewed:
 plugins/mega-orchestration/skills/orchestrating/references/harness-primitives.md|Last reviewed:|30
 plugins/mega-frontend/skills/designing-frontends/SKILL.md|Calibration reviewed:
