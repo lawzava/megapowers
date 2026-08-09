@@ -80,6 +80,42 @@ with the config or found it silent.
 - The Sonnet 5 price ratio in the catalog is marked as dated: introductory
   pricing ends 2026-08-31, which moves the strong tier from roughly 40 to 60
   percent of frontier cost. The tier survives the change; the number does not.
+- `agents/model-delegate.md` is deleted rather than shipped as a tombstone. The
+  harness loads every agent definition into the selector, so a retired one
+  spent description tokens in every session to describe a no-op and put a name
+  in front of the model that the same description then had to forbid. Removal
+  is the version of that with no cost; `delegation-routing.test.sh` now pins
+  the file as absent.
+- The delegation section of `templates/CLAUDE.md` and `templates/CODEX.md` is
+  cut by roughly a quarter. It stated the `--author-*` versus `--caller-*`
+  distinction three times and documented the exclusion behavior of a legacy
+  config with no `[independence]` section, which the shipped config has. These
+  templates are copied into a project `CLAUDE.md`, so every duplicated
+  sentence is context spent in every session on that machine.
+- Prose assertions in `killlist-antipatterns-absent`,
+  `upgrading-megapowers-contract`, and the `validate.sh` scratch-storage check
+  now match against the file with newlines collapsed, the convention
+  `delegation-routing.test.sh` already used. A line-anchored grep for a
+  sentence answers where a paragraph wraps rather than whether a rule is
+  stated: reflowing a skill flipped five `present` checks to failing, and an
+  `absent` check would have gone quiet the moment a banned sentence wrapped.
+- Markdown body prose in 37 shipped files is rewrapped to a single column
+  budget, and dash punctuation is gone from every shipped skill, agent, prompt
+  template, and reference, which the repository's own `using-megapowers` rule
+  and `auto-format` hook already required of them.
+
+### Fixed
+
+- `docs/setup.md` cited `v0.8.2`, a version that was never tagged; the
+  `sandbox.credentials` object form shipped in 0.9.0. The release-certification
+  and install-smoke commands no longer carry a stale `v0.5.0` example, and the
+  pin-range sentence names `git ls-remote` instead of a version the next
+  release invalidates.
+- The `deny-destructive` fixtures no longer carry the maintainer's real home
+  directory, which `AGENTS.md` forbids in shipped artifacts.
+- `providers/opencode.md` carried a `Last reviewed:` date that
+  `check-freshness.sh` did not read, so it could rot without failing the weekly
+  job. It is on the list now, beside `codex.md`.
 
 ## 0.9.1 - 2026-08-07
 
