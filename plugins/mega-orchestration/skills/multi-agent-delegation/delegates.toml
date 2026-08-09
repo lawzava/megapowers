@@ -1,5 +1,5 @@
 # megapowers delegate routing: which provider handles which role, and run presets.
-# Last reviewed: 2026-08-06 (routes age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-08-09 (routes age; scripts/check-freshness.sh guards this date).
 # The model CATALOG (lead, tiers, providers, floor) lives in models.toml at the
 # plugin root, layered the same way: project .megapowers/models.toml, then user
 # ~/.config/megapowers/models.toml, then the shipped copy. Edit an override layer,
@@ -80,6 +80,27 @@ council_member = "codex"     # council-adjudication: independent answer + blind 
 # only after the CLI is installed and authenticated, delegate-run has a safe
 # read-only adapter with machine-checked verdict extraction, and a repo role eval
 # clears the ship floor. Until then ALTERNATES=1 is the honest result.
+#
+# What the candidate has going for it, and what it has to clear, as of 2026-08-09.
+# For: K3 is the strongest open-weight position measured, Artificial Analysis
+# index 60 against Opus 5's 63, with downloadable weights, and Moonshot ships a
+# real CLI rather than an endpoint, which is what this table requires.
+# Against, and these are the acceptance bar rather than trivia:
+#   - Throughput. ~41 tok/s, near the middle of AA's speed field. A review role is
+#     latency-tolerant, so this disqualifies it as a writer long before a reviewer.
+#   - Verbosity. High output volume per task, which lands on the review package cap
+#     and on the verdict extraction, not on quality.
+#   - Session fragility. Vendor-documented breakage when the model changes
+#     mid-session without the full thinking history. A one-shot read-only review
+#     never switches models mid-session, so the adapter must keep it that way.
+#   - Capacity. Launch-week saturation under load. An independence route that
+#     returns 429 under pressure is worse than a declared ALTERNATES=1, because it
+#     fails at exactly the moment the review is wanted. Verify quota stability
+#     before the row lands, not after.
+# A hosted open-weight model reached only by pointing a base URL at an
+# Anthropic-compatible proxy (GLM-5.2 and similar) does NOT qualify, by the same
+# rule stated above: that is a model with an endpoint, not a harness someone runs,
+# and it borrows another vendor's scaffold rather than bringing an independent one.
 [fallbacks]
 plan_review    = ["codex", "claude"]
 code_review    = ["codex", "claude"]
