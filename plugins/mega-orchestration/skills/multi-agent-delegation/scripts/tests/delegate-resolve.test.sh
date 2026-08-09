@@ -580,8 +580,13 @@ check "--check names the offending effort" "max" "$out"
 out="$(DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" "$DR" --check 2>&1)"; rc=$?
 check_exit "--check shipped files with efforts exits 0" 0 "$rc"
 
-# Both frontier CLIs expose a real `max` effort rung. The shipped catalog must
-# preserve it even though no default role spends it without eval evidence.
+# Both frontier CLIs expose a real `max` rung, and the catalog treats them
+# differently on purpose. Codex keeps it: no default role spends it without eval
+# evidence, but the rung still buys something when one does. Claude does not,
+# because Artificial Analysis measures Opus 5 at max scoring below its own xhigh
+# on composite, cost, latency, and comprehension simultaneously. A rung that is
+# worse on every axis than the rung beneath it is not an escalation, so the
+# catalog must refuse to resolve it rather than merely decline to default to it.
 sed -e 's/^binary  = "claude"$/binary  = "sh"/' \
     -e 's/^binary  = "codex"$/binary  = "sh"/' \
     "$HERE/../../../../models.toml" > "$TMP/shipped-max.toml"
@@ -598,13 +603,24 @@ codex_max = "max"
 EOF
 : > "$TMP/no-max-catalog.toml"
 MAX_CFG=(--config "$TMP/shipped-max.toml" --models "$TMP/no-max-catalog.toml")
-out="$("$DR" --check "${MAX_CFG[@]}" 2>&1)"; rc=$?
-check_exit "shipped catalog accepts max for both frontier providers" 0 "$rc"
-for max_role in claude_max codex_max; do
-  out="$("$DR" "$max_role" "${MAX_CFG[@]}" 2>&1)"; rc=$?
-  check_exit "$max_role resolves at max" 0 "$rc"
-  check "$max_role preserves max effort" "EFFORT=max" "$out"
-done
+out="$("$DR" codex_max "${MAX_CFG[@]}" 2>&1)"; rc=$?
+check_exit "codex_max resolves at max" 0 "$rc"
+check "codex_max preserves max effort" "EFFORT=max" "$out"
+
+out="$("$DR" claude_max "${MAX_CFG[@]}" 2>&1)"; rc=$?
+check_exit "claude refuses a max-effort role" 2 "$rc"
+check "and names the effort it will not route" "does not support role 'claude_max' effort 'max'" "$out"
+
+# The refusal has to come from the catalog, not from a role table nobody ships:
+# assert the shipped efforts list itself, so an override layer restoring `max`
+# is a deliberate act rather than something this test would keep quiet about.
+claude_efforts_line="$(sed -n '/^\[providers.claude\]/,/^\[/p' "$HERE/../../../../models.toml" |
+  sed -n 's/^efforts[[:space:]]*=.*/&/p')"
+case "$claude_efforts_line" in
+  *'"max"'*) fail=$((fail+1)); printf '  FAIL shipped claude provider still lists max\n    got: %s\n' "$claude_efforts_line" ;;
+  *'"xhigh"'*) pass=$((pass+1)) ;;
+  *) fail=$((fail+1)); printf '  FAIL could not read the shipped claude efforts list\n    got: %s\n' "$claude_efforts_line" ;;
+esac
 
 echo "== v0.5 role-policy tests =="
 
@@ -1917,6 +1933,85 @@ else
   printf '  FAIL %s of %s concurrent --check runs failed\n' "$conc_bad" "$conc_n"
   cat "$conc_dir"/bad.* "$conc_dir"/out.* 2>/dev/null | sed 's/^/    /' | sort -u
 fi
+
+echo "== context-separation fallback tests =="
+
+# Two vendors, both reachable, so the cross-vendor path is the one that has to keep
+# winning when it can. `sh` exists everywhere, which is what makes both installed.
+cat > "$TMP/cs.toml" <<'EOF'
+[providers.alpha]
+model   = "alpha-1"
+vendor  = "acme"
+binary  = "sh"
+channel = "cli"
+[providers.beta]
+model   = "beta-1"
+vendor  = "globex"
+binary  = "sh"
+channel = "cli"
+[roles]
+code_review = "beta"
+judge       = "beta"
+small_impl  = "alpha"
+[fallbacks]
+code_review = ["beta", "alpha"]
+judge       = ["beta", "alpha"]
+[independence]
+code_review = "author_vendor"
+judge       = "all_author_vendors"
+EOF
+
+out="$("$DR" code_review --config "$TMP/cs.toml" --author-vendor acme 2>&1)"; rc=$?
+check_exit "cross-vendor route still resolves" 0 "$rc"
+check "a cross-vendor route labels itself" "INDEPENDENCE=cross-vendor" "$out"
+check "cross-vendor picks the non-author vendor" "VENDOR=globex" "$out"
+
+# The flag must not change a route that never needed it: opting in is not the same
+# as degrading, and a caller that always passes it must still get the strong tier.
+out="$("$DR" code_review --config "$TMP/cs.toml" --author-vendor acme --allow-context-separation 2>&1)"; rc=$?
+check_exit "the flag alone does not degrade an available cross-vendor route" 0 "$rc"
+check "the flag alone keeps the cross-vendor label" "INDEPENDENCE=cross-vendor" "$out"
+
+# Default behavior is unchanged: no flag, no route, no review.
+out="$("$DR" code_review --config "$TMP/cs.toml" --author-vendor acme --exclude beta 2>&1)"; rc=$?
+check_exit "without the flag an unreachable cross-vendor route still exits 3" 3 "$rc"
+
+out="$("$DR" code_review --config "$TMP/cs.toml" --author-vendor acme --exclude beta --allow-context-separation 2>&1)"; rc=$?
+check_exit "the degraded tier resolves when asked" 0 "$rc"
+check "the degraded route is labeled" "INDEPENDENCE=context-separation" "$out"
+check "the degraded route lands on the author's own vendor" "VENDOR=acme" "$out"
+check "the degraded route says so on stderr" "Do not report this as a cross-vendor check" "$out"
+# The count a caller watches has to keep meaning "vendors that could take over",
+# which on a degraded route is zero. Counting the suspended author would report
+# independence as still available at the exact moment it stopped being.
+check "the degraded route reports no alternates" "ALTERNATES=0" "$out"
+
+# --exclude is the caller's own policy, not an independence rule, so the retry
+# must not resurrect a backend the caller ruled out. With alpha excluded too there
+# is nothing left to fall back to.
+out="$("$DR" code_review --config "$TMP/cs.toml" --author-vendor acme --exclude beta --exclude alpha --allow-context-separation 2>&1)"; rc=$?
+check_exit "the retry does not suspend an explicit --exclude" 3 "$rc"
+
+# Blind ranking fails on self-preference, which a fresh session does not repair.
+out="$("$DR" judge --config "$TMP/cs.toml" --author-vendor acme --author-vendor globex --allow-context-separation 2>&1)"; rc=$?
+check_exit "an all_author_vendors role refuses the degraded tier" 3 "$rc"
+check "and says why" "cannot degrade" "$out"
+
+# A role that claims no independence must not claim a separation either.
+out="$("$DR" small_impl --config "$TMP/cs.toml" --author-vendor acme 2>&1)"; rc=$?
+check_exit "a non-independence role resolves" 0 "$rc"
+if printf '%s' "$out" | grep -q 'INDEPENDENCE='; then
+  fail=$((fail+1)); printf '  FAIL a role with no [independence] policy must not emit INDEPENDENCE\n    got: %s\n' "$out"
+else
+  pass=$((pass+1))
+fi
+
+# The shipped config is the one that matters: a Claude-authored diff whose Codex
+# route is gone must still reach the proven condition rather than nothing.
+out="$(DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" \
+  "$DR" code_review --author-vendor anthropic --exclude codex --allow-context-separation 2>&1)"; rc=$?
+check_exit "the shipped config degrades rather than skipping review" 0 "$rc"
+check "the shipped degraded route is labeled" "INDEPENDENCE=context-separation" "$out"
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

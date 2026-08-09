@@ -85,9 +85,9 @@ differs. One-file-per-agent fan-out multiplies briefing and review cost.
 ## How much compute: spend by stakes times uncertainty
 
 Anchor the spend: a multi-agent structure can cost an order of magnitude more
-than inline work, so the bar is high. Size the fan-out to the question: 1 agent
-for a fact-find, 2 to 4 for a comparison, 10 plus only for wide research, never
-past 20 unasked.
+than inline work, so the bar is high. Size fan-out by where output lands: 3 to 5
+children returning into your context, wider only when each returns a bounded
+summary to a file, never past 20. Past that, a runner, not more children.
 
 - Routine and certain: inline, verified by tests.
 - Uncertain approach, moderate stakes: one independent review
@@ -131,10 +131,10 @@ sequential inline work and say so; never fabricate a call it does not expose.
   an explicit same-context resumption.
 - Give each delegate one report channel. Small results return directly; bulky
   results go to a file and return only status plus the path.
-- Single-writer always: whatever the structure, one integrator owns the tree
-  and the commits (see mega-orchestration:multi-agent-delegation). Subagent
-  acknowledgement is not approval, and no harness affordance makes a subagent a
-  second writer. Enforce the boundary with sandbox, tool, and worktree controls
-  where available, plus explicit skill wording.
+- Single-writer always: one integrator owns the tree, the commits, and the
+  oracle (see mega-orchestration:multi-agent-delegation). Subagent
+  acknowledgement is not approval, no affordance makes a subagent a second
+  writer, and a delegate never writes the test it is judged by. Enforce with
+  sandbox, tool, and worktree controls where available, plus skill wording.
 - Re-route when the shape changes: a task that stops decomposing cleanly drops
   back to inline; a task that grows milestones graduates to autonomous-run.

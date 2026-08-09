@@ -5,6 +5,82 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+Alignment pass against four independently compiled August 2026 harness/model
+research reports and the primary sources behind them: Artificial Analysis's
+Coding Agent Index, tbench.ai Terminal-Bench 2.1, arXiv 2603.12123
+(Cross-Context Review), and METR's GPT-5.6 Sol evaluation. Most of what those
+reports prescribe was already shipped here; these are the places they disagreed
+with the config or found it silent.
+
+### Added
+
+- `delegate-resolve --allow-context-separation` and an `INDEPENDENCE` route
+  field. Independence had exactly one reachable alternate vendor, so an outage
+  took independent review with it entirely. The controlled evidence says that is
+  backwards: the study behind independent review varied CONTEXT, not model
+  (fresh-session artifact-only review at 28.6% F1 against 24.6% for same-session
+  self-review, and 23.8% when the reviewer is handed the generation transcript,
+  worse than doing nothing). Cross-vendor review is a motivated prior about
+  uncorrelated blind spots, not a measured result. The flag therefore lets an
+  unreachable cross-vendor route fall back to a fresh same-vendor session,
+  labeled `INDEPENDENCE=context-separation` on the route and in the receipt.
+  It is opt-in, never automatic; `judge` refuses it, because a fresh session
+  does not remove self-preference from a blind ranking; and the receipt records
+  `independent: false`, so the risky-logic Stop gate on auth, billing, payment,
+  and concurrency keeps requiring the cross-vendor pass. That gate's scope is
+  exactly the class where the vendor prior is worth paying for.
+
+  Route-contract note: `INDEPENDENCE` is emitted on every independence-role
+  resolution, with or without the flag, the same way `ALTERNATES` is. Without
+  the flag, route selection and exit codes are unchanged, but stdout carries one
+  additional line. That is deliberate rather than incidental: a consumer should
+  be able to assert the strong claim positively instead of inferring it from an
+  absent field, and the field's absence is reserved to mean "a resolver that
+  predates it", which is how `delegate-run` reads it.
+- Receipt schema: an optional `independence` field (`cross-vendor` |
+  `context-separation`), with `independent` relaxed from `const: true` to a
+  boolean bound to it by an `allOf`. Absent means cross-vendor, so every receipt
+  written before the field keeps validating and no consumer can spell the
+  degraded tier as the stronger claim.
+- An acceptance-oracle ownership rule in `orchestrating`,
+  `subagent-driven-development`, and the implementer prompt: a delegate never
+  writes the test it is judged by, and a patch editing that test alongside the
+  code goes back. Models optimize against a reachable verifier rather than the
+  goal, and the executor-tier models are where that is measured hardest.
+- A context rule in `autonomous-run`: budget the working set well under the
+  nominal window and treat a reset that reloads the file contract as the normal
+  way to continue, not as recovery. A session near what it believes is its limit
+  wraps up prematurely, and compaction carries that pressure across where a
+  reset does not. The journal and derived status already existed to make this
+  cheap; nothing said to use them that way.
+
+### Changed
+
+- `max` is removed from the Claude provider's effort list. Artificial Analysis
+  measures Opus 5 at max scoring below its own xhigh on composite index, cost,
+  wall time, and code comprehension simultaneously. A rung worse on every axis
+  than the rung beneath it is not an escalation, so the catalog now refuses to
+  resolve it rather than merely declining to default to it. Codex keeps its
+  `max` rung, which still buys something. `--effort max` by hand remains
+  possible and remains a worse setting.
+- Fan-out sizing in `orchestrating` is now bounded by where output lands rather
+  than by task count: 3 to 5 children whose output returns into the
+  orchestrator's context, wider only for bounded summaries written to a file.
+  The previous "10 plus for wide research" applied one number to both shapes,
+  and the limit is the orchestrator's accumulating context, not child
+  availability.
+- The third-vendor candidate note in `delegates.toml` now carries an acceptance
+  bar rather than only a name: throughput, verbosity, mid-session model-switch
+  fragility, and quota stability under load, with the reasoning for each. It
+  also records why a hosted open-weight model behind an Anthropic-compatible
+  proxy does not qualify, which is the same "a provider is a harness, not an
+  endpoint" rule 0.9.1 established.
+- The Sonnet 5 price ratio in the catalog is marked as dated: introductory
+  pricing ends 2026-08-31, which moves the strong tier from roughly 40 to 60
+  percent of frontier cost. The tier survives the change; the number does not.
+
 ## 0.9.1 - 2026-08-07
 
 Alignment pass against 2026 primary sources: Anthropic's harness-design,

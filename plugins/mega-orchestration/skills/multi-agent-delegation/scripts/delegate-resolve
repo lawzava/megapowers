@@ -43,10 +43,33 @@
 # own provider, where the harness's own subagent/team/workflow is the right
 # instrument and CHANNEL/BINARY do not apply, or `cli` when it crosses runtimes.
 #
+# INDEPENDENCE says WHICH separation an independence role actually got.
+# `cross-vendor` is the shipped contract: the reviewer's vendor authored nothing.
+# `context-separation` is the opt-in degraded tier behind --allow-context-separation,
+# taken only when no cross-vendor route resolves. It is a weaker claim and a labeled
+# one, never a silent substitution, and the field exists so a consumer records which
+# check ran instead of inferring it from a successful exit.
+#
+# The tier is not a compromise, it is the better-evidenced half of the policy. The
+# controlled result behind independent review (arXiv 2603.12123: 360 reviews, 150
+# injected errors) isolates CONTEXT separation, not vendor diversity: a fresh session
+# reading only the artifact scored 28.6% F1 against 24.6% for same-session self-review,
+# while handing the reviewer the generation transcript scored 23.8%, worse than doing
+# nothing. That study never varied the model. Cross-vendor review is a motivated prior
+# about uncorrelated blind spots, which is why it stays the default and stays mandatory
+# where correlated blind spots are the specific risk. When the only other vendor is
+# unreachable, a fresh same-vendor session is the proven condition and dropping to it
+# beats skipping review, PROVIDED nobody reports it as the cross-vendor pass.
+#
+# Two limits keep that honest. `all_author_vendors` roles (judge) refuse the tier
+# outright: blind ranking fails on self-preference, which a fresh session does not
+# fix. And the risky-logic Stop gate keeps requiring a cross-vendor receipt, so the
+# auth/billing/concurrency class cannot be cleared by the degraded tier.
+#
 # Usage:
 #   delegate-resolve <role> [--config <file>] [--models <file>]
 #                    [--author-vendor <vendor>]... [--author-model <id>]...
-#                    [--author-provider <name>]...
+#                    [--author-provider <name>]... [--allow-context-separation]
 #                    [--exclude <vendor|provider>]... [--list]
 #   delegate-resolve --preset <name> [--config <file>]
 #   delegate-resolve --list-presets [--config <file>]
@@ -66,11 +89,11 @@ shipped="$here/../delegates.toml"   # scripts/../delegates.toml
 . "$here/lib-toml.sh"
 
 usage() {
-  echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--author-vendor <vendor>]... [--author-model <id>]... [--author-provider <name>]... [--caller-model <id>]... [--caller-provider <name>]... [--caller-adapter <name>]... [--exclude <vendor|provider>]... [--list]" >&2
+  echo "usage: delegate-resolve <role> [--config <file>] [--models <file>] [--author-vendor <vendor>]... [--author-model <id>]... [--author-provider <name>]... [--caller-model <id>]... [--caller-provider <name>]... [--caller-adapter <name>]... [--exclude <vendor|provider>]... [--allow-context-separation] [--list]" >&2
   echo "       delegate-resolve --preset <name> [--config <file>] | --list-presets | --vendors | --where | --lead | --check" >&2
 }
 
-role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; vendors=0; cfg=""; mcfg=""; excludes=(); author_vendors=(); author_models=(); author_providers=(); caller_models=(); caller_providers=(); caller_adapters=()
+role=""; list=0; preset=""; list_presets=0; where=0; lead=0; exclude_lead=0; check=0; vendors=0; cfg=""; mcfg=""; excludes=(); author_vendors=(); author_models=(); author_providers=(); caller_models=(); caller_providers=(); caller_adapters=(); allow_context_separation=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || { echo "delegate-resolve: --config needs a file argument" >&2; usage; exit 2; }
@@ -93,6 +116,7 @@ while [ $# -gt 0 ]; do
               caller_adapters+=("$2"); shift 2 ;;
     --preset) [ $# -ge 2 ] || { echo "delegate-resolve: --preset needs a name" >&2; usage; exit 2; }
               preset="$2"; shift 2 ;;
+    --allow-context-separation) allow_context_separation=1; shift ;;
     --list) list=1; shift ;;
     --list-presets) list_presets=1; shift ;;
     --vendors) vendors=1; shift ;;
@@ -1065,12 +1089,22 @@ if [ "$role_is_self" -eq 0 ]; then
     apply_author_exclusion=1
   fi
 fi
+#
+# Author exclusions live in their own array rather than in `excludes`, because the
+# degraded tier suspends exactly these and must leave a caller's own --exclude
+# standing. `--exclude` is a policy-free "do not use this backend"; suspending it
+# would route to a runtime the caller ruled out.
+author_excludes=()
 if [ "$apply_author_exclusion" -eq 1 ] && [ "${#author_vendors[@]}" -gt 0 ]; then
   for av in "${author_vendors[@]}"; do
     [ -n "$av" ] || { echo "delegate-resolve: --author-vendor cannot be empty" >&2; exit 2; }
-    excludes+=("$av")
+    author_excludes+=("$av")
   done
 fi
+# Flipped only by the context-separation retry below, and only after a cross-vendor
+# pass has already failed. Nothing else may set it: an independence role that has
+# never attempted the cross-vendor chain has not earned the degraded label.
+author_exclusion_suspended=0
 
 # A driver captures evidence for a model role. It is a separate executable,
 # not a provider, and therefore never satisfies vendor, tier, or floor checks.
@@ -1103,11 +1137,14 @@ else
   [ -n "$candidates" ] || candidates="$primary"
 fi
 
-# a candidate is excluded when its provider name OR its vendor is in --exclude.
+# a candidate is excluded when its provider name OR its vendor is in --exclude, or in
+# the author set while the author exclusion is in force.
 excluded() {  # $1=provider
   local p="$1" v x; v="$(cat_val "providers.$p" vendor)"
-  [ "${#excludes[@]}" -gt 0 ] || return 1
-  for x in "${excludes[@]}"; do
+  local -a active=(${excludes[@]+"${excludes[@]}"})
+  [ "$author_exclusion_suspended" -eq 1 ] || active+=(${author_excludes[@]+"${author_excludes[@]}"})
+  [ "${#active[@]}" -gt 0 ] || return 1
+  for x in "${active[@]}"; do
     [ "$x" = "$p" ] && return 0
     [ -n "$v" ] && [ "$x" = "$v" ] && return 0
   done
@@ -1139,8 +1176,15 @@ fi
 req="$(array_val requires "$role")"
 
 set_running_provider "$role_is_self"
-selected=""; selected_model=""; selected_tier=""; selected_effort=""; selected_native=0; only_disabled=1
-while IFS= read -r p; do
+
+# Re-enterable so the context-separation retry walks the SAME chain under the same
+# rules, differing only in whether the author's vendor is excluded. A second,
+# looser copy of this policy would be a place for the two passes to disagree about
+# what a usable route is, and the degraded pass is exactly where that would go
+# unnoticed. Assignments are global; the fatal cases still exit the script.
+select_route() {
+  selected=""; selected_model=""; selected_tier=""; selected_effort=""; selected_native=0; only_disabled=1
+  while IFS= read -r p; do
   [ -n "$p" ] || continue
   # One judgement, this loop's policy. A missing section is fatal here and merely
   # skipped by the probes; "disabled" has to stay distinguishable to keep the exit-4
@@ -1238,7 +1282,33 @@ while IFS= read -r p; do
   selected_effort="$candidate_effort"
   selected_native="$candidate_native"
   break
-done <<< "$candidates"
+  done <<< "$candidates"
+}
+select_route
+
+# What separation this route actually achieved. Empty for a role with no
+# [independence] policy, which claims nothing and therefore reports nothing.
+independence_mode=""
+[ -n "$independence" ] && independence_mode="cross-vendor"
+
+# The degraded tier: a fresh same-vendor session, taken ONLY after the cross-vendor
+# chain came up empty, only when the caller asked for it, and only for an
+# `author_vendor` policy. `all_author_vendors` (judge) is refused because its
+# exclusion is not about correlated blind spots at all: ranking a set that contains
+# your own candidate fails on self-preference, and a fresh session does not fix that.
+if [ -z "$selected" ] && [ "$allow_context_separation" -eq 1 ] &&
+   [ "$independence" = "author_vendor" ] && [ "${#author_excludes[@]}" -gt 0 ]; then
+  author_exclusion_suspended=1
+  select_route
+  if [ -n "$selected" ]; then
+    independence_mode="context-separation"
+    echo "delegate-resolve: no cross-vendor route for role '$role'; falling back to a fresh same-vendor session (INDEPENDENCE=context-separation). Context separation is the proven half of independent review; vendor separation is not. Do not report this as a cross-vendor check." >&2
+  fi
+fi
+if [ -n "$independence" ] && [ "$allow_context_separation" -eq 1 ] &&
+   [ "$independence" != "author_vendor" ] && [ -z "$selected" ]; then
+  echo "delegate-resolve: role '$role' carries an '$independence' policy, which --allow-context-separation cannot degrade: a fresh session does not remove self-preference from a blind ranking." >&2
+fi
 
 if [ -z "$selected" ]; then
   # nothing usable: distinguish "the one provider is switched off" (exit 4) from
@@ -1294,6 +1364,13 @@ dispatch="cli"
 # How many OTHER vendors could still serve an independence role once the authors are
 # excluded. One means the next outage takes independent review with it, and a caller
 # only learns that from a probe it has no reason to run. Say it on the route instead.
+#
+# Counted with the author exclusion RESTORED even on a context-separation route.
+# The question this field answers is "how many vendors could take over from here",
+# and on a degraded route the honest answer is the one that ignores the suspension:
+# 0, which is why the fallback was taken at all. Counting the author's own vendor
+# would report the degraded route as though independence were still available.
+author_exclusion_suspended=0
 alternates=""
 if [ -n "$independence" ]; then
   # Same eligibility the probe applies. Counting a provider the role would reject
@@ -1332,6 +1409,7 @@ echo "ENABLED=true"
 [ -n "$vendor" ] && echo "VENDOR=$vendor"
 [ -n "$binv" ] && echo "BINARY=$binv"
 [ -n "$floor" ] && echo "FLOOR=$floor"
+[ -n "$independence_mode" ] && echo "INDEPENDENCE=$independence_mode"
 [ -n "$alternates" ] && echo "ALTERNATES=$alternates"
 # Repeated fields are authoritative: a consumer recovers each identity without parsing
 # a delimiter, so a vendor name can never be split or a blank component hidden by it.

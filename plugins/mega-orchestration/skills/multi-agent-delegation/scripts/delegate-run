@@ -30,12 +30,13 @@ enforcement_shipped="$here/../../../enforcement.toml"
 # asserts the two agree on every tree shape the pair is expected to survive.
 
 usage() {
-  echo "usage: delegate-run --role <role> (--author-vendor <vendor> | --author-model <id> | --author-provider <name>)... --artifact <worktree|file> --claim <text> [--receipt <file>] [--screenshot <file>]... [--transcript-dir <dir>] [--config <file>] [--models <file>]" >&2
+  echo "usage: delegate-run --role <role> (--author-vendor <vendor> | --author-model <id> | --author-provider <name>)... --artifact <worktree|file> --claim <text> [--receipt <file>] [--screenshot <file>]... [--transcript-dir <dir>] [--allow-context-separation] [--config <file>] [--models <file>]" >&2
   echo "       --transcript-dir retains this dispatch's prompt, review package, and raw provider output under <dir>. Discarded when omitted." >&2
+  echo "       --allow-context-separation lets a review with no reachable cross-vendor route run as a fresh same-vendor session instead. The receipt records independence=context-separation and independent=false, so it does NOT clear the risky-logic Stop gate." >&2
   echo "       MEGAPOWERS_DELEGATE_TIMEOUT bounds the provider dispatch in seconds (default 540, minimum 1; it cannot be disabled and requires timeout(1) or gtimeout(1)). MEGAPOWERS_REVIEW_PACKAGE_BYTES caps the WHOLE review package (default 200000); over it the largest files are named with a snapshot path to read them from, and a change whose mandatory sections alone exceed the cap is refused." >&2
 }
 
-role="" artifact="" claim="" receipt="" cfg="" models="" transcript_dir=""
+role="" artifact="" claim="" receipt="" cfg="" models="" transcript_dir="" allow_context_separation=0
 author_vendors=()
 author_models=()
 author_providers=()
@@ -53,6 +54,7 @@ while [ $# -gt 0 ]; do
     --transcript-dir) [ $# -ge 2 ] || { usage; exit 2; }; transcript_dir="$2"; shift 2 ;;
     --config) [ $# -ge 2 ] || { usage; exit 2; }; cfg="$2"; shift 2 ;;
     --models) [ $# -ge 2 ] || { usage; exit 2; }; models="$2"; shift 2 ;;
+    --allow-context-separation) allow_context_separation=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "delegate-run: unknown argument: $1" >&2; usage; exit 2 ;;
   esac
@@ -227,6 +229,7 @@ for aprov in ${author_providers[@]+"${author_providers[@]}"}; do resolve_args+=(
 # one-shot CLI session, so a native route it could not use is not worth resolving.
 [ -n "$cfg" ] && resolve_args+=(--config "$cfg")
 [ -n "$models" ] && resolve_args+=(--models "$models")
+[ "$allow_context_separation" -eq 1 ] && resolve_args+=(--allow-context-separation)
 set +e
 route="$("$resolver" "${resolve_args[@]}" 2>&1)"
 route_rc=$?
@@ -309,12 +312,31 @@ for author in "${author_vendors[@]}"; do
     exit 2
   }
 done
+# Which separation the resolver says this route achieved. Absent means a resolver
+# predating the field, and the only separation it could have produced is the
+# cross-vendor one, so absent reads as cross-vendor.
+independence_mode="$(route_val INDEPENDENCE)"
+[ -n "$independence_mode" ] || independence_mode="cross-vendor"
+case "$independence_mode" in
+  cross-vendor|context-separation) : ;;
+  *) echo "delegate-run: resolved route reported an unknown INDEPENDENCE value '$independence_mode'" >&2
+     exit 2 ;;
+esac
+# A same-vendor reviewer is fatal unless the ROUTE says it is the degraded tier.
+# The caller's flag is not enough on its own: it authorizes the fallback, it does
+# not assert that the fallback happened. Requiring the resolver's own label keeps
+# a same-vendor route that nobody labeled from passing as a review, which is the
+# failure this check has always existed to stop.
 for author in "${author_vendors[@]}"; do
-  [ "$author" != "$vendor" ] || {
+  if [ "$author" = "$vendor" ] && [ "$independence_mode" != "context-separation" ]; then
     echo "delegate-run: resolver returned author vendor '$vendor' for independent review" >&2
     exit 2
-  }
+  fi
 done
+if [ "$independence_mode" = "context-separation" ] && [ "$allow_context_separation" -ne 1 ]; then
+  echo "delegate-run: resolved route is labeled context-separation but --allow-context-separation was not passed" >&2
+  exit 2
+fi
 
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/megapowers-delegate.XXXXXX")"
 # Held only across the round ledger's read-modify-write. Released here too, so an
@@ -1765,6 +1787,7 @@ jq -n \
   --arg created "$created_at" --argjson authors "$authors_json" \
   --argjson round "$round" --arg base "$subject_base" --arg submodules "$subject_submodules" \
   --argjson result "$(cat "$normalized")" --argjson screenshots "$screens_json" \
+  --arg independence "$independence_mode" \
   '{
     schema:"megapowers.review-receipt.v2",
     role:$role,
@@ -1779,7 +1802,12 @@ jq -n \
     round:$round,
     author_vendors:$authors,
     reviewer:{provider:$provider,vendor:$vendor,model:$model,tier:$tier,effort:$effort},
-    independent:true,
+    # `independent` is the cross-vendor claim, so the degraded tier records false
+    # and the Stop gate on risky logic keeps refusing it without needing to learn
+    # a new field. `independence` says which check actually ran, because "false"
+    # alone cannot distinguish a fresh same-vendor session from no separation at all.
+    independence:$independence,
+    independent:($independence == "cross-vendor"),
     result:$result,
     evidence:{commands:$result.evidence.commands,screenshots:$screenshots},
     created_at:$created
@@ -1795,6 +1823,8 @@ verdict="$(jq -r '.result.verdict' "$receipt")"
 {
   echo "=== VERDICT ==="
   echo "verdict: $verdict"
+  [ "$independence_mode" = "cross-vendor" ] ||
+    echo "independence: $independence_mode (fresh same-vendor session; the cross-vendor check did NOT run, and this receipt does not clear the risky-logic gate)"
   echo "round:   $round (consecutive dispatch $round of role '$role' on '$round_key' without an approve)"
   echo "receipt: $receipt"
   [ -z "$transcript_path" ] || echo "transcript: $transcript_path"

@@ -24,6 +24,12 @@ with evidence, uncertainty, and the exact artifact identity reviewed.
    claim.
 2. Route verification independently from every declared artifact author. If independence
    is unavailable, report a same-family consistency check, not independent verification.
+   `--allow-context-separation` makes that fallback explicit: a fresh same-vendor session
+   is the condition the controlled evidence actually measured, and it is worth running
+   when the alternative is nothing. It is not worth substituting here. This skill exists
+   for the risk class where correlated blind spots are the specific concern, so a
+   context-separation receipt records `independent: false` and does not clear the
+   risky-logic gate. Say the cross-vendor check did not run.
 3. Treat a credible refutation as actionable. The single writer fixes or narrows the
    claim, then verifies the changed artifact again. Keep the receipt bound to the
    artifact identity; it expires after a material change.
