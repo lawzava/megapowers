@@ -10,47 +10,83 @@ license: MIT
 
 Write the test first. Watch it fail. Write minimal code to pass.
 
-**Core principle:** if you didn't watch the test fail, you don't know whether it tests the right thing.
+**Core principle:** if you didn't watch the test fail, you don't know whether
+it tests the right thing.
 
 Follow the letter of these rules and you'll get the spirit of them for free.
 
 ## When to Use
 
-Any change with behavior to assert: new features, bug fixes, refactoring, behavior changes. The exceptions are observable, so apply them yourself without stopping to ask: throwaway prototypes (code you will delete, not ship), generated code, and configuration files with no behavior to assert. Outside those, the thought "I'll skip TDD just this once" is a signal to slow down, not a reason to skip.
+Any change with behavior to assert: new features, bug fixes, refactoring,
+behavior changes. The exceptions are observable, so apply them yourself without
+stopping to ask: throwaway prototypes (code you will delete, not ship),
+generated code, and configuration files with no behavior to assert. Outside
+those, the thought "I'll skip TDD just this once" is a signal to slow down, not
+a reason to skip.
 
 ## The Core Rule
 
-Production code follows a failing test. Write the test, watch it fail, then write the code.
+Production code follows a failing test. Write the test, watch it fail, then
+write the code.
 
-If you wrote implementation code before the test, delete it and start fresh from the test. Don't keep it as reference and don't adapt it while writing tests; code you keep around will shape the test toward what you already built, which is the thing TDD is meant to prevent. The hours already spent are spent either way; the real choice is between a rewrite you can trust and code you can't. Reimplement from the test.
+If you wrote implementation code before the test, delete it and start fresh
+from the test. Don't keep it as reference and don't adapt it while writing
+tests; code you keep around will shape the test toward what you already built,
+which is the thing TDD is meant to prevent. The hours already spent are spent
+either way; the real choice is between a rewrite you can trust and code you
+can't. Reimplement from the test.
 
 ## Red-Green-Refactor
 
-1. Red: write one minimal failing test that shows what should happen. One behavior per test, a name that describes that behavior, real code rather than mocks wherever possible. A test that exercises a mock proves only the mock.
-2. Verify red: run the test and confirm it fails for the expected reason, because the feature is missing. If it passes, it is testing existing behavior; fix the test. If it errors (typo, missing import), fix the error and re-run until it fails cleanly. Don't skip this step.
-3. Green: write the simplest code that makes the test pass. No speculative options, no features the test doesn't demand, and no tidying of surrounding code the task didn't ask for.
+1. Red: write one minimal failing test that shows what should happen. One
+   behavior per test, a name that describes that behavior, real code rather
+   than mocks wherever possible. A test that exercises a mock proves only the
+   mock.
+2. Verify red: run the test and confirm it fails for the expected reason,
+   because the feature is missing. If it passes, it is testing existing
+   behavior; fix the test. If it errors (typo, missing import), fix the error
+   and re-run until it fails cleanly. Don't skip this step.
+3. Green: write the simplest code that makes the test pass. No speculative
+   options, no features the test doesn't demand, and no tidying of surrounding
+   code the task didn't ask for.
 4. Verify green with the smallest focused test that proves the current
    behavior. Run the project's canonical suite at task, milestone, or branch
    boundaries and before a completion claim, not after every red-green edit. A
    focused pass is iteration evidence, not whole-project closure. If the test
    fails, fix the code, not the test.
-5. Refactor: remove duplication, improve names, extract helpers, staying green throughout. Add no behavior, and leave code the change didn't touch alone; a bug fix does not need surrounding cleanup.
+5. Refactor: remove duplication, improve names, extract helpers, staying green
+   throughout. Add no behavior, and leave code the change didn't touch alone; a
+   bug fix does not need surrounding cleanup.
 6. Repeat: next failing test for the next behavior.
 
 ## When Skipping Looks Reasonable
 
-Every argument for code-first ends the same way: a test written after the code passes immediately, and passing immediately proves nothing. You never watched it catch anything, and it is shaped by what you built rather than what was required. Exploring first is fine; treat the spike as throwaway, delete it, and start from the test. A test that is hard to write is design feedback, so simplify the interface rather than skip it.
+Every argument for code-first ends the same way: a test written after the code
+passes immediately, and passing immediately proves nothing. You never watched
+it catch anything, and it is shaped by what you built rather than what was
+required. Exploring first is fine; treat the spike as throwaway, delete it, and
+start from the test. A test that is hard to write is design feedback, so
+simplify the interface rather than skip it.
 
 ## Bug Fixes
 
-Fix bugs with a test, not without one. Write a failing test that reproduces the bug, then follow the cycle; the test proves the fix and guards against regression. If the cause is still unknown, diagnose with `megapowers:systematic-debugging` first, then return here.
+Fix bugs with a test, not without one. Write a failing test that reproduces the
+bug, then follow the cycle; the test proves the fix and guards against
+regression. If the cause is still unknown, diagnose with
+`megapowers:systematic-debugging` first, then return here.
 
 ## Testing Anti-Patterns
 
-When adding mocks or test utilities, read [testing-anti-patterns.md](testing-anti-patterns.md) first. It covers testing mock behavior instead of real behavior, adding test-only methods to production classes, and mocking without understanding dependencies.
+When adding mocks or test utilities, read
+[testing-anti-patterns.md](testing-anti-patterns.md) first. It covers testing
+mock behavior instead of real behavior, adding test-only methods to production
+classes, and mocking without understanding dependencies.
 
 ## Summary
 
-Production code has a test that existed and failed first. Anything else isn't TDD. Beyond the observable exceptions above, skip the process only with your human partner's agreement.
+Production code has a test that existed and failed first. Anything else isn't
+TDD. Beyond the observable exceptions above, skip the process only with your
+human partner's agreement.
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.

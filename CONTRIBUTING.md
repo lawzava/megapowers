@@ -1,7 +1,7 @@
 # Contributing
 
-Contributions are welcome. The bar is the one the repo holds itself to: a
-claim of effect needs a run behind it.
+Contributions are welcome. The bar is the one the repo holds itself to: a claim
+of effect needs a run behind it.
 
 ## Before you open a PR
 
@@ -23,8 +23,9 @@ claim of effect needs a run behind it.
    Trims are welcome and do not need to clear the bar that additions do.
    Guidance written for an older model generation degrades output on a newer
    one, so a PR that deletes a rule the model now follows by default is a fix,
-   not a regression. `plugins/megapowers/skills/writing-skills/de-prescription-rubric.md`
-   is the standard for what comes out and what stays.
+   not a regression.
+   `plugins/megapowers/skills/writing-skills/de-prescription-rubric.md` is the
+   standard for what comes out and what stays.
 
 3. If you add an eval oracle, mutation-test it: feed it a deliberately broken
    artifact and confirm it fails. An oracle that cannot fail is a no-op, and
@@ -35,9 +36,9 @@ claim of effect needs a run behind it.
    suites), and keep it fail-open: any error or uncertainty must allow.
 
 5. Keep changes portable. Skills must work as plain `SKILL.md` on Claude Code,
-   Codex, and OpenCode; harness-specific enforcement (hooks) is
-   labeled by harness and fails open by absence elsewhere. Plugin manifests ship
-   the supported Claude Code and Codex lifecycle hooks; the other harnesses are
+   Codex, and OpenCode; harness-specific enforcement (hooks) is labeled by
+   harness and fails open by absence elsewhere. Plugin manifests ship the
+   supported Claude Code and Codex lifecycle hooks; the other harnesses are
    skills-only.
 
 ## Conventions
@@ -51,11 +52,11 @@ claim of effect needs a run behind it.
 
 ## Releases
 
-Write the `## X.Y.Z - ` CHANGELOG.md entry, then run `scripts/release.sh X.Y.Z`.
-It stamps every plugin manifest and the public install pins in README.md,
-docs/agent-install.md, and docs/setup.md; `scripts/validate.sh` checks the
-result against the changelog. After the signed tag is public, run the strict
-fresh-install gate against that exact remote ref:
+Write the `## X.Y.Z - ` CHANGELOG.md entry, then run `scripts/release.sh
+X.Y.Z`. It stamps every plugin manifest and the public install pins in
+README.md, docs/agent-install.md, and docs/setup.md; `scripts/validate.sh`
+checks the result against the changelog. After the signed tag is public, run
+the strict fresh-install gate against that exact remote ref:
 
 ```bash
 evals/studies/install-smoke/run-smoke.sh \

@@ -18,8 +18,8 @@ separate ownership and review. A selected workflow grants no authority to
 commit or change Git policy.
 
 Execute tasks in order, invoke any named skills, and use the plan checkboxes as
-the durable progress record. Check off a task only after its stated verification
-passes. Resume from the plan, not recollection.
+the durable progress record. Check off a task only after its stated
+verification passes. Resume from the plan, not recollection.
 
 When verification fails, investigate and repair within the approved scope. Stop
 and report a real blocker, such as a missing dependency or an unresolved plan
@@ -32,4 +32,5 @@ integration process. If it has no stronger process, use
 `megapowers:finishing-a-development-branch`. Completion needs the evidence
 required by `megapowers:verification-before-completion`.
 
-Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent), https://github.com/obra/superpowers.
+Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
+https://github.com/obra/superpowers.

@@ -9,8 +9,8 @@ license: MIT
 Reduce uncertainty until the work is ready for design or planning. Wayfinding
 is discovery and decision resolution, not delivery.
 
-Runtime invocation metadata stays outside this portable body in an
-[adapter sidecar](agents/openai.yaml).
+Runtime invocation metadata stays outside this portable body in an [adapter
+sidecar](agents/openai.yaml).
 
 ## Local contract
 
@@ -45,8 +45,8 @@ without a tracker.
   be designed without inventing missing facts. Hand off to
   `megapowers:brainstorming` when installed.
 - **Plan-ready:** plan-ready is valid only when an approved design already
-  exists and the remaining uncertainty no longer prevents honest
-  decomposition. Hand off to `megapowers:writing-plans` when installed.
+  exists and the remaining uncertainty no longer prevents honest decomposition.
+  Hand off to `megapowers:writing-plans` when installed.
 - **Blocked:** name the missing external evidence, its owner, and what would
   unblock the current frontier. Leave the map ready to resume.
 

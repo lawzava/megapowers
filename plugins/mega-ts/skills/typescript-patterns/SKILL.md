@@ -30,8 +30,8 @@ export function area(shape: Shape): number {
 ```
 
 Derive static types from a validator or literal configuration when the project
-already has a single source of truth. Otherwise keep the boundary parser and its
-type close enough to change together.
+already has a single source of truth. Otherwise keep the boundary parser and
+its type close enough to change together.
 
 ## Errors
 
@@ -46,19 +46,21 @@ using them.
 Return, await, or deliberately observe promises whenever their outcome affects
 correctness. Some runtimes expose a lifecycle hook for intentional background
 work, such as `ctx.waitUntil`. Use that hook and attach error reporting; an
-unattached floating promise remains a defect. Do not rely on `await` inside `forEach`; use `for...of`
-for ordered work or map into promises for concurrent work.
+unattached floating promise remains a defect. Do not rely on `await` inside
+`forEach`; use `for...of` for ordered work or map into promises for concurrent
+work.
 
 ```ts
 const [profile, settings] = await Promise.all([loadProfile(id), loadSettings(id)])
 ```
 
 Start work concurrently only when it is independent, desired, and bounded.
-Choose `Promise.all` for fail-fast work, `Promise.allSettled` when every outcome
-is required, and a limiter for large fan-out.
+Choose `Promise.all` for fail-fast work, `Promise.allSettled` when every
+outcome is required, and a limiter for large fan-out.
 
-Test domain behavior with the repository's selected runner and test conventions.
-Avoid adding a validation, result, or lint library solely to follow this skill.
+Test domain behavior with the repository's selected runner and test
+conventions. Avoid adding a validation, result, or lint library solely to
+follow this skill.
 
 ## When to use this skill
 
