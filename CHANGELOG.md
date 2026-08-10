@@ -5,6 +5,68 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.10.1 - 2026-08-10
+
+Independence had one reachable alternate vendor, which 0.10.0 recorded as a
+known limitation and named Kimi K3 as the candidate to fix. A fifteen-model
+review eval settled the candidacy and two more besides, so the fallback chain
+now has four vendors in it instead of one.
+
+The eval: two code-review fixtures carrying thirteen planted defects between
+them, plus three implementation tasks with hidden tests, same prompt and same
+diffs for every model. Recall out of 13 was claude-opus-5 13, qwen3.8-max 13,
+kimi-k3 13, deepseek-v4-pro 12, gpt-5.6-sol 12, grok-4.5 11. The three
+implementation tasks saturated: every frontier model passed every hidden test,
+including exactly-once execution under 24-way concurrency and crash-safe
+writes. Nothing here is a claim about writing code, only about review recall,
+which was the only thing that separated these models.
+
+Two results outlived the ranking. Harness moved scores more than model choice
+or reasoning effort did: gpt-5.6-sol hung on three of four opencode runs and ran
+clean on codex, and claude-opus-5 ran 3x faster in Claude Code than in opencode
+at identical recall, while raising effort to xhigh changed one model of four.
+And that effect does not generalise, since running the opencode-hosted models
+inside codex measured worse. Pin the channel before reaching for a bigger model.
+
+### Added
+
+- `qwen` and `moonshot` providers, hosted by the opencode harness, enabled by
+  default. They earn rows under the rule that already governed the table: a
+  provider is a harness someone runs, not a model with an endpoint. Independence
+  goes from `ALTERNATES=1` to `ALTERNATES=3`, so one vendor outage no longer
+  takes cross-vendor review with it.
+- `deepseek` and `xai` providers, shipped `enabled = false`. Both carry complete
+  tiers, measurements and notes; one line in an override layer routes them. They
+  wait because the always-loaded session catalog is clamped to 1024 bytes and
+  five providers with prose do not fit, which is a budget decision rather than a
+  quality one.
+- `mega-orchestration:configuring-model-routes`, which matches the shipped
+  catalog to what a machine can actually reach and writes the difference to the
+  user's own override layer, and `scripts/probe-routes` behind it: a read-only,
+  offline probe reporting harness binaries, catalogued models each harness
+  lists, and the resulting `ALTERNATES`. It distinguishes a failed model listing
+  from an empty one, so a harness that cannot answer keeps its routes instead of
+  losing them.
+- A "Model routes" section in `docs/setup.md`, including how to enable the two
+  providers that ship disabled.
+
+### Changed
+
+- `upgrading-megapowers` checks routing against the machine before its approval
+  gate. A provider the new catalog routes to but this machine cannot reach is
+  now an upgrade finding rather than a silent regression. The upgrade never
+  edits routing itself; it hands that to `configuring-model-routes`.
+- `gpt-5.6-sol` is pinned to the codex channel. Driven through opencode it hung
+  on three of four review runs, roughly 36 minutes each producing a preamble and
+  no findings, and the run that completed scored 5 of 13 against the 12 it
+  scores natively.
+- `gpt-5.6-terra` is documented as sol's fast fallback rather than a peer: one
+  finding behind across the fixtures, missing the wrapped-error class sol
+  catches, at 2.4x sol's speed.
+- The session catalog budget moved from 900 to 980 bytes in both guards, still
+  44 bytes inside the hook's own 1024-byte clamp, because the catalog went from
+  two vendors to four.
+
 ## 0.10.0 - 2026-08-09
 
 Alignment pass against four independently compiled August 2026 harness/model
