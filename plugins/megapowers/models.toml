@@ -1,5 +1,5 @@
 # megapowers model catalog: what orchestrates, what models exist, what each is for.
-# Last reviewed: 2026-08-09 (model IDs age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-08-10 (model IDs age; scripts/check-freshness.sh guards this date).
 # Edit an OVERRIDE LAYER, not this shipped file: a project .megapowers/models.toml or
 # user ~/.config/megapowers/models.toml wins per key and survives plugin updates.
 # Two identical copies ship (plugins/megapowers/models.toml and
@@ -18,6 +18,10 @@
 #   claude-sonnet-5   strong: in-session teammate work and cheap execution
 #   gpt-5.6-sol       frontier: plan review, code review, verify, judge, research
 #   gpt-5.6-terra     strong: scoped implementation
+#   qwen3.8-max       frontier: third-vendor review and judgement
+#   kimi-k3           frontier: fourth-vendor review and judgement
+#   deepseek-v4-pro   frontier: cheap review screen
+#   grok-4.5          strong: scoped implementation, volume execution
 
 # --- Legacy lead fallback ---
 # delegate-resolve --lead prints it. Artifact reviews use --author-vendor rather
@@ -131,11 +135,129 @@ capabilities = ["code", "vision", "computer_use"]
 reference = "references/providers/codex.md"
 use     = "critic: plan and code review, verify, judge, research, computer use, scoped impl"
 notes   = "Native subagents inside Codex; codex-plugin-cc from Claude Code; codex exec / SDK / codex mcp-server elsewhere. Channel mechanics: see the reference file."
+# Run sol on the codex channel and nowhere else. Driven through opencode instead it
+# hung on three of four review runs, ~36 minutes each with a preamble and no findings,
+# and the one run that completed scored 5 of 13 against the 12 it scores natively.
+# This is the sharpest harness effect measured on 2026-08-09 and the reason the
+# channel is pinned rather than left to whatever the caller has installed.
 
 # sol reviews and researches; terra executes what the lead scoped for it.
+# Terra is sol minus roughly one finding per review: on the 2026-08-09 fixtures below
+# it scored 11 of 13 against sol's 12, missing the wrapped-error class (%v where %w
+# was meant) that sol catches, at 2.4x sol's speed. Treat it as sol's fast fallback,
+# not as a peer. gpt-5.6-luna scored 9 of 13 and is not routed.
 [providers.codex.tiers]
 frontier = "gpt-5.6-sol"
 strong   = "gpt-5.6-terra"
+
+# --- Third, fourth and fifth vendors, hosted by the opencode harness ---
+# These earn rows under the same rule the delegates.toml fallbacks section states:
+# a provider is a harness someone runs, not a model with an endpoint. The harness
+# here is opencode, already an adapter above, holding its own stored login exactly
+# like the claude and codex CLIs do. megapowers wires no base URL and no token for
+# them; `opencode` is the binary probed and opencode owns the credential. A model
+# these vendors publish that opencode cannot reach is not reachable here either.
+#
+# vendor is keyed to the model's actual maker, not to the harness, because vendor
+# is what the independence roles resolve against. Routing anthropic-authored work
+# to two opencode-hosted providers is two genuine second opinions; routing it to
+# one "opencode" provider twice would not be.
+#
+# Evidence, 2026-08-09/10: fifteen models over two code-review fixtures carrying
+# thirteen planted defects between them, same prompt, same diffs, plus three
+# implementation tasks with hidden tests. Recall out of 13: claude-opus-5 13,
+# qwen3.8-max 13, kimi-k3 13, deepseek-v4-pro 12, gpt-5.6-sol 12 (codex only),
+# grok-4.5 11. The three implementation tasks saturated, every frontier model
+# passed every hidden test including exactly-once-under-concurrency and crash-safe
+# writes, so nothing here is an argument about writing code. It is an argument
+# about review recall, which is the only thing that separated these models.
+#
+# HARNESS PINNING, and it does not generalise the way the codex row does. Running
+# these four inside codex against OpenRouter works but measures worse: kimi-k3 fell
+# 13 to 11, deepseek-v4-pro 12 to 9, qwen3.8-max held at 13 but took 2.6x longer.
+# Only grok-4.5 gained, by one, which is inside the noise. A native harness helps
+# the model it was co-trained with and hurts a third-party model pushed through a
+# rival vendor's harness. Keep these on opencode.
+#
+# Effort is deliberately medium. Raising it bought nothing measurable: kimi-k3
+# scored the same on default, xhigh and max, and the flag did not reach it at all
+# below max. Roles that adjudicate still get high from delegates.toml [role_efforts].
+[providers.qwen]
+effort  = "medium"
+efforts = ["low", "medium", "high"]
+vendor  = "alibaba"
+adapter = "opencode"
+binary  = "opencode"
+channel = "opencode-native"
+default_tier = "frontier"
+capabilities = ["code"]
+reference = "references/providers/opencode.md"
+use     = "third-vendor review"
+notes   = "Highest-recall non-Anthropic route measured. Only the frontier tier is measured; no strong-tier claim is made."
+
+[providers.qwen.tiers]
+frontier = "qwen3.8-max"
+
+[providers.moonshot]
+effort  = "medium"
+efforts = ["low", "medium", "high", "xhigh", "max"]
+vendor  = "moonshot"
+adapter = "opencode"
+binary  = "opencode"
+channel = "opencode-native"
+default_tier = "frontier"
+capabilities = ["code"]
+reference = "references/providers/opencode.md"
+use     = "fourth-vendor review"
+notes   = "Ties opus on review recall. Consistently lists what it checked and cleared, which is what makes its misses cheap to audit."
+
+# k2.7-code carries the strong tier on measurement, not on its name: it scored 10 of
+# 13 against k3's 13, and produced a full review in 21s.
+[providers.moonshot.tiers]
+frontier = "kimi-k3"
+strong   = "kimi-k2.7-code"
+
+# enabled=false is a session-block budget decision, not a quality one: the rendered
+# catalog is clamped to 1024 bytes and five providers with prose do not fit. deepseek
+# and xai are cost optimisations rather than independence routes, so they are the two
+# that wait. Set `enabled = true` in an override layer to route them; every tier,
+# measurement and note they need is already here.
+[providers.deepseek]
+enabled = false
+effort  = "medium"
+efforts = ["low", "medium", "high"]
+vendor  = "deepseek"
+adapter = "opencode"
+binary  = "opencode"
+channel = "opencode-native"
+default_tier = "frontier"
+capabilities = ["code"]
+reference = "references/providers/opencode.md"
+use     = "cheap review screen"
+notes   = "12 of 13 for under three cents across both fixtures. Cheap enough to stop being a delegation decision."
+
+# flash is not a cheaper pro, it is a worse model at the same price: 9 of 13 against
+# pro's 12, for 2.5 cents against 2.8. The tier split is real, the saving is not.
+[providers.deepseek.tiers]
+frontier = "deepseek-v4-pro"
+strong   = "deepseek-v4-flash"
+
+[providers.xai]
+enabled = false
+effort  = "medium"
+efforts = ["low", "medium", "high", "xhigh"]
+vendor  = "xai"
+adapter = "opencode"
+binary  = "opencode"
+channel = "opencode-native"
+default_tier = "strong"
+capabilities = ["code"]
+reference = "references/providers/opencode.md"
+use     = "volume execution"
+notes   = "Weakest reviewer of the routed set at 11 of 13, and the fastest writer: it cleared all three implementation fixtures in 6m05s for $0.61, against muse-1.2's 8m29s and $0.81. grok-build-0.1, the coding-specialist variant, scored 9 and is not routed."
+
+[providers.xai.tiers]
+strong = "grok-4.5"
 
 # --- Defaults: cross-cutting rules ---
 [defaults]

@@ -1,5 +1,5 @@
 # megapowers delegate routing: which provider handles which role, and run presets.
-# Last reviewed: 2026-08-09 (routes age; scripts/check-freshness.sh guards this date).
+# Last reviewed: 2026-08-10 (routes age; scripts/check-freshness.sh guards this date).
 # The model CATALOG (lead, tiers, providers, floor) lives in models.toml at the
 # plugin root, layered the same way: project .megapowers/models.toml, then user
 # ~/.config/megapowers/models.toml, then the shipped copy. Edit an override layer,
@@ -26,6 +26,18 @@ visual_verify = ["vision"]
 # from a different vendor, so spending a third-party call on it is waste. Such a
 # route resolves with DISPATCH=native, meaning run it on the harness's own subagent
 # or workflow surface; shelling out to your own CLI is the wrong instrument.
+#
+# `self` survived the 2026-08-09 eval on its independence argument, and it is now the
+# one row with a live cost argument against it. The three implementation fixtures
+# SATURATED: every frontier model passed every hidden test, including exactly-once
+# execution under 24-way concurrency, crash-safe writes, and expiry driven by an
+# injected clock. Quality did not separate anyone, so what is left is speed and
+# spend, and there xai/grok-4.5 cleared all three in 6m05s for $0.61 against
+# claude-sonnet-5's tier position. Routing small_impl at a cheap outside provider
+# would be a cost decision, not an independence one, which is exactly the shape of
+# the existing visual and browser_test rows. Left as `self` because changing it is a
+# design call about who owns scoped writes, not a measurement question. The
+# measurement is done and it says the cheaper route is good enough.
 #
 # visual and browser_test are the third case: they name a provider for capability
 # and cost, not independence, so they DO leave the caller's vendor without an
@@ -56,58 +68,81 @@ council_member = "codex"     # council-adjudication: independent answer + blind 
 # smuggle a third-party call into work that never needed one.
 #
 # Chain length is not the same as reachable length. Claude is the lead's vendor, so
-# --author-vendor anthropic skips it, which leaves anthropic-authored work exactly
-# ONE reachable alternate: codex. Independence is therefore SINGLE-ROUTE, and the
-# next outage takes CROSS-VENDOR review with it. A resolved independence route
-# reports this as ALTERNATES=1, which is the number to watch; `<role> --vendors`
-# printing fewer than two says the same thing before dispatch.
+# --author-vendor anthropic skips it; until 2026-08-10 that left anthropic-authored
+# work exactly ONE reachable alternate and independence was single-route. It is now
+# four (codex, qwen, moonshot, deepseek), so a single vendor outage no longer takes
+# cross-vendor review with it. ALTERNATES on a resolved independence route is still
+# the number to watch, and `<role> --vendors` printing fewer than two still says the
+# same thing before dispatch; the difference is that the healthy number is no longer
+# uncomfortably close to the failing one.
 #
-# What survives the outage is context separation, which is the half with a
+# Reachable still means installed. All four alternates resolve through two binaries,
+# `codex` and `opencode`, so a box with neither is back to ALTERNATES=0 no matter how
+# long this chain reads. Count binaries, not rows.
+#
+# What survives an outage of all of them is context separation, the half with a
 # controlled result behind it: `delegate-resolve --allow-context-separation` falls
 # back to a fresh same-vendor session, labeled INDEPENDENCE=context-separation and
 # recorded as independent=false. That keeps ordinary review happening while leaving
 # the risky-logic gate refusing anything but a real cross-vendor pass. It is a
-# narrower claim, not a replacement, so the third-vendor argument below still
-# stands.
+# narrower claim, not a replacement.
 #
-# A third vendor is the fix and it is deliberately not in this table. Supported
-# providers are the harnesses this repo targets, and a provider earns a row by being
-# a harness someone runs, not by being a model with an endpoint. Adding one means
-# adding a harness, not wiring a base URL and a token.
+# RESOLVED 2026-08-10: the third vendor landed, and so did a fourth and a fifth.
+# The rule that kept them out is unchanged and is what let them in: a provider earns
+# a row by being a harness someone runs, not by being a model with an endpoint. The
+# harness is opencode, which holds its own stored login exactly as the claude and
+# codex CLIs do. megapowers still wires no base URL and no token. A hosted model
+# reached only by pointing a base URL at somebody else's compatible proxy still does
+# NOT qualify, because that borrows a scaffold rather than bringing one.
 #
-# Candidate: Moonshot's official Kimi Code CLI (https://www.kimi.com/code/docs/)
-# running Kimi K3. Moonshot supplies the missing third vendor, but it earns a row
-# only after the CLI is installed and authenticated, delegate-run has a safe
-# read-only adapter with machine-checked verdict extraction, and a repo role eval
-# clears the ship floor. Until then ALTERNATES=1 is the honest result.
+# qwen, moonshot and deepseek now carry rows in models.toml, so anthropic-authored
+# work resolves to ALTERNATES=4 rather than 1 and the next codex outage no longer
+# takes cross-vendor review with it. `--allow-context-separation` stays as the
+# degraded path, but it should now be rare enough to be a smell.
 #
-# What the candidate has going for it, and what it has to clear, as of 2026-08-09.
-# For: K3 is the strongest open-weight position measured, Artificial Analysis
-# index 60 against Opus 5's 63, with downloadable weights, and Moonshot ships a
-# real CLI rather than an endpoint, which is what this table requires.
-# Against, and these are the acceptance bar rather than trivia:
-#   - Throughput. ~41 tok/s, near the middle of AA's speed field. A review role is
-#     latency-tolerant, so this disqualifies it as a writer long before a reviewer.
-#   - Verbosity. High output volume per task, which lands on the review package cap
-#     and on the verdict extraction, not on quality.
-#   - Session fragility. Vendor-documented breakage when the model changes
-#     mid-session without the full thinking history. A one-shot read-only review
-#     never switches models mid-session, so the adapter must keep it that way.
-#   - Capacity. Launch-week saturation under load. An independence route that
-#     returns 429 under pressure is worse than a declared ALTERNATES=1, because it
-#     fails at exactly the moment the review is wanted. Verify quota stability
-#     before the row lands, not after.
-# A hosted open-weight model reached only by pointing a base URL at an
-# Anthropic-compatible proxy (GLM-5.2 and similar) does NOT qualify, by the same
-# rule stated above: that is a model with an endpoint, not a harness someone runs,
-# and it borrows another vendor's scaffold rather than bringing an independent one.
+# The acceptance bar was a repo role eval, and it ran: fifteen models over two
+# code-review fixtures carrying thirteen planted defects between them, plus three
+# implementation tasks with hidden tests. Recall out of 13: opus-5 13, qwen3.8-max
+# 13, kimi-k3 13, deepseek-v4-pro 12, gpt-5.6-sol 12, grok-4.5 11. Every routed
+# model cleared the ship floor. Two results are load-bearing beyond the ranking:
+#   - Harness moved scores more than model choice or reasoning effort did. sol hung
+#     on three of four opencode runs and ran clean on codex; opus ran 3x faster in
+#     Claude Code than in opencode at identical recall. Meanwhile raising effort to
+#     xhigh changed one model of four measurably, and kimi-k3 ignored the flag
+#     entirely. Pin the channel before reaching for a bigger model or more effort.
+#   - The effect does not generalise across vendors. Running the opencode-hosted
+#     four inside codex measured WORSE (kimi-k3 13 to 11, deepseek-v4-pro 12 to 9,
+#     qwen3.8-max flat but 2.6x slower). A native harness helps the model it was
+#     co-trained with and hurts a third-party model pushed through a rival's.
+#
+# The acceptance bar that gated K3 on 2026-08-09 is worth re-applying to the next
+# candidate, so here is how it closed. Throughput and capacity cleared: 185 to 238s
+# per review, no 429s across thirty-plus runs. Verbosity held, and turned out to be
+# a feature: k3 consistently lists what it checked and cleared, which shortens the
+# audit rather than lengthening it. Session fragility was never exercised, because
+# these are one-shot read-only reviews that do not switch models mid-session, and
+# the adapter must keep it that way. Moonshot's own Kimi Code CLI would still be a
+# better home than opencode if someone installs it; that is now an upgrade to an
+# existing row rather than a blocker on a missing one.
+#
+# Caveat carried forward: n=1 per cell and two fixtures. Building the SECOND fixture
+# reversed the ranking for grok-4.5 and glm-5.2, which says two is still too few.
+# Almost every gap in the numbers above is one finding wide. Re-run before trusting
+# a one-item difference, and do not re-order this table on one.
+# Chain order is measured recall, then cost, with claude last because it is the
+# lead's vendor and gets skipped for anything the lead authored. codex stays first:
+# it ties qwen and k3 within one finding and it is the only alternate that is both a
+# different vendor AND a different runtime, which is worth more than the finding it
+# costs given how much harness turned out to matter. visual_verify keeps a short
+# chain because qwen, moonshot and deepseek declare no `vision` capability and
+# [requires] filters them out anyway.
 [fallbacks]
-plan_review    = ["codex", "claude"]
-code_review    = ["codex", "claude"]
+plan_review    = ["codex", "qwen", "moonshot", "deepseek", "claude"]
+code_review    = ["codex", "qwen", "moonshot", "deepseek", "claude"]
 visual_verify  = ["codex", "claude"]
-verify         = ["codex", "claude"]
-judge          = ["codex", "claude"]
-council_member = ["codex", "claude"]
+verify         = ["codex", "qwen", "moonshot", "deepseek", "claude"]
+judge          = ["codex", "qwen", "moonshot", "deepseek", "claude"]
+council_member = ["codex", "qwen", "moonshot", "deepseek", "claude"]
 
 # Role policy selects the model tier and reasoning effort. Provider defaults in
 # the catalog cover the lead and anything a role leaves unset. Review and

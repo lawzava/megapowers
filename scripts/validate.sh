@@ -325,10 +325,13 @@ if [[ -f $skfile && -x $session_hook ]]; then
   hook_bytes="$(byte_len "$hook_context")"
   catalog_block="$(MODELS_TOML="plugins/megapowers/models.toml" plugins/megapowers/hooks/render-model-catalog 2>/dev/null || true)"
   catalog_bytes="$(byte_len "$catalog_block")"
-  if [[ -n $catalog_block ]] && (( catalog_bytes <= 900 )); then
-    ok "session-start catalog block within 900B (${catalog_bytes}B)"
+  # 980, raised from 900 on 2026-08-10 with the catalog's growth from two vendors to
+  # four. Kept in step with plugins/megapowers/hooks/tests/render-model-catalog.test.sh
+  # and 44B inside the hook's own 1024B clamp.
+  if [[ -n $catalog_block ]] && (( catalog_bytes <= 980 )); then
+    ok "session-start catalog block within 980B (${catalog_bytes}B)"
   else
-    bad "session-start catalog block empty or over 900B (${catalog_bytes}B)"
+    bad "session-start catalog block empty or over 980B (${catalog_bytes}B)"
   fi
   always_total=$((desc_sum + hook_bytes))
   if [[ -n $hook_context ]] && (( always_total <= ALWAYS_MAX )); then
