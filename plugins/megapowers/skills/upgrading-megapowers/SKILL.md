@@ -39,6 +39,15 @@ is optional until explicitly selected. Exclude a plugin overlapping any visible
 component, and do not install both registrations simultaneously; propose an
 explicit migration instead.
 
+An upgrade can change the shipped model catalog, so check routing against this
+machine rather than assuming it still resolves. Run mega-orchestration's
+`probe-routes` and compare: a provider the new catalog routes to but this
+machine cannot reach is an upgrade finding, not a silent regression, and so is a
+newly shipped provider that is reachable here but disabled. Report both with the
+`ALTERNATES` count. Hand any resulting configuration change to
+`mega-orchestration:configuring-model-routes`, which writes the user's own
+override layer; an upgrade never edits routing on the user's behalf.
+
 Before any write, request one summarized approval covering targets, sources,
 scopes, preserved pins, selected additions, expected writes, restart needs, and
 verification. Read-only inspection needs no approval.

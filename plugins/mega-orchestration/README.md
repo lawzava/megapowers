@@ -22,6 +22,11 @@ config file, so swapping a backend is an edit, not a rewrite.
   (a separately invoked model or CLI that returns results), plus
   `scripts/delegate-resolve` to resolve a role and `scripts/delegate-run` to
   execute independent reviews with structured, subject-bound receipts.
+- `configuring-model-routes`: match the shipped catalog to what this machine can
+  actually reach, then write the difference to the user's own override layer.
+  Backed by `scripts/probe-routes`, a read-only offline probe that reports which
+  harness binaries exist, which catalogued models they list, and how many
+  cross-vendor alternates an independence role would get.
 - `best-of-n`: generate N independent candidates, select by an executable
   oracle first and a blind judge second. Selection, never averaging.
 - `cross-model-verification`: verify risky work with a different-vendor model

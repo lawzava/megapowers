@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# probe-routes — report which catalogued harnesses and models this machine can
+# actually reach, and optionally suggest an override layer that matches.
+#
+# Usage: probe-routes [--suggest]
+#
+# Read-only and offline by design. It runs `command -v` per harness and reads each
+# harness's own local model listing; it opens no sockets, spends no tokens, and
+# writes no files. That matters because the thing it is checking is often broken
+# auth, and a probe that needs working auth to report broken auth is useless.
+#
+# It cannot see everything. A binary on PATH with an expired login, a model gated
+# behind an account flag, or a provider out of quota all look reachable here. The
+# probe answers "is this configured", not "will this respond"; only a real call
+# answers the second, and `delegate-resolve <role> --vendors` is the thing to run
+# before trusting a route in anger.
+#
+# Consumers: mega-orchestration:configuring-model-routes drives the interactive
+# setup from this output, and megapowers:upgrading-megapowers calls it to notice
+# when an upgrade brought routes the user cannot reach.
+set -u
+
+suggest=0
+for a in "$@"; do
+  case "$a" in
+    --suggest) suggest=1 ;;
+    -h|--help) printf 'usage: probe-routes [--suggest]\n'; exit 0 ;;
+    *) printf 'probe-routes: unknown option %s\nusage: probe-routes [--suggest]\n' "$a" >&2; exit 2 ;;
+  esac
+done
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CATALOG="${MODELS_TOML:-$HERE/../../../models.toml}"
+
+# Catalogued providers, as "provider|vendor|binary|model[,model...]". Kept as a
+# literal table rather than parsed out of models.toml because the probe has to
+# work when the catalog is the thing being replaced, and because a wrong answer
+# here is worse than a stale one: the user is about to paste the result into
+# their config. scripts/tests/probe-routes.test.sh pins it against the catalog.
+CATALOGUED='claude|anthropic|claude|claude-opus-5,claude-sonnet-5
+codex|openai|codex|gpt-5.6-sol,gpt-5.6-terra
+qwen|alibaba|opencode|qwen3.8-max
+moonshot|moonshot|opencode|kimi-k3,kimi-k2.7-code
+deepseek|deepseek|opencode|deepseek-v4-pro,deepseek-v4-flash
+xai|xai|opencode|grok-4.5'
+
+# Model listings are per harness and cached by the harness itself. `unknown` is a
+# distinct answer from `none`: a listing that failed must never be read as an
+# empty catalogue, or the probe will confidently tell the user to delete a route
+# that works.
+harness_models() {  # $1=binary -> prints one model id per line, or nothing
+  case "$1" in
+    opencode) opencode models 2>/dev/null ;;
+    codex|claude) : ;;   # fixed model sets; the catalog is the source of truth
+  esac
+}
+
+declare -A LISTING LISTED
+listing_for() {  # $1=binary; caches, returns 0 ok / 1 unknown
+  local b="$1" out
+  if [ -n "${LISTED[$b]:-}" ]; then [ "${LISTING[$b]}" = "__unknown__" ] && return 1; return 0; fi
+  LISTED[$b]=1
+  case "$b" in
+    opencode)
+      if out="$(harness_models "$b")" && [ -n "$out" ]; then LISTING[$b]="$out"; return 0; fi
+      LISTING[$b]="__unknown__"; return 1 ;;
+    *) LISTING[$b]=""; return 0 ;;   # nothing to list; catalog stands
+  esac
+}
+
+reachable_models=""   # "provider model" per line
+vendors=""
+report=""
+
+while IFS='|' read -r provider vendor binary models; do
+  [ -n "$provider" ] || continue
+  if ! command -v "$binary" >/dev/null 2>&1; then
+    report+="$(printf '%-10s via=%-9s binary=no   vendor=%-10s models=-' "$provider" "$binary" "$vendor")"$'\n'
+    continue
+  fi
+
+  if ! listing_for "$binary"; then
+    report+="$(printf '%-10s via=%-9s binary=yes  vendor=%-10s models=unknown (%s could not list; assuming the catalog holds)' \
+      "$provider" "$binary" "$vendor" "$binary")"$'\n'
+    # Unknown is not none: keep the route and let a real call decide.
+    for m in ${models//,/ }; do reachable_models+="$provider $m"$'\n'; done
+    vendors+="$vendor"$'\n'
+    continue
+  fi
+
+  found=""
+  for m in ${models//,/ }; do
+    if [ -z "${LISTING[$binary]}" ] || printf '%s' "${LISTING[$binary]}" | grep -q "(^|/)${m}\$" 2>/dev/null \
+       || printf '%s\n' "${LISTING[$binary]}" | grep -qE "(^|/)${m}$"; then
+      found+="${found:+,}$m"
+      reachable_models+="$provider $m"$'\n'
+    fi
+  done
+
+  if [ -n "$found" ]; then
+    report+="$(printf '%-10s via=%-9s binary=yes  vendor=%-10s models=%s' "$provider" "$binary" "$vendor" "$found")"$'\n'
+    vendors+="$vendor"$'\n'
+  else
+    report+="$(printf '%-10s via=%-9s binary=yes  vendor=%-10s models=none of the catalogued ones' "$provider" "$binary" "$vendor")"$'\n'
+  fi
+done <<< "$CATALOGUED"
+
+vendor_count=$(printf '%s' "$vendors" | grep -c . || true)
+# ALTERNATES is what an independence role actually gets: every reachable vendor
+# except the one that authored the artifact. With one vendor reachable there is
+# no second opinion to be had, which is why this is count-1 and floors at zero.
+alternates=$(( vendor_count > 0 ? vendor_count - 1 : 0 ))
+
+if [ "$suggest" -eq 0 ]; then
+  printf 'probe-routes: catalogued providers reachable from this machine\n'
+  printf '%s' "$report"
+  printf 'vendors=%d ALTERNATES=%d\n' "$vendor_count" "$alternates"
+  if [ "$alternates" -lt 1 ]; then
+    printf 'note: fewer than two vendors are reachable, so no cross-vendor review can run here.\n'
+  fi
+  printf 'catalog: %s\n' "$CATALOG"
+  exit 0
+fi
+
+# --suggest: a paste-ready user layer. Only providers whose models were actually
+# found are emitted; a provider the probe could not reach is left out entirely
+# rather than shipped disabled, because an override layer exists to say what this
+# machine has, and the shipped catalog already covers the rest.
+printf '# ~/.config/megapowers/models.toml\n'
+printf '# Generated by probe-routes on %s for this machine.\n' "$(date -u +%Y-%m-%d)"
+printf '# Every provider below was found on PATH with at least one catalogued model.\n'
+# shellcheck disable=SC2016  # the backticks are literal output, not a subshell
+printf '# Reachable here does not mean authenticated: run `delegate-resolve <role> --vendors`\n'
+printf '# before relying on a route. Edit freely, this layer wins over the shipped catalog.\n\n'
+
+emitted=""
+while read -r provider _model; do
+  [ -n "$provider" ] || continue
+  case "$emitted" in *"|$provider|"*) continue ;; esac
+  emitted+="|$provider|"
+  case "$provider" in
+    claude|codex) continue ;;   # shipped enabled already; nothing to override
+  esac
+  printf '[providers.%s]\n' "$provider"
+  printf 'enabled = true\n\n'
+done <<< "$reachable_models"
+
+if [ "$emitted" = "" ] || [ "$emitted" = "|claude||codex|" ]; then
+  printf '# Nothing to override: only the providers the catalog already enables were found.\n'
+fi
+exit 0
