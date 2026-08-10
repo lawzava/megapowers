@@ -458,11 +458,20 @@ tier     = "frontier"
 binary = "sh"
 [providers.claude]
 binary = "sh"
+[providers.qwen]
+binary = "sh"
+[providers.moonshot]
+binary = "sh"
 EOF
+# qwen is asserted rather than claude because it sits ahead of claude in the shipped
+# chain: claude is deliberately last, being the default lead's vendor. The binaries
+# are pinned to sh so this asserts chain ORDER, not which CLIs this box happens to
+# have. What the check is really for is that an openai-authored artifact under a
+# codex lead leaves the author's vendor at all.
 for r in plan_review code_review; do
   out="$(cd "$TMP/codexlead" && "$DR" "$r" --author-vendor openai 2>&1)"; rc=$?
   check_exit "$r resolves cross-vendor under codex lead" 0 "$rc"
-  check "$r falls back cross-vendor under codex lead" "PROVIDER=claude" "$out"
+  check "$r falls back cross-vendor under codex lead" "PROVIDER=qwen" "$out"
 done
 
 # The reverse swap: under a claude lead (the shipped default), an
@@ -679,8 +688,17 @@ out="$(cd "$TMP/author-policy" && "$DR" verify --exclude-lead 2>&1)"; rc=$?
 check_exit "--exclude-lead alone does not satisfy author policy" 2 "$rc"
 check "missing author policy is explicit" "--author-vendor" "$out"
 
-out="$(cd "$TMP/author-policy" && "$DR" judge --author-vendor openai --author-vendor anthropic 2>&1)"; rc=$?
+# Every vendor in the judge chain has to be named for this to have nothing left. The
+# list grew on 2026-08-10 (alibaba, moonshot), which is the point of that change: a
+# judge used to disappear as soon as two vendors authored the candidates.
+out="$(cd "$TMP/author-policy" && "$DR" judge --author-vendor openai --author-vendor anthropic \
+  --author-vendor alibaba --author-vendor moonshot 2>&1)"; rc=$?
 check_exit "all author vendors excluded leaves no judge" 3 "$rc"
+
+# The counterpart, and the reason the chain was extended: two authors no longer
+# exhaust the judges.
+out="$(cd "$TMP/author-policy" && "$DR" judge --author-vendor openai --author-vendor anthropic 2>&1)"; rc=$?
+check_exit "two author vendors still leave a judge" 0 "$rc"
 
 # small_impl ships `self`, so it follows the caller instead of leaving the vendor:
 # no author declared means the catalog [lead], and the role policy still applies.
@@ -2041,8 +2059,21 @@ fi
 
 # The shipped config is the one that matters: a Claude-authored diff whose Codex
 # route is gone must still reach the proven condition rather than nothing.
+# Excluding codex alone no longer reaches the degraded path, which is the 2026-08-10
+# change working: qwen and moonshot are real cross-vendor routes behind it. Every
+# alternate has to be gone before context separation is the honest answer.
 out="$(DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" \
   "$DR" code_review --author-vendor anthropic --exclude codex --allow-context-separation 2>&1)"; rc=$?
+check_exit "one vendor down still leaves a real cross-vendor route" 0 "$rc"
+if printf '%s' "$out" | grep -q 'INDEPENDENCE=context-separation'; then
+  fail=$((fail+1)); printf '  FAIL losing one vendor must not degrade while alternates remain\n    got: %s\n' "$out"
+else
+  pass=$((pass+1))
+fi
+
+out="$(DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" \
+  "$DR" code_review --author-vendor anthropic --exclude codex --exclude qwen --exclude moonshot \
+  --exclude deepseek --allow-context-separation 2>&1)"; rc=$?
 check_exit "the shipped config degrades rather than skipping review" 0 "$rc"
 check "the shipped degraded route is labeled" "INDEPENDENCE=context-separation" "$out"
 

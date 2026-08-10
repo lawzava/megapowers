@@ -39,7 +39,9 @@ mkdir -p "$XDG_CONFIG_HOME"
   # --- second vendor, fallbacks, --exclude, availability, presets, parse error ---
   echo "=== verify-primary ==="; "$R" verify --config "$cfg" --author-vendor openai; echo "rc=$?"
   echo "=== verify-exclude-anthropic ==="; "$R" verify --config "$cfg" --author-vendor anthropic; echo "rc=$?"
-  echo "=== verify-exclude-both ==="; "$R" verify --config "$cfg" --author-vendor openai --exclude anthropic 2>&1; echo "rc=$?"
+  # Every vendor in the verify chain, not just the two that used to be in it: the
+  # chain grew on 2026-08-10 and "both excluded" now means five.
+  echo "=== verify-exclude-both ==="; "$R" verify --config "$cfg" --author-vendor openai --exclude anthropic --exclude qwen --exclude moonshot --exclude deepseek 2>&1; echo "rc=$?"
   echo "=== fallback-skip-absent ==="
   av="$PWD/av.toml"
   printf '[providers.p_absent]\nmodel = "x"\nvendor = "va"\nbinary = "mp_absent_bin"\n[providers.p_present]\nmodel = "y"\nvendor = "vb"\nbinary = "mp_present_bin"\n[roles]\nmyrole = "p_absent"\n[fallbacks]\nmyrole = ["p_absent", "p_present"]\n' > "$av"
