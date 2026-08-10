@@ -70,6 +70,57 @@ present.
   uses gofmt/goimports (Go) and a project-local prettier (JS/TS/etc.) when
   present, and skips them quietly otherwise.
 
+## Model routes: matching the catalog to your machine
+
+The shipped catalog in `models.toml` is an opinion about good routes. It cannot
+know which CLIs you installed or which vendors you pay for, so on a fresh
+machine some routes resolve to a provider that is not there. Find out before
+delegation does:
+
+```sh
+plugins/mega-orchestration/skills/multi-agent-delegation/scripts/probe-routes
+```
+
+It prints, per catalogued provider, whether the harness binary exists, which
+catalogued models that harness lists, and the `ALTERNATES` count an independence
+role would get. It is read-only and offline: no sockets, no tokens, no writes.
+
+```
+claude     via=claude    binary=yes  vendor=anthropic  models=claude-opus-5,claude-sonnet-5
+codex      via=codex     binary=yes  vendor=openai     models=gpt-5.6-sol,gpt-5.6-terra
+qwen       via=opencode  binary=no   vendor=alibaba    models=-
+vendors=2 ALTERNATES=1
+```
+
+`ALTERNATES` is the number that matters. Below one, no cross-vendor review can
+run on this machine at all, and no configuration fixes that: it needs a second
+vendor's CLI installed and logged in.
+
+Two results mean different things. `models=none of the catalogued ones` means
+the harness is present and genuinely does not carry them. `models=unknown` means
+the listing command failed, so the catalog stands and the route survives
+unverified. Neither is proof a route will respond, since a stale login looks
+identical to a working one here; confirm with `delegate-resolve <role>
+--vendors` before depending on it.
+
+To change routing, write your own layer rather than editing a shipped file.
+`probe-routes --suggest` prints a starting point for
+`~/.config/megapowers/models.toml`, which wins over the shipped catalog per key
+and survives plugin upgrades. Ask an agent to run
+`mega-orchestration:configuring-model-routes` and it will probe, propose a
+layer, and confirm with you before writing anything.
+
+Two providers ship disabled because the always-loaded session catalog is clamped
+and five providers with prose do not fit it: `deepseek` (a cheap review screen)
+and `xai` (volume execution). Both carry complete rows. If the probe finds them
+reachable and you want them, one line each turns them on:
+
+```toml
+# ~/.config/megapowers/models.toml
+[providers.deepseek]
+enabled = true
+```
+
 ### Optional: skipping the prompt on inspection commands
 
 `mega-guardrails` ships `hooks/allow-read-only.sh`, which is **not

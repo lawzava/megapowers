@@ -74,7 +74,12 @@ if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok; else no "malformed catalog is sile
 if [ -f "$SHIPPED" ]; then
   out="$(MODELS_TOML="$SHIPPED" "$R")"
   n="$(printf '%s' "$out" | LC_ALL=C wc -c | tr -d '[:space:]')"
-  if [ -n "$out" ] && [ "$n" -le 900 ]; then ok; else no "shipped catalog renders non-empty and <= 900B (got ${n}B)"; fi
+  # Raised 900 -> 980 on 2026-08-10 when the catalog went from two vendors to four
+  # (qwen and moonshot earned rows on the review eval). The hard clamp in the hook is
+  # 1024B, so this guard stays 44B inside it: enough that an override layer adding one
+  # provider still renders, tight enough that the next addition has to justify itself
+  # by shortening something rather than by moving this number again.
+  if [ -n "$out" ] && [ "$n" -le 980 ]; then ok; else no "shipped catalog renders non-empty and <= 980B (got ${n}B)"; fi
 else
   no "shipped models.toml missing at plugin root"
 fi
