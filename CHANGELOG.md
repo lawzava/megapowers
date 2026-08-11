@@ -5,6 +5,44 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.11.2 - 2026-08-11
+
+### Fixed
+
+- `templates/OPENCODE.md` cited its sibling template files (`templates/opencode.json`,
+  `templates/opencode-agents/`) in its body. The same file instructs you to install it
+  as your global `AGENTS.md`, at which point those citations become live lookups: an
+  observed session on an unrelated task walked into the megapowers checkout and burned
+  an external-directory prompt. Repo paths now appear only in the install blockquote,
+  the charter states that its paths are provenance rather than work items, and
+  `scripts/validate.sh` fails if one leaks back into the body.
+- `evals/studies/install-smoke/run-smoke.sh` rejected a sentence-initial capital in its
+  quote probe. The core-principle clause is committed lowercase mid-line after
+  "Core principle:", so a model quoting it as a sentence failed a check whose skill had
+  in fact loaded, which is what the codex arm did on both the v0.11.0 and v0.11.1 gates.
+  Only the first character is relaxed; the mutation suite still rejects reconstructed
+  phrasing and a mid-sentence case change.
+
+### Changed
+
+- `templates/opencode.json` is now a security posture rather than a starting point, at
+  parity with `templates/settings.example.json` where OpenCode has the knobs and ahead
+  of it where it has more. `permission.read` denies `.env` (as a bare name and as a
+  nested path), secrets directories, ssh, aws, gnupg, netrc, pgpass, and private keys,
+  while leaving `.env.example` readable. `permission.bash` denies by default and
+  allowlists read-only commands. `external_directory`, `webfetch`, `websearch`, and
+  `doom_loop` ask. `compaction.prune`, `compaction.tail_turns`, and `subagent_depth`
+  serve long-running frontier-tier work; `share` is disabled and `autoupdate` only
+  notifies, so a long session is not restarted underneath itself.
+- The `permission.bash` map carries an explicit deny tier, because OpenCode's `--auto`
+  approves everything that is not denied: an `ask` rule is not a protection under the
+  one flag a long autonomous run is most likely to use. History rewrites, force pushes,
+  `git clean -f`, `git branch -D`, `git stash drop`, `--no-verify`, `--no-gpg-sign`,
+  `git add -f`, pipe-to-shell, and the catastrophic filesystem set stay denied in both
+  modes. Verified under `--auto` on OpenCode 1.18.16: `git reset --hard HEAD` denied, a
+  `.env` read denied, `git status` and `echo hello` ran unprompted. The trade-off is
+  that those commands are also unavailable interactively.
+
 ## 0.11.1 - 2026-08-11
 
 ### Fixed
