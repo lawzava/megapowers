@@ -18,14 +18,30 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_DEFAULT="$(cd "$HERE/../../.." && pwd)"
 
 # The load probe: the agent must reproduce the test-driven-development skill's
-# core-principle sentence VERBATIM (exact, case-sensitive, whole clause). This
-# is the sentence committed at
+# core-principle sentence VERBATIM (whole clause, case-sensitive except for its
+# first letter). This is the sentence committed at
 # plugins/megapowers/skills/test-driven-development/SKILL.md ("Core principle:").
 # A case-insensitive 5-word substring ("watch the test fail") a model can emit
 # from generic TDD lore does NOT satisfy it, so a pass is evidence the installed
 # skill text was actually loaded, not recited from prior knowledge.
+#
+# The first letter is the one exception, and it is a fix for a false FAIL rather
+# than a loosening. In SKILL.md the sentence follows "**Core principle:**" on the
+# same line, so it is committed with a lowercase "if". Claude passed this probe by
+# echoing that markdown line whole; Codex quoted the same sentence as a sentence,
+# capitalised, and failed. Both had loaded the skill. That FAIL was the harness
+# disagreeing with English, not with the artifact, and it made the codex arm
+# unpassable: the v0.11.0 and v0.11.1 gates both recorded it. Only the leading
+# character is relaxed, and only to its own capital; every other character stays
+# exact, which is what keeps reconstructed phrasing out.
 QUOTE_SENTENCE="if you didn't watch the test fail, you don't know whether it tests the right thing."
-quote_ok() { grep -qF "$QUOTE_SENTENCE" "$1" 2>/dev/null; }  # fixed-string, case-sensitive
+# Two fixed-string probes rather than a regex: the sentence contains apostrophes
+# and a period, and -F keeps them literal instead of inviting an escaping bug into
+# the one check that certifies a release.
+quote_ok() {
+  grep -qF "$QUOTE_SENTENCE" "$1" 2>/dev/null && return 0
+  grep -qF "$(printf '%s' "${QUOTE_SENTENCE^}")" "$1" 2>/dev/null
+}
 
 results_ok() { # <results.tsv> <fail-on-skip:0|1>
   local results="$1" fail_on_skip="$2"
@@ -43,6 +59,12 @@ if [ "${1:-}" = "--selftest" ]; then
   # substring "watch the test fail" (which the previous grep -qi accepted).
   printf 'The core TDD principle: always watch the test fail first so you know it works.\n' > "$st/generic.out"
   if quote_ok "$st/verbatim.out"; then echo "ok   verbatim sentence matches"; else echo "FAIL verbatim sentence not matched"; sf=1; fi
+  # the capitalised form a model emits when quoting the clause as a sentence
+  printf '%s\n' "${QUOTE_SENTENCE^}" > "$st/capitalised.out"
+  if quote_ok "$st/capitalised.out"; then echo "ok   sentence-initial capital matches"; else echo "FAIL sentence-initial capital not matched"; sf=1; fi
+  # only the FIRST letter is relaxed: a mid-sentence case change must still fail
+  printf '%s\n' "if you didn't watch the Test fail, you don't know whether it tests the right thing." > "$st/midcase.out"
+  if quote_ok "$st/midcase.out"; then echo "FAIL mid-sentence case change matched"; sf=1; else echo "ok   mid-sentence case change rejected"; fi
   if quote_ok "$st/generic.out"; then echo "FAIL generic phrasing matched (nonce not enforced)"; sf=1; else echo "ok   generic phrasing rejected"; fi
   printf 'claude\tSKIP\tno credentials\ncodex\tSKIP\tno auth\n' > "$st/all-skip.tsv"
   if results_ok "$st/all-skip.tsv" 0; then echo "FAIL all-SKIP results accepted"; sf=1; else echo "ok   all-SKIP results rejected"; fi
