@@ -5,6 +5,22 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.11.1 - 2026-08-11
+
+### Fixed
+
+- `plugins/megapowers/opencode/session-catalog.js` read the session model id as
+  `input.model.modelID`, but the OpenCode SDK's `Model` type carries it as `id`
+  (only `chat.message` uses the `modelID` shape). Live sessions were told to
+  resolve routes with `--caller-model unknown`, which `delegate-resolve` refuses
+  with exit 2, so the injection that exists to make a BYO-model runtime
+  declarable emitted a flag that could not resolve. The plugin now reads `id`
+  with a `modelID` fallback, and omits the identity line entirely when neither
+  is present: an undeclared session falls back to the catalog `[lead]`, while a
+  session declaring `unknown` cannot route at all. The test fixtures had invented
+  the `modelID` shape, which is why the suite stayed green against a broken
+  build; they now use the real type and pin all three cases.
+
 ## 0.11.0 - 2026-08-11
 
 OpenCode moves from portable-skill compatibility to a supported lead harness,
