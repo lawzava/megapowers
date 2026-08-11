@@ -71,8 +71,18 @@ and `deny-destructive` as an accident tripwire in front of it.
 The default hook manifest dispatches to `codex-deny-destructive.sh` when Codex
 loads the plugin and to the full guard under Claude Code. Codex cannot surface
 the guard's `ask` result, so its adapter preserves catastrophic denies and lets
-Codex's normal approval flow handle the reversible-risk tier. OpenCode receives
-no hook behavior from this plugin.
+Codex's normal approval flow handle the reversible-risk tier.
+
+### OpenCode
+
+`opencode/deny-destructive.js` ports the DENY tier only. It hooks
+`tool.execute.before`, and for the `bash` tool feeds the command to
+`hooks/deny-destructive.sh` exactly as the Claude and Codex integrations do,
+throwing when the script's `permissionDecision` comes back `deny`. OpenCode
+1.18.16 exposes no plugin hook that can raise a confirmation prompt, so the
+ASK tier (destructive git, `curl | bash`) is out of scope for this module; it
+is instead delivered declaratively by the `permission.bash` patterns shipped
+in `templates/opencode.json`.
 
 ## scan-tool-output (PostToolUse, WebFetch/WebSearch/Bash/MCP)
 
