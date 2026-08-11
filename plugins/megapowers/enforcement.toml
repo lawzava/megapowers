@@ -39,6 +39,66 @@
 # prompts, add triggers. Promote to enforced only if honor falls below 60%, which
 # would be the first evidence that the mechanism, rather than the coverage, is
 # what fails.
+#
+# 2026-08-11: the bar was met and triggers were added. Honor measured 13 fires,
+# 13 honored, 100%. Coverage measured against a corpus of 275 real typed prompts
+# from 2026-08-08 to 2026-08-11: the shipped table fired on 1.5% of them.
+#
+# Three rows came out of that corpus, each derived from the skill's own
+# frontmatter, never invented:
+#   - bare "done?" and "all done?", the most repeated question in the corpus,
+#     which the old subject-bearing row ("is it done") missed entirely
+#   - commit, merge to main, push and <x>, which this skill's frontmatter already
+#     claims ("before commits or pull requests")
+#   - "fix it" and "fix all", the bug-fix half of test-driven-development's
+#     frontmatter, which only ever matched "implement"
+#
+# After: 8.7% of all 275, 13.7% of the 175 that pass the shape gate. That is
+# ABOVE the 5% the bar was written around, and deliberately so: 5% described how
+# quiet the table was, it was never a ceiling on how loud it should get. The
+# number to watch now flips back to honor. If honor holds at or above 90% at this
+# volume, the coverage is right. If it falls, the table got noisy and the newest
+# rows come out first, newest first because they are the least derived.
+#
+# NOT changed, and worth stating so the next reader does not think it was missed:
+# the shape gate at hooks/skill-router.sh still drops any prompt over 600 bytes or
+# 2 lines. That silences multi-line typed instructions, which is exactly where a
+# process skill matters most, and the corpus has 100 of them. The gate is a
+# deliberate, tested decision (tests/skill-router.test.sh asserts a typed
+# three-line prompt stays silent) whose stated trade is that a miss costs one
+# unfired suggestion while a false fire costs context on every later turn.
+# Overturning it needs its own measurement, not a drive-by widening.
+
+# --- The one mechanical rule in the answer contract ---
+# Enforced from 2026-08-11, and enforced rather than advisory on the strength of
+# the measurement that the advisory form of it already failed.
+#
+# The rule has shipped as prose in templates/CLAUDE.md since 2026-07-07 (commit
+# 9513213). Measured over 2026-08-08 to 2026-08-11, on multi-turn interactive
+# sessions only so task mix cannot explain the gap:
+#
+#   Claude  24.8% of assistant turns carried an em or en dash  (305 of 1231)
+#   Codex    0.1%                                              (1 of 907)
+#
+# Codex meets the same rule from the same wording because it arrives per task in
+# a dispatch brief; Claude reads it once in a static file. Restating it louder is
+# the intervention that has already been run for a month.
+#
+# This is the ONLY style rule that gets a gate, and the reason is decidability. A
+# dash is present or it is not. Four lines of prose, no preamble, and lead with
+# the conclusion all need judgment, and a gate that needs judgment fires wrongly.
+#
+# Demotion criterion, stated before the fact: if the dash rate on new sessions
+# holds under 2% for four weeks with the gate on, this can go advisory and the
+# number re-checked. If blocks exceed 10% of turns, the exemptions are wrong
+# rather than the model, and the fix is in the exemptions.
+[rules.answer-style]
+state    = "enforced"
+hook     = "hooks/answer-style.sh"
+source   = "skills/using-megapowers/SKILL.md"
+promoted = "2026-08-11"
+contract_test = "hooks/tests/answer-style.test.sh"
+
 [rules.skill-router]
 state    = "advisory"
 hook     = "hooks/skill-router.sh"

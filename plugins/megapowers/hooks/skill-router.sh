@@ -133,7 +133,47 @@ routes=(
   # checkout, or a build directory far more often than a verdict. "work" is gone
   # from the did/does row, which was reading "does it work on windows" as a
   # status claim.
-  "verification-before-completion (^|[^a-z])(all )?(ci|tests?|build|lint|suite|checks?) ((is|are|was|were|all|now|still|already) ){0,2}(green|passing|pass(es|ed)?)([^a-z]|\$)|is (it|this|that|everything) (done|working|fixed|passing|complete|ready)[^a-z]*\$|(did|does) (it|that|this) pass(es|ed)?[^a-z]*\$|confirm (it|this|that) (works|passes)[^a-z]*\$"
+  # The bare "done?" row and the commit row both come from the 2026-08-11 prompt
+  # corpus, 275 real typed prompts, where the shipped table fired on 1.5% of them.
+  #
+  # "done?" on its own was the single most repeated question in the corpus and the
+  # existing row missed all of it: that row wants a subject ("is it done"), and
+  # nobody types the subject. The prefix set is CLOSED rather than a character
+  # gap, because "work is done" must keep routing to finishing-a-development-branch
+  # from the row below, and any gap wide enough for "ok, " also swallows "work is ".
+  #
+  # Commit, push, and merge are here rather than on finishing-a-development-branch
+  # because this skill's own frontmatter claims them ("before commits or pull
+  # requests") and because the prerequisite runs first: the ask is to ship, and
+  # what has to happen before shipping is the check. finishing still owns the
+  # The ship rows want the verb in IMPERATIVE position: starting the prompt, or
+  # after punctuation, or after a short acknowledgement. Everything else is a
+  # question ABOUT shipping, and firing there costs context on every later turn
+  # for a prompt that asked nothing of the branch. Three that used to match:
+  # "is the merge to main automated?" ("the merge" is a noun), "Does CI test and
+  # push to main?" and "Can the bot commit it automatically?".
+  #
+  # `and` and `also` are NOT boundaries. They join clauses inside a question as
+  # readily as they lead an imperative, which is exactly how the two CI examples
+  # above got in.
+  #
+  # NEITHER IS A COMMA. It separates items inside one clause far more often than
+  # it ends a sentence, so "Can CI test, push to main, and deploy?" matched at
+  # the comma while still being a question. Only a sentence terminator counts.
+  # A bare `commit,` alternative was tried to recover one corpus prompt
+  # ("Sounds good. Commit, merge to main and push") and withdrawn: it matches a
+  # NOUN LIST just as readily ("Commit, merge, and push: are these automated?").
+  # One unfired suggestion is the cheaper error, which is this table's stated
+  # trade, and a rule that needs an exception per sentence shape is a rule that
+  # has stopped being derived from the frontmatter.
+  #
+  # branch mechanics and sits below. Bare "commit" ends a clause; "commit the
+  # message" and "commit the plan" take an object and stay silent. "push" alone
+  # is NOT here: the quiet corpus carries "push it" beside "bump the version" and
+  # "rename the variable", where it is one mechanical git call and not a ship.
+  # Push earns a route only when it names main or leads a compound ("push and
+  # tag"), which is the shape the corpus shows for actually shipping.
+  "verification-before-completion (^|[^a-z])(all )?(ci|tests?|build|lint|suite|checks?) ((is|are|was|were|all|now|still|already) ){0,2}(green|passing|pass(es|ed)?)([^a-z]|\$)|is (it|this|that|everything) (done|working|fixed|passing|complete|ready)[^a-z]*\$|(did|does) (it|that|this) pass(es|ed)?[^a-z]*\$|confirm (it|this|that) (works|passes)[^a-z]*\$|^(ok|okay|so|and|well|right)?[,. ]{0,3}(all |everything )?(done|finished)[?. ]*\$|(^|[.!?] *|(ok|okay|then|now|please|sure)[,. ]+)commit( (and|it|this|that)([^a-z]|\$)|[,. ]*\$)|(^|[.!?] *|(ok|okay|then|now|please|sure)[,. ]+)(merge|push) (to|into) main([^a-z]|\$)|(^|[.!?] *|(ok|okay|then|now|please|sure)[,. ]+)push and([^a-z]|\$)"
   # frontmatter triggers: "review this", "ready to merge", "check my work", plus
   # the confirmed miss "ready for pr". Above finishing, which says code review
   # usually comes first.
@@ -149,7 +189,13 @@ routes=(
   # option, which name a one line edit as often as a feature. Like the
   # brainstorming row it wants the noun as the object of the sentence, so a
   # feature flag and a command line argument stay silent.
-  "test-driven-development (^|[^a-z])tdd([^a-z]|\$)|test.first([^a-z]|\$)|writ[a-z]* the tests? first([^a-z]|\$)|red.green.refactor([^a-z]|\$)|implement and test([^a-z]|\$)|implement (all|the|this|these|those|both|it|a|an|my|our|every|each|missing)([^a-z]|\$)|add (a|an|the|another) (feature|endpoint|command)([^a-z]*\$| (for|to|that|which|with)([^a-z]|\$))|with tests[^a-z]*\$"
+  # The fix row is the implement row's twin and comes from the same corpus: this
+  # skill's frontmatter says "any feature or bug fix", and a bug fix is asked for
+  # with "fix", never with "implement". It takes the same closed object set, so
+  # "fix the flaky test on windows" is a request to fix something specific and
+  # "fix up the wording" is not a bug fix. systematic-debugging sits above and
+  # still wins an unknown failure, which is the documented order.
+  "test-driven-development (^|[^a-z])tdd([^a-z]|\$)|test.first([^a-z]|\$)|writ[a-z]* the tests? first([^a-z]|\$)|red.green.refactor([^a-z]|\$)|implement and test([^a-z]|\$)|implement (all|the|this|these|those|both|it|a|an|my|our|every|each|missing)([^a-z]|\$)|fix (all|it|this|that|these|those|them|both|the (bug|test|failure))([^a-z]|\$)|add (a|an|the|another) (feature|endpoint|command)([^a-z]*\$| (for|to|that|which|with)([^a-z]|\$))|with tests[^a-z]*\$"
 )
 
 skill=""

@@ -107,6 +107,31 @@ receipt's directory. `subject.id` remains the fingerprint, which is a different
 job: it binds the receipt to the exact tree reviewed and any change at all
 invalidates it.
 
+## A withdrawn change, recorded
+
+A wall-clock timeout consumes a review round, and that is deliberate rather than
+an oversight: `max_rounds` bounds an argument, and the launcher cannot tell a
+reviewer that will not converge from a provider that will not answer without
+counting both.
+
+Splitting them was built and withdrawn on 2026-08-11. Measured 2026-08-08, the
+problem is real: two consecutive wall-clock expiries retired the verify role on
+one branch with zero verdicts ever returned, and the round a human authorized by
+hand afterwards found seven genuine issues.
+
+Two designs were tried and both failed independent review. Rolling the round
+number back made correctness depend on completion order, on decrements, and on a
+process-local marker, and a scoped concurrency review found three defects in it:
+resolving three open rounds in descending order left the count raised with no
+verdicts recorded, a SIGKILL stranded a reservation that then blocked every
+later rollback, and resolution was not idempotent across a signal. Recording
+outcomes instead of mutating a count removes the first and third by
+construction, and is the design to reach for if this is picked up again, but it
+is a schema change that needs its own test pass.
+
+Until then, raise `MEGAPOWERS_DELEGATE_TIMEOUT` for a slow reviewer rather than
+letting the wall clock spend the argument budget.
+
 ## The round cap
 
 Counting was never the missing piece. `max_rounds` under

@@ -5,6 +5,9 @@
     ],
     "UserPromptSubmit": [
       { "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh skill-router.sh", "async": false } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh answer-style.sh" } ] }
     ]
   }
 }

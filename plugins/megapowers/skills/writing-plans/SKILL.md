@@ -31,6 +31,33 @@ vocabulary; accepted ADRs govern narrower design intent. Treat project memories
 as hidden historical hints and reverify them against current sources. Surface
 conflicts for resolution; never silently choose a source.
 
+## Comprehension Pass
+
+Documents describe intent; the code is what runs. Opening three files that
+matched a grep and deciding that is enough is how a change lands that works on
+its own and breaks the module around it.
+
+Before the first task is written, answer all five from files you actually
+opened, in the plan itself:
+
+1. **Entry points.** What reaches this code, and what calls that.
+2. **Blast radius.** Every caller, implementation, and subclass of what you are
+   changing, found by search. State the search you ran, so the next reader can
+   tell coverage from luck.
+3. **Convention.** The nearest sibling that already does something similar, and
+   the naming, error handling, and test layout this change has to match.
+4. **Existing coverage.** The tests that touch this behavior now, and whether
+   they would fail if the change were wrong.
+5. **Boundary.** What you deliberately did not read, and why it cannot matter
+   here.
+
+The fifth is what makes the other four honest. A comprehension pass with no
+stated boundary is an implicit claim to have read everything, which is never
+true, and it hides exactly the gap that later turns into a surprise.
+
+An unanswerable item means the plan is not ready. The remedy is more reading,
+never a caveat in the plan saying the area is unclear.
+
 ## Scope Check
 
 If the spec covers multiple independent subsystems, suggest one plan per
