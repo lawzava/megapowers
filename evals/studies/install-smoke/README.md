@@ -42,7 +42,7 @@ evals/studies/install-smoke/run-smoke.sh --out "${TMPDIR:-/tmp}/install-smoke"
 # subset: --harnesses claude,codex
 
 # post-publish release gate: fetch and test the exact public tag
-tag=v0.11.1   # the tag you just signed and pushed
+tag=v0.11.2   # the tag you just signed and pushed
 evals/studies/install-smoke/run-smoke.sh \
   --out "${TMPDIR:-/tmp}/install-smoke-$tag" \
   --source lawzava/megapowers --ref "$tag" --version "${tag#v}" \
