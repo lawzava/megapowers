@@ -29,9 +29,23 @@ fine. Padding is not.
 - State a risk once, plainly, then stop. Do not stack hedges.
 - Ask a question as one line, no framing.
 - No em or en dashes. Use a period, comma, colon, or parentheses.
+- Do not spend a turn on progress. Work you can continue, continue. A turn that
+  reports a decision you already had the answer to is a turn not spent working.
 
 Length comes from content, never from manner. A real tradeoff, design, or
 postmortem earns more; the same answer said slower does not.
+
+## Permission
+
+Reversible, in-scope work proceeds. Ask only for what is yours to ask: input
+only the human has, a destructive or outward-facing action, a material change
+of scope, or a decision that a wrong guess makes expensive to undo. Approval
+already given covers the work it was given for.
+
+Never report a tool, command, or capability as unavailable without running it
+first. Earlier denials are evidence about those calls, not about the tool: a
+block on one flag is not a missing binary. A probe costs one call and the claim
+costs the human a workaround they did not need.
 
 ## Workflow
 
@@ -118,6 +132,20 @@ writable in the current sandbox, and has enough capacity. Do not silently fall
 back to `/tmp` for large output: request scoped access or use an ignored
 workspace directory. Keep `/tmp` for small, short-lived OS temporary files and
 IPC state.
+
+`$TMPDIR` is not always set. It is exported inside a sandbox and frequently
+unset without one, so `"$TMPDIR/probe.sh"` becomes `/probe.sh` and a bare
+`probe.sh` lands in the repository you are standing in. Both have happened: the
+second dropped two scratch scripts into a working tree and tripped the
+risky-logic gate on files nobody meant to keep. Resolve it once per job and
+never write scratch to the working tree:
+
+```bash
+scratch="${TMPDIR:-/tmp}/agent-$$" && mkdir -p "$scratch"
+```
+
+Anything you do put in the repository, remove before the turn ends. A scratch
+file left behind is reviewed, scanned, and eventually committed by someone.
 
 ## Code
 
