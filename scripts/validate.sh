@@ -58,6 +58,20 @@ catalog_codex_model() {
   ' plugins/mega-orchestration/models.toml
 }
 
+catalog_opencode_model() {
+  local provider="$1" tier="$2"
+  awk -v provider="$provider" -v tier="$tier" '
+    $0 == "[providers." provider ".tiers]" { in_tiers=1; next }
+    in_tiers && /^\[/ { exit }
+    in_tiers && $1 == tier {
+      value=$3
+      gsub(/^"|"$/, "", value)
+      print value
+      exit
+    }
+  ' plugins/mega-orchestration/models.toml
+}
+
 echo "== marketplace =="
 if ! command -v jq >/dev/null 2>&1; then
   bad "jq is required"
@@ -177,6 +191,79 @@ if [[ -f $codex_mp ]]; then
       bad "$name: missing/invalid $pj"
     fi
   done < <(jq -r '.plugins[] | [.name, .source.source, .source.path, .policy.installation, .policy.authentication, .category] | @tsv' "$codex_mp" 2>/dev/null)
+fi
+
+echo "== OpenCode plugins =="
+# The OpenCode agent templates carry model = "<opencode-provider-id>/<model-id>";
+# the provider prefix is a deliberate placeholder for the reader to substitute
+# (the catalog has no mapping to OpenCode's own provider ids), so only the
+# suffix is checked against the catalog tier. builder mirrors small_impl on
+# moonshot's strong tier; reviewer mirrors code_review on qwen's frontier tier,
+# a different vendor on purpose. The same twin-drift risk as the Codex agent
+# roles applies here: the plugin asset and the root template must stay
+# byte-identical.
+opencode_strong_model="$(catalog_opencode_model moonshot strong)"
+opencode_frontier_model="$(catalog_opencode_model qwen frontier)"
+for role in builder reviewer; do
+  root_role="templates/opencode-agents/$role.md"
+  plugin_role="plugins/mega-orchestration/assets/opencode-agents/$role.md"
+  case "$role" in
+    builder)  role_provider="moonshot"; role_tier="strong";   role_model="$opencode_strong_model" ;;
+    reviewer) role_provider="qwen";     role_tier="frontier"; role_model="$opencode_frontier_model" ;;
+  esac
+  model_line="$(sed -n 's/^model:[[:space:]]*//p' "$root_role" 2>/dev/null | head -1)"
+  if [[ -n $role_model && $model_line == *"$role_model" ]]; then
+    ok "OpenCode $role role model pin ends with the catalog $role_provider $role_tier tier ($role_model)"
+  else
+    bad "OpenCode $role role model pin must end with the catalog $role_provider $role_tier tier ($role_model)"
+  fi
+  if [[ -f $plugin_role ]] && cmp -s "$root_role" "$plugin_role"; then
+    ok "OpenCode $role role ships with mega-orchestration"
+  else
+    bad "OpenCode $role role missing from mega-orchestration assets or differs from root template"
+  fi
+done
+
+# node is an optional external validator here, same as shellcheck and the
+# claude CLI above: a stated skip line rather than a failure or a silent pass
+# when it is not installed.
+if command -v node >/dev/null 2>&1; then
+  for js in plugins/megapowers/opencode/session-catalog.js plugins/mega-guardrails/opencode/deny-destructive.js; do
+    if node --check "$js" >/dev/null 2>&1; then ok "node --check $js"; else bad "node --check failed: $js"; fi
+  done
+  # node --test with a directory argument silently misreports on this node
+  # version; the glob form is what actually discovers and runs both suites.
+  if node --test "plugins/*/opencode/tests/*.test.mjs" >/dev/null 2>&1; then
+    ok "node --test plugins/*/opencode/tests/*.test.mjs"
+  else
+    bad "node --test failed: plugins/*/opencode/tests/*.test.mjs"
+  fi
+else
+  echo "  (node not installed, skipped: OpenCode plugin syntax check and test run)"
+fi
+
+oc_json="templates/opencode.json"
+if [[ -f $oc_json ]] && jq -e . "$oc_json" >/dev/null 2>&1; then
+  ok "$oc_json is valid JSON"
+  if jq -e '(.plugin // []) | contains(["<megapowers-checkout>/plugins/megapowers/opencode/session-catalog.js","<megapowers-checkout>/plugins/mega-guardrails/opencode/deny-destructive.js"])' "$oc_json" >/dev/null 2>&1; then
+    ok "$oc_json plugin[] names both OpenCode module paths"
+  else
+    bad "$oc_json plugin[] must name both session-catalog.js and deny-destructive.js"
+  fi
+  if jq -e '(.permission.bash // {}) as $b | (["git reset --hard*","git clean -f*","git branch -D*","git push --force*","curl * | *sh"] | all(. as $k | $b[$k] == "ask"))' "$oc_json" >/dev/null 2>&1; then
+    ok "$oc_json permission.bash carries all five ask patterns"
+  else
+    bad "$oc_json permission.bash missing one or more of the five ask patterns"
+  fi
+else
+  bad "$oc_json missing or invalid JSON"
+fi
+
+opencode_md="templates/OPENCODE.md"
+if [[ -f $opencode_md ]] && grep -qF -- '--caller-adapter opencode' "$opencode_md"; then
+  ok "$opencode_md documents --caller-adapter opencode"
+else
+  bad "$opencode_md must document --caller-adapter opencode"
 fi
 
 echo "== scratch storage guidance =="
