@@ -56,18 +56,18 @@ test("appends exactly one system entry containing the catalog text", async () =>
   const hooks = await MegapowersSessionCatalog({ $: fakeShell(CATALOG), directory: "/repo" });
   const output = { system: [] };
   await hooks["experimental.chat.system.transform"](
-    { sessionID: "s1", model: { providerID: "anthropic", modelID: "claude-opus-5" } },
+    { sessionID: "s1", model: { providerID: "anthropic", id: "claude-opus-5" } },
     output,
   );
   assert.equal(output.system.length, 1);
   assert.match(output.system[0], /Model catalog \(models\.toml/);
 });
 
-test("the entry names the opencode adapter and the given modelID", async () => {
+test("the entry names the opencode adapter and the session model id", async () => {
   const hooks = await MegapowersSessionCatalog({ $: fakeShell(CATALOG), directory: "/repo" });
   const output = { system: [] };
   await hooks["experimental.chat.system.transform"](
-    { sessionID: "s1", model: { providerID: "anthropic", modelID: "claude-opus-5" } },
+    { sessionID: "s1", model: { providerID: "anthropic", id: "claude-opus-5" } },
     output,
   );
   assert.match(output.system[0], /--caller-adapter opencode/);
@@ -81,7 +81,7 @@ test("appends to a fresh system[] on every call, but shells out to the catalog s
   // (the append) happens on every request.
   const { shell, calls } = countingShell(CATALOG);
   const hooks = await MegapowersSessionCatalog({ $: shell, directory: "/repo" });
-  const input = { sessionID: "s1", model: { providerID: "anthropic", modelID: "claude-opus-5" } };
+  const input = { sessionID: "s1", model: { providerID: "anthropic", id: "claude-opus-5" } };
 
   const outputA = { system: [] };
   await hooks["experimental.chat.system.transform"](input, outputA);
@@ -100,7 +100,7 @@ test("resolves silently and leaves system[] untouched when $ throws", async () =
   const output = { system: [] };
   await assert.doesNotReject(() =>
     hooks["experimental.chat.system.transform"](
-      { sessionID: "s1", model: { providerID: "anthropic", modelID: "claude-opus-5" } },
+      { sessionID: "s1", model: { providerID: "anthropic", id: "claude-opus-5" } },
       output,
     ),
   );
@@ -139,7 +139,7 @@ test("a copied install warns once and degrades to injecting nothing", async () =
 
     const output = { system: ["base"] };
     await hooks["experimental.chat.system.transform"](
-      { sessionID: "s", model: { providerID: "acme", modelID: "acme-max" } },
+      { sessionID: "s", model: { providerID: "acme", id: "acme-max" } },
       output,
     );
     assert.deepEqual(output.system, ["base"], "a copied install must inject nothing");
@@ -149,4 +149,42 @@ test("a copied install warns once and degrades to injecting nothing", async () =
     console.error = realError;
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// Regression: 0.11.0 read the model id as `input.model.modelID`, but the SDK's
+// `Model` type carries it as `id` (only chat.message uses modelID). Live sessions
+// therefore got `--caller-model unknown`, a value delegate-resolve refuses with
+// exit 2, so the one feature that makes a BYO-model runtime declarable emitted a
+// flag that could not resolve. The fixtures had invented the wrong shape, which is
+// why the suite stayed green while production was broken. These three pin the
+// contract against the real type.
+test("reads the model id from the SDK's `id` field", async () => {
+  const hooks = await MegapowersSessionCatalog({ $: fakeShell(CATALOG) });
+  const output = { system: [] };
+  await hooks["experimental.chat.system.transform"](
+    { sessionID: "s1", model: { providerID: "opencode-go", id: "qwen3.8-max" } },
+    output,
+  );
+  assert.match(output.system[0], /--caller-model qwen3\.8-max --caller-adapter opencode/);
+  assert.doesNotMatch(output.system[0], /unknown/);
+});
+
+test("still reads the chat.message-style modelID shape", async () => {
+  const hooks = await MegapowersSessionCatalog({ $: fakeShell(CATALOG) });
+  const output = { system: [] };
+  await hooks["experimental.chat.system.transform"](
+    { sessionID: "s1", model: { providerID: "opencode", modelID: "kimi-k3" } },
+    output,
+  );
+  assert.match(output.system[0], /--caller-model kimi-k3 --caller-adapter opencode/);
+});
+
+test("omits the identity line entirely when the model id is absent", async () => {
+  const hooks = await MegapowersSessionCatalog({ $: fakeShell(CATALOG) });
+  const output = { system: [] };
+  await hooks["experimental.chat.system.transform"]({ sessionID: "s1", model: {} }, output);
+  assert.equal(output.system.length, 1, "the catalog still goes in");
+  assert.match(output.system[0], /Model catalog/);
+  assert.doesNotMatch(output.system[0], /unknown/);
+  assert.doesNotMatch(output.system[0], /--caller-model/);
 });

@@ -68,13 +68,25 @@ export const MegapowersSessionCatalog = async ({ $ }) => {
         const catalog = await renderCatalog();
         if (!catalog) return;
 
-        const providerID = input?.model?.providerID ?? "unknown";
-        const modelID = input?.model?.modelID ?? "unknown";
-        const identity =
-          `This session runs ${providerID}/${modelID} on the opencode adapter. ` +
-          `Route resolution takes --caller-model ${modelID} --caller-adapter opencode.`;
+        // The SDK's `Model` carries the model id as `id`; only `chat.message` uses
+        // the `{providerID, modelID}` shape. Read both, because this hook is
+        // undocumented and its input shape is not a promise anyone made.
+        const providerID = input?.model?.providerID;
+        const modelID = input?.model?.id ?? input?.model?.modelID;
 
-        output.system.push(`${catalog}\n\n${identity}`);
+        // No id, no identity line. An earlier version defaulted to the string
+        // "unknown" and shipped `--caller-model unknown` into live sessions, which
+        // delegate-resolve rejects outright (exit 2: matches no model in any tier
+        // map). A session that says nothing falls back to the catalog [lead] and is
+        // merely wrong about who is calling; a session that declares "unknown"
+        // cannot resolve a route at all. Silence is the better failure.
+        const identity =
+          modelID && providerID
+            ? `This session runs ${providerID}/${modelID} on the opencode adapter. ` +
+              `Route resolution takes --caller-model ${modelID} --caller-adapter opencode.`
+            : "";
+
+        output.system.push(identity ? `${catalog}\n\n${identity}` : catalog);
       } catch {
         // Undocumented hook, undocumented shell surface: never break a chat
         // turn over a missing catalog or a shape change upstream.
