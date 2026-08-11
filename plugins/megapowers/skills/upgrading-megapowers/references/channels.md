@@ -129,6 +129,62 @@ remaining pinned. Verify the checkout ref and every symlink target. Copied
 skills are not symlinks. Update only the approved copied directories and verify
 them separately.
 
+## OpenCode
+
+OpenCode has no marketplace. An inspector that knows only the two marketplace
+channels reports "not installed" for a harness that is, so check the paths.
+
+### Inspect: read only
+
+```bash
+opencode --version
+ls -l ~/.config/opencode/plugins/ ~/.config/opencode/skills/
+readlink -f ~/.config/opencode/plugins/*.js ~/.config/opencode/skills/*
+jq '.plugin, .instructions' ~/.config/opencode/opencode.json
+```
+
+Record where each link resolves. A clone kept for installs and a development
+checkout are different classifications: a link into a working tree is the
+Symlinked checkout channel above, dirty-tree stop condition included. A regular
+file where a link belongs is a copy, which for the megapowers plugins is a
+misinstall rather than a style choice. Files the user wrote (`AGENTS.md`, the
+`opencode.json` permission block, agent role files) are user-owned baselines,
+not managed copies.
+
+### Apply after approval
+
+Track a published tag from an install clone, so an upgrade is a ref move and
+every symlink keeps pointing at the same path:
+
+```bash
+git -C <clone> fetch --tags
+git -C <clone> tag -v <tag>
+git -C <clone> checkout <tag>
+```
+
+Repoint links only when the approved plan moves the source directory, and then
+verify every one of them, plugins and skills alike.
+
+Symlink, never copy. Both plugins resolve sibling scripts relative to their own
+realpath, and node resolves an ESM specifier to that realpath, so a copy points
+at a directory that does not exist: the session catalog then injects nothing and
+the guardrail refuses to load. One of those is silent.
+
+Skills reach OpenCode through this channel or the skills CLI, never both. On a
+machine that also runs the Claude Code plugins, do not take the global skills
+CLI path: it installs OpenCode's skills into the shared `~/.agents/skills/`,
+which Claude Code also scans, and every skill registers twice. Plugins and hooks
+do not travel that channel at all.
+
+Restart OpenCode; plugins load at session start. Verify by resolving each link
+into the clone at the approved ref and importing both plugin modules, which is
+what distinguishes a loadable install from a copied one:
+
+```bash
+cd ~/.config/opencode/plugins && node --input-type=module \
+  -e "console.log(Object.keys(await import('./session-catalog.js')))"
+```
+
 ## Fork
 
 Inspect status, remotes, current branch, divergence, and local changes. Propose
@@ -144,7 +200,7 @@ only; fetching changes nothing local.
 
 ```bash
 base=https://raw.githubusercontent.com/lawzava/megapowers
-for f in CLAUDE.md CODEX.md settings.example.json; do
+for f in CLAUDE.md CODEX.md OPENCODE.md settings.example.json; do
   curl -fsS "$base/v<installed>/templates/$f" -o "<tmp>/from-$f"
   curl -fsS "$base/v<target>/templates/$f" -o "<tmp>/to-$f"
 done
