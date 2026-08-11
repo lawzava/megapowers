@@ -5,6 +5,25 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Fixed
+
+- A Codex session was told Claude leads it. The SessionStart adapter injected the
+  rendered catalog verbatim, `lead: claude frontier (claude-opus-5)` included, and said
+  nothing about who was running; `delegate-resolve` then answered every undeclared route
+  with the catalog `[lead]` (`CALLER=assumed-lead`), so `self` roles left the running
+  vendor and `DISPATCH=native` named a provider the session was not. The block now
+  carries an identity line naming Codex as the lead and the `--caller-provider codex`
+  flag that carries it into resolution, which is the parity the OpenCode plugin has had
+  since 0.11.0. Provider only, no model id: the adapter is Codex by construction, while
+  the model in `~/.codex/config.toml` is a default that a `--model` flag, a profile, or
+  an in-session switch overrides, and a stale `--caller-model` exits 2 rather than
+  sharpening the route.
+- `templates/CODEX.md` presented a `[lead]` override as the way for Codex to lead, which
+  predates the 0.8.0 charter. Declaring the caller is what makes the running harness the
+  lead; the override only moves the default for sessions that declare nothing.
+
 ## 0.11.2 - 2026-08-11
 
 ### Fixed

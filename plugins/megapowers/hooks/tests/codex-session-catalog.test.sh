@@ -26,7 +26,20 @@ ctx="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev
 printf '%s' "$ctx" | grep -q 'Model catalog' && ok || bad "additionalContext carries the catalog block"
 printf '%s' "$ctx" | grep -q 'lead:' && ok || bad "additionalContext names the lead"
 
-# 2. Fail-open: no resolvable catalog -> no output, exit 0.
+# 2. The identity line: the catalog's [lead] is Claude in the shipped copy, so a
+# Codex session that reads the block alone concludes Claude is in charge and
+# resolves routes as the assumed lead. The adapter knows which harness it runs
+# on, so it says so.
+printf '%s' "$ctx" | grep -q 'runs Codex' && ok || bad "additionalContext declares the session runs Codex"
+printf '%s' "$ctx" | grep -q -- '--caller-provider codex' && ok || bad "additionalContext gives the caller flag"
+# Order matters: the correction has to follow the claim it corrects.
+lead_at="$(printf '%s' "$ctx" | grep -n 'lead:' | head -1 | cut -d: -f1)"
+id_at="$(printf '%s' "$ctx" | grep -n 'runs Codex' | head -1 | cut -d: -f1)"
+[ -n "$lead_at" ] && [ -n "$id_at" ] && [ "$id_at" -gt "$lead_at" ] && ok || bad "identity follows the catalog lead line"
+
+# 3. Fail-open: no resolvable catalog -> no output, exit 0. The identity rides
+# with the catalog rather than standing alone: with no block there is no lead
+# claim to correct, and the fail-open contract stays "silence, not a fragment".
 out="$(MODELS_TOML="/nonexistent/models.toml" bash "$HOOK" 2>/dev/null)"; rc=$?
 [ "$rc" -eq 0 ] && ok || bad "exit 0 when the catalog cannot render (got $rc)"
 [ -z "$out" ] && ok || bad "no output when the catalog cannot render"
