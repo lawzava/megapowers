@@ -99,6 +99,24 @@ grep -Fq 'npx skills update <approved-skill>... -p -y' "$r" || { echo "project s
 grep -Fq 'npx skills update <approved-skill>... -g -y' "$r" || { echo "global skills update is not explicit"; exit 1; }
 has "$r_flat" 'symlink' || { echo "symlink channel absent"; exit 1; }
 has "$r_flat" 'fork' || { echo "fork channel absent"; exit 1; }
+
+# OpenCode. It has no marketplace, so an inspector that only knows the two
+# marketplace channels reports "not installed" for a harness that is, and the
+# skill walks past a whole install. The channel has to name the paths, and it has
+# to carry the two facts that make this install break silently when it is wrong:
+# a copied plugin resolves its sibling scripts to a directory that is not there,
+# and the skills CLI lands OpenCode's skills in the SHARED agents directory that
+# Claude Code also scans, which double-registers every skill on a machine that
+# runs both.
+has "$r_flat" 'opencode' || { echo "OpenCode channel absent"; exit 1; }
+# The needles drop the leading tilde on purpose: a literal '~' inside quotes is
+# exactly what the reference should contain, and shellcheck reads a quoted '~/...'
+# in a script as a path that will not expand (SC2088).
+grep -Fq '/.config/opencode/plugins' "$r" || { echo "OpenCode plugin path absent"; exit 1; }
+has "$r_flat" 'symlink.*(rather than|instead of|never).*(copy|copie)|(copy|copie).*(break|not.*resolve)' ||
+  { echo "OpenCode copy trap absent"; exit 1; }
+grep -Fq '/.agents/skills' "$r" || { echo "shared skills-dir double registration absent"; exit 1; }
+has "$r_flat" 'OPENCODE\.md' || { echo "OpenCode baseline absent from drift check"; exit 1; }
 has "$r_flat" 'stop.*optional additions' || { echo "channel partial-failure stop absent"; exit 1; }
 
 grep -q '`upgrading-megapowers`' "$pr" || { echo "plugin README does not list skill"; exit 1; }
