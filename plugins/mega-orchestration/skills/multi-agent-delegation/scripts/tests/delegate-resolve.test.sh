@@ -983,6 +983,102 @@ check_exit "a self role reaches exactly one vendor" 1 "$n"
 out="$("$DR" --check "${SELF[@]}" 2>&1)"; rc=$?
 check_exit "--check accepts a self role" 0 "$rc"
 
+echo "== self-role tier fallback =="
+
+# `self` promises the CALLER's own backend, and a BYO-model harness can be running
+# any model in the catalog. Several of them carry one tier only, so a role tier the
+# caller's provider does not publish is a request that cannot be honoured as asked.
+# Refusing there strands the caller entirely; retiering serves it and says so.
+out="$(DELEGATES_TOML="$HERE/../../delegates.toml" MODELS_TOML="$HERE/../../../../models.toml" \
+  "$DR" small_impl --caller-adapter opencode --caller-model qwen3.8-max 2>&1)"; rc=$?
+check_exit "a self role resolves for a caller whose provider lacks the role tier" 0 "$rc"
+check "the retiered self route stays with the caller's provider" "PROVIDER=qwen" "$out"
+check "the retiered self route runs the caller's only model" "MODEL=qwen3.8-max" "$out"
+check "TIER reports the tier the route actually got" "TIER=frontier" "$out"
+check "the retier is reported, not silent" "TIER_FALLBACK=strong->frontier" "$out"
+
+# The other direction, and it needs its own fixture: the only strong-only provider
+# the shipped catalog carries is xai, which ships enabled = false.
+cat > "$TMP/onetier.toml" <<'EOF'
+[tiers]
+scale = ["strong", "frontier"]
+[efforts]
+scale = ["low", "medium", "high"]
+[lead]
+provider = "solo"
+tier     = "strong"
+[providers.solo]
+vendor  = "soloco"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "medium", "high"]
+default_tier = "strong"
+[providers.solo.tiers]
+strong = "solo-strong"
+[defaults]
+floor = "strong:low"
+[roles]
+deep_work = "self"
+[role_tiers]
+deep_work = "frontier"
+[role_efforts]
+deep_work = "high"
+EOF
+ONE=(--config "$TMP/onetier.toml" --models "$TMP/empty-catalog.toml")
+out="$("$DR" deep_work "${ONE[@]}" 2>&1)"; rc=$?
+check_exit "a self role resolves down to the caller's only tier" 0 "$rc"
+check "the downward retier runs the provider's only model" "MODEL=solo-strong" "$out"
+check "the downward retier reports the resolved tier" "TIER=strong" "$out"
+check "the downward retier is reported too" "TIER_FALLBACK=frontier->strong" "$out"
+
+# Absence of the field is the contract for "the role got the tier it asked for", so
+# a route that was never retiered must not emit it.
+out="$("$DR" small_impl "${SELF[@]}" --author-model alpha-frontier 2>&1)"
+if printf '%s' "$out" | grep -q 'TIER_FALLBACK='; then
+  fail=$((fail+1)); printf '  FAIL a self route that got its own tier must not report a fallback\n    got: %s\n' "$out"
+else
+  pass=$((pass+1))
+fi
+
+# The floor is a ship rule, not a preference, so the fallback may not rescue a
+# provider under it: retiering picks the nearest tier and the floor still skips it.
+cat > "$TMP/subfloor.toml" <<'EOF'
+[tiers]
+scale = ["cheap", "strong", "frontier"]
+[efforts]
+scale = ["low", "medium", "high"]
+[lead]
+provider = "budget"
+tier     = "cheap"
+[providers.budget]
+vendor  = "budgetco"
+binary  = "sh"
+channel = "cli"
+effort  = "high"
+efforts = ["low", "medium", "high"]
+default_tier = "cheap"
+[providers.budget.tiers]
+cheap = "budget-cheap"
+[defaults]
+floor = "strong:low"
+[roles]
+deep_work = "self"
+[role_tiers]
+deep_work = "frontier"
+[role_efforts]
+deep_work = "high"
+EOF
+out="$("$DR" deep_work --config "$TMP/subfloor.toml" --models "$TMP/empty-catalog.toml" 2>&1)"; rc=$?
+check_exit "the fallback cannot rescue a provider below the floor" 3 "$rc"
+check "the sub-floor skip still names the floor" "below floor" "$out"
+
+# --vendors decides whether a role can route at all, so it must not report a self
+# role as unreachable on the very tier mismatch resolution now absorbs.
+out="$("$DR" --vendors deep_work "${ONE[@]}" 2>&1)"; rc=$?
+check_exit "--vendors resolves a retiered self role" 0 "$rc"
+check "--vendors reports the retiered self role's vendor" "soloco" "$out"
+
 # An open-weights model is reachable through more than one host, so one model id can
 # legitimately appear under two providers. When those providers differ in vendor, the
 # id no longer identifies an author: picking either one would exclude a vendor the

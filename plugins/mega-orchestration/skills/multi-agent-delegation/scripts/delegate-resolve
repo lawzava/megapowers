@@ -347,6 +347,43 @@ adapter_val() { # $1=provider $2=key
 scale_list="$(cat_array tiers scale)"   # empty on v1 configs
 tier_index() { printf '%s\n' "$scale_list" | grep -nx -- "$1" | cut -d: -f1; }
 
+# The nearest tier a provider actually publishes, for a role tier it does not.
+#
+# Used by the `self` paths ONLY, and the asymmetry is the point. A static or chained
+# route that cannot serve the role's tier has other candidates to fall through to, so
+# retiering it would hide a misconfigured chain behind a quietly weaker model. A
+# `self` route has no chain by construction: the caller's own provider or nothing.
+# The tier is an optimisation over a backend the caller has already committed to, and
+# a BYO-model harness can be running any model this catalog knows, including the
+# several that publish one tier only. Refusing there strands the caller on a role that
+# has nothing to do with which model is best, so serve the request and report the
+# retier instead.
+#
+# Distance first, then upward on a tie: an equally-near stronger model is a cost
+# question, and a weaker one is a quality question. The floor is not consulted here;
+# it stays where it is, so a provider retiered below it is still skipped rather than
+# rescued by this walk.
+nearest_provider_tier() {  # $1=provider $2=requested tier -> the tier to use, or 1
+  local p="$1" want="$2" widx n d up down cand
+  widx="$(tier_index "$want")"
+  [ -n "$widx" ] || return 1
+  n="$(printf '%s\n' "$scale_list" | grep -c .)"
+  d=1
+  while [ "$d" -lt "$n" ]; do
+    up=$((widx + d)); down=$((widx - d))
+    if [ "$up" -le "$n" ]; then
+      cand="$(printf '%s\n' "$scale_list" | sed -n "${up}p")"
+      [ -n "$(cat_val "providers.$p.tiers" "$cand")" ] && { printf '%s\n' "$cand"; return 0; }
+    fi
+    if [ "$down" -ge 1 ]; then
+      cand="$(printf '%s\n' "$scale_list" | sed -n "${down}p")"
+      [ -n "$(cat_val "providers.$p.tiers" "$cand")" ] && { printf '%s\n' "$cand"; return 0; }
+    fi
+    d=$((d + 1))
+  done
+  return 1
+}
+
 # --- who is asking -------------------------------------------------------------------
 # A harness always knows the model id it is running; it does not necessarily know
 # the vendor name this catalog files that model under, and a BYO-model harness
@@ -930,6 +967,16 @@ if [ "$vendors" -eq 1 ]; then
       [ -n "$vr_candidates" ] || vr_candidates="$vr_primary"
     fi
     vr_tier="$(section_val role_tiers "$role")"
+    # Resolution retiers a `self` route rather than refusing it, and this probe is
+    # what a caller reads to decide whether the role can route at all. Applying the
+    # same retier here keeps the two answers the same; without it the probe would
+    # report zero vendors for a route that resolves. Every other filter, the floor
+    # included, still runs on the tier the retier landed on.
+    if [ "$vr_role_is_self" -eq 1 ] && [ -n "$vr_tier" ] &&
+       [ -z "$(cat_val "providers.$vr_primary.tiers" "$vr_tier")" ]; then
+      vr_retier="$(nearest_provider_tier "$vr_primary" "$vr_tier")"
+      [ -n "$vr_retier" ] && vr_tier="$vr_retier"
+    fi
     vr_effort="$(section_val role_efforts "$role")"
     vr_req="$(array_val requires "$role")"
     vr_floor="$(cat_val defaults floor)"
@@ -1195,6 +1242,7 @@ set_running_provider "$role_is_self"
 # unnoticed. Assignments are global; the fatal cases still exit the script.
 select_route() {
   selected=""; selected_model=""; selected_tier=""; selected_effort=""; selected_native=0; only_disabled=1
+  selected_tier_fallback=""
   while IFS= read -r p; do
   [ -n "$p" ] || continue
   # One judgement, this loop's policy. A missing section is fatal here and merely
@@ -1231,9 +1279,18 @@ select_route() {
       continue
     fi
   fi
+  candidate_tier_fallback=""
   if [ -n "$role_tier" ]; then
     candidate_tier="$role_tier"
     candidate_model="$(cat_val "providers.$p.tiers" "$candidate_tier")"
+    if [ -z "$candidate_model" ] && [ "$role_is_self" -eq 1 ]; then
+      candidate_retier="$(nearest_provider_tier "$p" "$role_tier")"
+      if [ -n "$candidate_retier" ]; then
+        candidate_tier_fallback="$role_tier->$candidate_retier"
+        candidate_tier="$candidate_retier"
+        candidate_model="$(cat_val "providers.$p.tiers" "$candidate_tier")"
+      fi
+    fi
     if [ -z "$candidate_model" ]; then
       echo "delegate-resolve: provider '$p' has no model mapping for role '$role' tier '$candidate_tier'" >&2
       exit 2
@@ -1290,6 +1347,7 @@ select_route() {
   selected="$p"
   selected_model="$candidate_model"
   selected_tier="$candidate_tier"
+  selected_tier_fallback="$candidate_tier_fallback"
   selected_effort="$candidate_effort"
   selected_native="$candidate_native"
   break
@@ -1351,6 +1409,11 @@ fi
 # --- emit the resolved route -----------------------------------------------------
 model="$selected_model"
 tier="$selected_tier"
+# TIER always reports the tier this route actually got. When that is not the tier the
+# role asked for, TIER_FALLBACK carries both halves, so a consumer reads the retier
+# off the route instead of inferring it by re-reading the catalog. Its ABSENCE is the
+# contract for "the role got the tier it asked for".
+tier_fallback="$selected_tier_fallback"
 effort="$selected_effort"
 adapter="$(provider_adapter "$selected")"
 if [ "$selected_native" -eq 1 ] && [ -n "$running_adapter" ]; then adapter="$running_adapter"; fi
@@ -1414,6 +1477,7 @@ echo "CALLER=$caller_provenance"
 [ -n "${running_adapter:-}" ] && echo "CALLER_ADAPTER=$running_adapter"
 echo "MODEL=${model:-}"
 [ -n "$tier" ] && echo "TIER=$tier"
+[ -n "$tier_fallback" ] && echo "TIER_FALLBACK=$tier_fallback"
 [ -n "$effort" ] && echo "EFFORT=$effort"
 echo "CHANNEL=${channel:-}"
 echo "ENABLED=true"

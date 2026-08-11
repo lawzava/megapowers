@@ -142,6 +142,19 @@ runtimes (OpenCode, Cursor CLI, pi), which have no fixed vendor: their vendor is
 whichever model is configured, so it can only be reported at runtime, never
 declared in a config file.
 
+`TIER_FALLBACK=<requested>-><resolved>` appears when a `self` route could not get
+the tier its role asked for. `self` promises the caller's own backend; the tier is
+an optimisation over a backend already chosen, and several catalogued providers
+publish one tier only, so a BYO-model caller can be running a model whose provider
+has nothing at the requested tier. Rather than strand that caller, the resolver
+takes the nearest tier the provider does publish, preferring the stronger one when
+both neighbours exist, and says so on this field. `TIER` always reports what the
+route actually got, and the absence of `TIER_FALLBACK` is the contract for "the
+role got the tier it asked for". Only `self` routes retier: a static or chained
+route has other candidates to fall through to, so retiering one would hide a
+misconfigured chain. The floor is unaffected either way, so a provider whose
+nearest tier sits below `[defaults] floor` is still skipped rather than rescued.
+
 The author flags answer two different questions, and only one of them wants a
 single answer:
 
