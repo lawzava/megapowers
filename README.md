@@ -31,7 +31,7 @@ Full install, update, verification, and uninstall instructions are in
 [`docs/agent-install.md`](./docs/agent-install.md), then give it this prompt:
 
 > Install megapowers on this machine by fetching and following
-> https://raw.githubusercontent.com/lawzava/megapowers/v0.10.1/docs/agent-install.md
+> https://raw.githubusercontent.com/lawzava/megapowers/v0.11.0/docs/agent-install.md
 
 The guide asks before changing permissions or settings.
 

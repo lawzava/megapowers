@@ -5,7 +5,7 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## Unreleased
+## 0.11.0 - 2026-08-11
 
 OpenCode moves from portable-skill compatibility to a supported lead harness,
 at parity with Codex: two plugins, agent role templates, a charter, and a
