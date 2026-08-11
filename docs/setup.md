@@ -217,6 +217,15 @@ Install `megapowers`, `mega-go`, `mega-python`, `mega-ts`, `mega-frontend`,
 Under Codex, mega-guardrails supplies the destructive-command adapter only; its
 formatter and statusline remain Claude Code features.
 
+Install what you use. Codex renders every enabled skill's name and description
+into session context under a fixed budget and, once that budget is exceeded,
+shortens the descriptions rather than dropping skills, warning at session start
+that it did. All seven plugins together are 32 skills at roughly 3KB of
+descriptions, which fits; on codex-cli 0.147.0 a 54-skill surface across four
+marketplaces (about 9KB) did not. Disable unused plugins with `codex plugin
+disable <name>@<marketplace>`; a truncated description is a skill the model
+matches less reliably, not a skill it cannot see.
+
 ### Contributor or fork variant
 
 To track a local checkout or a fork instead of the published tag, add the
@@ -351,7 +360,7 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with `codex plugin marketplace add
-  lawzava/megapowers@v0.11.2`, or, for Claude Code, add `"ref": "v0.11.2"` to the
+  lawzava/megapowers@v0.11.3`, or, for Claude Code, add `"ref": "v0.11.3"` to the
   `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
@@ -655,7 +664,7 @@ For release certification, a local marketplace is insufficient. After the
 signed tag is public, run the strict exact-ref study:
 
 ```bash
-tag=v0.11.2   # the tag you just signed and pushed
+tag=v0.11.3   # the tag you just signed and pushed
 evals/studies/install-smoke/run-smoke.sh \
   --out "${TMPDIR:-/tmp}/megapowers-install-$tag" \
   --source lawzava/megapowers --ref "$tag" --version "${tag#v}" \
