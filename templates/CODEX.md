@@ -34,11 +34,17 @@ Length comes from content, never from manner.
 
 ## Declare the lead
 
-The model catalog must say Codex leads, or the routing helpers keep treating
-your vendor as a delegate route. Check with `delegate-resolve --lead`; if it
-does not print a codex provider, put this in a project
-`.megapowers/models.toml` or user `~/.config/megapowers/models.toml` override
-layer:
+A Codex session declares itself on every route resolution with
+`--caller-provider codex`. An undeclared session is assumed to be the catalog
+`[lead]`, which the shipped catalog names as Claude: `self` roles then route to
+Claude instead of to you, and `DISPATCH=native` names a provider this session is
+not. The declaration is what makes the harness that is running the one in
+charge, so no catalog edit is required to lead.
+
+Overriding `[lead]` is optional and does something narrower: it changes the
+default for sessions that declare nothing. Set it in a project
+`.megapowers/models.toml` or user `~/.config/megapowers/models.toml` layer if
+Codex is the usual lead across harnesses here:
 
 ```toml
 [lead]
@@ -52,8 +58,10 @@ Pin the matching model in `~/.codex/config.toml` (see
 ## Session catalog
 
 The megapowers SessionStart hook injects the rendered model catalog: lead, tier
-and effort scales, delegate providers, ship floor. If the block is missing
-(untrusted hook or fail-open error), render it manually:
+and effort scales, delegate providers, ship floor, plus the identity line naming
+Codex as this session's lead and the `--caller-provider codex` flag that carries
+it into route resolution. If the block is missing (untrusted hook or fail-open
+error), render the catalog manually and declare yourself by hand:
 
 ```bash
 <megapowers plugin dir>/hooks/render-model-catalog
