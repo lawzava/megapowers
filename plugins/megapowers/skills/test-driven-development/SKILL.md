@@ -24,6 +24,20 @@ generated code, and configuration files with no behavior to assert. Outside
 those, the thought "I'll skip TDD just this once" is a signal to slow down, not
 a reason to skip.
 
+## Before the First Test
+
+A test written without understanding the code around it asserts what you assumed
+the module does. Before writing it, know how the behavior is reached, who else
+calls what you are about to change, which sibling already does something similar
+and sets the convention, and what already covers this behavior. Find callers by
+searching, not by remembering.
+
+Then say what you did not read and why it cannot matter. Skipping that step is
+what turns "I looked at the file" into "I understood the change".
+
+For a multi-step change, `megapowers:writing-plans` carries the full version of
+this pass and puts the answers in the plan.
+
 ## The Core Rule
 
 Production code follows a failing test. Write the test, watch it fail, then
