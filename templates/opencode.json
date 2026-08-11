@@ -1,16 +1,73 @@
 {
-  "instructions": ["./OPENCODE.md"],
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "./AGENTS.md"
+  ],
+  "share": "disabled",
+  "autoupdate": "notify",
+  "subagent_depth": 2,
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "tail_turns": 3
+  },
+  "permission": {
+    "read": {
+      ".env": "deny",
+      "*.env": "deny",
+      "*/.env": "deny",
+      "**/.env": "deny",
+      "*.env.*": "deny",
+      "**/.env.*": "deny",
+      "*.env.example": "allow",
+      "**/secrets/**": "deny",
+      "**/.ssh/**": "deny",
+      "**/.aws/**": "deny",
+      "**/.gnupg/**": "deny",
+      "**/.netrc": "deny",
+      "**/.pgpass": "deny",
+      "**/id_rsa*": "deny",
+      "**/id_ed25519*": "deny"
+    },
+    "bash": {
+      "*": "ask",
+      "*rm -rf /*": "deny",
+      "*rm -rf ~*": "deny",
+      "*rm -rf $HOME*": "deny",
+      "*mkfs*": "deny",
+      "*dd *of=/dev/*": "deny",
+      "*chmod 777 /*": "deny",
+      "*git push*--force*": "deny",
+      "*git push*-f *": "deny",
+      "*git reset --hard*": "deny",
+      "*git clean -f*": "deny",
+      "*git branch -D*": "deny",
+      "*git stash drop*": "deny",
+      "*--no-verify*": "deny",
+      "*--no-gpg-sign*": "deny",
+      "*git add -f*": "deny",
+      "*curl*|*sh*": "deny",
+      "*wget*|*sh*": "deny",
+      "cat *": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git show*": "allow",
+      "git status*": "allow",
+      "grep *": "allow",
+      "head *": "allow",
+      "ls*": "allow",
+      "rg *": "allow",
+      "tail *": "allow",
+      "wc *": "allow",
+      "which *": "allow"
+    },
+    "external_directory": "ask",
+    "webfetch": "ask",
+    "websearch": "ask",
+    "doom_loop": "ask"
+  },
   "plugin": [
     "<megapowers-checkout>/plugins/megapowers/opencode/session-catalog.js",
     "<megapowers-checkout>/plugins/mega-guardrails/opencode/deny-destructive.js"
-  ],
-  "permission": {
-    "bash": {
-      "git reset --hard*": "ask",
-      "git clean -f*": "ask",
-      "git branch -D*": "ask",
-      "git push --force*": "ask",
-      "curl * | *sh": "ask"
-    }
-  }
+  ]
 }

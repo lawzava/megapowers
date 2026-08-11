@@ -250,10 +250,39 @@ if [[ -f $oc_json ]] && jq -e . "$oc_json" >/dev/null 2>&1; then
   else
     bad "$oc_json plugin[] must name both session-catalog.js and deny-destructive.js"
   fi
-  if jq -e '(.permission.bash // {}) as $b | (["git reset --hard*","git clean -f*","git branch -D*","git push --force*","curl * | *sh"] | all(. as $k | $b[$k] == "ask"))' "$oc_json" >/dev/null 2>&1; then
-    ok "$oc_json permission.bash carries all five ask patterns"
+  # Deny by default, allowlist the harmless. Enumerating dangerous commands to "ask"
+  # only works if the enumeration out-guesses the matcher on every shape a command can
+  # take; default-ask does not need that luck. Verified against 1.18.16: a specific
+  # pattern beats the catch-all, so the allowlist still runs unprompted.
+  if jq -e '(.permission.bash // {}) | .["*"] == "ask"' "$oc_json" >/dev/null 2>&1; then
+    ok "$oc_json permission.bash denies by default (\"*\": \"ask\")"
   else
-    bad "$oc_json permission.bash missing one or more of the five ask patterns"
+    bad "$oc_json permission.bash must default to ask; an allow-by-default map relies on out-guessing the matcher"
+  fi
+  # A catch-all allow inside the read map defeats every deny beneath it. Observed on
+  # 1.18.16: with it, .env was read silently; without it, .env is denied.
+  if jq -e '(.permission.read // {}) | has("*") | not' "$oc_json" >/dev/null 2>&1; then
+    ok "$oc_json permission.read has no catch-all allow"
+  else
+    bad "$oc_json permission.read must not carry a \"*\" entry; it overrides the credential denies"
+  fi
+  if jq -e '(.permission.read // {}) as $r | ([".env","*.env","*/.env","**/.env"] | all(. as $k | $r[$k] == "deny"))' "$oc_json" >/dev/null 2>&1; then
+    ok "$oc_json permission.read denies every spelling of .env"
+  else
+    bad "$oc_json permission.read must deny .env as a bare name and as a nested path; one spelling silently matches nothing"
+  fi
+  if jq -e '(.permission.read // {}) as $r | (["**/.ssh/**","**/.aws/**","**/.gnupg/**","**/.netrc","**/.pgpass"] | all(. as $k | $r[$k] == "deny"))' "$oc_json" >/dev/null 2>&1; then
+    ok "$oc_json permission.read denies the credential paths"
+  else
+    bad "$oc_json permission.read must deny ssh, aws, gnupg, netrc, and pgpass paths"
+  fi
+  # `--auto` approves everything that is not explicitly denied, so a dangerous class
+  # left on "ask" is a dangerous class that runs unattended. These stay deny or the
+  # whole posture is decorative under the flag a long session actually uses.
+  if jq -e '(.permission.bash // {}) as $b | (["*git reset --hard*","*git clean -f*","*git push*--force*","*--no-verify*","*curl*|*sh*"] | all(. as $k | $b[$k] == "deny"))' "$oc_json" >/dev/null 2>&1; then
+    ok "$oc_json permission.bash denies the classes that must survive --auto"
+  else
+    bad "$oc_json permission.bash must DENY (not ask) history rewrites, force pushes, hook bypasses, and pipe-to-shell; --auto approves every ask"
   fi
 else
   bad "$oc_json missing or invalid JSON"
@@ -264,6 +293,21 @@ if [[ -f $opencode_md ]] && grep -qF -- '--caller-adapter opencode' "$opencode_m
   ok "$opencode_md documents --caller-adapter opencode"
 else
   bad "$opencode_md must document --caller-adapter opencode"
+fi
+
+# OPENCODE.md is installed AS the reader's global AGENTS.md, which is what makes a
+# sibling-template path in its body a live instruction rather than a citation: a
+# session reads "the plugin array in templates/opencode.json", goes looking for a
+# file that exists only in this repo, and burns an external-directory prompt on
+# every unrelated task. Observed in a real session. Install-time pointers belong in
+# the leading blockquote, which a session reads as provenance, and nowhere else.
+opencode_md_body="$(sed -n '/^> /!p' "$opencode_md" 2>/dev/null)"
+if [[ -f $opencode_md ]]; then
+  if grep -qF 'templates/' <<< "$opencode_md_body"; then
+    bad "$opencode_md references a templates/ path outside its install blockquote (it becomes a global AGENTS.md; the path turns into a lookup)"
+  else
+    ok "$opencode_md keeps repo paths inside its install blockquote"
+  fi
 fi
 
 echo "== scratch storage guidance =="
