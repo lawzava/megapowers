@@ -25,8 +25,10 @@ requirements unless clearly marked optional.
   `.codex-plugin/plugin.json`, and repo marketplaces under
   `.agents/plugins/marketplace.json`.
 - OpenCode reads `AGENTS.md` and can load `skills/<name>/SKILL.md` through
-  `.opencode/`, `.agents/`, or Claude-compatible paths; its plugins are
-  JavaScript or TypeScript modules, not these Claude shell hooks.
+  `.opencode/`, `.agents/`, or Claude-compatible paths. Its plugins are
+  JavaScript or TypeScript modules; this repository ships two, ported from
+  the Claude shell hooks (`plugins/megapowers/opencode/session-catalog.js`,
+  `plugins/mega-guardrails/opencode/deny-destructive.js`).
 - Three harnesses are targeted and no others. Skills are portable markdown, so
   another harness may load them; that is not support, and nothing here is tested
   against one. Adding a harness is a deliberate change to this list and to

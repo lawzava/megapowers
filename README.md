@@ -44,7 +44,9 @@ The guide asks before changing permissions or settings.
 - Stop and PreToolUse hooks backstop autonomous runs, independent review, and a
   small set of catastrophic shell commands. Claude Code receives the full hook
   set. Codex receives the compatible session catalog, review nudge, and
-  destructive-command guard. OpenCode is skills-only.
+  destructive-command guard. OpenCode receives a session-catalog plugin and the
+  DENY tier of the destructive-command guard as a plugin; its ASK tier is
+  delivered declaratively through config.
 - `models.toml` and `delegates.toml` route review, verification, browser work,
   and other roles to installed agent CLIs. megapowers adds no API key or hosted
   service.
@@ -117,7 +119,8 @@ Full methods, tables, prompts, and reproduction commands:
 - This is not a security boundary. Hooks stop common accidents, not a hostile
   agent or malicious dependency. Read [`SECURITY.md`](./SECURITY.md) before
   installation.
-- OpenCode receives no hook enforcement.
+- OpenCode's plugin enforcement covers only the DENY tier of the destructive-
+  command guard; its ASK tier depends on OpenCode's own permission config.
 - Current frontier models already handle much single-shot coding correctly. The
   measured gains here concern process ordering and verification.
 - Model IDs, stack picks, and harness capabilities age. Their review dates and
