@@ -5,6 +5,44 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+OpenCode moves from portable-skill compatibility to a supported lead harness,
+at parity with Codex: two plugins, agent role templates, a charter, and a
+config template, all mirroring what Codex already had.
+
+### Added
+
+- `plugins/megapowers/opencode/session-catalog.js`
+  (`MegapowersSessionCatalog`) injects the model catalog and a caller-identity
+  line into the system prompt on every chat request, via
+  `experimental.chat.system.transform`.
+- `plugins/mega-guardrails/opencode/deny-destructive.js`
+  (`MegapowersDenyDestructive`) enforces the DENY tier of the existing bash
+  tripwire from `tool.execute.before`.
+- `plugins/mega-orchestration/assets/opencode-agents/{builder,reviewer}.md`
+  (mirrored at `templates/opencode-agents/`): builder pinned to the moonshot
+  strong tier, reviewer to the qwen frontier tier, deliberately different
+  vendors, with `reviewer.md` setting `permission: edit: deny` to remove the
+  edit tool. Read-only stays a prompt contract: `bash: allow` still reaches the
+  filesystem through a redirect or `sed -i`.
+- `templates/OPENCODE.md` (the OpenCode charter) and `templates/opencode.json`
+  (the config fragment wiring both plugins and the ASK-tier bash patterns).
+
+### Changed
+
+- `delegate-resolve` retiers a `self` route onto the nearest tier the
+  caller's own provider publishes, reporting the substitution as
+  `TIER_FALLBACK=<requested>-><resolved>` instead of erroring, so a
+  bring-your-own-model OpenCode lead resolves every role even when its
+  provider publishes a single tier.
+
+Two gaps remain, both pinned to opencode 1.18.16: `permission.ask` does not
+exist as a plugin hook, so the ASK tier is delivered declaratively through
+`permission.bash` patterns instead, and how those patterns match a compound
+command is unconfirmed; and `experimental.chat.system.transform`, which the
+catalog injection depends on, is undocumented upstream and may change shape.
+
 ## 0.10.1 - 2026-08-10
 
 Independence had one reachable alternate vendor, which 0.10.0 recorded as a

@@ -23,6 +23,10 @@ implementation tracks. Keep single-writer discipline when subagents can edit.
 ## Plugins
 
 OpenCode plugins are JavaScript or TypeScript modules loaded from
-`.opencode/plugins/` or package configuration. The Claude Code shell hooks in
-this repository are not OpenCode plugins; port them explicitly before enabling
-equivalent behavior.
+`.opencode/plugins/`, `~/.config/opencode/plugins/`, or the `plugin` array in
+`opencode.json`. Two Claude Code shell hooks have been ported this way:
+`plugins/megapowers/opencode/session-catalog.js`
+(`MegapowersSessionCatalog`, model catalog and caller-identity injection) and
+`plugins/mega-guardrails/opencode/deny-destructive.js`
+(`MegapowersDenyDestructive`, the DENY tier of the bash tripwire). See
+`docs/harness-support.md`'s OpenCode section for load paths and known gaps.

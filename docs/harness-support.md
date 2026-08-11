@@ -1,14 +1,16 @@
 # Harness support matrix
 
-Last reviewed: 2026-08-07.
+Last reviewed: 2026-08-11.
 
 Three harnesses are targeted: Claude Code, Codex, and OpenCode. They do not have
 the same extension surface. Three facts apply across the whole matrix:
 
-- `mega-guardrails` ships hook manifests for Claude Code and Codex. Claude gets
-  the destructive guard, injection probe, and formatter; Codex's cross-harness
-  dispatcher runs the destructive adapter and makes the others no-ops. OpenCode
-  remains skills-only and receives no enforcement.
+- `mega-guardrails` ships hook manifests for Claude Code and Codex, and a
+  plugin pair for OpenCode. Claude gets the destructive guard, injection
+  probe, and formatter; Codex's cross-harness dispatcher runs the destructive
+  adapter and makes the others no-ops; OpenCode gets the DENY tier of the
+  destructive guard through a plugin, with the ASK tier delivered
+  declaratively through config instead.
 - Scope is deliberate. A harness earns a section by being one this repo is
   actually run under, not by being able to read a `SKILL.md`. Skills are portable
   markdown, so other harnesses may well load them; that is not the same as being
@@ -114,11 +116,11 @@ agent role templates.
 
 ## OpenCode
 
-OpenCode support is portable-skill compatibility. This repository ships no
-OpenCode plugin, launcher, credentials bridge, or review-receipt adapter; use
-OpenCode's own agent and permission configuration for those runtime features.
+Status: supported. Target version 1.18.16; the plugin SDK types published as
+`@opencode-ai/plugin` are pinned to 1.17.12 and lag the binary.
 
-Status: supported through shared instructions and portable skills.
+This repository still ships no credentials bridge or review-receipt adapter
+for OpenCode; use OpenCode's own credential configuration for those.
 
 - Repo instructions: `AGENTS.md`.
 - Skill format: `skills/<name>/SKILL.md`. `name` must match the directory name
@@ -139,10 +141,54 @@ Status: supported through shared instructions and portable skills.
   `~/.claude/skills/` and `~/.agents/skills/` fallbacks can be turned off with
   `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS` when you want OpenCode to read only its
   own paths.
-- Plugins: OpenCode plugins are JavaScript or TypeScript modules with
-  `tool.execute.before/after` hooks, so a guardrail port is feasible here. This
-  repo does not ship one yet; the current shell hooks are Claude Code scripts
-  and have not been ported.
+- Plugins: two ship, both JavaScript modules loaded from
+  `~/.config/opencode/plugins/`, `.opencode/plugins/`, or the `plugin` array in
+  `opencode.json`. **Symlink them, do not copy them.** Each shells out to a
+  bash script resolved relative to its own file, and node resolves an ESM
+  specifier to its realpath, so a symlink keeps that path pointing into the
+  checkout while a copy leaves it pointing at a directory that does not exist.
+  A copied `deny-destructive.js` now refuses to load rather than silently
+  allowing every command it exists to stop.
+  - `plugins/megapowers/opencode/session-catalog.js`
+    (`MegapowersSessionCatalog`) injects the rendered model catalog plus a
+    caller-identity line (`--caller-adapter opencode --caller-model <id>`)
+    into the system prompt on every chat request, via
+    `experimental.chat.system.transform`. The catalog render is memoised once
+    per process; the append happens every request.
+  - `plugins/mega-guardrails/opencode/deny-destructive.js`
+    (`MegapowersDenyDestructive`) enforces the DENY tier of the existing bash
+    tripwire from `tool.execute.before`.
+- Agent role templates: `plugins/mega-orchestration/assets/opencode-agents/`
+  (mirrored at `templates/opencode-agents/`) ships `builder.md`, pinned to the
+  moonshot provider's strong tier, and `reviewer.md`, pinned to the qwen
+  provider's frontier tier, a different vendor from builder's on purpose so
+  the review role's independence is real rather than promised. `reviewer.md`
+  sets `permission: edit: deny`, which removes the edit tool. That is a real
+  narrowing and it is not read-only enforcement: `bash: allow` still reaches
+  the filesystem through a redirect or `sed -i`, so read-only stays a prompt
+  contract here as on every other harness. Copy either file into
+  `.opencode/agent/` (project) or `~/.config/opencode/agent/` (global); the
+  agent files carry no relative dependencies, so copying them is safe. Both `.opencode/agent/` and `.opencode/agents/` load agent
+  markdown on 1.18.16; upstream documents only the singular.
+- Charter and config templates: `templates/OPENCODE.md` is the OpenCode
+  sibling of `templates/CLAUDE.md` and `~/.codex/AGENTS.md`; OpenCode does not
+  read a file literally named `OPENCODE.md`, so save it as `AGENTS.md` or
+  reference it through the `instructions` array. `templates/opencode.json`
+  wires both plugins through the `plugin` array and sets `permission.bash`
+  patterns for the ASK tier described below.
+- Two known gaps:
+  - `permission.ask` does not exist as a plugin hook in 1.18.16, so no plugin
+    can raise a confirmation prompt. The ASK tier is delivered declaratively
+    by `permission.bash` patterns instead. How 1.18.16 matches a glob against
+    a compound command (a pipeline, `&&`, a subshell) is not confirmed, so
+    those patterns are a convenience rather than a boundary.
+  - `experimental.chat.system.transform` is undocumented upstream. The catalog
+    injection is pinned to observed 1.18.16 behavior and no-ops if it changes.
+- `delegate-resolve` retiers a `self` route onto the nearest tier the caller's
+  own provider publishes when the requested tier is not available there, and
+  reports the substitution as `TIER_FALLBACK=<requested>-><resolved>` instead
+  of erroring. This is what lets a bring-your-own-model OpenCode lead resolve
+  every role even when its provider publishes a single tier.
 
 ## Operating systems
 
