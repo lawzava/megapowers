@@ -83,7 +83,7 @@ exclude_globs = ["*.md", "*.rst", "LICENSE", "CHANGELOG.md"]
 # own warning. Each path is ANCHORED against committed manifest facts, not
 # matched by name. Add one only when the file's purpose is to define or exercise
 # the gate; every addition is a real blind spot.
-self_exclude = ["hooks/delegate-nudge.sh", "enforcement.toml", "hooks/tests/delegate-nudge.test.sh", "hooks/tests/delegate-nudge-prose.test.sh", "hooks/tests/delegate-nudge-worktree.test.sh", "hooks/tests/delegate-nudge-untracked-cap.test.sh", "hooks/tests/delegate-nudge-scope.test.sh", "scripts/tests/enforcement.test.sh", "scripts/tests/session-metrics.test.sh"]
+self_exclude = ["hooks/delegate-nudge.sh", "enforcement.toml", "hooks/tests/delegate-nudge.test.sh", "hooks/tests/delegate-nudge-prose.test.sh", "hooks/tests/delegate-nudge-worktree.test.sh", "hooks/tests/delegate-nudge-untracked-cap.test.sh", "hooks/tests/delegate-nudge-scope.test.sh", "hooks/tests/delegate-nudge-evidence.test.sh", "scripts/tests/enforcement.test.sh", "scripts/tests/session-metrics.test.sh"]
 
 # --- The autonomous-run continuation gate ---
 # Listed so this file is a complete inventory of what can block a session.

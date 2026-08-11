@@ -100,6 +100,12 @@ project_kind=""
 hit=0
 binary_note=""
 unscannable_risky=""
+# The path and keyword that made this gate fire, as "<where>\t<keyword>". Empty
+# until something matches. Carried into the block reason so a fire can be
+# diagnosed by the agent that receives it: a gate that says only "risky logic
+# changed" is untunable, because nobody can tell a true fire from a false one
+# without re-deriving the scan by hand.
+hit_evidence=""
 # EVERY SCRATCH FILE THIS HOOK MAKES IS DECLARED HERE AND REMOVED FROM ONE TRAP.
 # Five temps: the committed policy copy (lib-toml.sh reads files, not strings),
 # two staged blobs, two index enumerations. Freeing them inline only leaks
@@ -935,9 +941,22 @@ markers_prog='
     if (m == ";") return t ~ /^;/
     return 0
   }
-  function risky_line(l, m) {
+  # RECORDS WHAT MATCHED, not just that something did. A block whose reason
+  # cannot name the path and the keyword is undiagnosable after the fact: the
+  # agent reading it has to guess, and a guess reported as a finding is how a
+  # false positive becomes a false security report. `hitword` is global on
+  # purpose, read by the END rule of whichever program included this table.
+  #
+  # match() rather than ~ so RSTART and RLENGTH carry the matched text back. The
+  # extra parameters are awk locals, which is why they are declared and never
+  # passed.
+  function risky_line(l, m,   lo, p) {
     if (skipc && is_comment(l, m)) return 0
-    return tolower(l) ~ pat
+    lo = tolower(l)
+    p = match(lo, pat)
+    if (p == 0) return 0
+    hitword = substr(lo, p, RLENGTH)
+    return 1
   }
 '
 # `added_lines_only`: only a line the change ADDS can introduce risky logic.
@@ -991,7 +1010,9 @@ diff_scan_prog=$markers_prog'
     } else if (risky_line($0, cls)) { hit = 1; exit }
   }
   END {
-    if (hit) exit 0
+    # The path comes from the last `diff --git` header seen, which is the file
+    # the matching hunk belongs to. A hit inside a header line has the same dg.
+    if (hit) { print (dg == "" ? "a path git did not name" : dg) "\t" hitword; exit 0 }
     if (binary != "") { print binary; exit 2 }
     exit 1
   }
@@ -1002,9 +1023,21 @@ diff_scan_prog=$markers_prog'
 # a path is not a line of source.
 file_scan_prog=$markers_prog'
   FNR == 1 { cls = markers(FILENAME) }
-  { if (risky_line($0, cls)) { hit = 1; exit } }
-  END { exit !hit }
+  { if (risky_line($0, cls)) { hit = 1; hitfile = FILENAME; hitline = FNR; hitname = $0; exit } }
+  # STDIN IS THE UNTRACKED NAME SCAN, and there the matched LINE is itself the
+  # path, so the line is the location. gawk sets FILENAME to "-" for stdin, not
+  # to "", so testing only for empty left every name-scan hit reporting "-:1"
+  # and never the path that matched. Both spellings are handled because the
+  # value is unspecified by POSIX and differs between implementations.
+  END {
+    if (!hit) exit 1
+    if (hitfile == "" || hitfile == "-") print hitname "\t" hitword
+    else print hitfile ":" hitline "\t" hitword
+    exit 0
+  }
 '
+# STDOUT IS EVIDENCE, NOT OUTPUT. Every caller captures it. Letting it reach the
+# hook stdout unread would splice a path into the JSON the harness parses.
 scan_lines() { awk -v pat="$risky" -v skipc="$1" "$file_scan_prog"; }
 
 # A NUL byte is the test git itself uses to call content binary, so this needs no
@@ -1289,14 +1322,15 @@ if [ "$hit" -eq 0 ] && [ -n "$diff" ]; then
     reduced="$(tracked_diff 2>/dev/null)" && scan_diff="$reduced"
     dropspec=()
   fi
-  binary_path="$(printf '%s\n' "$scan_diff" |
+  scan_out="$(printf '%s\n' "$scan_diff" |
     awk -v pat="$risky" -v skipc="$skip_comments" -v addedonly="$added_only" "$diff_scan_prog")"
   case "$?" in
-    0) hit=1 ;;
+    0) hit=1; hit_evidence="$scan_out" ;;
     2) # Named, because "something binary changed" is not a finding a reader can
        # act on and the path is the only part of a binary this gate can report. It
        # is also the only risk signal such a file leaves, so it is matched against
        # the keyword list rather than assumed risky.
+       binary_path="$scan_out"
        [ -n "$binary_path" ] || binary_path="a path git did not name"
        path_is_risky "$binary_path" && unscannable_risky="$binary_path"
        binary_note="A binary file changed and cannot be scanned for risky logic as text: $binary_path. An empty textual scan of a binary is not evidence of safety. " ;;
@@ -1338,7 +1372,10 @@ if [ "$hit" -eq 0 ] && [ "${#untracked[@]}" -gt 0 ]; then
   # payment_handler.go says what it is before anything is read out of it, and a
   # path is not a line of source.
   if [ "${#scan_paths[@]}" -gt 0 ]; then
-    printf '%s\n' "${scan_paths[@]}" | scan_lines 0 && hit=1
+    scan_out="$(printf '%s\n' "${scan_paths[@]}" | scan_lines 0)" && {
+      hit=1
+      hit_evidence="$scan_out"
+    }
   fi
   # EVERY remaining regular untracked file is opened. Stopping at the first fifty
   # paths let path fifty-one carry risky content past the scan with nothing said,
@@ -1408,8 +1445,11 @@ if [ "$hit" -eq 0 ] && [ "${#untracked[@]}" -gt 0 ]; then
   [ -z "$untracked_unclassified" ] || binary_note="${binary_note}An untracked file could not be classified as text or binary within the bytes this gate reads: $untracked_unclassified. Not known to be text is not the same as read. "
   i=0
   while [ "$hit" -eq 0 ] && [ "$i" -lt "${#scan_files[@]}" ]; do
-    awk -v pat="$risky" -v skipc="$skip_comments" "$file_scan_prog" \
-      "${scan_files[@]:i:200}" 2>/dev/null && hit=1
+    scan_out="$(awk -v pat="$risky" -v skipc="$skip_comments" "$file_scan_prog" \
+      "${scan_files[@]:i:200}" 2>/dev/null)" && {
+      hit=1
+      hit_evidence="$scan_out"
+    }
     i=$((i + 200))
   done
 fi
@@ -1536,7 +1576,23 @@ fi
 # could not be read, a pending policy edit this gate refused to honor, a binary it
 # could not scan, and a receipt it declined. Each one changes how the block below
 # should be read, so none of them may be left to a comment nobody sees.
-preamble="$rules_note$project_note$binary_note"
+# WHAT MATCHED, named before the remedy. Without it this reason states only a
+# CATEGORY, and the pending change may have nothing to do with that category: the
+# agent receiving the block cannot tell a true fire from a false one, so it
+# guesses. In the 2026-08-11 transcript audit three of twelve sampled fires were
+# guessed wrong in session, one of them reported to the human as a live
+# credential exposure that did not exist.
+#
+# One keyword and one location is the entire trigger. Saying so is also what
+# makes the rule tunable: a false fire that names its own cause can be filed
+# against the keyword list, and until now none of them could be.
+evidence_note=""
+if [ -n "$hit_evidence" ]; then
+  # Split at the LAST tab, not the first: a path may contain one and a keyword
+  # from the list never can, so the final field is unambiguously the keyword.
+  evidence_note="What matched: the keyword '${hit_evidence##*$'\t'}' at ${hit_evidence%$'\t'*}. That single match is the whole trigger. If that line is not auth, billing, payment, or concurrency logic, this is a false positive: say so plainly to the human instead of inventing a risk that fits the category, and do not report a finding you have not confirmed by reading the line. "
+fi
+preamble="$rules_note$project_note$binary_note$evidence_note"
 
 if [ "$reachable" -lt 2 ]; then
   jq -nc --arg legacy "$preamble$legacy" \
