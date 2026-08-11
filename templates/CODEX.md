@@ -127,6 +127,12 @@ back to `/tmp` for large output: request scoped access or use an ignored
 workspace directory. Keep `/tmp` for small, short-lived OS temporary files and
 IPC state.
 
+`$TMPDIR` is not always set. Unset, `"$TMPDIR/probe.sh"` becomes `/probe.sh` and
+a bare `probe.sh` lands in the repository you are standing in, which has already
+dropped scratch into a working tree and tripped the risky-logic gate on it.
+Resolve it once per job with `scratch="${TMPDIR:-/tmp}/agent-$$"`, and remove
+anything you did put in the repository before the turn ends.
+
 ## Git and style
 
 - Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`),
