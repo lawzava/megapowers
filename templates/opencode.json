@@ -1,0 +1,16 @@
+{
+  "instructions": ["./OPENCODE.md"],
+  "plugin": [
+    "<megapowers-checkout>/plugins/megapowers/opencode/session-catalog.js",
+    "<megapowers-checkout>/plugins/mega-guardrails/opencode/deny-destructive.js"
+  ],
+  "permission": {
+    "bash": {
+      "git reset --hard*": "ask",
+      "git clean -f*": "ask",
+      "git branch -D*": "ask",
+      "git push --force*": "ask",
+      "curl * | *sh": "ask"
+    }
+  }
+}
