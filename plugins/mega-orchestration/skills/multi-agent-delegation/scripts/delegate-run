@@ -968,6 +968,18 @@ if [ "$subject_kind" = "worktree-diff" ]; then
       # hashes this copy, so the reviewer cannot be shown bytes the receipt does
       # not name.
       cp -- "$top/$rel" "$snap/tree/$rel" || capture_fail "untracked file $rel"
+      # `cp` gives a NEW destination the SOURCE's mode, so a read-only original
+      # produces a read-only copy and the filtered rewrite below fails with
+      # EACCES. That refused to capture the package at all, which means no
+      # review of any kind could run in the repository: a single 444 untracked
+      # drop was enough, and a sandbox that bind-mounts placeholders over
+      # sensitive names leaves exactly those behind.
+      #
+      # Safe because the snapshot is scratch and its modes carry no meaning: the
+      # subject id binds the blob's content, and the only mode git records for a
+      # regular file is the exec bit, which is read from the worktree and not
+      # from here. The worktree file is never touched.
+      chmod u+w "$snap/tree/$rel" 2>/dev/null || :
       # --path is not decoration: `git hash-object <file>` picks its clean filter
       # from the file's location, so hashing the copy without it skips a filter
       # configured for this name and the id stops matching review-diff-id's.
