@@ -13,6 +13,7 @@ plugins/mega-guardrails/hooks/tests/auto-format.test.sh
 plugins/mega-guardrails/hooks/tests/codex-deny-destructive.test.sh
 plugins/mega-guardrails/hooks/tests/deny-destructive.test.sh
 plugins/mega-guardrails/hooks/tests/dispatch.test.sh
+plugins/mega-orchestration/hooks/tests/delegate-nudge-evidence.test.sh
 plugins/mega-orchestration/hooks/tests/delegate-nudge-prose.test.sh
 plugins/mega-orchestration/hooks/tests/delegate-nudge-scope.test.sh
 plugins/mega-orchestration/hooks/tests/delegate-nudge-worktree.test.sh
