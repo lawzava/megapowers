@@ -35,11 +35,15 @@ done
 # passed; an explicit --max-age-days applies to every entry (validate.sh passes
 # a huge value as a pure date-line format guard).
 #
-# Codex config reviewed: 2026-07-12
+# Codex config reviewed: 2026-08-12
 #   Sentinel for the Codex-facing surface (templates/codex-config.toml and the
 #   docs/setup.md Codex section), neither of which carries a date line of its
 #   own. Codex ships weekly, so this entry rides a 30-day window: re-review those
 #   two surfaces and bump the date on this comment line to clear a failure.
+#   2026-08-12: checked against codex-cli 0.147.0. The config keys the template
+#   sets all still parse; the marketplace verbs are unchanged. New that release:
+#   a skills context budget that shortens skill descriptions once too many
+#   plugins are enabled, now documented in the docs/setup.md Codex section.
 FILES='docs/harness-support.md|Last reviewed:
 evals/RESULTS.md|Last run:
 plugins/mega-orchestration/enforcement.toml|Last reviewed:

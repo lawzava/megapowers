@@ -5,7 +5,7 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## Unreleased
+## 0.11.3 - 2026-08-12
 
 ### Fixed
 
@@ -23,6 +23,14 @@ semver.
 - `templates/CODEX.md` presented a `[lead]` override as the way for Codex to lead, which
   predates the 0.8.0 charter. Declaring the caller is what makes the running harness the
   lead; the override only moves the default for sessions that declare nothing.
+
+### Changed
+
+- `docs/setup.md` records Codex's skills context budget, checked on codex-cli 0.147.0:
+  past a certain total, session start warns and skill descriptions are shortened rather
+  than skills dropped. All seven plugins are 32 skills at roughly 3KB and fit; a 54-skill
+  surface across four marketplaces (about 9KB) did not. The Codex-config freshness
+  sentinel was re-reviewed against the same build and its date bumped.
 
 ## 0.11.2 - 2026-08-11
 
