@@ -11,9 +11,16 @@ acceptance oracle, and risk are clear for a reversible change, skip
 brainstorming and planning; proceed through
 `megapowers:test-driven-development`.
 
-Inspect the relevant project context first. Ask only the questions needed to
-establish the goal, constraints, success criteria, and material tradeoffs. For
-an ambiguous approach, present a small set of viable options and recommend one.
+Inspect the relevant project context first, and inspect it properly: how the
+area is reached, what already calls it, which sibling sets the convention, and
+what constrains a change here. A design proposed from a grep and two files is a
+guess wearing a structure. Say what you did not read, so the design's blind
+spots are visible while they are still cheap.
+
+Then ask only the questions needed to establish the goal, constraints, success
+criteria, and material tradeoffs. Never ask for something the code already
+answers. For an ambiguous approach, present a small set of viable options and
+recommend one.
 
 ## Approval Gate
 

@@ -63,8 +63,33 @@ When the brief calls for a signature element, keep surrounding decoration quiet
 and cut anything that does not serve the brief. Hold a quality floor without
 announcing it: responsive down to mobile, visible keyboard focus, reduced motion
 respected, and WCAG AA contrast for text and controls in every shipped theme.
-Critique your own render: take screenshots where the environment supports it (a
-screenshot beats a description), and before shipping, remove one accessory.
+Before shipping, remove one accessory.
+
+## Look at it before you call it done
+
+Rendered UI has a rendered oracle, and it is not the diff. Reading the markup
+you just wrote tells you what you intended, never what the browser drew. Every
+observed failure of this skill has the same shape: the layout was rewritten,
+described confidently, and shipped by someone who had not looked at it.
+
+So the render is mandatory, not environment-permitting. Before any completion
+claim, commit, or push that touches HTML, CSS, templates, or components:
+
+1. Screenshot the change at the target viewports, mobile included.
+2. Compare against the brief or reference. Name each divergence.
+3. Load it with hostile data: the longest real string, the empty state, and
+   enough rows to overflow. Clipping and overflow only appear under those.
+4. State what the screenshots show, not what the code should produce.
+
+No screenshot means the work is NOT VERIFIED, and it is reported that way. If
+the environment genuinely cannot render, say which capability is missing and
+what remains unchecked, and get the human's acceptance before shipping. Silence
+about a check you skipped reads exactly like a check that passed.
+
+For work where the visual result matters, get an independent `visual_verify`
+receipt (`mega-orchestration:multi-agent-delegation`). Your own screenshot
+proves it rendered; another model's eyes are what catch what you stopped
+seeing.
 
 ## Writing in the design
 
