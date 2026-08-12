@@ -5,14 +5,19 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## Unreleased
+## 0.12.0 - 2026-08-12
+
+Agent glue is Go, including inside a Python or TypeScript repository.
+
+### Added
+
+- mega-go `scripting-in-go`: stdlib `go run` helpers from scratch.
 
 ### Changed
 
-- Agent-authored scripts are Go (`go run`) in every project language. The
-  three harness charters, `using-megapowers`, and mega-go `scripting-in-go`
-  carry the rule. Harness hook entrypoints stay shell; OpenCode plugins stay
-  JavaScript.
+- The three harness charters and `using-megapowers` tell agents to write Go
+  instead of Python, Node, or multi-line bash. Existing CLIs stay as-is.
+  Harness hook entrypoints stay shell; OpenCode plugins stay JavaScript.
 - Project-memory helpers, effect-broker, check-freshness, check-enforcement,
   and security-lint now run as Go behind the same command names.
 
