@@ -1,12 +1,31 @@
 #!/usr/bin/env bash
-# render-model-catalog: print a compact always-in-context summary of the model
-# catalog (models.toml), resolved across layers: project .megapowers/models.toml,
-# user ${XDG_CONFIG_HOME:-~/.config}/megapowers/models.toml, then the copy shipped
-# at this plugin's root. MODELS_TOML overrides with a single file (tests, CI).
-# Fail-open by design: no catalog, unreadable file, or malformed content prints
-# nothing and exits 0; the SessionStart payload simply omits the block.
+# render-model-catalog [--caller <harness>]: print a compact always-in-context
+# summary of the model catalog (models.toml), resolved across layers: project
+# .megapowers/models.toml, user ${XDG_CONFIG_HOME:-~/.config}/megapowers/models.toml,
+# then the copy shipped at this plugin's root. MODELS_TOML overrides with a single
+# file (tests, CI).
+#
+# --caller names the harness this block is being rendered for, and that harness
+# leads its own session. The catalog [lead] key is only the default for a session
+# that declares nothing, so when the caller differs it moves off the lead line and
+# is labelled as the fallback it is. Each adapter passes its own name; the flag is
+# optional and absent means "assume the catalog lead", which is what an undeclared
+# session gets anyway.
+#
+# Fail-open by design: no catalog, unreadable file, malformed content, or an empty
+# --caller value prints the best block it can (or nothing) and exits 0; the
+# SessionStart payload simply omits or under-specifies the block rather than
+# breaking session start.
 # Tested by tests/render-model-catalog.test.sh (run via scripts/validate.sh).
 set -u
+
+caller=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --caller) caller="${2:-}"; shift 2 || shift $# ;;
+    *) shift ;;
+  esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib-toml.sh
@@ -92,7 +111,15 @@ floor="$(val defaults floor)" || floor=""
 
 render() {
   printf 'Model catalog (models.toml; override layers project>user>shipped):\n'
-  printf 'lead: %s%s%s\n' "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
+  # The lead line is the one claim a session acts on without reading further, so
+  # it names whoever is actually in charge. A declared caller that is not the
+  # catalog lead gets the line, and [lead] follows as the fallback it is.
+  if [ -n "$caller" ] && [ "$caller" != "$lp" ]; then
+    printf 'lead: %s, the harness running this session. Catalog default (undeclared sessions only): %s%s%s\n' \
+      "$caller" "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
+  else
+    printf 'lead: %s%s%s\n' "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
+  fi
   printf 'tiers: %s\n' "$tier_lines"
 [ -n "$eff_lines" ] && printf 'efforts: %s\n' "$eff_lines"
   [ -n "$del_lines" ] && printf 'delegates: %s\n' "$del_lines"
@@ -102,6 +129,11 @@ render() {
 # Sanitize and clamp: catalog values are user-owned input headed for every
 # session's context. Strip control bytes escape_for_json cannot represent
 # (keep tab, LF, CR) and bound the block so an override layer cannot bloat
-# the always-loaded payload.
-render | tr -d '\000-\010\013\014\016-\037' | head -c 1024
+# the always-loaded payload. 1024 -> 1400 on 2026-08-12 for the declared-caller
+# lead line: the shipped catalog renders 1045B with a caller and a machine
+# running two extra delegate rows renders ~1100B, so the old clamp would have cut
+# the Routes line off the block it was meant to bound. The tests hold the shipped
+# catalog to 980B plain and 1100B with a caller; this clamp is the backstop for
+# override layers, not the budget.
+render | tr -d '\000-\010\013\014\016-\037' | head -c 1400
 exit 0

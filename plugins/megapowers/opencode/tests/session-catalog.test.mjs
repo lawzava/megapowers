@@ -63,6 +63,24 @@ test("appends exactly one system entry containing the catalog text", async () =>
   assert.match(output.system[0], /Model catalog \(models\.toml/);
 });
 
+// The lead line is rendered, not appended: the plugin tells the script which
+// harness it is rendering for, so an OpenCode session reads "lead: opencode"
+// instead of the catalog [lead] plus a correction buried under the block.
+test("renders the catalog for the opencode adapter", async () => {
+  const commands = [];
+  const recordingShell = (strings, ...values) => {
+    commands.push(String.raw({ raw: strings }, ...values));
+    return fakeShell(CATALOG)();
+  };
+  const hooks = await MegapowersSessionCatalog({ $: recordingShell, directory: "/repo" });
+  await hooks["experimental.chat.system.transform"](
+    { sessionID: "s1", model: { providerID: "anthropic", id: "claude-opus-5" } },
+    { system: [] },
+  );
+  assert.equal(commands.length, 1);
+  assert.match(commands[0], /--caller opencode/);
+});
+
 test("the entry names the opencode adapter and the session model id", async () => {
   const hooks = await MegapowersSessionCatalog({ $: fakeShell(CATALOG), directory: "/repo" });
   const output = { system: [] };

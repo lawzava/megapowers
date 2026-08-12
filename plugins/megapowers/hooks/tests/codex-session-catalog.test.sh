@@ -26,16 +26,14 @@ ctx="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev
 printf '%s' "$ctx" | grep -q 'Model catalog' && ok || bad "additionalContext carries the catalog block"
 printf '%s' "$ctx" | grep -q 'lead:' && ok || bad "additionalContext names the lead"
 
-# 2. The identity line: the catalog's [lead] is Claude in the shipped copy, so a
-# Codex session that reads the block alone concludes Claude is in charge and
-# resolves routes as the assumed lead. The adapter knows which harness it runs
-# on, so it says so.
-printf '%s' "$ctx" | grep -q 'runs Codex' && ok || bad "additionalContext declares the session runs Codex"
+# 2. Who leads: the catalog's [lead] is Claude in the shipped copy, so a block
+# that renders it unqualified tells a Codex session Claude is in charge. The
+# adapter knows which harness it runs on, so it declares the caller and the lead
+# line names Codex outright. A trailing correction is not enough: a session acts
+# on the lead line without reading five lines further.
+printf '%s' "$ctx" | grep -q '^lead: codex, the harness running this session' && ok || bad "the lead line names Codex as this session's lead"
+if printf '%s' "$ctx" | grep -q '^lead: claude'; then bad "the block still asserts Claude leads a Codex session"; else ok; fi
 printf '%s' "$ctx" | grep -q -- '--caller-provider codex' && ok || bad "additionalContext gives the caller flag"
-# Order matters: the correction has to follow the claim it corrects.
-lead_at="$(printf '%s' "$ctx" | grep -n 'lead:' | head -1 | cut -d: -f1)"
-id_at="$(printf '%s' "$ctx" | grep -n 'runs Codex' | head -1 | cut -d: -f1)"
-[ -n "$lead_at" ] && [ -n "$id_at" ] && [ "$id_at" -gt "$lead_at" ] && ok || bad "identity follows the catalog lead line"
 
 # 3. Fail-open: no resolvable catalog -> no output, exit 0. The identity rides
 # with the catalog rather than standing alone: with no block there is no lead
