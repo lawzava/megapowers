@@ -37,7 +37,7 @@ skill. The injection is about 348 words (~450 tokens). Skill descriptions are
 always-on metadata; full skill bodies load only when invoked.
 `scripts/validate.sh` enforces the context budgets. Verify yourself:
 `bash hooks/tests/session-start.test.sh` prints the exact payload word count
-(and gates it at 385).
+(and gates it at 440).
 
 ## Install
 

@@ -63,7 +63,8 @@ present.
   playwright-cli skill into `.claude/skills/`. megapowers does not vendor that
   skill: Playwright distributes and updates it, and a shipped copy would
   register twice. Roles you don't use don't need their tools installed.
-- mega-go: `greenfield-go-stack` optionally uses the context7 MCP server to
+- mega-go: Go 1.22+ on PATH. Agent glue and migrated skill helpers run with
+  `go run`. `greenfield-go-stack` optionally uses the context7 MCP server to
   fetch current library docs while scaffolding; it degrades gracefully without
   it.
 - mega-guardrails: the hooks require `jq`. The auto-format hook additionally

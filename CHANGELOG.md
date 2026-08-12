@@ -5,6 +5,17 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Changed
+
+- Agent-authored scripts are Go (`go run`) in every project language. The
+  three harness charters, `using-megapowers`, and mega-go `scripting-in-go`
+  carry the rule. Harness hook entrypoints stay shell; OpenCode plugins stay
+  JavaScript.
+- Project-memory helpers, effect-broker, check-freshness, check-enforcement,
+  and security-lint now run as Go behind the same command names.
+
 ## 0.11.5 - 2026-08-12
 
 ### Fixed

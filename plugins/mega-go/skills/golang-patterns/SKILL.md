@@ -25,4 +25,5 @@ context, or error-handling choice.
   early, cancellation must prevent producers from blocking forever.
 
 For a new module's layout, select a project shape with
-mega-go:greenfield-go-stack rather than imposing one here.
+mega-go:greenfield-go-stack rather than imposing one here. For a throwaway
+`go run` helper, use mega-go:scripting-in-go.

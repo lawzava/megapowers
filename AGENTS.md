@@ -36,6 +36,15 @@ requirements unless clearly marked optional.
 - Full per-harness support details: `docs/harness-support.md` (canonical,
   freshness-checked).
 
+## Scripting
+
+New helpers in this repo are Go (`go run` a stdlib file, or a small module
+under `scripts/`). Do not add Python, Node, or multi-line bash for glue.
+Harness entrypoints stay what the harness requires: Claude and Codex hooks
+are shell, OpenCode plugins are JavaScript. Existing bash stays until
+migrated. Agent-authored scripts follow the same rule in any project
+language: application code matches the project, glue is Go.
+
 ## Verification
 
 Run after meaningful changes:

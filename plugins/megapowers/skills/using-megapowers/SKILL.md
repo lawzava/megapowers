@@ -45,6 +45,12 @@ For environment-specific tool details, read the relevant adapter reference:
 Resolve relative files and helpers from the directory of the skill that names
 them. Resolve a cross-skill helper from the target skill's installed directory.
 
+## Scripting
+
+Glue is `go run` from scratch. Do not write Python, Node, or multi-line bash,
+including inside a Python or TypeScript repository. Existing CLIs as-is.
+Leave harness bash and OpenCode JS alone. mega-go:scripting-in-go if installed.
+
 ## User Instructions
 
 User instructions (CLAUDE.md, AGENTS.md, direct requests) beat skills, which
