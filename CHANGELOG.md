@@ -5,6 +5,24 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Fixed
+
+- The injected catalog still opened with `lead: claude frontier (claude-opus-5)` in every
+  harness. 0.11.3 gave Codex a correction, but it landed under the whole block, five long
+  lines after the claim it corrected, and OpenCode's trailer named caller flags without
+  ever saying who was in charge; sessions read line two and believed it. Each adapter now
+  passes `--caller <harness>` to `hooks/render-model-catalog`, which renders the running
+  harness on the lead line and demotes the catalog `[lead]` to the labelled default for
+  sessions that declare nothing. The Claude Code hook declares `claude` too, so a layer
+  that points `[lead]` elsewhere no longer tells a Claude session something else leads.
+  With the shipped catalog its block is byte-identical to before.
+- The rendered-block clamp goes 1024B to 1400B for the longer lead line (the shipped
+  catalog renders 1045B with a caller declared; the old clamp would have cut the Routes
+  line). The Codex adapter drops its identity sentence for the flag alone, so a Codex
+  session's injected payload is smaller than it was in 0.11.3, not larger.
+
 ## 0.11.3 - 2026-08-12
 
 ### Fixed

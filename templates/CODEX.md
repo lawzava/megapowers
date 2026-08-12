@@ -57,14 +57,16 @@ Pin the matching model in `~/.codex/config.toml` (see
 
 ## Session catalog
 
-The megapowers SessionStart hook injects the rendered model catalog: lead, tier
-and effort scales, delegate providers, ship floor, plus the identity line naming
-Codex as this session's lead and the `--caller-provider codex` flag that carries
-it into route resolution. If the block is missing (untrusted hook or fail-open
-error), render the catalog manually and declare yourself by hand:
+The megapowers SessionStart hook injects the rendered model catalog: tier and
+effort scales, delegate providers, ship floor, and a lead line naming Codex as
+this session's lead, with the catalog `[lead]` shown after it as the default for
+sessions that declare nothing. The `--caller-provider codex` flag that carries
+the same fact into route resolution follows the block. If the block is missing
+(untrusted hook or fail-open error), render it manually with the same
+declaration:
 
 ```bash
-<megapowers plugin dir>/hooks/render-model-catalog
+<megapowers plugin dir>/hooks/render-model-catalog --caller codex
 ```
 
 ## Role: you are the lead
