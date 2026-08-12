@@ -13,7 +13,7 @@
     {
       "name": "mega-go",
       "source": "./plugins/mega-go",
-      "description": "Greenfield Go: an opinionated stack picker plus idiomatic Go patterns.",
+      "description": "Greenfield Go: an opinionated stack picker, idiomatic Go patterns, and agent scripting.",
       "category": "language"
     },
     {

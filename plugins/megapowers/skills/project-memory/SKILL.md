@@ -21,9 +21,10 @@ records, and don't save temporary task progress. Update or delete an existing
 memory instead of creating contradictory duplicates. Use absolute dates when a
 date matters.
 
-The included helpers read the body from standard input, create, index, and
-search the default memory store. Resolve `scripts/` from this skill's installed
-directory before invoking them:
+The included helpers are Go (`mem-add.go`, `mem-index.go`, `mem-recall.go`)
+behind the same command names. They read the body from standard input, create,
+index, and search the default memory store. Resolve `scripts/` from this
+skill's installed directory before invoking them:
 
 ```bash
 scripts/mem-add <slug> --title T --hook H [--type decision|constraint|preference|gotcha|reference] [--update]

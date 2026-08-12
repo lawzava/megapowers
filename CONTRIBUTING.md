@@ -49,6 +49,9 @@ of effect needs a run behind it.
 - Cross-plugin skill references are soft: guard them with "if installed".
 - No unsourced statistics in skills. See `evals/RESULTS.md` for the format a
   claim of effect needs.
+- New helpers are Go (`go run` a stdlib file). Do not add Python, Node, or
+  multi-line bash for glue. Claude/Codex hook entrypoints stay shell;
+  OpenCode plugins stay JavaScript.
 
 ## Releases
 

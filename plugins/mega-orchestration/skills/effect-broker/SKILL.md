@@ -28,7 +28,7 @@ Inputs: the effect record, intended outcome, available simulation, autonomy leve
 existing authorization. Output: proceed, simulate, defer, or refuse, with the record
 and evidence needed for a later decision.
 
-`scripts/effect-broker <reversible|staged|irreversible> [--level <level>]` is a compact
+`scripts/effect-broker` (`effect-broker.go`) `<reversible|staged|irreversible> [--level <level>]` is a compact
 accelerator for the compensability and oversight portion of this record. It accepts
 three classes: reversible actions have a real local undo, staged actions have a
 meaningful preview and defined undo, and irreversible actions have no reliable undo.

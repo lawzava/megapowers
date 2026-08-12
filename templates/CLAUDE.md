@@ -173,3 +173,16 @@ file left behind is reviewed, scanned, and eventually committed by someone.
 - Run the tests after every meaningful change. If three attempts at one
   approach fail, stop and summarize what you tried, what failed, and the next
   idea.
+
+## Tooling
+
+When you write a script (glue, probe, transform, one-off tool call), write Go
+and `go run` it from scratch. Do not write Python, Node, or multi-line bash
+for that, including inside a Python or TypeScript repository.
+
+Exceptions: invoke an existing CLI as-is (`git`, `rg`, `go test`); edit a
+file that is already bash or JS because the harness requires it (hooks,
+OpenCode plugins).
+
+Application code matches the project. Agent-authored scripts do not.
+New Go project: the mega-go greenfield-go-stack skill.

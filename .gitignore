@@ -37,3 +37,6 @@ docs/specs/
 evals/studies/**/.claude/
 evals/studies/**/.mcp.json
 evals/.runs/
+
+# Linked git worktrees created for isolated feature work.
+.worktrees/

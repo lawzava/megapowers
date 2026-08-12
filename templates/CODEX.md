@@ -159,6 +159,19 @@ dropped scratch into a working tree and tripped the risky-logic gate on it.
 Resolve it once per job with `scratch="${TMPDIR:-/tmp}/agent-$$"`, and remove
 anything you did put in the repository before the turn ends.
 
+## Tooling
+
+When you write a script (glue, probe, transform, one-off tool call), write Go
+and `go run` it from scratch. Do not write Python, Node, or multi-line bash
+for that, including inside a Python or TypeScript repository.
+
+Exceptions: invoke an existing CLI as-is (`git`, `rg`, `go test`); edit a
+file that is already bash or JS because the harness requires it (hooks,
+OpenCode plugins).
+
+Application code matches the project. Agent-authored scripts do not.
+New Go project: the mega-go greenfield-go-stack skill.
+
 ## Git and style
 
 - Conventional commits (`feat:` / `fix:` / `refactor:` / `test:` / `chore:`),

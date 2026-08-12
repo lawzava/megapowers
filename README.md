@@ -51,8 +51,9 @@ The guide asks before changing permissions or settings.
   and other roles to installed agent CLIs. megapowers adds no API key or hosted
   service.
 
-Hooks and most helper scripts are Bash; the eval scorer is Go. Each can be read
-and run from a checkout.
+Hooks stay Bash (Claude and Codex hook protocol). OpenCode plugins stay
+JavaScript. New helpers and agent-authored glue are Go (`go run`), including
+inside a Python or TypeScript repository. The eval scorer is already Go.
 
 ## Plugins
 
@@ -60,7 +61,7 @@ and run from a checkout.
 |---|---|
 | [`megapowers`](./plugins/megapowers/README.md) | Brainstorming, planning, TDD, debugging, review, worktrees, subagent development, verification, and project memory. |
 | [`mega-orchestration`](./plugins/mega-orchestration/README.md) | Model routing, delegation, best-of-N, cross-model verification, councils, autonomous runs, and effect approval. |
-| [`mega-go`](./plugins/mega-go/README.md) | Greenfield Go stack selection and idiomatic Go patterns. |
+| [`mega-go`](./plugins/mega-go/README.md) | Greenfield Go stack selection, idiomatic Go patterns, and `go run` agent scripting. |
 | [`mega-python`](./plugins/mega-python/README.md) | Greenfield Python stack selection and Python patterns. |
 | [`mega-ts`](./plugins/mega-ts/README.md) | Greenfield TypeScript stack selection and TypeScript patterns. |
 | [`mega-frontend`](./plugins/mega-frontend/README.md) | Frontend visual direction, typography, layout, and UX copy. |

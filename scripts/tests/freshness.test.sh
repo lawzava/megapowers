@@ -3,10 +3,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 script="$ROOT/scripts/check-freshness.sh"
+impl="$ROOT/scripts/check-freshness.go"
 workflow="$ROOT/.github/workflows/freshness.yml"
 
-grep -q '^DEFAULT_MAX_AGE=30$' "$script"
-grep -q '^# validate.sh calls this with a huge --max-age-days as a format guard:' "$script"
+grep -q 'defaultMaxAge = 30' "$impl"
+grep -q 'validate.sh calls this with a huge --max-age-days as a format guard' "$impl"
+grep -q 'Codex config reviewed: 2026-08-12' "$script"
 grep -q "cron: '17 6 \\* \\* 1'" "$workflow"
 grep -q 'reviewed within 30 days' "$workflow"
 

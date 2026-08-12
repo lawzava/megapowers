@@ -275,6 +275,13 @@ IPC state.
 
 ## Tooling
 
-- Quick scripts, glue, and one-off tool calls: prefer Go (`go run x.go`) over
-  Python/Node. Use a `bash` one-liner only when it is genuinely shorter.
-- New (greenfield) Go project: the mega-go greenfield-go-stack skill.
+When you write a script (glue, probe, transform, one-off tool call), write Go
+and `go run` it from scratch. Do not write Python, Node, or multi-line bash
+for that, including inside a Python or TypeScript repository.
+
+Exceptions: invoke an existing CLI as-is (`git`, `rg`, `go test`); edit a
+file that is already bash or JS because the harness requires it (hooks,
+OpenCode plugins).
+
+Application code matches the project. Agent-authored scripts do not.
+New Go project: the mega-go greenfield-go-stack skill.
