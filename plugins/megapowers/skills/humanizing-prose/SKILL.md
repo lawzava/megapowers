@@ -1,6 +1,6 @@
 ---
 name: humanizing-prose
-description: Use to draft or edit user-facing docs, release notes, PRs, announcements, or errors. Triggers on "humanize", "sounds like AI", "slop", or "read naturally".
+description: Use to draft or edit user-facing docs, release notes, PR descriptions, PR comments, review replies, announcements, or errors. Triggers on "humanize", "sounds like AI", "slop", or "read naturally".
 license: MIT
 ---
 
@@ -21,6 +21,15 @@ them only when they make the prose less precise.
 
 Do not rewrite quotations, code, command names, or text that discusses a phrase
 rather than using it. Leave clear, appropriately dry writing alone.
+
+For PR comments, review replies, and issue updates, keep the current decision,
+material impact, and minimum evidence the reader needs. Internal work history,
+discarded reasoning, every test run, earlier corrections, and repeated finding
+summaries are session state, not publishable prose, unless one explains a
+current risk. Prefer the existing thread to a new top-level narrative.
+When a top-level update is necessary, limit it to the current verdict, blocker,
+and next action in at most three bullets. Post the review trigger as its own
+minimal comment.
 
 Origin: Adapted from humanizer (MIT, (c) 2025 Siqi Chen),
 https://github.com/blader/humanizer.

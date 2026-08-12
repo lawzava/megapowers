@@ -35,6 +35,22 @@ fine. Padding is not.
 Length comes from content, never from manner. A real tradeoff, design, or
 postmortem earns more; the same answer said slower does not.
 
+## Outward communication
+
+A PR comment, review reply, issue update, or message sent through a tool is a
+public artifact, not a session report. Post only when authorized and when the
+reader needs information not already visible in the code, checks, or existing
+thread.
+
+- Reply where the question was asked. For review feedback, give the current
+  decision and minimum evidence: `Fixed in <sha>. Test: <name>.` or `Not
+  changing: <one decisive reason>.`
+- Do not publish progress narration, review ledgers, test transcripts,
+  correction diaries, or a new top-level status comment after each fix wave.
+- If a top-level status comment is necessary, give only the current verdict,
+  blocker, and next action in at most three bullets. When another review is
+  required, post the review trigger as its own minimal comment.
+
 ## Permission
 
 Reversible, in-scope work proceeds. Ask only for what is yours to ask: input
