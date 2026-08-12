@@ -5,7 +5,7 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## Unreleased
+## 0.11.4 - 2026-08-12
 
 ### Fixed
 
