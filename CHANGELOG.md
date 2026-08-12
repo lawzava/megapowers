@@ -5,6 +5,17 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.11.5 - 2026-08-12
+
+### Fixed
+
+- PR automation now keeps review replies in the existing thread and publishes
+  only the current decision plus the minimum supporting evidence. The three
+  harness charters and the review and prose skills reject progress narration,
+  aggregate fix ledgers, repeated CI summaries, and closing recaps; necessary
+  top-level status is capped at three bullets, and a re-review trigger stays a
+  separate minimal comment.
+
 ## 0.11.4 - 2026-08-12
 
 ### Fixed
