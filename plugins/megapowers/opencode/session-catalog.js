@@ -47,7 +47,12 @@ export const MegapowersSessionCatalog = async ({ $ }) => {
         // exec to the noise without changing the outcome.
         if (!scriptFound) return "";
         try {
-          const text = await $`${scriptPath}`.nothrow().text();
+          // --caller renders the lead line for the harness that is running.
+          // OpenCode leads its own session, so the block must say so. The
+          // earlier shape rendered the catalog [lead] (Claude, in the shipped
+          // copy) and this plugin appended caller FLAGS underneath, never a
+          // claim about who was in charge.
+          const text = await $`${scriptPath} --caller opencode`.nothrow().text();
           return text.trim();
         } catch {
           return "";

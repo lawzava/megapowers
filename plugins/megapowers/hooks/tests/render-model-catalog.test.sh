@@ -53,6 +53,27 @@ printf '%s' "$out" | grep -q "floor fast:low" && ok || no "floor rendered"
 printf '%s' "$out" | grep -q "efforts: low=cheap steps | high=hard calls" && ok || no "efforts line rendered"
 printf '%s' "$out" | grep -q "delegate-resolve <role>" && ok || no "route pointer rendered"
 
+# --caller names the harness that is running, which is the one in charge. The
+# catalog [lead] is only the default for a session that declares nothing, so a
+# declared caller takes the lead line and [lead] is demoted to the fallback it
+# actually is. Without this the block asserts "lead: alpha" to a beta session.
+out="$(MODELS_TOML="$TMP/cat.toml" "$R" --caller beta)"; rc=$?
+[ "$rc" -eq 0 ] && ok || no "declared-caller render exit 0"
+printf '%s' "$out" | grep -q "^lead: beta, the harness running this session" && ok || no "declared caller takes the lead line"
+printf '%s' "$out" | grep -q "alpha frontier (alpha-max)" && ok || no "catalog lead kept as the undeclared-session default"
+
+# A caller that IS the catalog lead has nothing to correct: same block as before.
+out="$(MODELS_TOML="$TMP/cat.toml" "$R" --caller alpha)"
+printf '%s' "$out" | grep -qx "lead: alpha frontier (alpha-max)" && ok || no "caller matching the catalog lead renders the plain lead line"
+if printf '%s' "$out" | grep -q "harness running this session"; then no "no correction when the caller is the catalog lead"; else ok; fi
+
+# Fail-open extends to the flag: an empty or missing value renders the default
+# block rather than erroring out of a session start.
+out="$(MODELS_TOML="$TMP/cat.toml" "$R" --caller "")"; rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -qx "lead: alpha frontier (alpha-max)"; then ok; else no "empty caller falls back to the catalog lead line"; fi
+out="$(MODELS_TOML="$TMP/cat.toml" "$R" --caller)"; rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -qx "lead: alpha frontier (alpha-max)"; then ok; else no "valueless caller flag falls back to the catalog lead line"; fi
+
 out="$(MODELS_TOML="$TMP/does-not-exist.toml" "$R")"; rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok; else no "missing catalog is silent exit 0"; fi
 
@@ -80,6 +101,13 @@ if [ -f "$SHIPPED" ]; then
   # provider still renders, tight enough that the next addition has to justify itself
   # by shortening something rather than by moving this number again.
   if [ -n "$out" ] && [ "$n" -le 980 ]; then ok; else no "shipped catalog renders non-empty and <= 980B (got ${n}B)"; fi
+  # The declared-caller block carries one extra clause on the lead line. It is the
+  # variant Codex and OpenCode sessions actually get, so it needs its own guard
+  # inside the hook's 1200B clamp, not an assumption that the default one covers it.
+  out="$(MODELS_TOML="$SHIPPED" "$R" --caller codex)"
+  n="$(printf '%s' "$out" | LC_ALL=C wc -c | tr -d '[:space:]')"
+  if [ -n "$out" ] && [ "$n" -le 1100 ]; then ok; else no "declared-caller catalog renders non-empty and <= 1100B (got ${n}B)"; fi
+  printf '%s' "$out" | grep -q "^lead: codex, the harness running this session" && ok || no "shipped catalog honors a declared caller"
 else
   no "shipped models.toml missing at plugin root"
 fi

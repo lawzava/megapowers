@@ -14,17 +14,6 @@
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-catalog="$("$here/render-model-catalog" 2>/dev/null || true)"
-[ -n "$catalog" ] || exit 0
-
-# Who is running, appended to the block the way the OpenCode plugin appends its
-# own identity. The catalog renders `lead: <[lead] provider>`, and the shipped
-# [lead] is Claude; a Codex session reading that alone concludes Claude is in
-# charge, and delegate-resolve agrees, falling back to the catalog [lead] with
-# CALLER=assumed-lead for every route it is not told about. That misroutes
-# `self` roles to another vendor and prints "native" for a provider this session
-# is not.
-#
 # Provider only, no model id. This adapter is Codex by construction, so `codex`
 # cannot be wrong; the running model can be. ~/.codex/config.toml holds a
 # default that a --model flag, a profile, or an in-session /model switch all
@@ -32,7 +21,19 @@ catalog="$("$here/render-model-catalog" 2>/dev/null || true)"
 # tier map, so a stale id read from disk would break route resolution outright
 # rather than sharpen it. The provider is what makes a route native and what
 # keeps `self` at home; that is the whole job here.
-identity="This session runs Codex, so Codex leads it. The lead line above is the catalog default for a session that does not declare itself; route resolution here takes --caller-provider codex."
+#
+# --caller puts Codex on the block's lead line. The earlier shape left that line
+# reading `lead: claude` and appended a correction underneath the whole catalog;
+# sessions acted on the lead line and treated Claude as in charge anyway, which
+# is what the flag exists to stop.
+catalog="$("$here/render-model-catalog" --caller codex 2>/dev/null || true)"
+[ -n "$catalog" ] || exit 0
+
+# The flag that carries the same fact into route resolution. Without it
+# delegate-resolve falls back to the catalog [lead] with CALLER=assumed-lead,
+# misrouting `self` roles to another vendor and printing "native" for a provider
+# this session is not.
+identity="Route resolution here takes --caller-provider codex."
 catalog="$catalog
 $identity"
 
