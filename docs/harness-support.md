@@ -150,9 +150,11 @@ for OpenCode; use OpenCode's own credential configuration for those.
   A copied `deny-destructive.js` now refuses to load rather than silently
   allowing every command it exists to stop.
   - `plugins/megapowers/opencode/session-catalog.js`
-    (`MegapowersSessionCatalog`) injects the rendered model catalog plus a
-    caller-identity line (`--caller-adapter opencode --caller-model <id>`)
-    into the system prompt on every chat request, via
+    (`MegapowersSessionCatalog`) injects the model catalog rendered for this
+    harness (`--caller opencode`, so the lead line names OpenCode rather than
+    the catalog `[lead]`) plus a caller-identity line (`--caller-adapter
+    opencode --caller-model <id>`) into the system prompt on every chat request,
+    via
     `experimental.chat.system.transform`. The catalog render is memoised once
     per process; the append happens every request.
   - `plugins/mega-guardrails/opencode/deny-destructive.js`

@@ -66,6 +66,11 @@ floor = "fast:low"
 EOF
 cat_out="$(MODELS_TOML="$CAT_TMP/cat.toml" bash "$HOOK" 2>/dev/null < /dev/null)"
 if printf '%s' "$cat_out" | grep -q 'Model catalog'; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL catalog block missing from payload\n'; fi
+# This hook is Claude Code by construction, so it declares Claude as the caller
+# the same way the Codex and OpenCode adapters declare theirs. With the shipped
+# catalog nothing changes ([lead] is claude); with a catalog whose [lead] names
+# another harness, the block must still say Claude leads THIS session.
+if printf '%s' "$cat_out" | grep -q 'lead: claude, the harness running this session'; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL payload must name Claude as the lead of a Claude Code session\n'; fi
 
 # Hostile fixture: a catalog value with a raw control byte (0x0B) must still
 # produce valid JSON. escape_for_json does not handle bytes outside \, ", \n,

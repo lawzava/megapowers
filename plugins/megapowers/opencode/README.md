@@ -10,8 +10,11 @@ delegate routes. Without this, an OpenCode lead starts blind to all of that.
 
 `session-catalog.js` exports `MegapowersSessionCatalog`, a plugin that
 implements `experimental.chat.system.transform`. It shells out to
-`../hooks/render-model-catalog` (unchanged, reused as-is) and appends the
-rendered catalog block plus one caller-identity line to the system prompt.
+`../hooks/render-model-catalog --caller opencode` and appends the rendered
+catalog block plus one caller-identity line to the system prompt. The `--caller`
+flag is what puts OpenCode on the block's lead line; without it the block
+renders the catalog `[lead]` (Claude, in the shipped copy) and an OpenCode
+session reads that as the answer to who is in charge.
 That append happens on EVERY chat request, because opencode builds the system
 prompt array fresh per request; appending once per session would put the
 catalog in the first turn and nowhere else. The shell-out is what gets cached,
