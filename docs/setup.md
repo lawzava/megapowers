@@ -360,7 +360,7 @@ does:
 
 - Marketplace source: `add` supports a ref (branch or tag), not a commit sha.
   Pin to a published tag with `codex plugin marketplace add
-  lawzava/megapowers@v0.11.3`, or, for Claude Code, add `"ref": "v0.11.3"` to the
+  lawzava/megapowers@v0.11.4`, or, for Claude Code, add `"ref": "v0.11.4"` to the
   `extraKnownMarketplaces` source (see
   [Fleet](#fleet-keeping-many-devices-in-sync)). A tag is immutable, so
   `marketplace upgrade` cannot move a tag-pinned source; to update under a
@@ -664,7 +664,7 @@ For release certification, a local marketplace is insufficient. After the
 signed tag is public, run the strict exact-ref study:
 
 ```bash
-tag=v0.11.3   # the tag you just signed and pushed
+tag=v0.11.4   # the tag you just signed and pushed
 evals/studies/install-smoke/run-smoke.sh \
   --out "${TMPDIR:-/tmp}/megapowers-install-$tag" \
   --source lawzava/megapowers --ref "$tag" --version "${tag#v}" \
