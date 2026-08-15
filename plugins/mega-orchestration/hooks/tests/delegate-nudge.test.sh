@@ -1431,5 +1431,106 @@ check_got "" "$(leak_probe "$leak_index" index)" \
 check_got "" "$(leak_probe "$leak_index" indexz)" \
   "an interrupted stop leaves no index-listing scratch file behind"
 
+# --- the block must not eat the deliverable -----------------------------------
+# On both harnesses the agent's reply to this block is what the user or the
+# dispatching session reads instead of the answer it just wrote (a Codex Stop
+# hook lands as a prompt after the final message). The reason has to say both
+# things: carry the answer forward, and a dispatched reviewer reports rather
+# than satisfies.
+deliver_repo="$TMP/deliver-repo"
+mkdir -p "$deliver_repo"
+(
+  cd "$deliver_repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  printf 'func handler() {}\n' > svc.go
+  git add svc.go
+  git commit -qm init
+  printf 'func handler() { billing() }\n' > svc.go
+)
+deliver_reason="$(reason_in "$deliver_repo" "$(j false "$TR")")"
+says_got "restate that reply" "$deliver_reason" \
+  "the block tells the agent to carry its answer forward"
+says_got "dispatched only to review" "$deliver_reason" \
+  "the block tells a dispatched reviewer the receipt is not its to obtain"
+
+# --- the cap-aware remedy ------------------------------------------------------
+# When the round ledger already sits at the cap for this branch, prescribing the
+# launcher prescribes a command that exits 10: gate and launcher would pin the
+# session between them. The remedy switches to the human hand-off instead.
+cap_repo="$TMP/cap-repo"
+mkdir -p "$cap_repo"
+(
+  cd "$cap_repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  git checkout -qb capbranch
+  printf 'func handler() {}\n' > svc.go
+  git add svc.go
+  git commit -qm init
+  printf 'func handler() { billing() }\n' > svc.go
+  ledger="$(git rev-parse --git-path megapowers-review-rounds.json)"
+  jq -nc '{schema:"megapowers.review-rounds.v2",
+           rounds:{verify:{capbranch:3}},
+           open:{verify:{capbranch:[]}},
+           unapproved:{verify:{capbranch:true}},
+           updated_at:"2026-08-15T00:00:00Z"}' > "$ledger"
+)
+cap_reason="$(reason_in "$cap_repo" "$(j false "$TR")")"
+says_got "round cap" "$cap_reason" \
+  "at the cap the reason names the exhausted review loop"
+case "$cap_reason" in
+  *"delegate-run --role verify"*)
+    fail=$((fail + 1))
+    printf '  FAIL at the cap the reason must not prescribe the launcher :: %s\n' "$cap_reason" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+below_reason="$(reason_in "$deliver_repo" "$(j false "$TR")")"
+says_got "delegate-run" "$below_reason" \
+  "below the cap the launcher remedy stays"
+
+# --- the human-recorded false-positive dismissal -------------------------------
+# A confirmed false positive re-fires on every stop while the matched word sits
+# in the pending diff. review-ack records the human's dismissal bound to the
+# exact pending tree: the same tree passes with a notice, one more edit re-arms.
+ACK="$HERE/../../skills/multi-agent-delegation/scripts/review-ack"
+ack_repo="$TMP/ack-repo"
+mkdir -p "$ack_repo"
+(
+  cd "$ack_repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  printf 'func handler() {}\n' > svc.go
+  git add svc.go
+  git commit -qm init
+  printf 'func handler() { chargeWebhook() }\n' > svc.go
+)
+check_got BLOCK "$(verdict_in "$ack_repo" "$(j false "$TR")")" \
+  "a risky diff blocks before any dismissal"
+ack_reason="$(reason_in "$ack_repo" "$(j false "$TR")")"
+says_got "review-ack" "$ack_reason" \
+  "the false-positive sentence names the dismissal tool"
+[ -x "$ACK" ] || { fail=$((fail + 1)); printf '  FAIL review-ack script exists and is executable\n'; }
+ack_rc=0
+(cd "$ack_repo" && "$ACK" --human "Ok. I authorize, the webhook word is a docs example" >/dev/null 2>&1) || ack_rc=$?
+check_got 0 "$ack_rc" "review-ack records a dismissal for the current tree"
+check_got ALLOW "$(verdict_in "$ack_repo" "$(j false "$TR")")" \
+  "a dismissed tree stops blocking"
+ack_notice="$(notice_in "$ack_repo" "$(j false "$TR")")"
+says_got "dismissal" "$ack_notice" \
+  "the pass over a dismissed tree is announced, not silent"
+(cd "$ack_repo" && printf 'func handler() { chargeWebhook(); newEdit() }\n' > svc.go)
+check_got BLOCK "$(verdict_in "$ack_repo" "$(j false "$TR")")" \
+  "any further edit re-arms a dismissed gate"
+ack_empty_rc=0
+(cd "$ack_repo" && "$ACK" --human "" >/dev/null 2>&1) || ack_empty_rc=$?
+check_got 2 "$ack_empty_rc" "review-ack refuses an empty human authorization"
+
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
