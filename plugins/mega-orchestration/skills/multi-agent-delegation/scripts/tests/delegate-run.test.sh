@@ -1334,7 +1334,11 @@ done
 samecount="$(find "$sametree" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
 [ "$samecount" -eq 2 ] && ok || bad "two round-1 dispatches must not share a transcript directory, got $samecount"
 
-# Absent the flag, nothing is retained: behavior is unchanged from today.
+# Absent the flag, retention should not depend on the operator having remembered
+# it: the 2026-08-14 round-cap refusal could only say the previous rounds were
+# not retained, advice that arrives after the rounds are gone. Inside a repo the
+# launcher defaults to .git/megapowers-review-transcripts; nothing lands in the
+# working tree or in any directory the caller did not name.
 empty_dir="$TMP/no-transcripts"
 mkdir -p "$empty_dir"
 set +e
@@ -1342,11 +1346,16 @@ set +e
   cd "$trepo" || exit 1
   "$RUN" --role verify --author-vendor openai --artifact worktree \
     --claim "no transcript requested" --receipt "$TMP/tr3.json" --config "$cfg"
-) >/dev/null 2>/dev/null
+) >/dev/null 2>"$TMP/tr3.err"
 rc=$?
 set -e
 want_rc 0 "$rc" "run without --transcript-dir succeeds"
-[ -z "$(ls -A "$empty_dir")" ] && ok || bad "no transcript must be written without the flag"
+[ -z "$(ls -A "$empty_dir")" ] && ok || bad "no transcript must be written to an unnamed directory"
+dsub="$(find "$trepo/.git/megapowers-review-transcripts" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)"
+[ -n "$dsub" ] && [ -f "$dsub/prompt.txt" ] && ok || bad "without the flag the transcript must be retained under .git/megapowers-review-transcripts"
+if grep -q 'megapowers-review-transcripts' "$TMP/tr3.err" 2>/dev/null; then ok; else bad "the default retention location must be announced on stderr"; fi
+[ -z "$(git -C "$trepo" status --porcelain -- .megapowers 2>/dev/null)" ] && ok || bad "default retention must not touch the working tree"
+if grep -Eq "round [0-9]+ of [0-9]+ for role 'verify'" "$TMP/tr3.err" 2>/dev/null; then ok; else bad "a dispatch must announce its round number against the cap"; fi
 
 # A failed dispatch is exactly when the transcript matters, because no receipt is
 # written at all.
@@ -2433,7 +2442,10 @@ if grep -q 'max_rounds is 3' "$TMP/cap4.err"; then ok; else bad "the refusal mus
 if grep -qi 'not converged' "$TMP/cap4.err"; then ok; else bad "the refusal must say the reviewer has not converged"; fi
 if grep -qi 'another needs_attention' "$TMP/cap4.err"; then ok; else bad "the refusal must say what another pass costs"; fi
 if grep -qi "the human's" "$TMP/cap4.err"; then ok; else bad "the refusal must say who owns the decision now"; fi
-if grep -qi 'no --transcript-dir was passed' "$TMP/cap4.err"; then ok; else bad "with no transcript dir the refusal must say the previous rounds were not retained"; fi
+# The default retention means the previous rounds exist even though no flag was
+# passed, and the refusal must point at them rather than declare them lost.
+if grep -q 'megapowers-review-transcripts' "$TMP/cap4.err"; then ok; else bad "with no flag the refusal must point at the default transcript location"; fi
+if grep -qi 'no --transcript-dir was passed' "$TMP/cap4.err"; then bad "the refusal must not claim the rounds were unretained when the default kept them"; else ok; fi
 
 # The previous rounds are the evidence the human needs, so when they were retained
 # the refusal has to say where.
