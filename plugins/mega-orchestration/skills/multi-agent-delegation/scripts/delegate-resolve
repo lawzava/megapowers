@@ -404,6 +404,19 @@ providers_for_model() {  # $1=model id -> every provider declaring it, one per l
     done <<< "$scale_list"
   done <<< "$(providers_list)"
 }
+providers_for_model_family() {  # $1=model id -> providers declaring any model sharing its first hyphen segment
+  local fam="${1%%-*}" p t m
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    m="$(cat_val "providers.$p" model)"
+    if [ -n "$m" ] && [ "${m%%-*}" = "$fam" ]; then printf '%s\n' "$p"; continue; fi
+    while IFS= read -r t; do
+      [ -n "$t" ] || continue
+      m="$(cat_val "providers.$p.tiers" "$t")"
+      [ -n "$m" ] && [ "${m%%-*}" = "$fam" ] && { printf '%s\n' "$p"; break; }
+    done <<< "$scale_list"
+  done <<< "$(providers_list)"
+}
 
 vendors_of_providers() {  # stdin: provider names -> their distinct vendors
   local p v
@@ -569,10 +582,23 @@ add_caller_set() {  # $1=providers this occurrence allows
 for cm in ${caller_models[@]+"${caller_models[@]}"}; do
   [ -n "$cm" ] || { echo "delegate-resolve: --caller-model cannot be empty" >&2; exit 2; }
   cm_providers="$(providers_for_model "$cm")"
-  [ -n "$cm_providers" ] || {
-    echo "delegate-resolve: --caller-model '$cm' matches no model in any [providers.*] tier map or model key" >&2
-    exit 2
-  }
+  if [ -z "$cm_providers" ]; then
+    # An uncataloged model id must not refuse a session whose provider is still
+    # knowable: a harness pinned to a newer model than the catalog lists (grok-4.6
+    # beside grok-4.5) is the running session either way. A co-declared provider
+    # answers outright; failing that, a unique model family in the catalog does.
+    if [ -n "${caller_providers[*]+set}" ] && [ "${#caller_providers[@]}" -gt 0 ]; then
+      echo "delegate-resolve: --caller-model '$cm' is not in the catalog; the declared --caller-provider names the running session" >&2
+      continue
+    fi
+    cm_providers="$(providers_for_model_family "$cm")"
+    if [ "$(printf '%s\n' "$cm_providers" | grep -c .)" -eq 1 ]; then
+      echo "delegate-resolve: --caller-model '$cm' is not in the catalog; treating the caller as provider '$cm_providers' by model family" >&2
+    else
+      echo "delegate-resolve: --caller-model '$cm' matches no model in any [providers.*] tier map or model key; name the running session's backend with --caller-provider" >&2
+      exit 2
+    fi
+  fi
   add_caller_set "$cm_providers"
 done
 for cp in ${caller_providers[@]+"${caller_providers[@]}"}; do

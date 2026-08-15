@@ -1599,6 +1599,20 @@ out="$("$DR" code_review "${SELF[@]}" --author-model beta-frontier --caller-prov
 check_exit "two caller providers cannot identify one session" 2 "$rc"
 out="$("$DR" code_review "${SELF[@]}" --author-model beta-frontier --caller-model nosuch-model 2>&1)"; rc=$?
 check_exit "an unknown caller model is a usage error" 2 "$rc"
+check "the unknown caller model error offers the provider flag" "--caller-provider" "$out"
+
+# A wrong --caller-model must not refuse a session whose provider is still knowable:
+# a co-declared provider wins outright, and a model id sharing a catalog family
+# (grok-4.6 beside grok-4.5) retiers onto that provider with a warning instead of
+# refusing. Only a model with no provider signal at all stays a usage error.
+out="$("$DR" code_review "${SELF[@]}" --author-model beta-frontier --caller-model nosuch-model --caller-provider alpha 2>&1)"; rc=$?
+check_exit "a declared caller provider rescues an unknown caller model" 0 "$rc"
+check "the rescued route still resolves" "PROVIDER=alpha" "$out"
+check "the rescue is reported" "not in the catalog" "$out"
+out="$("$DR" static_own "${SELF[@]}" --caller-model beta-99 2>&1)"; rc=$?
+check_exit "an unknown caller model with a unique catalog family resolves" 0 "$rc"
+check "the family fallback is reported" "by model family" "$out"
+check "the family fallback names the running session's provider" "DISPATCH=cli" "$out"
 
 # Declaring the caller must not touch the exclusion set: it says where work RUNS, not
 # who wrote the artifact, so it can never make a review look independent.
