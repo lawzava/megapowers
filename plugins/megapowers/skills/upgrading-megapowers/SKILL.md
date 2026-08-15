@@ -71,10 +71,10 @@ applied, failed, and not attempted actions with the safest recovery step.
 
 Stale cached version directories are not inert: a session that locates plugin
 scripts by glob picks whichever version the glob finds first, and the 2026-08
-audit caught a 0.11.5 `delegate-resolve` serving a session running 0.12.0. Do
-not remove them until every session using them has restarted; once sessions
-have restarted, remove the superseded version directories from the plugin
-cache as part of the upgrade.
+audit caught a superseded cached `delegate-resolve` serving a session running
+the newer release. Do not remove them until every session using them has
+restarted; once sessions have restarted, remove the superseded version
+directories from the plugin cache as part of the upgrade.
 
 Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
 https://github.com/obra/superpowers.

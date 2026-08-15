@@ -116,6 +116,11 @@ writes a provenance receipt bound to that identity. Stdout is the receipt JSON
 and nothing else; the `=== VERDICT ===` block on stderr carries the verdict, the
 round, and the receipt path.
 
+`scripts/review-ack` is the receipt's counterpart for a confirmed false
+positive: run only at the human's direction, it records their verbatim
+dismissal bound to the exact pending tree, and any further edit re-arms the
+risky-logic gate.
+
 `delegate-run` dispatches one reviewer and writes one receipt. Council panels,
 generation identifiers, and member scope are lead-managed orchestration state,
 not launcher protocol. Do not claim those fields are receipt-backed.

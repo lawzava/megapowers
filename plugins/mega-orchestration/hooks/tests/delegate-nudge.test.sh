@@ -1501,6 +1501,32 @@ esac
 below_reason="$(reason_in "$deliver_repo" "$(j false "$TR")")"
 says_got "delegate-run" "$below_reason" \
   "below the cap the launcher remedy stays"
+# The remedy prescribes --role verify, so only the verify ledger can exhaust
+# it: a capped code_review loop with verify rounds remaining keeps the
+# launcher remedy (cross-vendor review round 1 caught the conflation).
+mixed_repo="$TMP/mixed-cap-repo"
+mkdir -p "$mixed_repo"
+(
+  cd "$mixed_repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  git checkout -qb mixedbranch
+  printf 'func handler() {}\n' > svc.go
+  git add svc.go
+  git commit -qm init
+  printf 'func handler() { billing() }\n' > svc.go
+  ledger="$(git rev-parse --git-path megapowers-review-rounds.json)"
+  jq -nc '{schema:"megapowers.review-rounds.v2",
+           rounds:{code_review:{mixedbranch:3}},
+           open:{code_review:{mixedbranch:[]}},
+           unapproved:{code_review:{mixedbranch:true}},
+           updated_at:"2026-08-15T00:00:00Z"}' > "$ledger"
+)
+mixed_reason="$(reason_in "$mixed_repo" "$(j false "$TR")")"
+says_got "delegate-run" "$mixed_reason" \
+  "a capped code_review loop does not exhaust the verify remedy"
 
 # --- the human-recorded false-positive dismissal -------------------------------
 # A confirmed false positive re-fires on every stop while the matched word sits

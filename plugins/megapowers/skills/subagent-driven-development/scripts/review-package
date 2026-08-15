@@ -53,7 +53,16 @@ trap 'rm -f -- "$tmp" "$differr"' EXIT
     [[ "$file" -ef "$out" ]] && continue
     [[ "$file" -ef "$tmp" ]] && continue
     found_untracked=true
-    if git diff --no-index -- /dev/null "$file" 2>"$differr"; then
+    # Classified from the path first: a device node or socket cannot be
+    # reviewed regardless of what git prints. Symlinks fall through, since
+    # git diffs their target text. The stderr match below stays as a backstop
+    # (with a forced locale, so localized git cannot dodge it) for anything
+    # only git can classify.
+    if [ -e "$file" ] && [ ! -f "$file" ] && [ ! -L "$file" ]; then
+      printf '(skipped non-regular untracked path: %q)\n' "$file"
+      continue
+    fi
+    if LC_ALL=C git diff --no-index -- /dev/null "$file" 2>"$differr"; then
       cat "$differr" >&2
     else
       diff_rc=$?
