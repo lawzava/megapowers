@@ -291,7 +291,28 @@ fi
 # preamble instead, and the one exit that passes with `hit` set is the one a review
 # receipt cleared, where a reviewer has already read that content in the package.
 policy_notice_exit() {
-  local msg="$project_notice"
+  local msg="$project_notice" note_state note_key prev_key
+  if [ -n "$binary_note" ] && [ "$hit" -eq 0 ]; then
+    # SAID ONCE PER TREE STATE. The 2026-08 audit found the same committed
+    # dist-bundle note repeated every stop, which trains its reader to skip
+    # it. The key covers the note text and the base commit, so the tree moving
+    # or the unscannable set changing says it again; a state that cannot be
+    # read or written fails open into repeating, never into silence.
+    note_state="$(git rev-parse --git-path megapowers-unscanned-note 2>/dev/null)" || note_state=""
+    # The pending-delta fingerprint is in the key, or an in-place rewrite of the
+    # unscannable file (same path, same base, new bytes) would stay suppressed.
+    note_key="$(printf '%s\n%s\n%s' \
+      "$(git rev-parse --verify -q HEAD 2>/dev/null)" \
+      "$("$here/../skills/multi-agent-delegation/scripts/review-diff-id" . 2>/dev/null)" \
+      "$binary_note" | git hash-object --stdin 2>/dev/null)" || note_key=""
+    prev_key=""
+    [ -n "$note_state" ] && [ -f "$note_state" ] && prev_key="$(cat "$note_state" 2>/dev/null)"
+    if [ -n "$note_key" ] && [ "$note_key" = "$prev_key" ]; then
+      binary_note=""
+    elif [ -n "$note_state" ] && [ -n "$note_key" ]; then
+      printf '%s' "$note_key" > "$note_state" 2>/dev/null || true
+    fi
+  fi
   if [ -n "$binary_note" ] && [ "$hit" -eq 0 ]; then
     [ -z "$msg" ] || msg="$msg "
     msg="${msg}Unscanned content notice: ${binary_note}Nothing else in the pending tree matched the risky keyword list and no unscannable path names a risky category, so this gate did not block. Unscanned is not the same as safe: if that content carries logic, read it yourself or send it for review."
