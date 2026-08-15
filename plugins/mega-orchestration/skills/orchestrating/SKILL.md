@@ -33,6 +33,7 @@ tool calls. Delegating past that gate is bias, not signal.
 |---|---|
 | One clear path, routine stakes | Inline. No structure. |
 | Long-horizon work with unknown ownership, unresolved decisions, or unclear sequencing that prevents an honest spec or plan | mega-orchestration:wayfinding: map uncertainty and resolve the next decision before design or planning. |
+| Discovery before a decision: search or bulk reads across many files or sources | Evidence-gathering subagent on a cheap tier: it returns a curated evidence package (claims with `path:line` cites plus minimal excerpts), never raw dumps. Conclusions stay with you; the floor does not apply because nothing it writes ships. |
 | 2+ independent tasks, no shared state | Parallel fan-out (below): one focused agent per task, dispatched together. |
 | Deterministic mechanical changes sharing one oracle | Bulk mechanical mode: one owner, one bounded batch, one focused verification set. |
 | A written plan of mostly-independent tasks | megapowers:subagent-driven-development (if installed): fresh subagent per task with per-task review. |
@@ -43,8 +44,7 @@ tool calls. Delegating past that gate is bias, not signal.
 | A long, many-step or multi-session goal with minimal supervision | mega-orchestration:autonomous-run: charter, plan, journal, autonomy dial. |
 | An action that leaves the working tree (deploy, send, migrate) | mega-orchestration:effect-broker before acting. |
 
-These compose: autonomous-run milestones can run through subagent-driven-development.
-Route the outer shape first, inner steps as they arrive.
+These compose: route the outer shape first, inner steps as they arrive.
 
 ## Delegated work: one path
 
