@@ -192,3 +192,18 @@ able to fail (mutation-test it once). Prefer a deterministic oracle; reach for a
 model-graded rubric only when quality can't be captured in code, and when you do,
 grade the final artifact blind (no reasoning trace): verifiers that see prior
 conclusions anchor to them.
+
+## Designed, awaiting a keyed run: PR reproduction
+
+Every study above scores synthetic fixtures. The design that closes that gap
+(method borrowed from NanoNets Graft's repo benchmarks) scores real changes:
+take an open-source repo, pick N merged PRs, reset each to its base commit,
+hand the agent the issue text, and score the produced diff against the files
+the maintainers actually touched. The oracle is deterministic and offline
+(`git diff --name-only` set overlap against a per-PR manifest), so it
+mutation-tests like the others; only the runs need keys, network, and clones.
+Arms are skill vs control, so it measures whether the suite helps ship real
+changes, not just answer probes. Not built yet: building the runner before a
+keyed run is scheduled would be scaffolding, but the fixture format is settled
+(per-PR: repo, base SHA, task text, maintainer-touched file list) so the study
+is a runner plus a manifest away.
