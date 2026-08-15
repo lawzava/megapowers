@@ -75,7 +75,10 @@ grep -qiE '(send|post|upload|exfiltrat|transmit|forward)[a-z]*[[:space:]]+([^[:s
 # vocabulary, not every verb that can precede a path.
 # Bare verb forms only: an imperative aimed at the agent is uninflected, while
 # a doc describing behavior conjugates ("the CLI reads ~/.ssh") and stays out.
-grep -qiE '(^|[^a-z])(cat|read|print|dump|show|copy|send|post|upload|curl|fetch|leak|paste|exfiltrate)[[:space:]][^\n]{0,80}(\.env([[:space:]]|$|[^A-Za-z.])|~/\.ssh|id_rsa|AWS_SECRET_ACCESS_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY|\.aws/credentials|\.npmrc|\.netrc)' <<<"$body" \
+# `.{0,80}` and not `[^\n]{0,80}`: a bracket expression treats \n as the two
+# literal characters backslash and n, so it excluded ordinary words containing
+# `n` from the gap. grep is line-based, so `.` cannot cross a line anyway.
+grep -qiE '(^|[^a-z])(cat|read|print|dump|show|copy|send|post|upload|curl|fetch|leak|paste|exfiltrate)[[:space:]].{0,80}(\.env([[:space:]]|$|[^A-Za-z.])|~/\.ssh|id_rsa|AWS_SECRET_ACCESS_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY|\.aws/credentials|\.npmrc|\.netrc)' <<<"$body" \
   && add_marker "credential paths or secret names"
 grep -qiE '(base64[[:space:]]+-?-?d|atob\(|echo[[:space:]]+[A-Za-z0-9+/=]{40,}[[:space:]]*\|[[:space:]]*(sh|bash))' <<<"$body" \
   && add_marker "an encoded payload with a decode step"

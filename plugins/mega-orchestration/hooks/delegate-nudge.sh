@@ -1679,9 +1679,12 @@ if [ -n "$rounds_ledger" ] && [ -f "$rounds_ledger" ]; then
     gate_head_sha="$(git rev-parse --short=12 HEAD 2>/dev/null || true)"
     gate_round_key="detached-${gate_head_sha:-unknown}"
   fi
+  # ONLY the verify ledger, because verify is the role the remedy prescribes: a
+  # capped code_review loop says nothing about whether a verify dispatch would
+  # be refused, and conflating them handed the decision to the human while an
+  # unused route remained (cross-vendor review round 1).
   cap_reached="$(jq -r --arg key "$gate_round_key" --argjson cap "$gate_max_rounds" '
-    def hitcap(role): (.unapproved[role][$key] == true) and ((.rounds[role][$key] // 0) >= $cap);
-    if hitcap("verify") or hitcap("code_review") then 1 else 0 end
+    if (.unapproved.verify[$key] == true) and ((.rounds.verify[$key] // 0) >= $cap) then 1 else 0 end
   ' "$rounds_ledger" 2>/dev/null)" || cap_reached=0
 fi
 case "$cap_reached" in 1) : ;; *) cap_reached=0 ;; esac

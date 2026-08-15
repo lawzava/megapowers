@@ -90,7 +90,7 @@ emit() {
 # DENY/ASK fixture through it and fails if any stops hitting. Correctness rule: the
 # prefilter may only fast-ALLOW on a no-hit. It never denies, and an oversized hit
 # degrades to ASK, never a plain allow.
-PREFILTER_TOKENS='\b(rm|find|chmod|dd|mkfs|wipefs|blkdiscard|shred|git|bash|sh|zsh|dash|ash|ksh|eval|ssh|userdel|deluser|usermod|groupdel|gpasswd|chpasswd|visudo|setfacl)\b|curl|wget|fetch|/dev/|:\(\)'
+PREFILTER_TOKENS='\b(rm|find|chmod|dd|mkfs|wipefs|blkdiscard|shred|git|bash|sh|zsh|dash|ash|ksh|eval|ssh|userdel|deluser|usermod|useradd|adduser|groupdel|groupadd|groupmod|gpasswd|chpasswd|passwd|visudo|setfacl)\b|curl|wget|fetch|/dev/|:\(\)'
 rc=0
 printf '%s' "$cmd" | grep -Eq "$PREFILTER_TOKENS" || rc=$?
 if [ "$rc" -eq 1 ]; then
@@ -756,8 +756,8 @@ scan_level() {
       # hard to reverse, and identical in shape locally and over ssh (where
       # they arrive here as an ssh payload). ASK, never deny: decommissioning
       # a user is sometimes exactly the job.
-      userdel|deluser|usermod|groupdel|gpasswd|chpasswd)
-        ask_reason="account or group change ($name). An access change is outward-facing and hard to reverse; confirm it is intended, and for a remote host consider the effect-broker checklist first." ;;
+      userdel|deluser|usermod|useradd|adduser|groupdel|groupadd|groupmod|gpasswd|chpasswd|passwd)
+        ask_reason="account, group, or credential change ($name). An access change is outward-facing and hard to reverse (a useradd -G sudo is a privilege grant wearing a create verb); confirm it is intended, and for a remote host consider the effect-broker checklist first." ;;
       visudo)
         # `visudo -c` (any cluster carrying c) only validates a sudoers file.
         shell_words "$tail" || WORDS=()
@@ -772,7 +772,7 @@ scan_level() {
         shell_words "$tail" || WORDS=()
         for pw in "${WORDS[@]}"; do
           case "$pw" in
-            -*R*|--recursive|/home/*|/etc/*|/root/*)
+            -*R*|--recursive|/home|/home/*|/etc|/etc/*|/root|/root/*|/var|/var/*|/srv|/srv/*|/opt|/opt/*)
               ask_reason="ACL change on another user's files or system config (setfacl). An access grant is an auth change; confirm it is intended."
               break ;;
           esac

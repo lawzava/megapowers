@@ -424,7 +424,23 @@ check ASK 'visudo -f /etc/sudoers.d/appsvc'
 check ALLOW 'visudo -cf /etc/sudoers.d/appsvc'
 check ASK 'setfacl -R -m u:appsvc:rX /home/carol'
 check ASK 'setfacl -m u:other:r /etc/app.conf'
+check ASK 'setfacl -m u:other:r /var/www/uploads'
+# Exact roots, not only descendants: verify round 1 found bare /opt slipping
+# the /opt/* glob.
+check ASK 'setfacl -m u:mallory:rwx /opt'
+check ASK 'setfacl -m u:mallory:rx /home'
+check ASK 'setfacl -m u:mallory:rx /etc'
 check ALLOW 'setfacl -m u:ci:r build/output.txt'
+# Identity creation and credential changes are access grants too (review
+# round 1): a useradd -G sudo is a privilege grant wearing a create verb.
+check ASK 'useradd -m -G sudo appsvc'
+check ASK 'adduser appsvc'
+check ASK 'groupadd deployers'
+check ASK 'groupmod -a -U mallory sudo'
+check ASK 'passwd carol'
+check ASK 'ssh prod "useradd -m appsvc"'
+check ALLOW 'cat /etc/passwd'
+check ALLOW 'grep carol /etc/passwd'
 # Remote destructive ops are out of scope by design (the effect-broker skill
 # owns real-world effects); the hook must pass them through, not pattern-match.
 check ALLOW 'aws s3 rm s3://bucket/path --recursive'
