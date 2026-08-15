@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # release.sh <version> — stamp a release version everywhere it is duplicated.
-# Writes .version into every plugin manifest (Claude + Codex) and rewrites the
-# public install pins in README.md, docs/agent-install.md, and docs/setup.md.
+# Writes .version into every plugin manifest (Claude + Codex), rewrites the
+# public install pins in README.md, docs/agent-install.md, and docs/setup.md,
+# and restamps the baseline version comment in templates/*.md.
 # Requires a matching "## <version> - " heading in CHANGELOG.md first, so the
 # changelog entry is written before the stamp. Idempotent. Deps: jq.
 set -euo pipefail
@@ -49,5 +50,10 @@ sedi "s|\"ref\": \"v[0-9]+\.[0-9]+\.[0-9]+\"|\"ref\": \"v${version}\"|g" docs/se
 # has to be restamped: an example naming the previous tag tells the next
 # maintainer to certify the wrong release.
 sedi "s|^tag=v[0-9]+\.[0-9]+\.[0-9]+|tag=v${version}|" docs/setup.md evals/studies/install-smoke/README.md
+# The baseline stamp: each shipped template opens with a version comment that a
+# user's adopted copy carries along, so an upgrade can diff from the exact ref
+# the baseline came from instead of inferring it.
+sedi "s|megapowers-baseline v[0-9]+\.[0-9]+\.[0-9]+|megapowers-baseline v${version}|" \
+  templates/CLAUDE.md templates/CODEX.md templates/OPENCODE.md
 
 echo "release.sh: stamped $version into plugin manifests and doc pins"

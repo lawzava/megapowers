@@ -1,3 +1,4 @@
+<!-- megapowers-baseline v0.12.0 -->
 <!-- Recommended baseline; adapt to your project. Pairs with the megapowers marketplace. -->
 
 # Project instructions
@@ -6,6 +7,9 @@ Baseline for a project running the
 [megapowers](https://github.com/lawzava/megapowers) plugins. Copy to
 `CLAUDE.md`, or merge the sections you want into `~/.claude/CLAUDE.md`, then
 edit to fit your stack. It leans on the plugins instead of restating them.
+Keep the `megapowers-baseline` comment above when you copy or merge: an
+upgrade reads it to diff your adopted baseline against the exact shipped
+version it came from instead of guessing the ref.
 
 You lead your own session. Every harness leads in its own runtime and they
 dispatch each other on demand, so which one is running is which one is in

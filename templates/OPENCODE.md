@@ -1,3 +1,5 @@
+<!-- megapowers-baseline v0.12.0 -->
+
 # OPENCODE
 
 > OpenCode reads `AGENTS.md`. Save this as `AGENTS.md` in your project (or
