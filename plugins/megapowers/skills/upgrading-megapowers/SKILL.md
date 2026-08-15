@@ -26,10 +26,14 @@ and scope, and preserve a pin unless the user explicitly approves changing it.
 Treat a checkout with local edits, a fork, or a duplicate as a separate
 decision, never an overwrite or cleanup implied by an upgrade.
 
-Classify a user-owned baseline as absent, unrelated, or adopted. For an adopted
-baseline, compare the shipped baseline at the inferred installed ref with the
-target baseline, not with the user's edited file. If the fetch fails, report
-that the comparison did not run; an empty result is not no drift.
+Classify a user-owned baseline as absent, unrelated, or adopted. An adopted
+baseline usually opens with a `megapowers-baseline vX.Y.Z` comment; that stamp
+is the installed ref, so use it and skip inference. Without a stamp, infer the
+ref and say so. Either way, compare the shipped baseline at that ref with the
+target baseline, not with the user's edited file, and preserve the user's
+edits; the diff between shipped refs is what you offer to apply. If the fetch
+fails, report that the comparison did not run; an empty result is not no
+drift.
 
 ## 3. Compare and propose
 

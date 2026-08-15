@@ -198,6 +198,15 @@ fork with the upstream tree.
 No plugin ships `templates/`, so the baselines come from the repository. Read
 only; fetching changes nothing local.
 
+`<installed>` comes from the adopted file itself when it kept the stamp:
+shipped templates open with `<!-- megapowers-baseline vX.Y.Z -->` and
+release.sh restamps it each release, so `grep -m1 megapowers-baseline <file>`
+names the exact ref to diff from. A stamped ref beats any inferred one. An
+adopted baseline without a stamp predates the stamp or lost it; infer the ref as
+before and say the comparison ran on an inferred ref. When proposing the
+updated baseline, carry the target's stamp line so the next upgrade does not
+have to infer again.
+
 ```bash
 base=https://raw.githubusercontent.com/lawzava/megapowers
 for f in CLAUDE.md CODEX.md OPENCODE.md settings.example.json; do
