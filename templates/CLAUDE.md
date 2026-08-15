@@ -1,4 +1,4 @@
-<!-- megapowers-baseline v0.12.0 -->
+<!-- megapowers-baseline v0.13.0 -->
 <!-- Recommended baseline; adapt to your project. Pairs with the megapowers marketplace. -->
 
 # Project instructions

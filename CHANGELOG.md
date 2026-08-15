@@ -5,6 +5,25 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.13.0 - 2026-08-15
+
+Upgrades stop guessing which baseline you adopted, and discovery gets cheap.
+
+### Added
+
+- Shipped baselines (`templates/CLAUDE.md`, `CODEX.md`, `OPENCODE.md`) open
+  with a `megapowers-baseline vX.Y.Z` stamp that release.sh restamps each
+  release. `upgrading-megapowers` reads the stamp and diffs an adopted
+  baseline from the exact shipped ref instead of inferring it; unstamped
+  copies fall back to inference, said out loud.
+- `orchestrating` routes discovery (search or bulk reads across many files or
+  sources) through an evidence-gathering subagent on a cheap tier: curated
+  evidence packages with `path:line` cites, never raw dumps, conclusions
+  staying with the lead.
+- evals: the PR-reproduction study design is recorded as designed and awaiting
+  a keyed run: merged PRs reset to their base commit, the agent's diff scored
+  deterministically against the files the maintainers touched.
+
 ## 0.12.0 - 2026-08-12
 
 Agent glue is Go, including inside a Python or TypeScript repository.
