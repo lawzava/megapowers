@@ -86,8 +86,9 @@ The `plugin` array in your own `opencode.json` is the alternative for running
 it straight out of a megapowers checkout, naming that checkout's path. When the plugin is
 not loaded, or on a version of OpenCode where
 `experimental.chat.system.transform` has changed shape, the two flags above
-remain the contract: pass them by hand on every `scripts/delegate-resolve` or
-`delegate-run` call.
+remain the contract: pass them by hand on every `delegate-resolve` or
+`delegate-run` call (both live at
+`skills/multi-agent-delegation/scripts/` under the mega-orchestration plugin).
 
 ## Workflow
 
@@ -108,8 +109,9 @@ OpenCode invokes them through a native `skill` tool, gated by
 ## Delegation
 
 Route specialized work to the best model through mega-orchestration instead of
-doing everything inline. `scripts/delegate-resolve <role> --caller-adapter
-opencode --caller-model <id>` resolves a route. Put model updates in a project
+doing everything inline. `skills/multi-agent-delegation/scripts/delegate-resolve
+<role> --caller-adapter opencode --caller-model <id>` (under the
+mega-orchestration plugin's active version directory) resolves a route. Put model updates in a project
 `.megapowers/models.toml` or user `~/.config/megapowers/models.toml` override
 layer, which survives plugin updates.
 
