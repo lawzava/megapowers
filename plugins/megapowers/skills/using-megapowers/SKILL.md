@@ -4,7 +4,9 @@ description: Use when starting a conversation or task, before any response inclu
 license: MIT
 ---
 
-If dispatched as a subagent for a specific task, ignore this skill and proceed.
+Dispatched as a subagent: skip this routing and follow your brief, keeping the
+floor: failing test first, evidence over claims, scratch outside the worktree,
+report blockers rather than guessing.
 
 ## The Core Rule
 
