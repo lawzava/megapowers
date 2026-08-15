@@ -84,6 +84,10 @@ binary = "opencode"
 channel = "opencode-native"
 reference = "references/providers/opencode.md"
 
+[adapters.grok]
+binary = "grok"
+channel = "grok-native"
+
 [providers.claude]
 effort  = "high"   # lead default; in-session teammate work runs medium
 # `max` is deliberately absent, and it is the one effort here removed on external
