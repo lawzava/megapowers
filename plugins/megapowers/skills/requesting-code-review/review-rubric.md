@@ -37,6 +37,11 @@ Categorize findings by actual severity. Not everything is Critical.
   would block a merge over (verbatim duplication of a logic block,
   swallowed errors, tests that assert nothing).
 - **Minor:** "coverage could be broader," wording, documentation, polish.
+  Prose economy belongs here and is in scope: comments that narrate what the
+  next line does, doc text duplicated between files, headers restating the
+  filename, and filler a maintainer would delete on sight. The 2026-08 audit
+  found 44 such findings surviving four review layers because no rubric named
+  them.
 
 Within a Specification Compliance axis, calibrate severity by requirement
 impact, not by engineering categories: Critical defeats the required core

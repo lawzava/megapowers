@@ -21,7 +21,9 @@ requirements, owned paths, and verification needed for that task.
 merge, or open a pull request. Preserve the user's and repository's existing
 authorization. When commits are authorized, the ledger records their ranges.
 Otherwise the ledger and working tree are the recovery mechanism. Recursive
-children never perform Git index or ref operations.
+children never perform Git index or ref operations, and never discard
+working-tree content through Git: `git checkout <path>`, `git restore`, and
+`git stash` are the lead's, even with a backup taken first.
 
 **Continuous execution:** do not check in with your human partner between
 tasks. Stop only for a BLOCKED status you cannot resolve, ambiguity that
@@ -96,9 +98,10 @@ Separate top-level sessions may share the checkout only when their exclusive
 ownership was partitioned before launch. There is no cross-session lock or
 automatic conflict resolution. Concurrent children do not run Git index or ref
 mutations. They do not commit, merge, rebase, reset, switch branches, update
-refs, push, or clean the checkout. Only the top-level lead performs any
-authorized Git action, after its direct children return and repository policy
-permits it.
+refs, push, or clean the checkout, and they do not discard working-tree content
+with `git checkout <path>`, `git restore`, or `git stash`. Only the top-level
+lead performs any authorized Git action, after its direct children return and
+repository policy permits it.
 
 Use done, blocked, and needs-context results. The parent decides whether to add
 information, retry, reduce the task, continue inline, or surface the blocker.
@@ -139,7 +142,12 @@ branches get one whole-branch review. High-risk billing, auth, concurrency,
 security, schema, data, or external-side-effect changes also get an independent
 review through `mega-orchestration:cross-model-verification` when available;
 otherwise use a fresh reviewer that did not author the change. Do not repeat a
-review already performed on the identical complete diff.
+review already performed on the identical complete diff. The identical diff is
+the whole condition: a fix wave that touched auth, billing, concurrency,
+security, or data integrity after the independent review re-runs the
+independent route on the amended range, not a same-vendor self-review. The
+2026-08 audit found a cross-vendor BLOCK whose fix wave shipped with only the
+author's own review.
 
 ## Dispatch Reference
 

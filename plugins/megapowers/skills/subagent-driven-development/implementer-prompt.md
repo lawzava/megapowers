@@ -39,6 +39,20 @@ Subagent (general-purpose):
 
     Work from: [directory]
 
+    ## Environment
+
+    Rules the 2026-08 transcript audit found every lead retyping by hand:
+    - A sandboxed command that fails with "permission denied ...docker.sock",
+      "Read-only file system", or a seccomp/unshare init error is a sandbox
+      restriction, not a broken command: re-run the identical command with the
+      sandbox disabled, once, and only for that command.
+    - Scratch files go to "${TMPDIR:-/tmp}/agent-$$" (create it first), never
+      into the working tree. A scratch file left in the repository gets
+      reviewed, scanned, and eventually committed by someone.
+    - Git: no index or ref operations, and no discarding working-tree content
+      (`git checkout <path>`, `git restore`, `git stash`). Those belong to the
+      controller.
+
     While you work: if you encounter something unexpected or unclear, ask
     questions. It's always OK to pause and clarify. Don't guess or make
     assumptions.
