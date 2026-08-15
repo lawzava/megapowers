@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stop-hook backstop for risky pending changes. Only a current, independent,
-# launcher-generated approval receipt suppresses the nudge.
+# launcher-generated approval receipt, or a human-recorded false-positive
+# dismissal (scripts/review-ack) bound to the same tree, suppresses the nudge.
 set -u
 # REPLACEMENT OBJECTS, off for every git call this gate makes and for the
 # review-diff-id it runs. `git replace X Y` makes every object read return Y
@@ -106,6 +107,10 @@ unscannable_risky=""
 # changed" is untunable, because nobody can tell a true fire from a false one
 # without re-deriving the scan by hand.
 hit_evidence=""
+# Set when a review-ack dismissal covers the exact pending tree, read by
+# policy_notice_exit: a pass bought by a recorded human decision is announced,
+# never silent, or the dismissal reads as the gate going quiet.
+dismiss_note=""
 # EVERY SCRATCH FILE THIS HOOK MAKES IS DECLARED HERE AND REMOVED FROM ONE TRAP.
 # Five temps: the committed policy copy (lib-toml.sh reads files, not strings),
 # two staged blobs, two index enumerations. Freeing them inline only leaks
@@ -290,6 +295,10 @@ policy_notice_exit() {
   if [ -n "$binary_note" ] && [ "$hit" -eq 0 ]; then
     [ -z "$msg" ] || msg="$msg "
     msg="${msg}Unscanned content notice: ${binary_note}Nothing else in the pending tree matched the risky keyword list and no unscannable path names a risky category, so this gate did not block. Unscanned is not the same as safe: if that content carries logic, read it yourself or send it for review."
+  fi
+  if [ -n "$dismiss_note" ]; then
+    [ -z "$msg" ] || msg="$msg "
+    msg="$msg$dismiss_note"
   fi
   [ -z "$msg" ] || jq -nc --arg m "$msg" '{systemMessage:$m}'
   exit 0
@@ -1464,9 +1473,13 @@ fi
 
 diff_id_tool="$here/../skills/multi-agent-delegation/scripts/review-diff-id"
 receipt="$(git rev-parse --git-path megapowers-review-receipt.json 2>/dev/null)"
+# The human's false-positive dismissal, written by scripts/review-ack and bound
+# the same way the receipt is: id, base, root, submodules. It clears the same
+# way too, and any further edit moves the fingerprint out from under it.
+ack="$(git rev-parse --git-path megapowers-review-ack.json 2>/dev/null)"
 receipt_schema=""
-if [ -x "$diff_id_tool" ] && [ -f "$receipt" ]; then
-  receipt_schema="$(jq -r '.schema // ""' "$receipt" 2>/dev/null)"
+if [ -x "$diff_id_tool" ] && { [ -f "$receipt" ] || [ -f "$ack" ]; }; then
+  [ -f "$receipt" ] && receipt_schema="$(jq -r '.schema // ""' "$receipt" 2>/dev/null)"
   current_id="$("$diff_id_tool" . 2>/dev/null)"
   # The SUPPLEMENTAL submodule fingerprint, checked beside the id rather than
   # folded into it. subject.id must keep the value the shipped algorithm makes,
@@ -1506,37 +1519,62 @@ if [ -x "$diff_id_tool" ] && [ -f "$receipt" ]; then
   # differently spelled path to the same worktree is not a false mismatch.
   current_root="$(git rev-parse --show-toplevel 2>/dev/null)"
   current_root="$(cd "$current_root" 2>/dev/null && pwd -P)"
-  receipt_root="$(jq -r '.subject.artifact // ""' "$receipt" 2>/dev/null)"
-  case "$receipt_root" in
-    # A relative artifact names whatever directory it is read from, so it would
-    # clear this check in every repository at once, which is the portability the
-    # check exists to remove. The launcher never writes one.
-    /*) receipt_root="$(cd "$receipt_root" 2>/dev/null && pwd -P)" ;;
-    *) receipt_root="" ;;
-  esac
-  # v2 ONLY. A v1 receipt records no base, so honoring one would keep exactly the
-  # hole this check closes, and there is no way to infer the base it covered after
-  # the fact. Rejecting costs one re-run of the launcher; accepting costs a tree
-  # nobody reviewed. See the block reason below, which names the reason rather than
-  # letting a receipt stop working in silence.
-  if [ -n "$current_id" ] && [ -n "$current_root" ] && [ -n "$current_base" ] && \
-     [ "$sub_ok" -eq 1 ] && \
-     [ "$receipt_root" = "$current_root" ] && jq -e --arg id "$current_id" --arg base "$current_base" \
-     --arg sub "$current_sub" '
-    . as $receipt |
-    .schema == "megapowers.review-receipt.v2" and
-    (.role == "verify" or .role == "code_review" or .role == "visual_verify") and
-    .subject.kind == "worktree-diff" and .subject.id == $id and
-    .subject.base == $base and
-    (.subject.submodules // "") == $sub and
-    .independent == true and .result.verdict == "approve" and
-    (.author_vendors | type == "array" and length > 0) and
-    (.reviewer.vendor | type == "string" and length > 0) and
-    (all(.author_vendors[]; . != $receipt.reviewer.vendor))
-  ' "$receipt" >/dev/null 2>&1; then
-    # A receipt clears the FINDING, not the policy edit. The reviewer is a
-    # delegate model, and the thing a pending layer edit needs is a human read.
-    policy_notice_exit
+  if [ -f "$receipt" ]; then
+    receipt_root="$(jq -r '.subject.artifact // ""' "$receipt" 2>/dev/null)"
+    case "$receipt_root" in
+      # A relative artifact names whatever directory it is read from, so it would
+      # clear this check in every repository at once, which is the portability the
+      # check exists to remove. The launcher never writes one.
+      /*) receipt_root="$(cd "$receipt_root" 2>/dev/null && pwd -P)" ;;
+      *) receipt_root="" ;;
+    esac
+    # v2 ONLY. A v1 receipt records no base, so honoring one would keep exactly the
+    # hole this check closes, and there is no way to infer the base it covered after
+    # the fact. Rejecting costs one re-run of the launcher; accepting costs a tree
+    # nobody reviewed. See the block reason below, which names the reason rather than
+    # letting a receipt stop working in silence.
+    if [ -n "$current_id" ] && [ -n "$current_root" ] && [ -n "$current_base" ] && \
+       [ "$sub_ok" -eq 1 ] && \
+       [ "$receipt_root" = "$current_root" ] && jq -e --arg id "$current_id" --arg base "$current_base" \
+       --arg sub "$current_sub" '
+      . as $receipt |
+      .schema == "megapowers.review-receipt.v2" and
+      (.role == "verify" or .role == "code_review" or .role == "visual_verify") and
+      .subject.kind == "worktree-diff" and .subject.id == $id and
+      .subject.base == $base and
+      (.subject.submodules // "") == $sub and
+      .independent == true and .result.verdict == "approve" and
+      (.author_vendors | type == "array" and length > 0) and
+      (.reviewer.vendor | type == "string" and length > 0) and
+      (all(.author_vendors[]; . != $receipt.reviewer.vendor))
+    ' "$receipt" >/dev/null 2>&1; then
+      # A receipt clears the FINDING, not the policy edit. The reviewer is a
+      # delegate model, and the thing a pending layer edit needs is a human read.
+      policy_notice_exit
+    fi
+  fi
+  if [ -f "$ack" ]; then
+    ack_root="$(jq -r '.subject.artifact // ""' "$ack" 2>/dev/null)"
+    case "$ack_root" in
+      /*) ack_root="$(cd "$ack_root" 2>/dev/null && pwd -P)" ;;
+      *) ack_root="" ;;
+    esac
+    # The same binding discipline as the receipt: exact id, base, root and
+    # submodule state, or the dismissal does not apply. A dismissal is a human
+    # decision about one tree, and the tree moving is what re-arms the gate.
+    if [ -n "$current_id" ] && [ -n "$current_root" ] && [ -n "$current_base" ] && \
+       [ "$sub_ok" -eq 1 ] && \
+       [ "$ack_root" = "$current_root" ] && jq -e --arg id "$current_id" --arg base "$current_base" \
+       --arg sub "$current_sub" '
+      .schema == "megapowers.review-ack.v1" and
+      .subject.kind == "worktree-diff" and .subject.id == $id and
+      .subject.base == $base and
+      (.subject.submodules // "") == $sub and
+      (.human_authorization | type == "string" and length > 0)
+    ' "$ack" >/dev/null 2>&1; then
+      dismiss_note="Risky-logic dismissal notice: a human-recorded false-positive dismissal covers this exact pending tree ($ack), so this gate did not block. Any further edit re-arms it. If no human actually authorized this, treat the pending change as unreviewed."
+      policy_notice_exit
+    fi
   fi
 fi
 
@@ -1587,19 +1625,58 @@ fi
 # makes the rule tunable: a false fire that names its own cause can be filed
 # against the keyword list, and until now none of them could be.
 evidence_note=""
+ack_tool="$here/../skills/multi-agent-delegation/scripts/review-ack"
 if [ -n "$hit_evidence" ]; then
   # Split at the LAST tab, not the first: a path may contain one and a keyword
   # from the list never can, so the final field is unambiguously the keyword.
-  evidence_note="What matched: the keyword '${hit_evidence##*$'\t'}' at ${hit_evidence%$'\t'*}. That single match is the whole trigger. If that line is not auth, billing, payment, or concurrency logic, this is a false positive: say so plainly to the human instead of inventing a risk that fits the category, and do not report a finding you have not confirmed by reading the line. "
+  evidence_note="What matched: the keyword '${hit_evidence##*$'\t'}' at ${hit_evidence%$'\t'*}. That single match is the whole trigger. If that line is not auth, billing, payment, or concurrency logic, this is a false positive: say so plainly to the human instead of inventing a risk that fits the category, and do not report a finding you have not confirmed by reading the line. If the human then confirms the false positive, record their decision with $ack_tool --human \"<their verbatim words>\": it dismisses this gate for exactly the current pending tree, and any further edit re-arms it. "
 fi
 preamble="$rules_note$project_note$binary_note$evidence_note"
+# The turn this block lands on is the turn that carried the deliverable, and on
+# every harness the agent's reply to the block is what the user or dispatching
+# session reads instead (a Codex Stop hook arrives as a prompt after the final
+# message, and the reply to it becomes the session's last word). Both remedies
+# below carry this, or satisfying the gate eats the answer it interrupted.
+handoff="This block replaced the reply you just wrote, and your next message is what the user or the dispatching session will read: restate that reply's full content first, then address this gate; never answer with gate status alone. If you were dispatched only to review or verify another session's work, the receipt is the dispatching session's to obtain: deliver your verdict and findings in full and name the missing receipt instead of trying to satisfy this gate yourself."
+
+# When the round ledger already sits at the cap for this branch, the launcher
+# refuses to dispatch (exit 10, nothing consumed), so prescribing it would pin
+# the session between a gate demanding a receipt and a launcher refusing to
+# produce one; the 2026-08-14 transcripts show a dispatched verifier trapped
+# exactly there. The risk is real either way, so the gate still blocks; only
+# the remedy changes to the hand-off the launcher's own refusal prescribes.
+# max_rounds reads from the same committed-layer walk as every other rule, and
+# the key derivation matches delegate-run's, so the two tools count one loop.
+cap_reached=0
+gate_max_rounds="$(rule_scalar rules.risky-logic-review max_rounds)" || gate_max_rounds=""
+case "$gate_max_rounds" in ''|*[!0-9]*) gate_max_rounds=3 ;; esac
+[ "$gate_max_rounds" -ge 1 ] || gate_max_rounds=3
+rounds_ledger="$(git rev-parse --git-path megapowers-review-rounds.json 2>/dev/null)"
+if [ -n "$rounds_ledger" ] && [ -f "$rounds_ledger" ]; then
+  gate_round_key="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  if [ -z "$gate_round_key" ]; then
+    gate_head_sha="$(git rev-parse --short=12 HEAD 2>/dev/null || true)"
+    gate_round_key="detached-${gate_head_sha:-unknown}"
+  fi
+  cap_reached="$(jq -r --arg key "$gate_round_key" --argjson cap "$gate_max_rounds" '
+    def hitcap(role): (.unapproved[role][$key] == true) and ((.rounds[role][$key] // 0) >= $cap);
+    if hitcap("verify") or hitcap("code_review") then 1 else 0 end
+  ' "$rounds_ledger" 2>/dev/null)" || cap_reached=0
+fi
+case "$cap_reached" in 1) : ;; *) cap_reached=0 ;; esac
 
 if [ "$reachable" -lt 2 ]; then
-  jq -nc --arg legacy "$preamble$legacy" \
-    '{decision:"block", reason:($legacy + "Risky auth, billing, payment, or concurrency logic changed, and no independent reviewer is reachable: fewer than two delegate vendors have an installed CLI, so a different-vendor review cannot be resolved on this machine. Do not silently ship it. Summarize the risky change and its blast radius for the human and get an explicit go-ahead, or install a second vendor CLI and re-run the independent pass. Say plainly that the automated cross-vendor check did not run.")}'
+  jq -nc --arg legacy "$preamble$legacy" --arg handoff "$handoff" \
+    '{decision:"block", reason:($legacy + "Risky auth, billing, payment, or concurrency logic changed, and no independent reviewer is reachable: fewer than two delegate vendors have an installed CLI, so a different-vendor review cannot be resolved on this machine. Do not silently ship it. Summarize the risky change and its blast radius for the human and get an explicit go-ahead, or install a second vendor CLI and re-run the independent pass. Say plainly that the automated cross-vendor check did not run. " + $handoff)}'
   exit 0
 fi
 
-jq -nc --arg launcher "$launcher" --arg legacy "$preamble$legacy" \
-  '{decision:"block", reason:($legacy + "Risky auth, billing, payment, or concurrency logic changed without a current independent approval receipt. Run " + $launcher + " --role verify --author-vendor <artifact-author-vendor> --artifact worktree --claim <claim>. The launcher resolves a different-vendor reviewer and binds its verdict to the pending tree git reports, plus the base commit it applies to. Ignored paths and content git does not surface in a diff are outside that binding. Unrelated delegate calls and stale receipts do not satisfy this gate.")}'
+if [ "$cap_reached" -eq 1 ]; then
+  jq -nc --arg legacy "$preamble$legacy" --arg handoff "$handoff" \
+    '{decision:"block", reason:($legacy + "Risky auth, billing, payment, or concurrency logic changed without a current independent approval receipt, and the review loop for this branch already reached its round cap without an approve: another launcher dispatch would be refused, so do not run it. The decision is the human'\''s now. Present the last verdict'\''s findings and the pending diff, and record their disposition: ship with their explicit go-ahead, drop the change, or restructure it so the disputed part is smaller. An approve through the launcher clears the count, and the ledger can be removed at the human'\''s direction to restart the loop. " + $handoff)}'
+  exit 0
+fi
+
+jq -nc --arg launcher "$launcher" --arg legacy "$preamble$legacy" --arg handoff "$handoff" \
+  '{decision:"block", reason:($legacy + "Risky auth, billing, payment, or concurrency logic changed without a current independent approval receipt. Run " + $launcher + " --role verify --author-vendor <artifact-author-vendor> --artifact worktree --claim <claim>. The launcher resolves a different-vendor reviewer and binds its verdict to the pending tree git reports, plus the base commit it applies to. Ignored paths and content git does not surface in a diff are outside that binding. Unrelated delegate calls and stale receipts do not satisfy this gate. " + $handoff)}'
 exit 0
