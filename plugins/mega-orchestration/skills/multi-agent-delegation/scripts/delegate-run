@@ -1488,7 +1488,7 @@ printf '%s\n' "$route" > "$tmpdir/route.txt"
 
 prompt="$(printf '%s\n\n%s\n\n%s\n' \
   "<task>Adversarially review this artifact. Claim to refute: $claim</task>" \
-  "<verification>$review_target Cite inspected paths in evidence.commands and screenshot paths in evidence.screenshots. Return only the requested JSON object.</verification>" \
+  "<verification>$review_target Cite inspected paths in evidence.commands and screenshot paths in evidence.screenshots. The package is a static snapshot of the pending change, not a runnable checkout, so the project's tests generally cannot be executed from it: name every oracle you could not execute as an explicit limitation in your findings, never as a test that ran, and when the claim is concurrency, auth, or billing behavior, say plainly that the verdict rests on reading alone. Return only the requested JSON object.</verification>" \
   "<output_contract>Use the Megapowers review verdict v1 schema. APPROVE only when no critical or major finding remains.</output_contract>")"
 printf '%s\n' "$prompt" > "$tmpdir/prompt.txt"
 

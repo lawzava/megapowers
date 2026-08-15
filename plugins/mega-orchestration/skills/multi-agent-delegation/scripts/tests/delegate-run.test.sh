@@ -1292,6 +1292,10 @@ tsub="$(find "$tdir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)"
 [ -f "$tsub/review-package.txt" ] && ok || bad "transcript must retain the review package"
 [ -f "$tsub/provider-raw.json" ] && ok || bad "transcript must retain the raw provider output"
 if grep -q 'a distinctive claim string' "$tsub/prompt.txt" 2>/dev/null; then ok; else bad "retained prompt must be what was sent"; fi
+# The 2026-08 audit found a reviewer approving a concurrency fix by reading
+# alone, its evidence naming a test it could not run from the snapshot. The
+# prompt has to demand that limitation be reported, not implied.
+if grep -q 'could not execute' "$tsub/prompt.txt" 2>/dev/null; then ok; else bad "the prompt must demand unexecuted oracles be named as a limitation"; fi
 if grep -q 'a distinctive pending line' "$tsub/review-package.txt" 2>/dev/null; then ok; else bad "retained package must be what the reviewer read"; fi
 if grep -q 'megapowers-review-rounds' "$tsub/route.txt" 2>/dev/null; then bad "route.txt must not be the ledger"; else ok; fi
 if grep -q 'fake-frontier' "$tsub/route.txt" 2>/dev/null; then ok; else bad "transcript must record which model was dispatched"; fi
