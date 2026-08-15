@@ -46,7 +46,16 @@ reason_in() {
 # The non-blocking channel. Unscannable content is announced here rather than
 # blocked, so a case checking only the decision would pass over a gate that had
 # gone silent, which is the hole that made every unscannable file a hit.
+# The unscanned note is said once per tree state, so a fixture that runs the
+# hook twice on one tree resets the dedupe state first: this helper asserts
+# what the note SAYS, and the once-only property has its own cases at the end.
 notice_in() {
+  local dir="$1" input="$2"
+  (cd "$dir" && rm -f "$(git rev-parse --git-path megapowers-unscanned-note)" 2>/dev/null
+   printf '%s' "$input" | bash "$HOOK" 2>/dev/null) | jq -r '.systemMessage // ""' 2>/dev/null
+}
+# The same channel WITHOUT the state reset, for the once-only cases themselves.
+notice_in_stateful() {
   local dir="$1" input="$2"
   (cd "$dir" && printf '%s' "$input" | bash "$HOOK" 2>/dev/null) | jq -r '.systemMessage // ""' 2>/dev/null
 }
@@ -1531,6 +1540,38 @@ check_got BLOCK "$(verdict_in "$ack_repo" "$(j false "$TR")")" \
 ack_empty_rc=0
 (cd "$ack_repo" && "$ACK" --human "" >/dev/null 2>&1) || ack_empty_rc=$?
 check_got 2 "$ack_empty_rc" "review-ack refuses an empty human authorization"
+
+# --- the unscanned-content notice does not repeat on an unchanged tree ---------
+# Three identical notices per session about the same committed dist bundle is
+# how a notice trains its reader to skip it. Same tree, same note: said once.
+# The tree moving (or the note changing) says it again.
+bin_repo="$TMP/binary-note-repo"
+mkdir -p "$bin_repo"
+(
+  cd "$bin_repo" || exit 1
+  git init -q
+  git config user.email test@example.com
+  git config user.name test
+  git config commit.gpgsign false
+  printf 'func handler() {}\n' > svc.go
+  git add svc.go
+  git commit -qm init
+  printf 'data\x00blob\n' > asset.bin
+)
+first_note="$(notice_in_stateful "$bin_repo" "$(j false "$TR")")"
+says_got "Unscanned content notice" "$first_note" \
+  "an unscannable untracked file is announced on the first stop"
+second_note="$(notice_in_stateful "$bin_repo" "$(j false "$TR")")"
+case "$second_note" in
+  *"Unscanned content notice"*)
+    fail=$((fail + 1))
+    printf '  FAIL the same unscanned note must not repeat on an unchanged tree :: %s\n' "$second_note" ;;
+  *) pass=$((pass + 1)) ;;
+esac
+(cd "$bin_repo" && printf 'data\x00blob2\n' > asset.bin)
+third_note="$(notice_in_stateful "$bin_repo" "$(j false "$TR")")"
+says_got "Unscanned content notice" "$third_note" \
+  "a changed tree re-announces the unscanned content"
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]
