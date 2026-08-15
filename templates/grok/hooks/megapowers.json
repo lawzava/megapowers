@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|run_terminal_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bin/wrap-deny-destructive.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bin/wrap-stop.sh megapowers/hooks/answer-style.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bin/wrap-stop.sh mega-orchestration/hooks/delegate-nudge.sh",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}
