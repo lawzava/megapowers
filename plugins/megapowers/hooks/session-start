@@ -48,7 +48,17 @@ preface="megapowers workflow skills are available (planning, testing, debugging,
 # block is byte-identical to before; the flag only matters when a layer points
 # [lead] at another harness, where the undeclared default would otherwise tell a
 # Claude session that something else is in charge.
-catalog_block="$("${SCRIPT_DIR}/render-model-catalog" --caller claude 2>/dev/null || true)"
+# The payload's `model` field is the model actually running (optional; absent
+# on older releases and in tests, and `cat` is skipped on a tty so a manual run
+# never hangs). Passed through so the lead line cannot assert a catalog model
+# to a session running a different one.
+payload=""
+[ -t 0 ] || payload="$(cat 2>/dev/null || true)"
+session_model=""
+if [ -n "$payload" ] && command -v jq >/dev/null 2>&1; then
+  session_model="$(printf '%s' "$payload" | jq -r 'if type == "object" then (.model // "") else "" end' 2>/dev/null || true)"
+fi
+catalog_block="$("${SCRIPT_DIR}/render-model-catalog" --caller claude --caller-model "$session_model" 2>/dev/null || true)"
 
 using_megapowers_escaped=$(escape_for_json "$using_megapowers_content")
 preface_escaped=$(escape_for_json "$preface")
