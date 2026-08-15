@@ -395,6 +395,12 @@ check ASK 'git restore ":/**"'
 check ASK 'git checkout -- ":/*"'
 check ASK 'git restore ":/."'
 check ASK 'git branch -D feature'
+# The suite's own worktree integration deletes the branch it just merged. Every
+# deleted name must match worktree-agent-* for the allowance to apply.
+check ALLOW 'git branch -D worktree-agent-a58d3c4a973b215f8'
+check ALLOW 'git add x && git commit -qm m && git worktree remove --force ../wt && git branch -D worktree-agent-abc'
+check ASK 'git branch -D worktree-agent-abc main'
+check ASK 'git branch -D worktree-agent- feature'
 check ASK 'git push --force origin main'
 check ASK 'git push -f'
 # Remote destructive ops are out of scope by design (the effect-broker skill

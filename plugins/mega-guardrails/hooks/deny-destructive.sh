@@ -554,6 +554,7 @@ git_is_risky() {
   shell_words "$1" || return 1
   local w sub="" reset_hard=0 clean_force=0 clean_dry=0 branch_force=0 branch_del=0 pushforce=0 skip=0
   local co_dot=0 rst_dot=0 rst_staged=0 rst_worktree=0
+  local branch_names=()
   for w in "${WORDS[@]}"; do
     if [ -z "$sub" ]; then
       if [ "$skip" -eq 1 ]; then skip=0; continue; fi
@@ -578,6 +579,8 @@ git_is_risky() {
           -d|--delete) branch_del=1 ;;
           -f|--force) branch_force=1 ;;
           -[A-Za-z]*) [[ "$w" = *D* ]] && { branch_del=1; branch_force=1; }; [[ "$w" = *d* ]] && branch_del=1; [[ "$w" = *f* ]] && branch_force=1 ;;
+          --*) : ;;
+          *) branch_names+=("$w") ;;
         esac ;;
       push) case "$w" in --force-with-lease*|--force-if-includes) : ;; --force|-f) pushforce=1 ;; +[!-]*) pushforce=1 ;; esac ;;   # bare --force is risky even if a lease flag is also present (last one wins); lease-only is safe
       # whole-tree discard: a pathspec that resolves to the repo root ('.', './',
@@ -596,7 +599,16 @@ git_is_risky() {
   done
   [ "$reset_hard" -eq 1 ] && return 0
   [ "$clean_force" -eq 1 ] && [ "$clean_dry" -eq 0 ] && return 0
-  { [ "$branch_del" -eq 1 ] && [ "$branch_force" -eq 1 ]; } && return 0
+  if [ "$branch_del" -eq 1 ] && [ "$branch_force" -eq 1 ]; then
+    # Force-deleting only worktree-agent-* branches is the harness's own
+    # merged-worktree cleanup; anything else in the list keeps the prompt.
+    local n agent_only=1
+    [ "${#branch_names[@]}" -eq 0 ] && agent_only=0
+    for n in "${branch_names[@]}"; do
+      case "$n" in worktree-agent-?*) : ;; *) agent_only=0 ;; esac
+    done
+    [ "$agent_only" -eq 0 ] && return 0
+  fi
   [ "$pushforce" -eq 1 ] && return 0            # bare --force/-f present (a lease flag doesn't neutralize it)
   [ "$co_dot" -eq 1 ] && return 0               # git checkout . / checkout -- . (whole-tree discard)
   # restore of the worktree at '.': plain `git restore .` (worktree by default) or any
