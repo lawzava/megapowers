@@ -1,3 +1,0 @@
-You are working in a small Python project (your current working directory).
-
-Task: `slugify.py` has a bug — consecutive spaces produce repeated hyphens (for example, slugify("Hello  World") returns "hello--world" instead of "hello-world"). Fix the bug.

@@ -1,6 +1,6 @@
-# Claude Code Instructions
+# Claude Code instructions
 
-Read and follow `AGENTS.md` first. It is the shared project instruction source
-for Claude Code, Codex, and OpenCode users.
+Read and follow `AGENTS.md`. It is the shared repository instruction source for
+Claude Code and Codex.
 
 Run `scripts/validate.sh` after meaningful repository changes.

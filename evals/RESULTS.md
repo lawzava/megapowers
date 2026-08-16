@@ -1,33 +1,41 @@
 # megapowers eval results
 
-Published results from running the eval harness in this repo. The deterministic
-spine has a committed, re-runnable protocol; historical measurements are retained
-and labeled as such. Two
-kinds of re-run are worth separating. The deterministic spine (section 1) reproduces
-byte-for-byte from the repo alone. The real-agent studies (section 2 onward) are keyed
-re-runs: they draw fresh stochastic samples and need model credentials, so a
-re-run reproduces the protocol and, for the large effects, the effect, not the
-exact per-cell counts. The raw run directories behind the real-agent numbers
-were not committed for the pre-2026-07 waves (see the "Published artifacts" note
-in [`README.md`](./README.md)), so those historical numbers cannot be replayed
-from this checkout. New provenance-aware keyed runs in the process-behavior,
-gauntlet, autonomy-run, and trigger-recall studies record deterministic inputs
-and reject mixed cells before scoring. Install-smoke remains a separate
-install-state protocol.
+## Current candidate truth
 
-Last run: 2026-08-07 (deterministic spine; each real-agent study wave is dated in its section).
+The current repository is one ten-skill plugin for Claude Code and Codex. Its
+deterministic suite and runner selftests are engineering regressions only. They
+do not establish that the plugin improves agent behavior.
 
-Two results frame the rest: process disciplines that today's harnesses don't
-enforce move behavior completely (test-first ordering: 0/36 to 36/36 across
-three models, section 3), while pattern advice that frontier models have already
-internalized measures at zero (184/184 null, section 2).
+No credentialed installed-plugin A/B certificate is published here for the
+current ten-skill candidate. A behavior-changing release needs source-bound
+treatment and empty-control runs under both supported harnesses. PR replay is
+report-only. Exact-tag install smoke runs after publication and proves delivery,
+not candidate quality.
+
+Current protocols and gates:
+
+- [deterministic and behavioral evals](./README.md)
+- [installed-plugin A/B](./studies/installed-ab/README.md)
+- [PR replay](./studies/pr-replay/README.md)
+- [release evidence sequence](../docs/advanced/evals.md)
+
+## Historical record
+
+Everything below this point is retained measurement history from earlier plugin
+and harness surfaces. The named models, plugin inventory, harness targets,
+counts, and reproduction commands describe those dated waves. Several old study
+runners were removed when the repository contracted, so the historical numbers
+cannot be replayed from this checkout. They are not evidence for the current
+candidate.
 
 ---
 
 ## 1. Deterministic regression suite (the reproducible spine)
 
-The suite's day-to-day proof. Every scenario is a deterministic oracle; several
-double as regression guards for real bugs fixed during development. Reproduce:
+The suite's day-to-day proof. Every scenario was a deterministic oracle; several
+doubled as regression guards for real bugs fixed during development. The command
+shape below now runs the contracted current suite and does not reproduce the
+historical counts in this section:
 
 ```bash
 scripts/validate.sh
@@ -157,7 +165,8 @@ re-sample, not replay, and it was deleted with the rest of the frozen study
 (history has it before the 0.4.0 tag). The numbers above stand as a recorded
 historical measurement.
 
-The scenario harness has its own effect-size path for behavior scenarios:
+The removed scenario harness also had this effect-size command shape. It is an
+archival record and is not runnable from this checkout:
 
 ```bash
 evals/run-all.sh --paired --agent claude --json results.jsonl
@@ -258,8 +267,9 @@ including the z values; for the codex cells the recount worked from the
 *raw* codex event stream, sequence-diffing it against the normalized transcripts
 to confirm the normalizer drops, reorders, and misclassifies nothing.
 
-**Reproduce.** Prompts, fixtures, runner, and oracle are committed at
-[`studies/process-behavior/`](studies/process-behavior/):
+**Historical protocol.** The prompts, fixtures, runner, and oracle lived under
+`studies/process-behavior/`. That runner was removed and these commands are not
+runnable from this checkout:
 
 ```bash
 evals/studies/process-behavior/run-study.sh --out /tmp/pb-results --n 12   # claude models
@@ -272,7 +282,7 @@ evals/studies/process-behavior/oracle.sh /tmp/pb-results
 The delivery-path test the other studies don't cover: can a fresh environment
 install this suite by following the repo's own docs, and does the very first
 task actually reach an installed skill? For each harness, in a fresh config
-home (credentials only): install per `docs/setup.md` non-interactively, assert
+home (credentials only): install per the then-current setup guide, assert
 the plugin registers, then ask the agent to quote the test-driven-development
 skill's core-principle sentence verbatim. The oracle now requires that restyled
 sentence verbatim (fixed-string, case-sensitive, whole clause), not a five-word
@@ -290,12 +300,12 @@ Result: **10/10 PASS across all four harnesses then targeted**: Claude Code
 Codex (same, via `codex plugin`), OpenCode (documented symlink into
 `.claude/skills/`), and Antigravity (`agy`, symlink into `.agents/skills/`).
 That count is left as measured. Antigravity was dropped as a target on
-2026-08-07, so the committed runner now has three arms and a re-run reproduces
-the protocol over those three, not this cell count.
+2026-08-07; at that historical point the runner had three arms. The current
+runner has only Claude Code and Codex and does not reproduce this protocol or
+cell count.
 Every `*-task.out` contains the verbatim sentence; artifacts audited
-independently (section 3's verifier also checked these for false passes). Protocol
-and scope (local-checkout marketplace, explicit skill request) at
-[`studies/install-smoke/`](studies/install-smoke/):
+independently (section 3's verifier also checked these for false passes). The
+historical command shape was:
 
 ```bash
 evals/studies/install-smoke/run-smoke.sh --out /tmp/install-smoke
@@ -307,7 +317,7 @@ The section 3 probes measured disciplines under neutral conditions; these studie
 designed to find where models **fail or partially succeed**; each result is an
 improvement target with a measurement loop attached. Same clean-room subjects
 (frontier Claude and GPT-5.5; section 3 conventions), ~360 additional runs. All six
-new probes live in [`studies/process-behavior/`](studies/process-behavior/);
+new probes lived in the removed `studies/process-behavior/` runner;
 the other three are their own studies.
 
 ### 5a. Discipline under pressure: it holds, and it beats project instructions
@@ -355,7 +365,7 @@ clean). And the TDD flip survives both urgency wording and sunk cost at
   valid runs across vendors and arms spontaneously flagged the out-of-scope
   failure; zero false success claims.
 
-### 5c. Organic trigger recall: the delivery gap ([`studies/trigger-recall/`](studies/trigger-recall/))
+### 5c. Organic trigger recall: the delivery gap (historical runner removed)
 
 With the plugin installed in a fresh config home and tasks that never name a
 skill, frontier Claude invoked the right skill **3/6 (50%) on every one of four
@@ -367,7 +377,7 @@ model simply did the task directly. **Recall, not effect size, is now the
 suite's weakest measured link**; skill *descriptions* are the tunable
 surface, with this study as the feedback loop.
 
-### 5d. Composition: no interference, and a decay signal ([`studies/gauntlet/`](studies/gauntlet/))
+### 5d. Composition: no interference, and a decay signal (historical runner removed)
 
 One task exercising four disciplines at once, four deterministic sub-oracles:
 
@@ -387,7 +397,7 @@ made only scoped, true claims while staying silent on the red suite; a
 stricter rule would count it too, giving 7/10). Under load, honesty slips
 first. All 40 runs completed the feature task.
 
-### 5e. Autonomy honesty: the trail knows, the report lies ([`studies/autonomy-run/`](studies/autonomy-run/))
+### 5e. Autonomy honesty: the trail knows, the report lies (historical runner removed)
 
 Three autonomous steps, one impossible, an explicit duty to keep STATUS.md
 truthful. The result is a **total vendor split** (strict rule: a status note
@@ -587,9 +597,9 @@ first held-out and orch-positive measurements: 100% everywhere except the
 confounded orch-autonomous probe. The reduced n makes these directional; a
 full-n re-run needs a keyed session without the rate cap.
 
-**Reproduce.** Baseline from a `v0.1.4` worktree, post-trim from the current
-tree; the process-behavior runner defaults to three probes, so pass all nine
-explicitly:
+**Archived command record.** Baseline used a `v0.1.4` worktree and post-trim
+used the then-current tree. The named runners were removed, so these commands
+are not runnable from this checkout:
 
 ```bash
 evals/studies/process-behavior/run-study.sh --out "$OUT/pb" \
@@ -718,8 +728,9 @@ driver's refill loop also re-ran turn-capped recall runs, which legitimately
 exit nonzero, so it could not drive their nonzero-exit count to zero; that is a
 driver artifact, not indeterminacy in the data.
 
-**Reproduce.** Baseline from a `wave2-base` worktree, post-trim from the current
-tree; pass all eleven probes explicitly:
+**Archived command record.** Baseline used a `wave2-base` worktree and post-trim
+used the then-current tree. The named runners were removed, so these commands
+are not runnable from this checkout:
 
 ```bash
 evals/studies/process-behavior/run-study.sh --out "$OUT/pb" \

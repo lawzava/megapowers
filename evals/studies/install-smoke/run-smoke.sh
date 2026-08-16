@@ -1,46 +1,18 @@
 #!/usr/bin/env bash
-# run-smoke.sh — fresh-environment install + first-task smoke test, per harness.
-#
-#   run-smoke.sh --out DIR [--harnesses claude,codex,opencode] [--repo DIR]
-#   run-smoke.sh --out DIR --source lawzava/megapowers --ref v0.5.0
-#                --version 0.5.0 --harnesses claude,codex
-#
-# For each harness this follows the REPO'S OWN DOCUMENTED install flow
-# (docs/setup.md) in a fresh config home (credentials copied in, nothing else),
-# then runs a first task that can only succeed if the installed skill is
-# actually discoverable and loadable: the agent must quote, verbatim, the
-# test-driven-development skill's core-principle sentence. Verdicts per
-# assertion: PASS / FAIL / SKIP(reason). Requires real credentials — run
-# OUTSIDE any credential-blocking sandbox. Exact-ref remote mode is the release
-# gate: it fails on SKIP and proves the fetched commit and manifest versions.
+# Fresh-home install and cached-byte smoke test for Claude Code and Codex.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_DEFAULT="$(cd "$HERE/../../.." && pwd)"
+. "$HERE/../lib.sh"
 
-# The load probe: the agent must reproduce the test-driven-development skill's
-# core-principle sentence VERBATIM (whole clause, case-sensitive except for its
-# first letter). This is the sentence committed at
-# plugins/megapowers/skills/test-driven-development/SKILL.md ("Core principle:").
-# A case-insensitive 5-word substring ("watch the test fail") a model can emit
-# from generic TDD lore does NOT satisfy it, so a pass is evidence the installed
-# skill text was actually loaded, not recited from prior knowledge.
-#
-# The first letter is the one exception, and it is a fix for a false FAIL rather
-# than a loosening. In SKILL.md the sentence follows "**Core principle:**" on the
-# same line, so it is committed with a lowercase "if". Claude passed this probe by
-# echoing that markdown line whole; Codex quoted the same sentence as a sentence,
-# capitalised, and failed. Both had loaded the skill. That FAIL was the harness
-# disagreeing with English, not with the artifact, and it made the codex arm
-# unpassable: the v0.11.0 and v0.11.1 gates both recorded it. Only the leading
-# character is relaxed, and only to its own capital; every other character stays
-# exact, which is what keeps reconstructed phrasing out.
-QUOTE_SENTENCE="if you didn't watch the test fail, you don't know whether it tests the right thing."
-# Two fixed-string probes rather than a regex: the sentence contains apostrophes
-# and a period, and -F keeps them literal instead of inviting an escaping bug into
-# the one check that certifies a release.
+QUOTE_SENTENCE="Production code follows a failing test. A test written after implementation can describe the code but cannot prove it would have caught the missing behavior."
+
 quote_ok() {
-  grep -qF "$QUOTE_SENTENCE" "$1" 2>/dev/null && return 0
-  grep -qF "$(printf '%s' "${QUOTE_SENTENCE^}")" "$1" 2>/dev/null
+  tr '\n' ' ' < "$1" 2>/dev/null | grep -qF "$QUOTE_SENTENCE"
+}
+
+installed_skill_ok() { # <source-skill> <cached-skill>
+  cmp -s "$1" "$2" && quote_ok "$2"
 }
 
 results_ok() { # <results.tsv> <fail-on-skip:0|1>
@@ -50,32 +22,28 @@ results_ok() { # <results.tsv> <fail-on-skip:0|1>
   grep -q $'\tPASS\t' "$results"
 }
 
-# Oracle self-test (mutation suite): the verbatim sentence passes; generic TDD
-# phrasing that satisfied the old loose grep must now FAIL. Needs no credentials.
 if [ "${1:-}" = "--selftest" ]; then
   st="$(mktemp -d)"; trap 'rm -rf "$st"' EXIT; sf=0
   printf '%s\n' "$QUOTE_SENTENCE" > "$st/verbatim.out"
-  # phrasing a model reconstructs from prior knowledge; contains the old 5-word
-  # substring "watch the test fail" (which the previous grep -qi accepted).
-  printf 'The core TDD principle: always watch the test fail first so you know it works.\n' > "$st/generic.out"
+  cp "$st/verbatim.out" "$st/cached.out"
+  printf 'Write a failing test before production code so the test proves the behavior.\n' > "$st/generic.out"
   if quote_ok "$st/verbatim.out"; then echo "ok   verbatim sentence matches"; else echo "FAIL verbatim sentence not matched"; sf=1; fi
-  # the capitalised form a model emits when quoting the clause as a sentence
-  printf '%s\n' "${QUOTE_SENTENCE^}" > "$st/capitalised.out"
-  if quote_ok "$st/capitalised.out"; then echo "ok   sentence-initial capital matches"; else echo "FAIL sentence-initial capital not matched"; sf=1; fi
-  # only the FIRST letter is relaxed: a mid-sentence case change must still fail
-  printf '%s\n' "if you didn't watch the Test fail, you don't know whether it tests the right thing." > "$st/midcase.out"
-  if quote_ok "$st/midcase.out"; then echo "FAIL mid-sentence case change matched"; sf=1; else echo "ok   mid-sentence case change rejected"; fi
-  if quote_ok "$st/generic.out"; then echo "FAIL generic phrasing matched (nonce not enforced)"; sf=1; else echo "ok   generic phrasing rejected"; fi
-  printf 'claude\tSKIP\tno credentials\ncodex\tSKIP\tno auth\n' > "$st/all-skip.tsv"
+  printf '%s\n' "${QUOTE_SENTENCE/failing/Failing}" > "$st/midcase.out"
+  if quote_ok "$st/midcase.out"; then echo "FAIL case change matched"; sf=1; else echo "ok   case change rejected"; fi
+  if quote_ok "$st/generic.out"; then echo "FAIL generic phrasing matched"; sf=1; else echo "ok   generic phrasing rejected"; fi
+  if installed_skill_ok "$st/verbatim.out" "$st/cached.out"; then echo "ok   identical installed bytes accepted"; else echo "FAIL identical installed bytes rejected"; sf=1; fi
+  printf 'mutation\n' >> "$st/cached.out"
+  if installed_skill_ok "$st/verbatim.out" "$st/cached.out"; then echo "FAIL mutated installed bytes accepted"; sf=1; else echo "ok   mutated installed bytes rejected"; fi
+  printf 'claude\tSKIP\tCLI unavailable\ncodex\tSKIP\tCLI unavailable\n' > "$st/all-skip.tsv"
   if results_ok "$st/all-skip.tsv" 0; then echo "FAIL all-SKIP results accepted"; sf=1; else echo "ok   all-SKIP results rejected"; fi
-  printf 'claude\tPASS\tloaded\ncodex\tSKIP\tno auth\n' > "$st/mixed.tsv"
+  printf 'claude\tPASS\tinstalled\ncodex\tSKIP\tCLI unavailable\n' > "$st/mixed.tsv"
   if results_ok "$st/mixed.tsv" 0; then echo "ok   optional SKIP accepted with a PASS"; else echo "FAIL optional SKIP rejected"; sf=1; fi
   if results_ok "$st/mixed.tsv" 1; then echo "FAIL strict SKIP accepted"; sf=1; else echo "ok   strict SKIP rejected"; fi
   if [ "$sf" -eq 0 ]; then echo "install-smoke selftest: PASS"; else echo "install-smoke selftest: FAIL"; fi
   exit "$sf"
 fi
 
-OUT="" REPO="$REPO_DEFAULT" HARNESSES="claude,codex,opencode"
+OUT="" REPO="$REPO_DEFAULT" HARNESSES="claude,codex"
 SOURCE="" REF="" VERSION="" FAIL_ON_SKIP=0 FETCHED=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -89,7 +57,10 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$OUT" ] || { echo "usage: run-smoke.sh --out DIR [--harnesses ..] [--repo DIR | --source OWNER/REPO --ref TAG --version VERSION]" >&2; exit 2; }
+[ -n "$OUT" ] || { echo "usage: run-smoke.sh --out DIR [--harnesses claude,codex] [--repo DIR | --source OWNER/REPO --ref TAG --version VERSION]" >&2; exit 2; }
+for requested in ${HARNESSES//,/ }; do
+  case "$requested" in claude|codex) ;; *) echo "unsupported harness: $requested" >&2; exit 2 ;; esac
+done
 if [ -n "$SOURCE" ]; then
   [ "$REPO" = "$REPO_DEFAULT" ] || { echo "--repo and --source are mutually exclusive" >&2; exit 2; }
   [ -n "$REF" ] && [ -n "$VERSION" ] || { echo "--source requires --ref and --version" >&2; exit 2; }
@@ -98,19 +69,21 @@ elif [ -n "$REF$VERSION" ]; then
   echo "--ref and --version require --source" >&2
   exit 2
 fi
+command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 2; }
 mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 : > "$OUT/results.tsv"
 
 note() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" | tee -a "$OUT/results.tsv"; }
 
 if [ -n "$SOURCE" ]; then
-  FETCHED="$(mktemp -d)"
+  FETCHED="$(study_private_tmpdir megapowers-install-fetch)"
+  trap '[ -z "$FETCHED" ] || rm -rf "$FETCHED"' EXIT
   case "$SOURCE" in
     *://*|git@*) remote="$SOURCE" ;;
     *) remote="https://github.com/$SOURCE.git" ;;
   esac
   if ! timeout 300 git clone --quiet --depth 1 --branch "$REF" "$remote" "$FETCHED/repo" >"$OUT/fetch.log" 2>&1; then
-    note source FAIL "fetch exact ref $SOURCE@$REF — see fetch.log"
+    note source FAIL "fetch exact ref $SOURCE@$REF, see fetch.log"
     exit 1
   fi
   REPO="$FETCHED/repo"
@@ -119,104 +92,112 @@ if [ -n "$SOURCE" ]; then
     note source FAIL "fetched HEAD $sha is not exact tag $REF"
     exit 1
   fi
-  bad_versions="$(
-    find "$REPO/plugins" -type f \( -path '*/.claude-plugin/plugin.json' -o -path '*/.codex-plugin/plugin.json' \) -print0 |
-      xargs -0 jq -r --arg v "$VERSION" 'select(.version != $v) | input_filename + "=" + (.version // "missing")'
-  )"
-  if [ -n "$bad_versions" ]; then
-    printf '%s\n' "$bad_versions" > "$OUT/version-mismatches.log"
-    note source FAIL "manifest version mismatch — see version-mismatches.log"
-    exit 1
-  fi
   jq -n --arg source "$SOURCE" --arg ref "$REF" --arg version "$VERSION" --arg sha "$sha" \
     '{source:$source, ref:$ref, version:$version, sha:$sha, mode:"exact-remote-ref"}' > "$OUT/source.json"
-  note source PASS "fetched $SOURCE@$REF at $sha; all manifests are $VERSION"
+  note source PASS "fetched $SOURCE@$REF at $sha"
 fi
 
 mapfile -t PLUGINS < <(find "$REPO/plugins" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+if [ "${#PLUGINS[@]}" -ne 1 ] || [ "${PLUGINS[0]:-}" != megapowers ]; then
+  note source FAIL "checkout must contain exactly the megapowers plugin"
+  exit 1
+fi
 
-# The first task: only answerable by loading the installed skill (fresh homes
-# contain no other copy of this text).
-QUOTE_PROMPT='A plugin named "megapowers" that provides a skill called test-driven-development is installed in this environment. Load that skill and quote verbatim its one-sentence core principle (the sentence about watching a test fail). Output only that sentence.'
+claude_manifest="$REPO/plugins/megapowers/.claude-plugin/plugin.json"
+codex_manifest="$REPO/plugins/megapowers/.codex-plugin/plugin.json"
+source_claude_version="$(jq -er .version "$claude_manifest")" || { note source FAIL "Claude manifest has no version"; exit 1; }
+source_codex_version="$(jq -er .version "$codex_manifest")" || { note source FAIL "Codex manifest has no version"; exit 1; }
+if [ "$source_claude_version" != "$source_codex_version" ]; then
+  note source FAIL "source manifest versions differ"
+  exit 1
+fi
+EXPECTED_VERSION="${VERSION:-$source_claude_version}"
+if [ "$source_claude_version" != "$EXPECTED_VERSION" ]; then
+  note source FAIL "source manifest version is not $EXPECTED_VERSION"
+  exit 1
+fi
 
-smoke_claude() {
-  local h=claude cfg proj
-  command -v claude >/dev/null || { note $h SKIP "claude CLI not installed"; return; }
-  [ -f "$HOME/.claude/.credentials.json" ] || { note $h SKIP "no credentials"; return; }
-  cfg="$(mktemp -d)"; proj="$(mktemp -d)"
-  cp "$HOME/.claude/.credentials.json" "$cfg/"
+verify_installed_bytes() { # <harness> <fresh-home> <install-path>
+  local harness="$1" fresh_home="$2" install_path="$3"
+  case "$install_path" in
+    "$fresh_home"/plugins/cache/*) ;;
+    *) note "$harness" FAIL "reported install path is outside fresh home"; return 1 ;;
+  esac
+  [ -d "$install_path" ] || { note "$harness" FAIL "reported install path is missing"; return 1; }
+  jq -e --arg v "$EXPECTED_VERSION" '.name == "megapowers" and .version == $v' \
+    "$install_path/.claude-plugin/plugin.json" >/dev/null 2>&1 || {
+      note "$harness" FAIL "cached Claude manifest or version differs"; return 1;
+    }
+  jq -e --arg v "$EXPECTED_VERSION" '.name == "megapowers" and .version == $v' \
+    "$install_path/.codex-plugin/plugin.json" >/dev/null 2>&1 || {
+      note "$harness" FAIL "cached Codex manifest or version differs"; return 1;
+    }
+  installed_skill_ok \
+    "$REPO/plugins/megapowers/skills/test-first-implementation/SKILL.md" \
+    "$install_path/skills/test-first-implementation/SKILL.md" || {
+    note "$harness" FAIL "cached test-first-implementation bytes differ"; return 1;
+  }
+  note "$harness" PASS "registered megapowers $EXPECTED_VERSION with exact cached skill bytes"
+}
+
+smoke_claude() (
+  local h=claude cfg install_path
+  command -v claude >/dev/null || { note "$h" SKIP "claude CLI not installed"; return; }
+  cfg="$(study_private_tmpdir megapowers-claude-home)"
+  trap 'rm -rf "$cfg"' EXIT
   if CLAUDE_CONFIG_DIR="$cfg" timeout 300 claude plugin marketplace add "$REPO" >"$OUT/claude-marketplace.log" 2>&1; then
-    note $h PASS "marketplace add (local path)"
-  else note $h FAIL "marketplace add — see claude-marketplace.log"; return; fi
-  for plugin in "${PLUGINS[@]}"; do
-    if CLAUDE_CONFIG_DIR="$cfg" timeout 300 claude plugin install "$plugin@megapowers" >>"$OUT/claude-install.log" 2>&1; then
-      note $h PASS "plugin install $plugin@megapowers"
-    else note $h FAIL "plugin install $plugin — see claude-install.log"; return; fi
-  done
-  listed="$(CLAUDE_CONFIG_DIR="$cfg" timeout 120 claude plugin list 2>/dev/null || true)"
-  for plugin in "${PLUGINS[@]}"; do
-    if grep -qi "$plugin" <<< "$listed"; then note $h PASS "plugin listed: $plugin"
-    else note $h FAIL "installed plugin missing from plugin list: $plugin"; fi
-  done
-  ( cd "$proj" && CLAUDE_CONFIG_DIR="$cfg" timeout 300 claude -p "$QUOTE_PROMPT" \
-      --max-turns 8 --dangerously-skip-permissions --no-session-persistence \
-      > "$OUT/claude-task.out" 2> "$OUT/claude-task.err" )
-  if quote_ok "$OUT/claude-task.out"; then
-    note $h PASS "first task loaded the installed skill"
-  else note $h FAIL "first task did not surface the skill — see claude-task.out"; fi
-}
-
-smoke_codex() {
-  local h=codex ch proj
-  command -v codex >/dev/null || { note $h SKIP "codex CLI not installed"; return; }
-  [ -f "${CODEX_HOME:-$HOME/.codex}/auth.json" ] || { note $h SKIP "no auth.json"; return; }
-  ch="$(mktemp -d)"; proj="$(mktemp -d)"
-  cp "${CODEX_HOME:-$HOME/.codex}/auth.json" "$ch/"
-  if CODEX_HOME="$ch" timeout 300 codex plugin marketplace add "$REPO" >"$OUT/codex-marketplace.log" 2>&1; then
-    note $h PASS "marketplace add (local path)"
-  else note $h FAIL "marketplace add — see codex-marketplace.log"; return; fi
-  for plugin in "${PLUGINS[@]}"; do
-    if CODEX_HOME="$ch" timeout 300 codex plugin add "$plugin@megapowers" >>"$OUT/codex-install.log" 2>&1; then
-      note $h PASS "plugin add $plugin@megapowers"
-    else note $h FAIL "plugin add $plugin — see codex-install.log"; return; fi
-  done
-  listed="$(CODEX_HOME="$ch" timeout 120 codex plugin list 2>/dev/null || true)"
-  for plugin in "${PLUGINS[@]}"; do
-    if grep -qi "$plugin" <<< "$listed"; then note $h PASS "plugin listed: $plugin"
-    else note $h FAIL "installed plugin missing from plugin list: $plugin"; fi
-  done
-  ( cd "$proj" && CODEX_HOME="$ch" timeout 300 codex exec --ephemeral --skip-git-repo-check \
-      -C "$proj" -s read-only "$QUOTE_PROMPT" \
-      -o "$OUT/codex-task.out" > "$OUT/codex-task.log" 2> "$OUT/codex-task.err" </dev/null )
-  if quote_ok "$OUT/codex-task.out"; then
-    note $h PASS "first task loaded the installed skill"
-  else note $h FAIL "first task did not surface the skill — see codex-task.out"; fi
-}
-
-smoke_opencode() {
-  local h=opencode proj
-  command -v opencode >/dev/null || { note $h SKIP "opencode CLI not installed"; return; }
-  proj="$(mktemp -d)"
-  if ! ( cd "$proj" && timeout 120 opencode run "Reply with exactly: OK" \
-           > "$OUT/opencode-auth.out" 2> "$OUT/opencode-auth.err" ) \
-     || ! grep -q OK "$OUT/opencode-auth.out"; then
-    note $h SKIP "no working provider auth (opencode run failed)"; return
+    note "$h" PASS "marketplace add (local path)"
+  else note "$h" FAIL "marketplace add, see claude-marketplace.log"; return; fi
+  if CLAUDE_CONFIG_DIR="$cfg" timeout 300 claude plugin install megapowers@megapowers >"$OUT/claude-install.log" 2>&1; then
+    note "$h" PASS "plugin install megapowers@megapowers"
+  else note "$h" FAIL "plugin install, see claude-install.log"; return; fi
+  if ! CLAUDE_CONFIG_DIR="$cfg" timeout 120 claude plugin list --json >"$OUT/claude-list.json" 2>"$OUT/claude-list.err"; then
+    note "$h" FAIL "plugin list JSON, see claude-list.err"
+    return
   fi
-  # docs/setup.md: symlink the canonical skill dir; OpenCode reads Claude-compatible paths
-  mkdir -p "$proj/.claude/skills"
-  ln -s "$REPO/plugins/megapowers/skills/test-driven-development" "$proj/.claude/skills/test-driven-development"
-  ( cd "$proj" && timeout 300 opencode run "$QUOTE_PROMPT" \
-      > "$OUT/opencode-task.out" 2> "$OUT/opencode-task.err" )
-  if quote_ok "$OUT/opencode-task.out"; then
-    note $h PASS "first task loaded the symlinked skill"
-  else note $h FAIL "first task did not surface the skill — see opencode-task.out"; fi
-}
+  install_path="$(jq -er --arg v "$EXPECTED_VERSION" \
+    '.[] | select(.id == "megapowers@megapowers" and .version == $v and .enabled == true) | .installPath' \
+    "$OUT/claude-list.json")" || {
+      note "$h" FAIL "installed plugin missing from registration JSON"; return;
+    }
+  verify_installed_bytes "$h" "$cfg" "$install_path"
+)
 
-for hh in ${HARNESSES//,/ }; do "smoke_$hh"; done
+smoke_codex() (
+  local h=codex ch install_path
+  command -v codex >/dev/null || { note "$h" SKIP "codex CLI not installed"; return; }
+  ch="$(study_private_tmpdir megapowers-codex-home)"
+  trap 'rm -rf "$ch"' EXIT
+  if CODEX_HOME="$ch" timeout 300 codex plugin marketplace add "$REPO" --json \
+    >"$OUT/codex-marketplace.json" 2>"$OUT/codex-marketplace.err"; then
+    note "$h" PASS "marketplace add (local path)"
+  else note "$h" FAIL "marketplace add, see codex-marketplace.err"; return; fi
+  if ! CODEX_HOME="$ch" timeout 300 codex plugin add megapowers@megapowers --json \
+    >"$OUT/codex-install.json" 2>"$OUT/codex-install.err"; then
+    note "$h" FAIL "plugin add, see codex-install.err"
+    return
+  fi
+  install_path="$(jq -er --arg v "$EXPECTED_VERSION" \
+    'select(.pluginId == "megapowers@megapowers" and .version == $v) | .installedPath' \
+    "$OUT/codex-install.json")" || {
+      note "$h" FAIL "plugin add JSON missing installedPath or expected version"; return;
+    }
+  if ! CODEX_HOME="$ch" timeout 120 codex plugin list --json \
+    >"$OUT/codex-list.json" 2>"$OUT/codex-list.err" || \
+    ! jq -e --arg v "$EXPECTED_VERSION" \
+      '.installed[] | select(.pluginId == "megapowers@megapowers" and .version == $v and .installed == true and .enabled == true)' \
+      "$OUT/codex-list.json" >/dev/null; then
+    note "$h" FAIL "installed plugin missing from registration JSON"
+    return
+  fi
+  verify_installed_bytes "$h" "$ch" "$install_path"
+)
+
+for harness in ${HARNESSES//,/ }; do "smoke_$harness"; done
 
 echo
 echo "== install-smoke summary =="
-column -t -s $'\t' "$OUT/results.tsv"
+if command -v column >/dev/null 2>&1; then column -t -s $'\t' "$OUT/results.tsv"; else cat "$OUT/results.tsv"; fi
 if results_ok "$OUT/results.tsv" "$FAIL_ON_SKIP"; then
   exit 0
 fi

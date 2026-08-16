@@ -1,7 +1,28 @@
 #!/usr/bin/env bash
-# lib.sh — shared runner core for the real-agent studies. Sourced by the
+# lib.sh: shared runner core for the real-agent studies. Sourced by the
 # per-study run-*.sh scripts; each keeps only its fixture setup, prompt
 # naming, and ground-truth diagnostics.
+
+# Create a disposable directory with private permissions. Callers remain
+# responsible for installing a trap that removes it on every exit path.
+study_private_tmpdir() { # <portable-prefix>
+  local prefix="${1:-megapowers-study}" parent old_umask dir
+  parent="${TMPDIR:-/tmp}"
+  old_umask="$(umask)"
+  umask 077
+  dir="$(mktemp -d "$parent/$prefix.XXXXXX")" || {
+    umask "$old_umask"
+    return 2
+  }
+  umask "$old_umask"
+  chmod 700 "$dir" || { rm -rf "$dir"; return 2; }
+  printf '%s\n' "$dir"
+}
+
+study_copy_private() { # <source> <destination>
+  [ -f "$1" ] || return 2
+  install -m 600 "$1" "$2"
+}
 
 # model alias used in run-dir paths
 study_malias() {

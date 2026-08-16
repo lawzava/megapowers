@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+CLAUDE_MARKET="$ROOT/.claude-plugin/marketplace.json"
+CODEX_MARKET="$ROOT/.agents/plugins/marketplace.json"
+SKILLS="$ROOT/plugins/megapowers/skills"
+
+fail() {
+  printf 'native-first contract: %s\n' "$*" >&2
+  exit 1
+}
+
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+
+expected_skills=$(printf '%s\n' \
+  autonomous-run \
+  code-quality \
+  design-and-plan \
+  humanizing-prose \
+  independent-review \
+  orchestrating \
+  safe-effects \
+  systematic-debugging \
+  test-first-implementation \
+  verify-and-finish)
+
+assert_single_marketplace_plugin() {
+  local manifest=$1 source_query=$2
+  jq -e '.plugins | length == 1 and .[0].name == "megapowers"' "$manifest" >/dev/null ||
+    fail "${manifest#"$ROOT/"} must expose only megapowers"
+  jq -er "$source_query" "$manifest" | grep -qx './plugins/megapowers' ||
+    fail "${manifest#"$ROOT/"} must point at ./plugins/megapowers"
+}
+
+assert_single_marketplace_plugin "$CLAUDE_MARKET" '.plugins[0].source'
+assert_single_marketplace_plugin "$CODEX_MARKET" '.plugins[0].source.path'
+
+actual_plugins=$(find "$ROOT/plugins" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+[[ $actual_plugins == megapowers ]] || fail "plugins/ must contain only megapowers, got: $actual_plugins"
+
+for manifest in \
+  "$ROOT/plugins/megapowers/.claude-plugin/plugin.json" \
+  "$ROOT/plugins/megapowers/.codex-plugin/plugin.json"; do
+  jq -e '.name == "megapowers"' "$manifest" >/dev/null ||
+    fail "${manifest#"$ROOT/"} must declare megapowers"
+done
+
+actual_skills=$(find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+[[ $actual_skills == "$expected_skills" ]] ||
+  fail "plugin skill inventory differs from the ten native-first skills"
+
+actual_links=$(find "$ROOT/.agents/skills" -mindepth 1 -maxdepth 1 -type l -printf '%f\n' | sort)
+[[ $actual_links == "$expected_skills" ]] ||
+  fail ".agents/skills links differ from the plugin skill inventory"
+while IFS= read -r skill; do
+  target=$(readlink "$ROOT/.agents/skills/$skill")
+  [[ $target == "../../plugins/megapowers/skills/$skill" ]] ||
+    fail ".agents/skills/$skill points at unexpected target: $target"
+  [[ -f "$ROOT/.agents/skills/$skill/SKILL.md" ]] ||
+    fail ".agents/skills/$skill does not resolve to SKILL.md"
+done <<< "$expected_skills"
+
+hooks="$ROOT/plugins/megapowers/hooks/hooks.json"
+jq -e '
+  (.hooks | keys) == ["PreToolUse"] and
+  (.hooks.PreToolUse | length) == 1 and
+  .hooks.PreToolUse[0].matcher == "Bash" and
+  (.hooks.PreToolUse[0].hooks | length) == 1 and
+  (.hooks.PreToolUse[0].hooks[0].command | contains("deny-destructive.sh")) and
+  (.hooks.PreToolUse[0].hooks[0].command | contains("codex-deny-destructive.sh"))
+' "$hooks" >/dev/null || fail "hooks.json must expose only the destructive Bash guard"
+
+expected_hook_files=$(printf '%s\n' \
+  codex-deny-destructive.sh \
+  deny-destructive.sh \
+  dispatch.sh \
+  hooks.json \
+  run-hook.cmd)
+actual_hook_files=$(find "$ROOT/plugins/megapowers/hooks" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)
+[[ $actual_hook_files == "$expected_hook_files" ]] ||
+  fail "hooks/ contains non-destructive integrations"
+
+expected_hook_tests=$(printf '%s\n' \
+  codex-deny-destructive.test.sh \
+  deny-destructive.test.sh \
+  dispatch.test.sh)
+actual_hook_tests=$(find "$ROOT/plugins/megapowers/hooks/tests" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)
+[[ $actual_hook_tests == "$expected_hook_tests" ]] ||
+  fail "hooks/tests contains obsolete hook coverage"
+
+removed_paths=(
+  plugins/mega-orchestration
+  plugins/mega-go
+  plugins/mega-python
+  plugins/mega-ts
+  plugins/mega-frontend
+  plugins/mega-guardrails
+  plugins/megapowers/opencode
+  plugins/megapowers/assets
+  plugins/megapowers/agents
+  plugins/megapowers/models.toml
+  plugins/megapowers/enforcement.toml
+  templates/OPENCODE.md
+  templates/opencode.json
+  templates/opencode-agents
+  templates/grok
+  templates/codex-agents
+  templates/codex-config.toml
+  templates/codex-complex.config.toml
+  templates/settings.example.json
+  scripts/check-enforcement.go
+  scripts/check-enforcement.sh
+  scripts/lib/validate-helpers.sh
+  scripts/validate-codex-skill-metadata
+  scripts/validate-parallel-tests.txt
+  scripts/validate-parallel-tests.audit.tsv
+)
+for path in "${removed_paths[@]}"; do
+  [[ ! -e "$ROOT/$path" ]] || fail "$path must be removed"
+done
+
+if find "$ROOT/plugins" "$ROOT/templates" "$ROOT/.agents" \
+  -path "$ROOT/.agents/skills/README.md" -prune -o \
+  \( -iname '*opencode*' -o -iname '*grok*' \) -print | grep -q .; then
+  fail "parallel-runtime integration paths remain"
+fi
+
+printf 'native-first contract: ok\n'

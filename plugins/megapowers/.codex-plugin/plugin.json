@@ -1,34 +1,34 @@
 {
   "name": "megapowers",
   "version": "0.14.0",
-  "description": "Workflow methodology: brainstorming, planning, TDD, debugging, review, worktrees, and subagent orchestration.",
+  "description": "Native-first agentic workflow skills and a high-confidence destructive-command guard for Claude Code and Codex.",
   "author": {
     "name": "lawzava"
   },
   "repository": "https://github.com/lawzava/megapowers",
   "license": "MIT",
   "keywords": [
-    "workflow",
-    "methodology",
-    "tdd",
-    "planning",
-    "review"
+    "agentic-workflow",
+    "orchestration",
+    "verification",
+    "safety"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "megapowers",
-    "shortDescription": "Workflow skills for disciplined agentic development.",
-    "longDescription": "An opinionated set of reusable process skills for brainstorming, planning, TDD, debugging, review, worktrees, verification, and branch finishing.",
+    "shortDescription": "Native-first agentic workflows and safety.",
+    "longDescription": "Ten task-level skills for orchestration, design, implementation, debugging, verification, effects, autonomous work, independent review, prose, and code quality, plus a destructive-command guard.",
     "developerName": "lawzava",
     "category": "Workflow",
     "capabilities": [
       "Skills",
-      "Workflow guidance"
+      "Workflow guidance",
+      "Safety hooks"
     ],
     "defaultPrompt": [
-      "Use megapowers to plan this change.",
-      "Use megapowers to debug this failure.",
-      "Use megapowers to review this branch."
+      "Use megapowers to orchestrate this task.",
+      "Use megapowers to implement this change test-first.",
+      "Use megapowers to independently review this change."
     ],
     "brandColor": "#1F6FEB"
   }

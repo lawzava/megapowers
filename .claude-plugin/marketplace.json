@@ -2,49 +2,13 @@
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "megapowers",
   "owner": { "name": "lawzava" },
-  "description": "An opinionated, à-la-carte collection of skills, plugins, and hooks for Claude Code, Codex, and OpenCode. One maintainer's workflow, not a universal framework.",
+  "description": "A small, native-first workflow plugin for Claude Code and Codex.",
   "plugins": [
     {
       "name": "megapowers",
       "source": "./plugins/megapowers",
-      "description": "The workflow core: process skills for brainstorming, planning, TDD, debugging, review, worktrees, and subagent orchestration. A restyled fork of Superpowers.",
+      "description": "Ten task-level skills plus a high-confidence destructive-command guard.",
       "category": "workflow"
-    },
-    {
-      "name": "mega-go",
-      "source": "./plugins/mega-go",
-      "description": "Greenfield Go: an opinionated stack picker, idiomatic Go patterns, and agent scripting.",
-      "category": "language"
-    },
-    {
-      "name": "mega-python",
-      "source": "./plugins/mega-python",
-      "description": "Greenfield Python: an opinionated stack picker (uv, ruff, pyright, pytest, FastAPI) plus idiomatic Python patterns.",
-      "category": "language"
-    },
-    {
-      "name": "mega-ts",
-      "source": "./plugins/mega-ts",
-      "description": "Greenfield TypeScript: an opinionated stack picker (pnpm, strict tsconfig, vitest, Hono, zod) plus idiomatic TypeScript patterns.",
-      "category": "language"
-    },
-    {
-      "name": "mega-orchestration",
-      "source": "./plugins/mega-orchestration",
-      "description": "Decide the structure (inline, fan-out, delegate, best-of-N, council, autonomous run), route each role to the best model, verify across vendors, and gate irreversible actions.",
-      "category": "orchestration"
-    },
-    {
-      "name": "mega-guardrails",
-      "source": "./plugins/mega-guardrails",
-      "description": "Safety hooks and dev tooling: block destructive commands, auto-format on save, and a rich statusline (Linux-only, opt-in).",
-      "category": "safety"
-    },
-    {
-      "name": "mega-frontend",
-      "source": "./plugins/mega-frontend",
-      "description": "Frontend design guidance: distinctive visual direction, typography, layout, and UX copy that don't read as templated defaults.",
-      "category": "design"
     }
   ]
 }

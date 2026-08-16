@@ -1,6 +1,0 @@
-interface:
-  display_name: "Wayfinding"
-  short_description: "Map uncertainty before honest design or planning"
-  default_prompt: "Use $wayfinding to map this uncertain work and resolve the next decision."
-policy:
-  allow_implicit_invocation: false

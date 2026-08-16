@@ -1,15 +1,19 @@
 ---
 name: Bug report
-about: A skill, hook, script, or doc behaves differently than it says
+about: A skill, hook, tool, eval, or doc behaves differently than claimed
 labels: bug
 ---
 
-**What happened**
+**Outcome observed**
 
-**What the skill/hook/doc says should happen** (file + line if you have it)
+**Expected outcome**
 
-**Harness**: Claude Code / Codex / OpenCode + version
+**Harness and version**: Claude Code / Codex
 
-**Repro** (the prompt or command; for hooks, the stdin JSON if you have it)
+**megapowers revision or release**
 
-**Gates**: does `scripts/validate.sh` pass on your checkout? (`yes/no/n-a`)
+**Minimal reproduction**
+
+**Evidence**: command output, hook input JSON, or result row with secrets removed
+
+**Deterministic gate**: `scripts/validate.sh` pass / fail / not run

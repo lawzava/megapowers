@@ -1,4 +1,0 @@
-id    = "effect-broker-classify"
-title = "effect-broker: irreversible never auto-fires; reversible never gated; staged always dry-runs"
-skill = "effect-broker"
-kind  = "artifact"

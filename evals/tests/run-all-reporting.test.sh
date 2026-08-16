@@ -6,7 +6,15 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 json="$tmp/results.jsonl"
 log="$tmp/run.log"
 
+set +e
 bash "$ROOT/evals/run-all.sh" --json "$json" > "$log"
+run_rc=$?
+set -e
+[ "$run_rc" -eq 0 ] || {
+  echo "FAIL deterministic regression suite exited $run_rc" >&2
+  cat "$log" >&2
+  exit 1
+}
 summary="$(sed -n 's/^== evals: \([0-9][0-9]*\) passed, \([0-9][0-9]*\) failed, \([0-9][0-9]*\) indeterminate, \([0-9][0-9]*\) harness errors.*/\1 \2 \3 \4/p' "$log")"
 read -r pass fail indeterminate harness_errors <<< "$summary"
 expected=$((pass + fail + indeterminate + harness_errors))
@@ -16,11 +24,41 @@ actual="$(wc -l < "$json" | tr -d '[:space:]')"
   exit 1
 }
 jq -se '
-  ([.[] | select(.kind == "selftest")] | length) == 4 and
-  ([.[] | select(.kind == "selftest") | .scenario] | unique | length) == 4
+  all(.[]; .schema_version == "1" and .evidence_class == "regression" and .arm == "regression") and
+  ([.[] | select(.study == "deterministic-regression/selftest")] | length) == 4 and
+  ([.[] | select(.study == "deterministic-regression/selftest") | .case_id] | unique | length) == 4
 ' "$json" >/dev/null || {
   echo 'FAIL JSON omits or duplicates local selftest rows' >&2
   exit 1
 }
+
+go run "$ROOT/evals/score.go" --strict "$json" > "$tmp/scorecard.md"
+grep -q '^## Deterministic regressions$' "$tmp/scorecard.md"
+
+# A failing run must still leave parseable result rows at the requested path.
+repo="$tmp/failing-repo"
+mkdir -p "$repo/evals/scenarios/fails"
+cp "$ROOT/evals/run.sh" "$ROOT/evals/run-all.sh" "$ROOT/evals/score.go" "$repo/evals/"
+cp -R "$ROOT/evals/studies" "$repo/evals/studies"
+printf 'id = "fails"\nkind = "artifact"\nskill = "fixture"\n' > "$repo/evals/scenarios/fails/scenario.toml"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/evals/scenarios/fails/check.sh"
+printf '#!/usr/bin/env bash\nexit 9\n' > "$repo/evals/scenarios/fails/solve.sh"
+chmod +x "$repo/evals/"*.sh "$repo/evals/scenarios/fails/"*.sh
+set +e
+bash "$repo/evals/run-all.sh" --json "$tmp/failure.jsonl" > "$tmp/failure.log"
+failure_rc=$?
+set -e
+[ "$failure_rc" -ne 0 ]
+jq -se 'length > 0 and any(.[]; .verdict == "harness_error" or .verdict == "fail")' "$tmp/failure.jsonl" >/dev/null
+
+# Even a malformed child result becomes a valid infrastructure-failure row.
+printf '#!/usr/bin/env bash\nprintf "not-json\\n"\nexit 1\n' > "$repo/evals/run.sh"
+chmod +x "$repo/evals/run.sh"
+set +e
+bash "$repo/evals/run-all.sh" --json "$tmp/malformed-child.jsonl" > "$tmp/malformed-child.log" 2>/dev/null
+malformed_rc=$?
+set -e
+[ "$malformed_rc" -ne 0 ]
+jq -se 'length > 0 and any(.[]; .status == "harness_error" and .verdict == "harness_error")' "$tmp/malformed-child.jsonl" >/dev/null
 
 echo 'run-all reporting contract: ok'

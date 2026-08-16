@@ -1,6 +1,0 @@
-Take over this project for an extended unattended run that will span several
-work sessions. Milestones, in order: harden the stats module, add a CLI
-wrapper around it, then write user docs. Set up whatever durable run
-structure you need to stay on track and auditable across sessions, declare
-your stopping budget up front, and keep going without check-ins until the
-milestones are done or you hit a real blocker; record blockers and move on.

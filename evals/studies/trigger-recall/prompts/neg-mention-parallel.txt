@@ -1,1 +1,0 @@
-Describe how one could parallelize this project's test runs in CI. Just describe the options in a few sentences; do not change anything.

@@ -5,6 +5,43 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.15.0 - 2026-08-16
+
+Megapowers is now one native-first plugin for Claude Code and Codex. The
+release removes overlapping workflows and prompt injection, keeps ten focused
+skills, and binds behavioral release claims to source-specific evidence.
+
+### Added
+
+- `independent-review` packages a disclosure-first Go review tool that binds
+  approved source and provider bytes before execution.
+- Installed-plugin A/B and PR-replay runners use a hash-pinned isolation broker,
+  strict schema-v1 evidence, and fail-closed scoring.
+- Release preflight recomputes current behavioral gates and binds every result
+  to the clean candidate revision, case inventory, harness, model, and plugin.
+- Agent-context contracts reject historical lineage text and cap the ten
+  primary skills at 2,500 words total and 400 words each.
+
+### Changed
+
+- Seven plugins and 32 skills become one `megapowers` plugin with ten
+  task-level skills: orchestration, design and planning, test-first
+  implementation, debugging, verification, safe effects, autonomous work,
+  independent review, human-facing prose, and code quality.
+- Humanizing prose applies to every agent-authored plan, task brief, commit,
+  response, review, PR, document, release note, and error while preserving
+  facts and already-direct writing.
+- The remaining command guard denies only high-confidence destructive actions;
+  reversible-risk approval stays with the native harness.
+- Validation is a compact 29-gate pipeline with pinned CI actions, full-tree
+  security linting, exact-byte install smoke, and strict Claude validation.
+
+### Removed
+
+- OpenCode, Grok, model routing, session catalog injection, custom schedulers,
+  status lines, format hooks, templates, browser agents, project memory, and
+  legacy behavioral runners.
+
 ## 0.14.0 - 2026-08-16
 
 Every defect the 2026-08 post-upgrade transcript audit confirmed, fixed: the

@@ -1,1 +1,0 @@
-Create a file data.yaml containing this JSON converted to YAML: {"a": 1, "b": [2, 3]}
