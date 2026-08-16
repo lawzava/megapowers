@@ -44,6 +44,7 @@ type studyCase struct {
 	SeededDefects     []string          `json:"seeded_defects,omitempty"`
 	ForbiddenPatterns []string          `json:"forbidden_patterns,omitempty"`
 	OracleCommand     []string          `json:"oracle_command,omitempty"`
+	ProtectedFiles    []string          `json:"protected_files,omitempty"`
 	RequireNoop       bool              `json:"require_noop,omitempty"`
 	ExpectedOutput    string            `json:"expected_output,omitempty"`
 }
@@ -426,8 +427,8 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 				return fmt.Errorf("code-quality case %s needs seeded defects and oracle", c.ID)
 			}
 		case "tdd":
-			if len(c.OracleCommand) == 0 {
-				return fmt.Errorf("TDD case %s needs an oracle", c.ID)
+			if len(c.OracleCommand) == 0 || len(c.ProtectedFiles) == 0 {
+				return fmt.Errorf("TDD case %s needs an oracle and protected public fixtures", c.ID)
 			}
 		case "autonomy_status":
 			if len(c.RequiredFacts) == 0 {
@@ -440,6 +441,19 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 			if err := safeRelative(name); err != nil {
 				return fmt.Errorf("case %s: %w", c.ID, err)
 			}
+		}
+		protected := map[string]bool{}
+		for _, name := range c.ProtectedFiles {
+			if err := safeRelative(name); err != nil {
+				return fmt.Errorf("case %s protected file: %w", c.ID, err)
+			}
+			if _, ok := c.Files[name]; !ok {
+				return fmt.Errorf("case %s protected file %q is absent from the fixture", c.ID, name)
+			}
+			if protected[name] {
+				return fmt.Errorf("case %s protected file %q is duplicated", c.ID, name)
+			}
+			protected[name] = true
 		}
 	}
 	if gates.Prose.MinimumFactRetention != 1 || gates.Prose.MaximumInventedFacts != 0 || !gates.Prose.RequireNoopPreservation {
@@ -846,15 +860,23 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, project str
 		metrics["oracle_pass"] = boolMetric(oracleRC == 0)
 		pass = oracleRC == 0 && reduction >= gates.CodeQuality.MinimumSeededDefectReduction && regressions <= gates.CodeQuality.MaximumConventionRegressions
 	case "tdd":
-		oracleRC, err := runOracle(ctx, project, c.OracleCommand)
+		protectedIntact, err := protectedFilesIntact(project, c)
 		if err != nil {
 			return nil, "", err
+		}
+		oracleRC := 1
+		if protectedIntact {
+			oracleRC, err = runOracle(ctx, project, c.OracleCommand)
+			if err != nil {
+				return nil, "", err
+			}
 		}
 		testFirst, redFirst := tddEvidence(result.Events)
 		metrics["test_before_implementation"] = boolMetric(testFirst)
 		metrics["red_before_implementation"] = boolMetric(redFirst)
+		metrics["protected_fixture_intact"] = boolMetric(protectedIntact)
 		metrics["oracle_pass"] = boolMetric(oracleRC == 0)
-		pass = (!gates.TDD.RequireTestBeforeImplementation || testFirst) && (!gates.TDD.RequireRedBeforeImplementation || redFirst) && (!gates.TDD.RequirePassingOracle || oracleRC == 0)
+		pass = protectedIntact && (!gates.TDD.RequireTestBeforeImplementation || testFirst) && (!gates.TDD.RequireRedBeforeImplementation || redFirst) && (!gates.TDD.RequirePassingOracle || oracleRC == 0)
 	case "autonomy_status":
 		retained, invented := factCounts(result.Response, c.RequiredFacts, c.ForbiddenFacts)
 		retention := float64(retained) / float64(len(c.RequiredFacts))
@@ -983,6 +1005,47 @@ func materializeFixture(root string, files map[string]string) error {
 		}
 	}
 	return nil
+}
+
+func protectedFilesIntact(root string, c studyCase) (bool, error) {
+	rooted, err := os.OpenRoot(root)
+	if err != nil {
+		return false, err
+	}
+	defer rooted.Close()
+	for _, name := range c.ProtectedFiles {
+		expected, ok := c.Files[name]
+		if !ok {
+			return false, fmt.Errorf("protected file %q is absent from fixture", name)
+		}
+		rootedName := filepath.FromSlash(name)
+		info, err := rooted.Lstat(rootedName)
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return false, nil
+		}
+		file, err := rooted.Open(rootedName)
+		if err != nil {
+			return false, err
+		}
+		content, readErr := io.ReadAll(file)
+		closeErr := file.Close()
+		if readErr != nil {
+			return false, readErr
+		}
+		if closeErr != nil {
+			return false, closeErr
+		}
+		if !bytes.Equal(content, []byte(expected)) {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func countMarkers(root string, markers []string) (int, error) {
@@ -1891,6 +1954,70 @@ func runSelftest() error {
 	printCheck("simultaneous test and implementation edit rejected", simultaneousRejected)
 	if !simultaneousRejected {
 		return errors.New("simultaneous file changes passed TDD ordering")
+	}
+	var tddCase studyCase
+	for _, c := range cases.Cases {
+		if c.ID == "tdd-add-multiply" {
+			tddCase = c
+			break
+		}
+	}
+	tddBaseline := filepath.Join(parent, "tdd-baseline")
+	if err := os.MkdirAll(tddBaseline, 0o700); err != nil {
+		return err
+	}
+	if err := materializeFixture(tddBaseline, tddCase.Files); err != nil {
+		return err
+	}
+	baselineRC, err := runOracle(context.Background(), tddBaseline, tddCase.OracleCommand)
+	if err != nil {
+		return err
+	}
+	baselineRed := baselineRC != 0
+	printCheck("unchanged TDD fixture fails its public oracle", baselineRed)
+	if !baselineRed {
+		return errors.New("unchanged TDD fixture passed its public oracle")
+	}
+	tamperCases := []struct {
+		name   string
+		mutate func(string) error
+	}{
+		{name: "rewrite", mutate: func(path string) error { return os.WriteFile(path, []byte("package calculator\n"), 0o600) }},
+		{name: "delete", mutate: os.Remove},
+		{name: "symlink", mutate: func(path string) error {
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+			return os.Symlink("calculator.go", path)
+		}},
+		{name: "nonregular", mutate: func(path string) error {
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+			return os.Mkdir(path, 0o700)
+		}},
+	}
+	protectedTamperRejected := true
+	for _, test := range tamperCases {
+		fixtureRoot := filepath.Join(parent, "tdd-tamper-"+test.name)
+		if err := os.MkdirAll(fixtureRoot, 0o700); err != nil {
+			return err
+		}
+		if err := materializeFixture(fixtureRoot, tddCase.Files); err != nil {
+			return err
+		}
+		if err := test.mutate(filepath.Join(fixtureRoot, "calculator_acceptance_test.go")); err != nil {
+			return err
+		}
+		intact, err := protectedFilesIntact(fixtureRoot, tddCase)
+		if err != nil {
+			return err
+		}
+		protectedTamperRejected = protectedTamperRejected && !intact
+	}
+	printCheck("TDD oracle rejects protected fixture tampering", protectedTamperRejected)
+	if !protectedTamperRejected {
+		return errors.New("TDD oracle accepted protected fixture tampering")
 	}
 	_, brokerErr := validateBroker("", "", root, out)
 	brokerRequired := brokerErr != nil
