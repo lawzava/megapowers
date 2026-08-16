@@ -87,16 +87,16 @@ type metricAggregate struct {
 }
 
 type scoreOptions struct {
-	path             string
-	publishGatesPath string
+	path                   string
+	acceptanceCriteriaPath string
 }
 
-type publishGateFile struct {
+type acceptanceFile struct {
 	SchemaVersion string `json:"schema_version"`
-	CodeQuality   struct {
+	Acceptance    struct {
 		MinimumPairedRuns         int  `json:"minimum_paired_runs"`
 		RequireAllTreatmentPasses bool `json:"require_all_treatment_passes"`
-	} `json:"code_quality"`
+	} `json:"acceptance"`
 }
 
 func (aggregate *metricAggregate) add(value float64) {
@@ -441,28 +441,28 @@ func validateComparisons(rows []resultRow) error {
 	return nil
 }
 
-func loadPublishGates(path string) (publishGateFile, error) {
-	var gates publishGateFile
+func loadAcceptanceCriteria(path string) (acceptanceFile, error) {
+	var criteria acceptanceFile
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return gates, fmt.Errorf("read publish gates: %w", err)
+		return criteria, fmt.Errorf("read acceptance criteria: %w", err)
 	}
-	if err := json.Unmarshal(content, &gates); err != nil {
-		return gates, fmt.Errorf("decode publish gates: %w", err)
+	if err := json.Unmarshal(content, &criteria); err != nil {
+		return criteria, fmt.Errorf("decode acceptance criteria: %w", err)
 	}
-	if gates.SchemaVersion != schemaVersion {
-		return gates, fmt.Errorf("publish gates schema_version %q is unsupported", gates.SchemaVersion)
+	if criteria.SchemaVersion != schemaVersion {
+		return criteria, fmt.Errorf("acceptance criteria schema_version %q is unsupported", criteria.SchemaVersion)
 	}
-	if gates.CodeQuality.MinimumPairedRuns <= 0 {
-		return gates, errors.New("publish gates minimum_paired_runs must be positive")
+	if criteria.Acceptance.MinimumPairedRuns <= 0 {
+		return criteria, errors.New("acceptance minimum_paired_runs must be positive")
 	}
-	if !gates.CodeQuality.RequireAllTreatmentPasses {
-		return gates, errors.New("publish gates must require all treatment runs to pass")
+	if !criteria.Acceptance.RequireAllTreatmentPasses {
+		return criteria, errors.New("acceptance criteria must require all treatment runs to pass")
 	}
-	return gates, nil
+	return criteria, nil
 }
 
-func validatePublishable(rows []resultRow, gates publishGateFile) error {
+func validateStudyAcceptance(rows []resultRow, criteria acceptanceFile) error {
 	type counts struct {
 		treatmentPass  int
 		treatmentTotal int
@@ -472,7 +472,7 @@ func validatePublishable(rows []resultRow, gates publishGateFile) error {
 	byCase := make(map[string]*counts)
 	for _, row := range rows {
 		if row.EvidenceClass != "behavioral" || row.Study != installedABStudy {
-			return errors.New("publishability gates accept installed-plugin-ab behavioral rows only")
+			return errors.New("study acceptance accepts installed-plugin-ab behavioral rows only")
 		}
 		if !brokerBoundaries[row.Environment.Sandbox] {
 			return fmt.Errorf("case %q does not record a broker-attested OS boundary", row.CaseID)
@@ -498,7 +498,7 @@ func validatePublishable(rows []resultRow, gates publishGateFile) error {
 		}
 	}
 	if len(byCase) == 0 {
-		return errors.New("publishability gates found no release-gated cases")
+		return errors.New("study acceptance found no non-report-only cases")
 	}
 	caseIDs := make([]string, 0, len(byCase))
 	for caseID := range byCase {
@@ -507,8 +507,8 @@ func validatePublishable(rows []resultRow, gates publishGateFile) error {
 	sort.Strings(caseIDs)
 	for _, caseID := range caseIDs {
 		cell := byCase[caseID]
-		if cell.treatmentTotal != cell.controlTotal || cell.treatmentTotal < gates.CodeQuality.MinimumPairedRuns {
-			return fmt.Errorf("case %q has %d balanced pairs; require %d", caseID, minInt(cell.treatmentTotal, cell.controlTotal), gates.CodeQuality.MinimumPairedRuns)
+		if cell.treatmentTotal != cell.controlTotal || cell.treatmentTotal < criteria.Acceptance.MinimumPairedRuns {
+			return fmt.Errorf("case %q has %d balanced pairs; require %d", caseID, minInt(cell.treatmentTotal, cell.controlTotal), criteria.Acceptance.MinimumPairedRuns)
 		}
 		if cell.treatmentPass != cell.treatmentTotal {
 			return fmt.Errorf("case %q treatment passed %d/%d; require every treatment run to pass", caseID, cell.treatmentPass, cell.treatmentTotal)
@@ -759,13 +759,13 @@ func parseArgs(arguments []string) (scoreOptions, error) {
 		argument := arguments[index]
 		switch argument {
 		case "--strict":
-			// Strict is also the default. The explicit flag documents release intent.
-		case "--publishable-gates":
+			// Strict is also the default. The explicit flag documents fail-closed intent.
+		case "--acceptance-criteria":
 			index++
 			if index >= len(arguments) || arguments[index] == "" {
-				return scoreOptions{}, errors.New("--publishable-gates requires a path")
+				return scoreOptions{}, errors.New("--acceptance-criteria requires a path")
 			}
-			options.publishGatesPath = arguments[index]
+			options.acceptanceCriteriaPath = arguments[index]
 		case "-":
 			if options.path != "" {
 				return scoreOptions{}, errors.New("only one input is allowed")
@@ -805,13 +805,13 @@ func run(arguments []string, stdin io.Reader) error {
 	if err := validateComparisons(rows); err != nil {
 		return err
 	}
-	if options.publishGatesPath != "" {
-		gates, err := loadPublishGates(options.publishGatesPath)
+	if options.acceptanceCriteriaPath != "" {
+		criteria, err := loadAcceptanceCriteria(options.acceptanceCriteriaPath)
 		if err != nil {
 			return err
 		}
-		if err := validatePublishable(rows, gates); err != nil {
-			return fmt.Errorf("not publishable: %w", err)
+		if err := validateStudyAcceptance(rows, criteria); err != nil {
+			return fmt.Errorf("study acceptance failed: %w", err)
 		}
 	}
 	printScorecard(rows)

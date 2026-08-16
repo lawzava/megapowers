@@ -46,24 +46,25 @@ fields, extra JSON, unrecognized boundaries, or inventory mismatches fail.
 The output contains only `publish/results.jsonl` and
 `publish/manifest.json`. Raw responses, transcripts, prompts, config homes,
 credentials, and absolute paths are never published. `--selftest` proves runner
-mechanics only. It is not behavioral evidence or release certification.
+mechanics only. It is not behavioral evidence.
 
 Prose gates require all seeded facts, zero seeded inventions, and exact no-op
 behavior for text that is already direct, ignoring trailing whitespace only.
 Code-quality
 gates require passing task tests, fewer seeded defects, and no repository
 convention regression. The TDD case requires a test edit and observed red test
-run before the implementation edit. Release certification requires the balanced
-run count in `gates.json` and every treatment run to pass its public oracle.
+run before the implementation edit. Study acceptance requires the balanced run
+count in `gates.json` and every treatment run to pass its public oracle.
 Control results remain mandatory diagnostic evidence, but they do not impose an
 artificial uplift gate on tasks whose instructions already state the expected
 behavior. The scorecard reports the paired comparison with an exact McNemar
 test; it does not turn this small regression suite into an efficacy claim. Too
-few pairs or any treatment failure writes the sanitized report but returns
-failure. Every arm records the observed plugin inventory and its hash; the
-control row uses the scorer's canonical empty-plugin hash. The publish manifest
-also binds the canonical full case catalog and gate definitions, including
-oracles and grading rules, to prevent stale or weakened certificates.
+few pairs or any treatment failure remains visible in the sanitized result.
+Every arm records the observed plugin inventory and its hash; the control row
+uses the scorer's canonical empty-plugin hash. The sanitized manifest also binds
+the canonical full case catalog and acceptance definitions, including oracles
+and grading rules, to prevent stale or weakened comparisons. Installed A/B is
+optional diagnostic evidence and does not gate a release.
 
 The autonomous-run resumption case records whether the actor reads durable
 status, resumes the current task, and preserves completed work. It is explicitly

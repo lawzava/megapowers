@@ -11,6 +11,7 @@ TMPDIR="$tmp" go run "$ROOT/evals/studies/installed-ab/run.go" --selftest >"$out
 for claim in \
   "isolated private homes" \
   "identical treatment and control inputs" \
+  "undersampled diagnostics still write results" \
   "plugin inventory records empty control" \
   "temporary state removed after success" \
   "temporary state removed after actor failure" \
@@ -25,10 +26,10 @@ for claim in \
   "broker request excludes repository root" \
   "isolation attestation rejects credentials and siblings" \
   "actor deadlines fail closed" \
-  "insufficient paired runs block publication" \
-  "treatment reliability blocks publication" \
+  "insufficient paired runs fail study acceptance" \
+  "treatment reliability fails study acceptance" \
   "control outcomes remain diagnostic" \
-  "perfect treatment reliability clears publication" \
+  "perfect treatment reliability clears study acceptance" \
   "treatment and empty-control hashes differ" \
   "schema rows pass strict scorer" \
   "publish bundle contains sanitized files only"

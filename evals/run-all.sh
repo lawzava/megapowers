@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run deterministic regressions. This suite proves executable contracts only;
-# behavioral treatment/control studies are separate keyed release evidence.
+# behavioral treatment/control studies are separate optional diagnostics.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

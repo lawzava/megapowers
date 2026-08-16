@@ -6,19 +6,17 @@ The current repository is one ten-skill plugin for Claude Code and Codex. Its
 deterministic suite and runner selftests are engineering regressions only. They
 do not establish that the plugin improves agent behavior.
 
-No credentialed installed-plugin A/B certificate is published here for the
-current ten-skill candidate. A behavior-changing release needs source-bound
-treatment and empty-control runs under both supported harnesses. That release
-gate certifies treatment reliability, not positive uplift. PR replay is
-report-only. Exact-tag install smoke runs after publication and proves
-delivery, not candidate quality.
+No credentialed installed-plugin A/B result is published here for the current
+ten-skill candidate. Installed A/B and PR replay are optional diagnostic
+studies, not release gates. Exact-tag install smoke runs after publication and
+proves delivery, not candidate quality.
 
 Current protocols and gates:
 
 - [deterministic and behavioral evals](./README.md)
 - [installed-plugin A/B](./studies/installed-ab/README.md)
 - [PR replay](./studies/pr-replay/README.md)
-- [release evidence sequence](../docs/advanced/evals.md)
+- [release and evidence sequence](../docs/advanced/evals.md)
 
 ## Historical record
 

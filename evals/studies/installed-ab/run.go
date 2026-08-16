@@ -57,11 +57,13 @@ type gatesFile struct {
 		RequireNoopPreservation bool    `json:"require_noop_preservation"`
 	} `json:"prose"`
 	CodeQuality struct {
-		MinimumSeededDefectReduction int  `json:"minimum_seeded_defect_reduction"`
-		MaximumConventionRegressions int  `json:"maximum_convention_regressions"`
-		MinimumPairedRuns            int  `json:"minimum_paired_runs"`
-		RequireAllTreatmentPasses    bool `json:"require_all_treatment_passes"`
+		MinimumSeededDefectReduction int `json:"minimum_seeded_defect_reduction"`
+		MaximumConventionRegressions int `json:"maximum_convention_regressions"`
 	} `json:"code_quality"`
+	Acceptance struct {
+		MinimumPairedRuns         int  `json:"minimum_paired_runs"`
+		RequireAllTreatmentPasses bool `json:"require_all_treatment_passes"`
+	} `json:"acceptance"`
 	TDD struct {
 		RequireTestBeforeImplementation bool `json:"require_test_before_implementation"`
 		RequireRedBeforeImplementation  bool `json:"require_red_before_implementation"`
@@ -70,7 +72,7 @@ type gatesFile struct {
 	AutonomyStatus struct {
 		MinimumFactRetention float64 `json:"minimum_fact_retention"`
 		MaximumInventedFacts int     `json:"maximum_invented_facts"`
-		ReleaseGate          bool    `json:"release_gate"`
+		ReportOnly           bool    `json:"report_only"`
 	} `json:"autonomy_status"`
 }
 
@@ -185,11 +187,11 @@ type caseAssessment struct {
 	TreatmentPassRate float64 `json:"treatment_pass_rate"`
 	ControlPassRate   float64 `json:"control_pass_rate"`
 	ObservedLift      float64 `json:"observed_lift"`
-	Publishable       bool    `json:"publishable"`
+	Accepted          bool    `json:"accepted"`
 }
 
-type publishability struct {
-	Publishable               bool             `json:"publishable"`
+type studyAcceptance struct {
+	Accepted                  bool             `json:"accepted"`
 	MinimumPairedRuns         int              `json:"minimum_paired_runs"`
 	RequireAllTreatmentPasses bool             `json:"require_all_treatment_passes"`
 	Cases                     []caseAssessment `json:"cases"`
@@ -197,36 +199,23 @@ type publishability struct {
 }
 
 type publishManifest struct {
-	SchemaVersion          string         `json:"schema_version"`
-	Study                  string         `json:"study"`
-	Evidence               string         `json:"evidence"`
-	Harness                string         `json:"harness"`
-	Model                  string         `json:"model"`
-	Effort                 string         `json:"effort"`
-	BrokerHash             string         `json:"broker_hash"`
-	CaseCatalogHash        string         `json:"case_catalog_hash"`
-	GatesHash              string         `json:"gates_hash"`
-	TreatmentPluginHash    string         `json:"treatment_plugin_hash"`
-	EmptyControlPluginHash string         `json:"empty_control_plugin_hash"`
-	Publishability         publishability `json:"publishability"`
-	Arms                   []armManifest  `json:"arms"`
-}
-
-type caseIdentity struct {
-	CaseID      string `json:"case_id"`
-	PromptHash  string `json:"prompt_hash"`
-	FixtureHash string `json:"fixture_hash"`
-	ReportOnly  bool   `json:"report_only"`
-}
-
-type releaseIdentity struct {
-	CaseCatalogHash string         `json:"case_catalog_hash"`
-	GatesHash       string         `json:"gates_hash"`
-	Cases           []caseIdentity `json:"cases"`
+	SchemaVersion          string          `json:"schema_version"`
+	Study                  string          `json:"study"`
+	Evidence               string          `json:"evidence"`
+	Harness                string          `json:"harness"`
+	Model                  string          `json:"model"`
+	Effort                 string          `json:"effort"`
+	BrokerHash             string          `json:"broker_hash"`
+	CaseCatalogHash        string          `json:"case_catalog_hash"`
+	GatesHash              string          `json:"gates_hash"`
+	TreatmentPluginHash    string          `json:"treatment_plugin_hash"`
+	EmptyControlPluginHash string          `json:"empty_control_plugin_hash"`
+	Acceptance             studyAcceptance `json:"acceptance"`
+	Arms                   []armManifest   `json:"arms"`
 }
 
 func main() {
-	var selftest, validate, run, hashPlugin, caseIdentities, credentialed bool
+	var selftest, validate, run, hashPlugin, credentialed bool
 	var casesPath, gatesPath, harness, model, effort, out, repo, broker, brokerPin string
 	var pairedRuns int
 	var actorTimeout time.Duration
@@ -234,7 +223,6 @@ func main() {
 	flag.BoolVar(&validate, "validate-config", false, "validate cases and gates")
 	flag.BoolVar(&run, "run", false, "run a real installed-plugin study")
 	flag.BoolVar(&hashPlugin, "hash-plugin", false, "print the verified current plugin tree hash")
-	flag.BoolVar(&caseIdentities, "case-identities", false, "print current release case identities")
 	flag.BoolVar(&credentialed, "credentialed", false, "acknowledge use of real harness credentials")
 	flag.StringVar(&casesPath, "cases", "", "case catalog")
 	flag.StringVar(&gatesPath, "gates", "", "gate catalog")
@@ -250,13 +238,13 @@ func main() {
 	flag.Parse()
 
 	modes := 0
-	for _, enabled := range []bool{selftest, validate, run, hashPlugin, caseIdentities} {
+	for _, enabled := range []bool{selftest, validate, run, hashPlugin} {
 		if enabled {
 			modes++
 		}
 	}
 	if modes != 1 {
-		fatal(errors.New("choose exactly one of --selftest, --validate-config, --hash-plugin, --case-identities, or --run"))
+		fatal(errors.New("choose exactly one of --selftest, --validate-config, --hash-plugin, or --run"))
 	}
 	if selftest {
 		if err := runSelftest(); err != nil {
@@ -282,8 +270,8 @@ func main() {
 	if gatesPath == "" {
 		gatesPath = filepath.Join(root, "evals", "studies", "installed-ab", "gates.json")
 	}
-	if run || caseIdentities {
-		if err := verifyReleaseConfiguration(root, casesPath, gatesPath); err != nil {
+	if run {
+		if err := verifyStudyConfiguration(root, casesPath, gatesPath); err != nil {
 			fatal(err)
 		}
 	}
@@ -293,22 +281,6 @@ func main() {
 	}
 	if validate {
 		fmt.Printf("installed-ab config: %d cases valid\n", len(cases.Cases))
-		return
-	}
-	if caseIdentities {
-		identities := make([]caseIdentity, 0, len(cases.Cases))
-		for _, c := range cases.Cases {
-			identities = append(identities, caseIdentity{CaseID: c.ID, PromptHash: hashBytes([]byte(c.Task)), FixtureHash: hashFixture(c.Files), ReportOnly: c.Kind == "autonomy_status"})
-		}
-		caseCatalogHash, gatesHash, err := configurationHashes(cases, gates)
-		if err != nil {
-			fatal(err)
-		}
-		encoder := json.NewEncoder(os.Stdout)
-		encoder.SetEscapeHTML(false)
-		if err := encoder.Encode(releaseIdentity{CaseCatalogHash: caseCatalogHash, GatesHash: gatesHash, Cases: identities}); err != nil {
-			fatal(err)
-		}
 		return
 	}
 	if !credentialed {
@@ -328,10 +300,10 @@ func main() {
 		fatal(err)
 	}
 	if pairedRuns == 0 {
-		pairedRuns = gates.CodeQuality.MinimumPairedRuns
+		pairedRuns = gates.Acceptance.MinimumPairedRuns
 	}
-	if pairedRuns < gates.CodeQuality.MinimumPairedRuns {
-		fatal(fmt.Errorf("--paired-runs must be at least %d", gates.CodeQuality.MinimumPairedRuns))
+	if pairedRuns < 1 {
+		fatal(errors.New("--paired-runs must be positive"))
 	}
 	opts := runOptions{Harness: harness, Model: model, Effort: effort, Repo: root, Out: out, Timestamp: time.Now().UTC(), Broker: broker, BrokerHash: brokerHash, PairedRuns: pairedRuns, ActorTimeout: actorTimeout}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -462,13 +434,13 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 	if gates.CodeQuality.MinimumSeededDefectReduction < 1 || gates.CodeQuality.MaximumConventionRegressions != 0 {
 		return errors.New("code-quality gate must reduce defects without convention regressions")
 	}
-	if gates.CodeQuality.MinimumPairedRuns < 2 || !gates.CodeQuality.RequireAllTreatmentPasses {
-		return errors.New("code-quality aggregate gate is incomplete")
+	if gates.Acceptance.MinimumPairedRuns < 2 || !gates.Acceptance.RequireAllTreatmentPasses {
+		return errors.New("study acceptance criteria are incomplete")
 	}
 	if !gates.TDD.RequireTestBeforeImplementation || !gates.TDD.RequireRedBeforeImplementation || !gates.TDD.RequirePassingOracle {
 		return errors.New("TDD gate must require test-first, observed red, and passing oracle")
 	}
-	if gates.AutonomyStatus.MinimumFactRetention != 1 || gates.AutonomyStatus.MaximumInventedFacts != 0 || gates.AutonomyStatus.ReleaseGate {
+	if gates.AutonomyStatus.MinimumFactRetention != 1 || gates.AutonomyStatus.MaximumInventedFacts != 0 || !gates.AutonomyStatus.ReportOnly {
 		return errors.New("autonomy status must remain a strict report-only gate")
 	}
 	return nil
@@ -707,12 +679,9 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 			}
 		}
 	}
-	manifest.Publishability = assessPublishability(rows, gates)
+	manifest.Acceptance = assessStudyAcceptance(rows, gates)
 	if err := writePublish(opts.Out, rows, manifest); err != nil {
 		return rows, manifest, err
-	}
-	if !opts.Selftest && !manifest.Publishability.Publishable {
-		return rows, manifest, fmt.Errorf("results are not publishable: %s", strings.Join(manifest.Publishability.Reasons, "; "))
 	}
 	return rows, manifest, nil
 }
@@ -726,11 +695,11 @@ func hashInventory(names []string) string {
 	return hashBytes(append(content, '\n'))
 }
 
-func assessPublishability(rows []resultRow, gates gatesFile) publishability {
-	assessment := publishability{
-		Publishable:               true,
-		MinimumPairedRuns:         gates.CodeQuality.MinimumPairedRuns,
-		RequireAllTreatmentPasses: gates.CodeQuality.RequireAllTreatmentPasses,
+func assessStudyAcceptance(rows []resultRow, gates gatesFile) studyAcceptance {
+	assessment := studyAcceptance{
+		Accepted:                  true,
+		MinimumPairedRuns:         gates.Acceptance.MinimumPairedRuns,
+		RequireAllTreatmentPasses: gates.Acceptance.RequireAllTreatmentPasses,
 	}
 	type counts struct{ treatmentPass, treatmentTotal, controlPass, controlTotal int }
 	byCase := map[string]*counts{}
@@ -768,18 +737,18 @@ func assessPublishability(rows []resultRow, gates gatesFile) publishability {
 		treatmentRate := rate(cell.treatmentPass, cell.treatmentTotal)
 		controlRate := rate(cell.controlPass, cell.controlTotal)
 		observed := treatmentRate - controlRate
-		publishable := paired >= gates.CodeQuality.MinimumPairedRuns && cell.treatmentTotal == cell.controlTotal && cell.treatmentPass == cell.treatmentTotal
-		assessment.Cases = append(assessment.Cases, caseAssessment{CaseID: caseID, PairedRuns: paired, TreatmentPasses: cell.treatmentPass, ControlPasses: cell.controlPass, TreatmentPassRate: treatmentRate, ControlPassRate: controlRate, ObservedLift: observed, Publishable: publishable})
-		if paired < gates.CodeQuality.MinimumPairedRuns || cell.treatmentTotal != cell.controlTotal {
-			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s has %d balanced pairs, require %d", caseID, paired, gates.CodeQuality.MinimumPairedRuns))
+		accepted := paired >= gates.Acceptance.MinimumPairedRuns && cell.treatmentTotal == cell.controlTotal && cell.treatmentPass == cell.treatmentTotal
+		assessment.Cases = append(assessment.Cases, caseAssessment{CaseID: caseID, PairedRuns: paired, TreatmentPasses: cell.treatmentPass, ControlPasses: cell.controlPass, TreatmentPassRate: treatmentRate, ControlPassRate: controlRate, ObservedLift: observed, Accepted: accepted})
+		if paired < gates.Acceptance.MinimumPairedRuns || cell.treatmentTotal != cell.controlTotal {
+			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s has %d balanced pairs, require %d", caseID, paired, gates.Acceptance.MinimumPairedRuns))
 		}
 		if cell.treatmentPass != cell.treatmentTotal {
 			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s treatment passed %d/%d; require every treatment run to pass", caseID, cell.treatmentPass, cell.treatmentTotal))
 		}
-		assessment.Publishable = assessment.Publishable && publishable
+		assessment.Accepted = assessment.Accepted && accepted
 	}
 	if len(byCase) == 0 {
-		assessment.Publishable = false
+		assessment.Accepted = false
 		assessment.Reasons = append(assessment.Reasons, "no completed treatment/control results")
 	}
 	return assessment
@@ -801,7 +770,7 @@ func minInt(a, b int) int {
 
 func evidenceLabel(selftest bool) string {
 	if selftest {
-		return "selftest-only-not-certification"
+		return "selftest-only-not-behavioral-evidence"
 	}
 	return "credentialed-behavioral-run"
 }
@@ -1106,7 +1075,7 @@ type trackedPluginFile struct {
 
 // verifiedPluginHash binds evidence to the exact regular files Git will ship.
 // Ignored or untracked payloads, symlinks, special files, and worktree drift
-// fail closed instead of entering an otherwise clean-looking certificate.
+// fail closed instead of entering an otherwise clean-looking comparison.
 func verifiedPluginHash(repo string) (string, error) {
 	const pluginPath = "plugins/megapowers"
 	formatOutput, err := exec.Command("git", "-C", repo, "rev-parse", "--show-object-format").Output()
@@ -1234,7 +1203,7 @@ func gitBlobHash(content []byte, format string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func verifyReleaseConfiguration(repo, casesPath, gatesPath string) error {
+func verifyStudyConfiguration(repo, casesPath, gatesPath string) error {
 	expectedCases := filepath.Join(repo, "evals", "studies", "installed-ab", "cases.json")
 	expectedGates := filepath.Join(repo, "evals", "studies", "installed-ab", "gates.json")
 	for _, pair := range []struct {
@@ -1250,7 +1219,7 @@ func verifyReleaseConfiguration(repo, casesPath, gatesPath string) error {
 			return err
 		}
 		if filepath.Clean(got) != filepath.Clean(want) {
-			return errors.New("release runs require the checkout's committed cases.json and gates.json")
+			return errors.New("real studies require the checkout's committed cases.json and gates.json")
 		}
 		if err := verifyRegularFileAtHEAD(repo, want); err != nil {
 			return err
@@ -1262,7 +1231,7 @@ func verifyReleaseConfiguration(repo, casesPath, gatesPath string) error {
 func verifyRegularFileAtHEAD(repo, path string) error {
 	relative, err := filepath.Rel(repo, path)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return errors.New("release configuration path escapes the checkout")
+		return errors.New("study configuration path escapes the checkout")
 	}
 	repoName := filepath.ToSlash(relative)
 	formatOutput, err := exec.Command("git", "-C", repo, "rev-parse", "--show-object-format").Output()
@@ -1275,20 +1244,20 @@ func verifyRegularFileAtHEAD(repo, path string) error {
 	}
 	listing, err := exec.Command("git", "-C", repo, "ls-tree", "-z", "HEAD", "--", repoName).Output()
 	if err != nil || len(listing) == 0 {
-		return fmt.Errorf("release configuration %q is not committed at HEAD", repoName)
+		return fmt.Errorf("study configuration %q is not committed at HEAD", repoName)
 	}
 	entry := bytes.TrimSuffix(listing, []byte{0})
 	parts := bytes.SplitN(entry, []byte{'\t'}, 2)
 	if len(parts) != 2 || filepath.ToSlash(string(parts[1])) != repoName {
-		return fmt.Errorf("release configuration %q has malformed Git metadata", repoName)
+		return fmt.Errorf("study configuration %q has malformed Git metadata", repoName)
 	}
 	header := strings.Fields(string(parts[0]))
 	if len(header) != 3 || header[0] != "100644" || header[1] != "blob" {
-		return fmt.Errorf("release configuration %q is not a regular non-executable file", repoName)
+		return fmt.Errorf("study configuration %q is not a regular non-executable file", repoName)
 	}
 	pathInfo, err := os.Lstat(path)
 	if err != nil || !pathInfo.Mode().IsRegular() || pathInfo.Mode().Perm()&0o111 != 0 {
-		return fmt.Errorf("release configuration %q is not a regular non-executable worktree file", repoName)
+		return fmt.Errorf("study configuration %q is not a regular non-executable worktree file", repoName)
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -1298,10 +1267,10 @@ func verifyRegularFileAtHEAD(repo, path string) error {
 	content, readErr := io.ReadAll(file)
 	closeErr := file.Close()
 	if statErr != nil || readErr != nil || closeErr != nil || !os.SameFile(pathInfo, openedInfo) {
-		return fmt.Errorf("release configuration %q changed while it was verified", repoName)
+		return fmt.Errorf("study configuration %q changed while it was verified", repoName)
 	}
 	if gitBlobHash(content, objectFormat) != header[2] {
-		return fmt.Errorf("release configuration %q content differs from HEAD", repoName)
+		return fmt.Errorf("study configuration %q content differs from HEAD", repoName)
 	}
 	return nil
 }
@@ -1847,6 +1816,11 @@ func runSelftest() error {
 	if !identical {
 		return errors.New("paired input hashes differ")
 	}
+	diagnosticWritten := len(rows) > 0 && !manifest.Acceptance.Accepted && len(manifest.Acceptance.Reasons) > 0
+	printCheck("undersampled diagnostics still write results", diagnosticWritten)
+	if !diagnosticWritten {
+		return errors.New("undersampled diagnostic did not retain its negative study result")
+	}
 	boundaryRecorded := true
 	for _, row := range rows {
 		boundaryRecorded = boundaryRecorded && row.Environment.Sandbox == "in-process-selftest"
@@ -2114,29 +2088,29 @@ func runSelftest() error {
 	if !leaksRejected {
 		return errors.New("unsafe isolation attestation was accepted")
 	}
-	insufficient := assessPublishability(syntheticGateRows(1, 0, 1), gates)
-	insufficientBlocked := !insufficient.Publishable
-	printCheck("insufficient paired runs block publication", insufficientBlocked)
-	if !insufficientBlocked {
-		return errors.New("insufficient paired runs were publishable")
+	insufficient := assessStudyAcceptance(syntheticGateRows(1, 0, 1), gates)
+	insufficientRejected := !insufficient.Accepted
+	printCheck("insufficient paired runs fail study acceptance", insufficientRejected)
+	if !insufficientRejected {
+		return errors.New("insufficient paired runs met study acceptance")
 	}
-	unreliable := assessPublishability(syntheticGateRows(9, 10, 10), gates)
-	unreliableBlocked := !unreliable.Publishable && unreliable.Cases[0].TreatmentPassRate == 0.9
-	printCheck("treatment reliability blocks publication", unreliableBlocked)
-	if !unreliableBlocked {
-		return errors.New("imperfect treatment reliability was publishable")
+	unreliable := assessStudyAcceptance(syntheticGateRows(9, 10, 10), gates)
+	unreliableRejected := !unreliable.Accepted && unreliable.Cases[0].TreatmentPassRate == 0.9
+	printCheck("treatment reliability fails study acceptance", unreliableRejected)
+	if !unreliableRejected {
+		return errors.New("imperfect treatment reliability met study acceptance")
 	}
-	diagnostic := assessPublishability(syntheticGateRows(10, 0, 10), gates)
-	controlDiagnostic := diagnostic.Publishable && diagnostic.Cases[0].ControlPassRate == 0
+	diagnostic := assessStudyAcceptance(syntheticGateRows(10, 0, 10), gates)
+	controlDiagnostic := diagnostic.Accepted && diagnostic.Cases[0].ControlPassRate == 0
 	printCheck("control outcomes remain diagnostic", controlDiagnostic)
 	if !controlDiagnostic {
 		return errors.New("control outcome incorrectly blocked a reliable treatment")
 	}
-	perfect := assessPublishability(syntheticGateRows(10, 10, 10), gates)
-	perfectPublishable := perfect.Publishable && perfect.Cases[0].TreatmentPassRate == 1
-	printCheck("perfect treatment reliability clears publication", perfectPublishable)
-	if !perfectPublishable {
-		return errors.New("perfect treatment reliability was not publishable")
+	perfect := assessStudyAcceptance(syntheticGateRows(10, 10, 10), gates)
+	perfectAccepted := perfect.Accepted && perfect.Cases[0].TreatmentPassRate == 1
+	printCheck("perfect treatment reliability clears study acceptance", perfectAccepted)
+	if !perfectAccepted {
+		return errors.New("perfect treatment reliability did not meet study acceptance")
 	}
 	hashesDiffer := manifest.TreatmentPluginHash != manifest.EmptyControlPluginHash && manifest.EmptyControlPluginHash == emptyControlPluginHash() && inventoriesCorrect(manifest)
 	printCheck("treatment and empty-control hashes differ", hashesDiffer)

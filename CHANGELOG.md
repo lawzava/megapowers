@@ -9,16 +9,16 @@ semver.
 
 Megapowers is now one native-first plugin for Claude Code and Codex. The
 release removes overlapping workflows and prompt injection, keeps ten focused
-skills, and binds behavioral release claims to source-specific evidence.
+skills, and keeps source-specific behavioral studies as optional diagnostics.
 
 ### Added
 
 - `independent-review` packages a disclosure-first Go review tool that binds
   approved source and provider bytes before execution.
-- Installed-plugin A/B and PR-replay runners use a hash-pinned isolation broker,
-  strict schema-v1 evidence, and fail-closed scoring.
-- Release preflight recomputes current behavioral gates and binds every result
-  to the clean candidate revision, case inventory, harness, model, and plugin.
+- Optional installed-plugin A/B and PR-replay runners use a hash-pinned isolation
+  broker, strict schema-v1 evidence, and fail-closed scoring.
+- Release preflight verifies the already-versioned clean candidate, rejects
+  hidden plugin payloads, and runs the full deterministic validation stack.
 - Agent-context contracts reject historical lineage text and cap the ten
   primary skills at 2,500 words total and 400 words each.
 

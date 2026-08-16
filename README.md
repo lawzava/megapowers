@@ -71,10 +71,10 @@ Three evidence classes are kept separate:
 1. `scripts/validate.sh` and `evals/run-all.sh` run bounded deterministic
    regressions and runner selftests. They prove repository mechanics, not agent
    quality.
-2. The installed-plugin A/B study compares this checkout with an empty control
-   under Claude Code and Codex through a hash-pinned isolation broker. It gates
-   treatment reliability and reports paired control outcomes; it does not claim
-   that the plugin improves general model capability.
+2. The optional installed-plugin A/B study compares this checkout with an empty
+   control under Claude Code and Codex through a hash-pinned isolation broker.
+   It reports treatment reliability and paired control outcomes; it does not
+   gate releases or claim that the plugin improves general model capability.
 3. PR replay uses hidden correctness tests against pinned historical changes.
    It is report-only until repeated real runs support a release threshold.
 
@@ -95,7 +95,9 @@ measurements, including null results and their limitations, remain in
 - Real-agent studies require credentials, spend, and a reviewed broker that
   keeps credentials and hidden state outside the actor's OS boundary. Their
   selftests do not substitute for a credentialed run.
-- Only current Claude Code and Codex are supported and release-tested.
+- Only current Claude Code and Codex are supported. Exact structural and
+  behavioral evidence boundaries are in
+  [docs/harness-support.md](./docs/harness-support.md).
 
 ## Develop
 
@@ -106,8 +108,8 @@ bash evals/run-all.sh --json results.jsonl
 
 The deterministic suite fails on malformed, incomplete, indeterminate,
 timed-out, or harness-error results. Contributions that change behavioral
-guidance need a source-bound installed-plugin A/B result before release. See
-[CONTRIBUTING.md](./CONTRIBUTING.md).
+guidance need deterministic regression coverage. Credentialed installed-plugin
+A/B remains optional diagnostic evidence. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License and origin
 

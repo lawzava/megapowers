@@ -120,5 +120,5 @@ claude plugin validate --strict plugins/megapowers
 ```
 
 These checks validate structure and deterministic regressions. They do not
-certify agent behavior. Release evidence is described in
+measure agent behavior. Optional behavioral studies are described in
 [advanced/evals.md](./advanced/evals.md).

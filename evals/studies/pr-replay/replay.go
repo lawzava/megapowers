@@ -727,7 +727,7 @@ func baseRow(c replayCase, opts runOptions, cliVersion, fixtureHash, pluginHash 
 
 func evidenceLabel(selftest bool) string {
 	if selftest {
-		return "selftest-only-not-certification"
+		return "selftest-only-not-behavioral-evidence"
 	}
 	return "credentialed-report-only"
 }

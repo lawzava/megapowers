@@ -1,8 +1,8 @@
 # PR replay
 
-PR replay is a report-only foundation for measuring whether an installed
-plugin helps an actor independently solve a historical task. It is not a
-release gate yet. Add cases locally or in a reviewed benchmark manifest:
+PR replay is an optional, report-only foundation for measuring whether an
+installed plugin helps an actor independently solve a historical task. It does
+not gate releases. Add cases locally or in a reviewed benchmark manifest:
 
 ```json
 {
