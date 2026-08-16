@@ -72,8 +72,9 @@ Three evidence classes are kept separate:
    regressions and runner selftests. They prove repository mechanics, not agent
    quality.
 2. The installed-plugin A/B study compares this checkout with an empty control
-   under Claude Code and Codex through a hash-pinned isolation broker. This is
-   the release evidence path for behavioral claims.
+   under Claude Code and Codex through a hash-pinned isolation broker. It gates
+   treatment reliability and reports paired control outcomes; it does not claim
+   that the plugin improves general model capability.
 3. PR replay uses hidden correctness tests against pinned historical changes.
    It is report-only until repeated real runs support a release threshold.
 

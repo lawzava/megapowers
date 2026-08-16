@@ -8,9 +8,10 @@ do not establish that the plugin improves agent behavior.
 
 No credentialed installed-plugin A/B certificate is published here for the
 current ten-skill candidate. A behavior-changing release needs source-bound
-treatment and empty-control runs under both supported harnesses. PR replay is
-report-only. Exact-tag install smoke runs after publication and proves delivery,
-not candidate quality.
+treatment and empty-control runs under both supported harnesses. That release
+gate certifies treatment reliability, not positive uplift. PR replay is
+report-only. Exact-tag install smoke runs after publication and proves
+delivery, not candidate quality.
 
 Current protocols and gates:
 
@@ -65,8 +66,9 @@ matched one sentence about commit authority that a refactor restated without
 changing, and the reusable-workflow version ban flagged a historical
 "pre-0.8.2" reference. Fixed on 2026-08-06 and re-run above. The lesson worth
 keeping is procedural: a published count is a claim, and a claim needs the run
-that produced it to be the run that shipped. `scripts/release.sh` now runs
-`evals/run-all.sh` and the real freshness gate before it stamps a release.
+that produced it to be the run that shipped. `scripts/release.sh` now certifies
+an already-versioned clean revision, then runs `evals/run-all.sh` and the real
+freshness gate without mutating the candidate.
 
 **Scenario count fell on 2026-07-26, deliberately.** Six scenarios
 (`review-axes`, `skill-authoring-quality`, `planning-graph-guidance`,
@@ -192,11 +194,11 @@ frontier Claude (`claude-fable-5`) and Claude Haiku (`claude-haiku-4-5`) via
 room (`--ignore-user-config`; codex JSONL normalized into the same oracle event
 shape). Zero indeterminate runs.
 
-_Reading the z and `fisher_p` columns (applies to section 3 through section 5)._ These sections
-report roughly two dozen skill-vs-control contrasts. The pooled two-proportion z
-is a normal approximation that is not valid at these cell sizes (n = 8 to 12)
-with boundary proportions (0% or 100%), so `score.go` now also prints
-`fisher_p`, the two-sided Fisher exact p-value, which is the statistic to read at
+_Reading the archived z and `fisher_p` columns (applies to section 3 through
+section 5)._ These historical sections report roughly two dozen
+skill-vs-control contrasts. Their pooled two-proportion z statistic is not valid
+at these cell sizes (n = 8 to 12) with boundary proportions (0% or 100%), so the
+removed scorer also printed `fisher_p`, the two-sided Fisher exact p-value, to read at
 small n and boundary cells. Treat only the Δ = +100% cells (perfect separation,
 exact p well below 0.05) as confirmatory; every other contrast is exploratory and
 unadjusted for multiple comparisons. One wave-boundary caveat: the section 5f

@@ -19,12 +19,14 @@ for claim in \
   "autonomous status resumption stays report-only" \
   "simultaneous test and implementation edit rejected" \
   "live runs require isolated broker" \
+  "treatment uses a verified private plugin copy" \
   "broker request excludes repository root" \
   "isolation attestation rejects credentials and siblings" \
+  "actor deadlines fail closed" \
   "insufficient paired runs block publication" \
-  "weak lift blocks publication" \
-  "confidence bound blocks uncertain lift" \
-  "strong repeated lift clears publication" \
+  "treatment reliability blocks publication" \
+  "control outcomes remain diagnostic" \
+  "perfect treatment reliability clears publication" \
   "treatment and empty-control hashes differ" \
   "schema rows pass strict scorer" \
   "publish bundle contains sanitized files only"

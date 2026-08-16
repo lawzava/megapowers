@@ -94,9 +94,8 @@ type scoreOptions struct {
 type publishGateFile struct {
 	SchemaVersion string `json:"schema_version"`
 	CodeQuality   struct {
-		MinimumAbsoluteLift float64 `json:"minimum_absolute_lift"`
-		MinimumPairedRuns   int     `json:"minimum_paired_runs"`
-		ConfidenceLevel     float64 `json:"confidence_level"`
+		MinimumPairedRuns         int  `json:"minimum_paired_runs"`
+		RequireAllTreatmentPasses bool `json:"require_all_treatment_passes"`
 	} `json:"code_quality"`
 }
 
@@ -214,6 +213,9 @@ func validateRow(row resultRow) error {
 	}
 	if row.Verdict == "pass" && row.RC != 0 {
 		return errors.New("passing row must have rc 0")
+	}
+	if row.Study == installedABStudy && row.EvidenceClass == "behavioral" && row.RC != 0 {
+		return errors.New("installed-plugin completed rows must have actor rc 0")
 	}
 	if row.DurationMS < 0 {
 		return errors.New("duration_ms must not be negative")
@@ -454,11 +456,8 @@ func loadPublishGates(path string) (publishGateFile, error) {
 	if gates.CodeQuality.MinimumPairedRuns <= 0 {
 		return gates, errors.New("publish gates minimum_paired_runs must be positive")
 	}
-	if gates.CodeQuality.MinimumAbsoluteLift <= 0 || gates.CodeQuality.MinimumAbsoluteLift > 1 {
-		return gates, errors.New("publish gates minimum_absolute_lift must be in (0,1]")
-	}
-	if gates.CodeQuality.ConfidenceLevel <= 0 || gates.CodeQuality.ConfidenceLevel >= 1 {
-		return gates, errors.New("publish gates confidence_level must be in (0,1)")
+	if !gates.CodeQuality.RequireAllTreatmentPasses {
+		return gates, errors.New("publish gates must require all treatment runs to pass")
 	}
 	return gates, nil
 }
@@ -501,7 +500,6 @@ func validatePublishable(rows []resultRow, gates publishGateFile) error {
 	if len(byCase) == 0 {
 		return errors.New("publishability gates found no release-gated cases")
 	}
-	z := math.Sqrt2 * math.Erfinv(gates.CodeQuality.ConfidenceLevel)
 	caseIDs := make([]string, 0, len(byCase))
 	for caseID := range byCase {
 		caseIDs = append(caseIDs, caseID)
@@ -512,17 +510,8 @@ func validatePublishable(rows []resultRow, gates publishGateFile) error {
 		if cell.treatmentTotal != cell.controlTotal || cell.treatmentTotal < gates.CodeQuality.MinimumPairedRuns {
 			return fmt.Errorf("case %q has %d balanced pairs; require %d", caseID, minInt(cell.treatmentTotal, cell.controlTotal), gates.CodeQuality.MinimumPairedRuns)
 		}
-		treatmentRate := float64(cell.treatmentPass) / float64(cell.treatmentTotal)
-		controlRate := float64(cell.controlPass) / float64(cell.controlTotal)
-		observedLift := treatmentRate - controlRate
-		if observedLift < gates.CodeQuality.MinimumAbsoluteLift {
-			return fmt.Errorf("case %q observed lift %.4f is below %.4f", caseID, observedLift, gates.CodeQuality.MinimumAbsoluteLift)
-		}
-		treatmentLower, _ := wilson(cell.treatmentPass, cell.treatmentTotal, z)
-		_, controlUpper := wilson(cell.controlPass, cell.controlTotal, z)
-		confidenceLowerLift := treatmentLower - controlUpper
-		if confidenceLowerLift < gates.CodeQuality.MinimumAbsoluteLift {
-			return fmt.Errorf("case %q confidence lower lift %.4f is below %.4f at %.3f confidence", caseID, confidenceLowerLift, gates.CodeQuality.MinimumAbsoluteLift, gates.CodeQuality.ConfidenceLevel)
+		if cell.treatmentPass != cell.treatmentTotal {
+			return fmt.Errorf("case %q treatment passed %d/%d; require every treatment run to pass", caseID, cell.treatmentPass, cell.treatmentTotal)
 		}
 	}
 	return nil
@@ -533,18 +522,6 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func wilson(successes, total int, z float64) (float64, float64) {
-	if total == 0 {
-		return 0, 1
-	}
-	n := float64(total)
-	p := float64(successes) / n
-	z2 := z * z
-	center := (p + z2/(2*n)) / (1 + z2/n)
-	half := z * math.Sqrt((p*(1-p)+z2/(4*n))/n) / (1 + z2/n)
-	return math.Max(0, center-half), math.Min(1, center+half)
 }
 
 func metricSignature(metrics map[string]float64) string {
@@ -570,35 +547,31 @@ func logChoose(n, k int) float64 {
 	return logFactorial(n) - logFactorial(k) - logFactorial(n-k)
 }
 
-func logHyper(a, b, c, d int) float64 {
-	return logChoose(a+b, a) + logChoose(c+d, c) - logChoose(a+b+c+d, a+c)
+func mcnemarExactTwoSided(treatmentOnly, controlOnly int) float64 {
+	discordant := treatmentOnly + controlOnly
+	if discordant == 0 {
+		return 1
+	}
+	tail := minInt(treatmentOnly, controlOnly)
+	sum := 0.0
+	for successes := 0; successes <= tail; successes++ {
+		sum += math.Exp(logChoose(discordant, successes) - float64(discordant)*math.Log(2))
+	}
+	return math.Min(2*sum, 1)
 }
 
-func fisherTwoSided(a, b, c, d int) float64 {
-	n1 := a + b
-	n2 := c + d
-	k := a + c
-	logObserved := logHyper(a, b, c, d)
-	low := 0
-	if k-n2 > low {
-		low = k - n2
-	}
-	high := n1
-	if k < high {
-		high = k
-	}
-	const tieTolerance = 1e-7
-	sum := 0.0
-	for aa := low; aa <= high; aa++ {
-		bb := n1 - aa
-		cc := k - aa
-		dd := n2 - cc
-		point := logHyper(aa, bb, cc, dd)
-		if point <= logObserved+tieTolerance {
-			sum += math.Exp(point)
+func discordantOutcomes(pairs map[string]map[string]string) (int, int) {
+	treatmentOnly := 0
+	controlOnly := 0
+	for _, pair := range pairs {
+		if pair["treatment"] == "pass" && pair["control"] == "fail" {
+			treatmentOnly++
+		}
+		if pair["treatment"] == "fail" && pair["control"] == "pass" {
+			controlOnly++
 		}
 	}
-	return math.Min(sum, 1)
+	return treatmentOnly, controlOnly
 }
 
 func passHatK(pass, n, k int) float64 {
@@ -625,9 +598,8 @@ func selftest() int {
 			fmt.Printf("ok   %s: %.12g (want %.12g)\n", name, got, want)
 		}
 	}
-	check("12/12 vs 0/12 one-tail", math.Exp(logHyper(12, 0, 0, 12)), 3.698e-07, 1e-9)
-	check("12/12 vs 0/12 fisher_p", fisherTwoSided(12, 0, 0, 12), 7.396e-07, 1e-9)
-	check("3/10 vs 2/10 fisher_p", fisherTwoSided(3, 7, 2, 8), 1.0, 1e-9)
+	check("12 treatment-only discordances mcnemar_p", mcnemarExactTwoSided(12, 0), 0.00048828125, 1e-12)
+	check("3 vs 2 discordances mcnemar_p", mcnemarExactTwoSided(3, 2), 1.0, 1e-12)
 	check("pass^3 of 10/10", passHatK(10, 10, 3), 1.0, 1e-12)
 	check("pass^3 of 9/10", passHatK(9, 10, 3), 0.7, 1e-12)
 	check("pass^3 of 2/10", passHatK(2, 10, 3), 0.0, 1e-12)
@@ -656,6 +628,7 @@ func printScorecard(rows []resultRow) {
 		arms      map[string]*tally
 		metrics   map[string]map[string]*metricAggregate
 		durations map[string]*metricAggregate
+		pairs     map[string]map[string]string
 	}
 	behavioral := make(map[string]*behavioralCell)
 	for _, row := range rows {
@@ -672,10 +645,15 @@ func printScorecard(rows []resultRow) {
 				arms:      map[string]*tally{"treatment": {}, "control": {}},
 				metrics:   map[string]map[string]*metricAggregate{"treatment": {}, "control": {}},
 				durations: map[string]*metricAggregate{"treatment": {}, "control": {}},
+				pairs:     map[string]map[string]string{},
 			}
 		}
 		cell := behavioral[key]
 		cell.arms[row.Arm].add(row.Verdict)
+		if cell.pairs[row.BlockID] == nil {
+			cell.pairs[row.BlockID] = map[string]string{}
+		}
+		cell.pairs[row.BlockID][row.Arm] = row.Verdict
 		for name, value := range row.Metrics {
 			if cell.metrics[row.Arm][name] == nil {
 				cell.metrics[row.Arm][name] = &metricAggregate{}
@@ -712,7 +690,7 @@ func printScorecard(rows []resultRow) {
 		sort.Strings(keys)
 		fmt.Println("## Behavioral treatment/control evidence")
 		fmt.Println()
-		fmt.Println("| study | case | harness | treatment | control | delta | fisher_p | treatment pass^3 | control pass^3 |")
+		fmt.Println("| study | case | harness | treatment | control | delta | mcnemar_p | treatment pass^3 | control pass^3 |")
 		fmt.Println("|---|---|---|---:|---:|---:|---:|---:|---:|")
 		for _, key := range keys {
 			cell := behavioral[key]
@@ -722,6 +700,7 @@ func printScorecard(rows []resultRow) {
 			controlN := control.pass + control.fail
 			treatmentRate := treatment.rate()
 			controlRate := control.rate()
+			treatmentOnly, controlOnly := discordantOutcomes(cell.pairs)
 			fmt.Printf("| %s | %s | %s/%s | %d/%d | %d/%d | %+.0f%% | %.3g | %s | %s |\n",
 				cell.study,
 				cell.caseID,
@@ -732,7 +711,7 @@ func printScorecard(rows []resultRow) {
 				control.pass,
 				controlN,
 				(treatmentRate-controlRate)*100,
-				fisherTwoSided(treatment.pass, treatment.fail, control.pass, control.fail),
+				mcnemarExactTwoSided(treatmentOnly, controlOnly),
 				formatRate(passHatK(treatment.pass, treatmentN, 3)),
 				formatRate(passHatK(control.pass, controlN, 3)),
 			)
