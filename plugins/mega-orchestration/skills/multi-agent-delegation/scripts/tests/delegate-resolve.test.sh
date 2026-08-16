@@ -7,6 +7,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DR="$HERE/../delegate-resolve"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP/bin"
+for binary in claude codex opencode; do
+  printf '#!/bin/sh\nexit 0\n' > "$TMP/bin/$binary"
+  chmod +x "$TMP/bin/$binary"
+done
+export PATH="$TMP/bin:$PATH"
 unset DELEGATES_TOML
 export XDG_CONFIG_HOME="$TMP/xdg"   # isolate the user layer
 export HOME="$TMP/home"             # never read the real user config

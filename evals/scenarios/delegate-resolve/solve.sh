@@ -3,10 +3,10 @@ R="$ROOT/plugins/mega-orchestration/skills/multi-agent-delegation/scripts/delega
 cfg="$ROOT/plugins/mega-orchestration/skills/multi-agent-delegation/delegates.toml"
 
 # PATH shims so binary-availability checks are deterministic regardless of host:
-# codex/claude/playwright-cli (and one fixture binary) are "present" here; any
+# codex/claude/opencode/playwright-cli (and one fixture binary) are "present" here; any
 # made-up name that gets no shim stays "absent".
 shims="$PWD/shims"; mkdir -p "$shims"
-for b in codex claude playwright-cli mp_present_bin; do
+for b in codex claude opencode playwright-cli mp_present_bin; do
   printf '#!/bin/sh\nexit 0\n' > "$shims/$b"; chmod +x "$shims/$b"
 done
 export PATH="$shims:$PATH"
