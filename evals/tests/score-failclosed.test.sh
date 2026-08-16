@@ -153,4 +153,16 @@ grep -q 'fact_retention' "$tmp/valid.out"
 go run "$ROOT/evals/score.go" --strict "$tmp/valid-installed-ab.jsonl" >"$tmp/valid-installed-ab.out"
 grep -q 'installed-plugin-ab' "$tmp/valid-installed-ab.out"
 
+{
+  installed_row treatment-1 block-1 treatment "$treatment_plugin_hash"
+  installed_row control-1 block-1 control "$empty_plugin_hash"
+} >"$tmp/non-broker-sandbox.jsonl"
+if go run "$ROOT/evals/score.go" --strict \
+  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  "$tmp/non-broker-sandbox.jsonl" >"$tmp/non-broker-sandbox.out" 2>"$tmp/non-broker-sandbox.err"; then
+  echo 'FAIL publishability accepted non-broker sandbox provenance' >&2
+  exit 1
+fi
+grep -q 'broker-attested OS boundary' "$tmp/non-broker-sandbox.err"
+
 echo 'strict score fail-closed contract: ok'

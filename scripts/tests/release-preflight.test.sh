@@ -86,7 +86,7 @@ write_cert() {
           source:{repository:"megapowers",revision:$revision},prompt_hash:$hash,
           fixture_hash:$hash,plugin_hash:$plugin_hash,status:"completed",rc:$rc,
           duration_ms:1,verdict:$verdict,metrics:{task_success:$task_success},artifacts:{},
-          environment:{os:"linux",arch:"amd64",sandbox:"workspace-write",locale:"C"},
+          environment:{os:"linux",arch:"amd64",sandbox:"bwrap",locale:"C"},
           timestamp:"2026-08-16T00:00:00Z"
       }' >> "$publish/results.jsonl"
     done
@@ -183,6 +183,13 @@ jq -c '.metrics.report_only = 1' "$cert/claude/publish/results.jsonl" > "$tmp/re
 mv "$tmp/results.jsonl" "$cert/claude/publish/results.jsonl"
 if run_release; then echo 'FAIL a release-gated case was allowed to self-declare report-only'; exit 1; fi
 unchanged_version || { echo 'FAIL forged report-only evidence mutated manifests'; exit 1; }
+
+new_repo sandbox
+write_both
+jq -c '.environment.sandbox = "workspace-write"' "$cert/claude/publish/results.jsonl" > "$tmp/results.jsonl"
+mv "$tmp/results.jsonl" "$cert/claude/publish/results.jsonl"
+if run_release; then echo 'FAIL non-broker sandbox provenance was accepted'; exit 1; fi
+unchanged_version || { echo 'FAIL invalid sandbox provenance mutated manifests'; exit 1; }
 
 new_repo dirty
 write_both

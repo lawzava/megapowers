@@ -125,6 +125,11 @@ validate_certificate() {
         .harness.model == $model and
         .harness.effort == $effort and
         .source.revision == $revision and
+        (.environment.sandbox == "bwrap" or
+         .environment.sandbox == "container" or
+         .environment.sandbox == "seatbelt" or
+         .environment.sandbox == "sandbox-exec" or
+         .environment.sandbox == "appcontainer") and
         ((.arm == "treatment" and .plugin_hash == $treatment_hash) or
          (.arm == "control" and .plugin_hash == $control_hash)) and
         ((.metrics.report_only // 0) != 1 or
