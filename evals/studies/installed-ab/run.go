@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -994,6 +995,19 @@ func countMarkers(root string, markers []string) (int, error) {
 			if entry.Name() == ".git" {
 				return filepath.SkipDir
 			}
+			if filepath.Dir(path) == root && (entry.Name() == ".actor-home" || entry.Name() == ".actor-tmp" || entry.Name() == ".actor-cache") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
 			return nil
 		}
 		content, err := os.ReadFile(path)
@@ -1812,6 +1826,41 @@ func runSelftest() error {
 	printCheck("fact reversals fail the prose oracle", reversalRejected)
 	if !reversalRejected {
 		return errors.New("fact reversal passed the prose oracle")
+	}
+	markerRoot := filepath.Join(parent, "marker-special-files")
+	if err := os.MkdirAll(filepath.Join(markerRoot, ".actor-tmp"), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(markerRoot, "source.go"), []byte("seeded-defect\n"), 0o600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(markerRoot, ".actor-tmp", "runtime.log"), []byte("seeded-defect\n"), 0o600); err != nil {
+		return err
+	}
+	originalDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	if err := os.Chdir(markerRoot); err != nil {
+		return err
+	}
+	listener, listenErr := net.Listen("unix", filepath.Join(".actor-tmp", "runtime.sock"))
+	restoreErr := os.Chdir(originalDir)
+	if listenErr != nil {
+		return listenErr
+	}
+	if restoreErr != nil {
+		listener.Close()
+		return restoreErr
+	}
+	markerCount, markerErr := countMarkers(markerRoot, []string{"seeded-defect"})
+	if err := listener.Close(); err != nil {
+		return err
+	}
+	markerScanSafe := markerErr == nil && markerCount == 1
+	printCheck("marker scan ignores actor runtime state", markerScanSafe)
+	if !markerScanSafe {
+		return fmt.Errorf("marker scan included actor runtime state: count=%d err=%v", markerCount, markerErr)
 	}
 	autonomyOK := metricFor(rows, "autonomous-run-resume-status", "treatment", "report_only") == 1 && metricFor(rows, "autonomous-run-resume-status", "treatment", "fact_retention") == 1
 	printCheck("autonomous status resumption stays report-only", autonomyOK)
