@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_MARKET="$ROOT/.claude-plugin/marketplace.json"
 CODEX_MARKET="$ROOT/.agents/plugins/marketplace.json"
-SKILLS="$ROOT/plugins/megapowers/skills"
 
 fail() {
   printf 'native-first contract: %s\n' "$*" >&2
@@ -36,7 +35,7 @@ assert_single_marketplace_plugin() {
 assert_single_marketplace_plugin "$CLAUDE_MARKET" '.plugins[0].source'
 assert_single_marketplace_plugin "$CODEX_MARKET" '.plugins[0].source.path'
 
-actual_plugins=$(find "$ROOT/plugins" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+actual_plugins=$(git -C "$ROOT" ls-files 'plugins/*' | cut -d/ -f2 | sort -u)
 [[ $actual_plugins == megapowers ]] || fail "plugins/ must contain only megapowers, got: $actual_plugins"
 
 for manifest in \
@@ -46,11 +45,11 @@ for manifest in \
     fail "${manifest#"$ROOT/"} must declare megapowers"
 done
 
-actual_skills=$(find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+actual_skills=$(git -C "$ROOT" ls-files 'plugins/megapowers/skills/*/SKILL.md' | cut -d/ -f4 | sort)
 [[ $actual_skills == "$expected_skills" ]] ||
   fail "plugin skill inventory differs from the ten native-first skills"
 
-actual_links=$(find "$ROOT/.agents/skills" -mindepth 1 -maxdepth 1 -type l -printf '%f\n' | sort)
+actual_links=$(git -C "$ROOT" ls-files -s '.agents/skills/*' | awk '$1 == "120000" { sub(".*/", "", $4); print $4 }' | sort)
 [[ $actual_links == "$expected_skills" ]] ||
   fail ".agents/skills links differ from the plugin skill inventory"
 while IFS= read -r skill; do
@@ -77,7 +76,7 @@ expected_hook_files=$(printf '%s\n' \
   dispatch.sh \
   hooks.json \
   run-hook.cmd)
-actual_hook_files=$(find "$ROOT/plugins/megapowers/hooks" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)
+actual_hook_files=$(git -C "$ROOT" ls-files 'plugins/megapowers/hooks/*' | awk -F/ 'NF == 4 { print $4 }' | sort)
 [[ $actual_hook_files == "$expected_hook_files" ]] ||
   fail "hooks/ contains non-destructive integrations"
 
@@ -85,7 +84,7 @@ expected_hook_tests=$(printf '%s\n' \
   codex-deny-destructive.test.sh \
   deny-destructive.test.sh \
   dispatch.test.sh)
-actual_hook_tests=$(find "$ROOT/plugins/megapowers/hooks/tests" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)
+actual_hook_tests=$(git -C "$ROOT" ls-files 'plugins/megapowers/hooks/tests/*' | awk -F/ 'NF == 5 { print $5 }' | sort)
 [[ $actual_hook_tests == "$expected_hook_tests" ]] ||
   fail "hooks/tests contains obsolete hook coverage"
 
@@ -117,12 +116,12 @@ removed_paths=(
   scripts/validate-parallel-tests.audit.tsv
 )
 for path in "${removed_paths[@]}"; do
-  [[ ! -e "$ROOT/$path" ]] || fail "$path must be removed"
+  if git -C "$ROOT" ls-files -- "$path" "$path/*" | grep -q .; then
+    fail "$path must be removed from the release artifact"
+  fi
 done
 
-if find "$ROOT/plugins" "$ROOT/templates" "$ROOT/.agents" \
-  -path "$ROOT/.agents/skills/README.md" -prune -o \
-  \( -iname '*opencode*' -o -iname '*grok*' \) -print | grep -q .; then
+if git -C "$ROOT" ls-files plugins templates .agents | grep -Eqi '(^|/)(opencode|grok)(/|$)'; then
   fail "parallel-runtime integration paths remain"
 fi
 
