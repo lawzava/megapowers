@@ -25,5 +25,10 @@ grep -qF 'grep -qF "## $claude_version - " CHANGELOG.md' "$validator" ||
 if grep -q 'release_version=.*head -1' "$validator"; then
   fail 'validator deadlocks changelog-first release candidates on the newest entry'
 fi
+grep -qF 'git ls-files "plugins/*"' "$validator" ||
+  fail 'plugin inventory is not derived from the tracked release artifact'
+if grep -qF 'find plugins -mindepth 1 -maxdepth 1 -type d' "$validator"; then
+  fail 'ignored local plugin residue can make validation environment-dependent'
+fi
 
 printf 'validation contract: ok\n'

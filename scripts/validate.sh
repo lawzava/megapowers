@@ -86,7 +86,7 @@ run_check "marketplace and manifest contract" 20s bash -c '
   test "$codex_name" = megapowers
   test "$claude_version" = "$codex_version"
   grep -qF "## $claude_version - " CHANGELOG.md
-  test "$(find plugins -mindepth 1 -maxdepth 1 -type d -printf "%f\\n")" = megapowers
+  test "$(git ls-files "plugins/*" | cut -d/ -f2 | sort -u)" = megapowers
 '
 
 run_check "shell syntax" 30s bash -c '
