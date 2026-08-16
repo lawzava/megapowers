@@ -15,7 +15,7 @@ environments.
 | Native agents and parallel work | Use harness-native features | Use harness-native features |
 | Durable goals | Prefer native goal support | Prefer native goal support |
 | Independent review provider | Claude or Codex CLI, different from author | Claude or Codex CLI, different from author |
-| Credentialed installed A/B | Release evidence arm | Release evidence arm |
+| Credentialed installed A/B | Optional diagnostic arm | Optional diagnostic arm |
 | Exact-tag install smoke | Post-publish oracle | Post-publish oracle |
 
 ## Shared contract

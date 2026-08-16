@@ -44,7 +44,7 @@ fi
 
 grep -q 'exactly one plugin' "$ROOT/README.md" || fail 'README does not state the one-plugin boundary'
 grep -q 'Claude Code and Codex' "$ROOT/README.md" || fail 'README does not state the two supported harnesses'
-grep -q 'installed-plugin A/B' "$ROOT/README.md" || fail 'README does not identify release evidence'
+grep -q 'installed-plugin A/B' "$ROOT/README.md" || fail 'README does not identify optional behavioral evidence'
 grep -q 'report-only' "$ROOT/docs/advanced/evals.md" || fail 'eval docs do not label PR replay report-only'
 grep -q 'not a security boundary' "$ROOT/SECURITY.md" || fail 'security boundary warning missing'
 grep -Eq 'inspect --file .* --provider claude' "$ROOT/docs/advanced/independent-review.md" ||

@@ -188,21 +188,21 @@ grep -q 'installed-plugin completed rows must have actor rc 0' "$tmp/nonzero-ins
   installed_row control-1 block-1 control "$empty_plugin_hash"
 } >"$tmp/non-broker-sandbox.jsonl"
 if go run "$ROOT/evals/score.go" --strict \
-  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  --acceptance-criteria "$ROOT/evals/studies/installed-ab/gates.json" \
   "$tmp/non-broker-sandbox.jsonl" >"$tmp/non-broker-sandbox.out" 2>"$tmp/non-broker-sandbox.err"; then
-  echo 'FAIL publishability accepted non-broker sandbox provenance' >&2
+  echo 'FAIL study acceptance accepted non-broker sandbox provenance' >&2
   exit 1
 fi
 grep -q 'broker-attested OS boundary' "$tmp/non-broker-sandbox.err"
 
 write_publish_rows "$tmp/perfect-treatment.jsonl" 10 10 10
 go run "$ROOT/evals/score.go" --strict \
-  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  --acceptance-criteria "$ROOT/evals/studies/installed-ab/gates.json" \
   "$tmp/perfect-treatment.jsonl" >/dev/null
 
 write_publish_rows "$tmp/control-diagnostic.jsonl" 10 0 10
 go run "$ROOT/evals/score.go" --strict \
-  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  --acceptance-criteria "$ROOT/evals/studies/installed-ab/gates.json" \
   "$tmp/control-diagnostic.jsonl" >/dev/null
 
 write_publish_rows "$tmp/paired-mcnemar.jsonl" 12 0 12
@@ -211,18 +211,18 @@ grep -q '| 0.000488 |' "$tmp/paired-mcnemar.out"
 
 write_publish_rows "$tmp/imperfect-treatment.jsonl" 9 10 10
 if go run "$ROOT/evals/score.go" --strict \
-  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  --acceptance-criteria "$ROOT/evals/studies/installed-ab/gates.json" \
   "$tmp/imperfect-treatment.jsonl" >"$tmp/imperfect-publish.out" 2>"$tmp/imperfect-publish.err"; then
-  echo 'FAIL publishability accepted an imperfect treatment' >&2
+  echo 'FAIL study acceptance accepted an imperfect treatment' >&2
   exit 1
 fi
 grep -q 'require every treatment run to pass' "$tmp/imperfect-publish.err"
 
 write_publish_rows "$tmp/too-few-pairs.jsonl" 9 9 9
 if go run "$ROOT/evals/score.go" --strict \
-  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  --acceptance-criteria "$ROOT/evals/studies/installed-ab/gates.json" \
   "$tmp/too-few-pairs.jsonl" >"$tmp/too-few-pairs.out" 2>"$tmp/too-few-pairs.err"; then
-  echo 'FAIL publishability accepted too few paired runs' >&2
+  echo 'FAIL study acceptance accepted too few paired runs' >&2
   exit 1
 fi
 grep -q 'balanced pairs; require 10' "$tmp/too-few-pairs.err"

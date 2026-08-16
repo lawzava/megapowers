@@ -31,6 +31,6 @@ evals/studies/install-smoke/run-smoke.sh \
 ```
 
 Exact-ref mode fails on every skip, verifies the fetched tag points at `HEAD`,
-and checks source plus cached manifests have the requested version. Installed
-A/B certifies the already-versioned candidate before tagging. This
-credential-free delivery oracle cannot replace that behavioral certificate.
+and checks source plus cached manifests have the requested version. This
+credential-free oracle proves delivery only; it does not claim behavioral
+quality.

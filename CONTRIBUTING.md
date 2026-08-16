@@ -17,7 +17,7 @@ Then match evidence to the change:
 | Change | Required evidence |
 |---|---|
 | Hook, tool, manifest, or runner behavior | A failing regression first, then the focused test and full deterministic gate |
-| New or changed agent guidance | Baseline the target behavior, then run source-bound installed-plugin A/B under Claude Code and Codex |
+| New or changed agent guidance | Add a failing deterministic regression first; use installed-plugin A/B when real-agent comparison would inform the change |
 | Removed or compressed guidance | Deterministic gate, plus evidence for any published behavior the removed text carried |
 | Editorial text | Link, reference, and deterministic checks only |
 | Eval oracle | Mutation proof that the oracle rejects a deliberately wrong artifact |
@@ -52,7 +52,7 @@ The current evidence stack is documented in
 [docs/advanced/evals.md](./docs/advanced/evals.md):
 
 1. deterministic regressions for mechanics;
-2. credentialed installed-plugin A/B for release behavior;
+2. optional credentialed installed-plugin A/B for comparative behavior;
 3. report-only PR replay for real-project correctness;
 4. exact-tag install smoke after publication.
 
@@ -64,12 +64,8 @@ indeterminate, timed-out, or harness-error data fails closed.
 
 1. Write the changelog entry and freeze the candidate revision.
 2. Run deterministic validation.
-3. For a behavior-changing release, produce and review a source-bound
-   installed-plugin A/B certificate for Claude Code and Codex.
-4. Run `scripts/release.sh X.Y.Z`; it must refuse missing or mismatched required
-   certification before changing versioned files.
-5. Review the diff, then perform separately authorized tag and publish actions.
+3. Run `scripts/release.sh X.Y.Z`; it validates the clean, already-versioned
+   candidate without mutating, tagging, or publishing it.
+4. Review the diff, then perform separately authorized tag and publish actions.
+5. Wait for remote CI on the exact revision.
 6. Run exact-tag install smoke against the public tag.
-
-Never use a local checkout or post-publish smoke result as a substitute for
-candidate certification.

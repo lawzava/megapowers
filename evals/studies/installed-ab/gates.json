@@ -7,7 +7,9 @@
   },
   "code_quality": {
     "minimum_seeded_defect_reduction": 1,
-    "maximum_convention_regressions": 0,
+    "maximum_convention_regressions": 0
+  },
+  "acceptance": {
     "minimum_paired_runs": 10,
     "require_all_treatment_passes": true
   },
@@ -19,6 +21,6 @@
   "autonomy_status": {
     "minimum_fact_retention": 1.0,
     "maximum_invented_facts": 0,
-    "release_gate": false
+    "report_only": true
   }
 }

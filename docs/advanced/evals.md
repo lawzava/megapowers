@@ -46,7 +46,7 @@ strict scorer. The treatment installs the current checkout. The control stays
 empty. Task, fixture, source, plugin, harness, model, effort, and environment
 identities travel with each row.
 
-Current release gates include:
+Current study acceptance checks include:
 
 - prose retains every seeded fact, invents none, and leaves already-direct text
   unchanged;
@@ -57,11 +57,12 @@ Current release gates include:
 
 Control rows remain mandatory paired diagnostics. Their results and exact
 McNemar comparison are reported, but do not gate explicit tasks that already
-tell both arms what correct behavior is. This certifies treatment reliability,
-not a general claim that the plugin improves model capability.
+tell both arms what correct behavior is. This measures treatment reliability,
+not a general claim that the plugin improves model capability or a prerequisite
+for release.
 
 The autonomous resume case remains report-only until repeated real runs justify
-a threshold. A selftest never produces release certification.
+a threshold. A selftest never produces behavioral evidence.
 
 ## PR replay
 
@@ -90,20 +91,19 @@ The untouched base must fail the oracle. Actor work passes only when the hidden
 correctness oracle passes. Historical file overlap is diagnostic and never
 changes the verdict. PR replay is report-only.
 
-## Publishable artifacts
+## Sanitized artifacts
 
-The installed A/B and PR replay runners publish only `results.jsonl` and a
-sanitized `manifest.json`. Do not publish raw homes, repositories, prompts,
+The installed A/B and PR replay runners write a shareable `results.jsonl` and a
+sanitized `manifest.json`. Do not share raw homes, repositories, prompts,
 responses, transcripts, credentials, or absolute paths.
 
 ## Release order
 
 1. Set the release version, then freeze and commit the candidate revision.
-2. Run deterministic validation.
-3. Run source-bound installed A/B for Claude Code and Codex when behavioral
-   guidance changed.
-4. Review the certificate, then tag and publish the same committed revision.
+2. Run `scripts/release.sh X.Y.Z` against the clean candidate.
+3. Review the diff, push the exact revision, and wait for remote CI.
+4. Create the signed tag and publish the GitHub release.
 5. Run exact-tag fresh-install smoke against the public tag.
 
-The post-publish smoke proves delivery from the public ref. It cannot rescue a
-candidate that was not certified before publication.
+Installed A/B and PR replay remain optional diagnostic studies outside this
+release gate. Post-publish smoke proves delivery from the public ref.

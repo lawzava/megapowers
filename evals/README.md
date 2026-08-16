@@ -6,11 +6,11 @@ one layer into another.
 | Layer | Question | Credentials | Release role |
 |---|---|---|---|
 | Deterministic regressions | Do manifests, hooks, tools, schemas, and runners work? | No | Required PR gate |
-| Installed-plugin A/B | Does this exact plugin revision change target behavior? | Yes | Behavioral release evidence |
+| Installed-plugin A/B | Does this exact plugin revision change target behavior? | Yes | Optional diagnostic evidence |
 | PR replay | Can the installed plugin improve hidden-test correctness on pinned real changes? | Yes | Report-only |
 
 Exact-tag install smoke runs after publication and proves delivery from the
-public ref. It is not candidate behavior certification.
+public ref. It is a delivery check, not behavioral evidence.
 
 ## Deterministic regressions
 
@@ -73,17 +73,17 @@ go run evals/studies/installed-ab/run.go --run --credentialed \
   --out results/installed-ab-codex
 ```
 
-Run Claude Code and Codex separately. Score the combined publish rows with
-`score.go --strict`.
+Run Claude Code and Codex separately when the comparison is useful. Score the
+combined sanitized rows with `score.go --strict`.
 
 Cases and thresholds live in
 [`studies/installed-ab/`](./studies/installed-ab/). Current gates cover prose
 fact retention and no-op behavior, code-quality defect reduction without
 convention regression, and test-first ordering with an observed red run. The
-autonomous resume case is report-only. Release certification requires every
+autonomous resume case is report-only. Study acceptance requires every
 treatment run to pass after the configured number of balanced pairs. Control
-outcomes remain required diagnostics; they are not an uplift gate for these
-explicit regression tasks.
+outcomes remain paired diagnostics; they are not an uplift gate for these
+explicit regression tasks, and the study does not gate releases.
 
 `--selftest` proves isolation-contract handling, cleanup, fail-closed execution,
 result shape, and artifact sanitization with an in-process fake actor. Broker
