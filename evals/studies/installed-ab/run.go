@@ -873,17 +873,42 @@ func factCounts(response string, required, forbidden []string) (int, int) {
 	lower := strings.ToLower(response)
 	retained := 0
 	for _, fact := range required {
-		if strings.Contains(lower, strings.ToLower(fact)) {
+		if containsDelimitedFact(lower, strings.ToLower(fact)) {
 			retained++
 		}
 	}
 	invented := 0
 	for _, fact := range forbidden {
-		if strings.Contains(lower, strings.ToLower(fact)) {
+		if containsDelimitedFact(lower, strings.ToLower(fact)) {
 			invented++
 		}
 	}
 	return retained, invented
+}
+
+func containsDelimitedFact(response, fact string) bool {
+	if fact == "" {
+		return false
+	}
+	for offset := 0; offset <= len(response)-len(fact); {
+		index := strings.Index(response[offset:], fact)
+		if index < 0 {
+			return false
+		}
+		index += offset
+		end := index + len(fact)
+		beforeOK := index == 0 || !isASCIIWord(response[index-1])
+		afterOK := end == len(response) || !isASCIIWord(response[end])
+		if beforeOK && afterOK {
+			return true
+		}
+		offset = index + 1
+	}
+	return false
+}
+
+func isASCIIWord(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= '0' && value <= '9' || value == '_'
 }
 
 func runOracle(ctx context.Context, dir string, argv []string) (int, error) {
@@ -1763,10 +1788,54 @@ func runSelftest() error {
 	if !noopOK {
 		return errors.New("already-direct prose was not preserved")
 	}
+	var prosePlan studyCase
+	for _, c := range cases.Cases {
+		if c.ID == "humanizing-prose-plan" {
+			prosePlan = c
+			break
+		}
+	}
+	retained, invented := factCounts("Blocked because credentials are unavailable. Next, request a scoped token.", prosePlan.RequiredFacts, prosePlan.ForbiddenFacts)
+	naturalRewriteOK := retained == len(prosePlan.RequiredFacts) && invented == 0
+	printCheck("natural prose preserves atomic facts", naturalRewriteOK)
+	if !naturalRewriteOK {
+		return errors.New("natural prose was rejected by the fact oracle")
+	}
+	reversalRejected := true
+	for _, reversed := range []string{
+		"Unblocked because credentials are unavailable. Next, request a scoped token.",
+		"Not blocked because credentials are unavailable. Do not request a scoped token.",
+	} {
+		retained, invented = factCounts(reversed, prosePlan.RequiredFacts, prosePlan.ForbiddenFacts)
+		reversalRejected = reversalRejected && (retained < len(prosePlan.RequiredFacts) || invented > 0)
+	}
+	printCheck("fact reversals fail the prose oracle", reversalRejected)
+	if !reversalRejected {
+		return errors.New("fact reversal passed the prose oracle")
+	}
 	autonomyOK := metricFor(rows, "autonomous-run-resume-status", "treatment", "report_only") == 1 && metricFor(rows, "autonomous-run-resume-status", "treatment", "fact_retention") == 1
 	printCheck("autonomous status resumption stays report-only", autonomyOK)
 	if !autonomyOK {
 		return errors.New("autonomy status case is not report-only")
+	}
+	var autonomyCase studyCase
+	for _, c := range cases.Cases {
+		if c.ID == "autonomous-run-resume-status" {
+			autonomyCase = c
+			break
+		}
+	}
+	completionClaimsRejected := true
+	for _, claim := range []string{
+		"TASK-2. Next: run tests/focused.sh. Work completed.",
+		"TASK-2. Next: run tests/focused.sh. Completion is confirmed.",
+	} {
+		_, invented = factCounts(claim, autonomyCase.RequiredFacts, autonomyCase.ForbiddenFacts)
+		completionClaimsRejected = completionClaimsRejected && invented > 0
+	}
+	printCheck("autonomy completion claims fail the oracle", completionClaimsRejected)
+	if !completionClaimsRejected {
+		return errors.New("autonomy completion claim passed the oracle")
 	}
 	sameBatchTestFirst, sameBatchRed := tddEvidence([]actorEvent{{Kind: "write", Path: "calculator_test.go", Step: 1}, {Kind: "write", Path: "calculator.go", Step: 1}, {Kind: "test", RC: 1, Step: 2}})
 	simultaneousRejected := !sameBatchTestFirst && !sameBatchRed
