@@ -1,10 +1,7 @@
 name: freshness
 
-# The repo's opinions (model IDs, delegate routes, stack picks, published eval
-# numbers) rot on a clock, not on a commit — so this runs on a schedule, not on
-# push. A failed weekly run means a dated file is overdue for re-review; fix
-# it by re-reviewing the opinions and bumping the file's date line.
-# validate.sh separately guards the date-line FORMAT on every push.
+# Current Claude Code and Codex support plus pinned validation tooling can drift
+# without a repository change. Recheck those dated surfaces every week.
 
 on:
   schedule:
@@ -18,6 +15,8 @@ jobs:
   freshness:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - name: Dated opinions reviewed within 30 days
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Harness support reviewed within 30 days
         run: scripts/check-freshness.sh

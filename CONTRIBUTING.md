@@ -1,84 +1,75 @@
 # Contributing
 
-Contributions are welcome. The bar is the one the repo holds itself to: a claim
-of effect needs a run behind it.
+megapowers accepts small, measured changes to one plugin for current Claude Code
+and Codex.
 
-## Before you open a PR
+## Before a pull request
 
-1. Run the gates locally; both must be green:
-
-   ```bash
-   scripts/validate.sh      # structural: manifests, frontmatter, cross-refs, docs consistency, hooks
-   bash evals/run-all.sh    # behavioral: deterministic scenarios with the mock agent
-   ```
-
-2. Match the evidence to the kind of change:
-
-   | Change | What it needs |
-   |---|---|
-   | **Adding** behavioral guidance (a rule, prohibition, recipe, conditional) | Baseline the failure first, then write the guidance. Follow `plugins/megapowers/skills/writing-skills`. |
-   | **Removing or compressing** guidance | The gates green, plus a sentence on why the model no longer needs it. No pressure test, unless the wording carries a published effect size in `evals/RESULTS.md`. |
-   | Editorial (typos, links, meaning-preserving rewording) | Nothing beyond the gates. |
-
-   Trims are welcome and do not need to clear the bar that additions do.
-   Guidance written for an older model generation degrades output on a newer
-   one, so a PR that deletes a rule the model now follows by default is a fix,
-   not a regression.
-   `plugins/megapowers/skills/writing-skills/de-prescription-rubric.md` is the
-   standard for what comes out and what stays.
-
-3. If you add an eval oracle, mutation-test it: feed it a deliberately broken
-   artifact and confirm it fails. An oracle that cannot fail is a no-op, and
-   review will ask for the evidence.
-
-4. If you add or change a hook, add or extend its test under
-   `plugins/*/hooks/tests/*.test.sh` (dependency-free bash, see the existing
-   suites), and keep it fail-open: any error or uncertainty must allow.
-
-5. Keep changes portable. Skills must work as plain `SKILL.md` on Claude Code,
-   Codex, and OpenCode; harness-specific enforcement (hooks) is labeled by
-   harness and fails open by absence elsewhere. Plugin manifests ship the
-   supported Claude Code and Codex lifecycle hooks; the other harnesses are
-   skills-only.
-
-## Conventions
-
-- Conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`).
-- One concern per commit. The subject carries the change; add a one sentence
-  body only when the why is not readable from the diff.
-- Cross-plugin skill references are soft: guard them with "if installed".
-- No unsourced statistics in skills. See `evals/RESULTS.md` for the format a
-  claim of effect needs.
-- New helpers are Go (`go run` a stdlib file). Do not add Python, Node, or
-  multi-line bash for glue. Claude/Codex hook entrypoints stay shell;
-  OpenCode plugins stay JavaScript.
-
-## Releases
-
-Write the `## X.Y.Z - ` CHANGELOG.md entry, then run `scripts/release.sh
-X.Y.Z`. It stamps every plugin manifest and the public install pins in
-README.md, docs/agent-install.md, and docs/setup.md; `scripts/validate.sh`
-checks the result against the changelog. After the signed tag is public, run
-the strict fresh-install gate against that exact remote ref:
+Run the deterministic gate:
 
 ```bash
-evals/studies/install-smoke/run-smoke.sh \
-  --out "${TMPDIR:-/tmp}/megapowers-install-X.Y.Z" \
-  --source lawzava/megapowers --ref vX.Y.Z --version X.Y.Z \
-  --harnesses claude,codex
+scripts/validate.sh
+bash evals/run-all.sh --json results.jsonl
 ```
 
-This post-publish gate must have no FAIL or SKIP result. It records the fetched
-commit in `source.json`; do not substitute a local checkout for release
-certification.
+Then match evidence to the change:
 
-## What gets merged
+| Change | Required evidence |
+|---|---|
+| Hook, tool, manifest, or runner behavior | A failing regression first, then the focused test and full deterministic gate |
+| New or changed agent guidance | Baseline the target behavior, then run source-bound installed-plugin A/B under Claude Code and Codex |
+| Removed or compressed guidance | Deterministic gate, plus evidence for any published behavior the removed text carried |
+| Editorial text | Link, reference, and deterministic checks only |
+| Eval oracle | Mutation proof that the oracle rejects a deliberately wrong artifact |
 
-Small, verifiable improvements land fast. Large reworks should start as an
-issue describing the failure you observed (ideally with a baseline transcript
-or eval scenario) before the rewrite.
+A runner selftest proves mechanics only. It is not behavioral evidence.
 
-Shipped guidance describes how the ecosystem works now. It is not a changelog:
-migration notes, superseded behavior, war stories that motivated a rule, and
-measurement provenance belong in `CHANGELOG.md` or `evals/RESULTS.md`, not in a
-skill body an agent loads. A PR that moves one of those out is welcome.
+## Scope
+
+- Keep the marketplace at exactly one plugin and the inventory at ten skills.
+- Keep semantic skills portable. Harness-specific mechanics belong at a narrow
+  adapter or documented provider boundary.
+- Prefer native agents, goals, permissions, worktrees, memory, and browser tools.
+- Do not add a model router, session prompt injection, scheduler, formatter,
+  status line, or another harness without an explicit scope decision and fresh
+  evidence.
+- Add no unsourced model, benchmark, cost, context, or performance claims.
+
+## Code and prose
+
+- Follow repository instructions and neighboring conventions.
+- New glue is Go standard library. Harness-required hook entrypoints remain
+  shell.
+- Add or change behavior test-first. Keep hooks bounded and directly tested.
+- Human-facing prose leads with the outcome, preserves source facts, and omits
+  unsupported claims and session history.
+- Keep commits conventional and focused. Do not add attribution or session
+  trailers.
+
+## Evaluation
+
+The current evidence stack is documented in
+[docs/advanced/evals.md](./docs/advanced/evals.md):
+
+1. deterministic regressions for mechanics;
+2. credentialed installed-plugin A/B for release behavior;
+3. report-only PR replay for real-project correctness;
+4. exact-tag install smoke after publication.
+
+Published rows must identify source, harness, CLI, model, effort, prompt,
+fixture, plugin, environment, status, and artifacts. Malformed, incomplete,
+indeterminate, timed-out, or harness-error data fails closed.
+
+## Release sequence
+
+1. Write the changelog entry and freeze the candidate revision.
+2. Run deterministic validation.
+3. For a behavior-changing release, produce and review a source-bound
+   installed-plugin A/B certificate for Claude Code and Codex.
+4. Run `scripts/release.sh X.Y.Z`; it must refuse missing or mismatched required
+   certification before changing versioned files.
+5. Review the diff, then perform separately authorized tag and publish actions.
+6. Run exact-tag install smoke against the public tag.
+
+Never use a local checkout or post-publish smoke result as a substitute for
+candidate certification.

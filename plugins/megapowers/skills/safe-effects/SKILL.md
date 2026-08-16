@@ -1,0 +1,26 @@
+---
+name: safe-effects
+description: Use when preparing a deploy, message, charge, migration, destructive query, DNS change, external API write, or any action with a real-world side effect.
+---
+
+# Safe Effects
+
+Authorization must cover the exact target, effect, environment, and scope. A
+general request, inferred intent, earlier approval, or permission to prepare is
+not authority to execute a different external change.
+
+Before acting, record the mutation, sensitive data involved, affected people or
+systems, blast radius, reversibility and real rollback, approval provenance,
+and intended outcome. Observe or simulate first when a meaningful preview
+exists. Use an idempotency or duplicate-prevention strategy whenever retries
+could repeat the effect.
+
+Proceed only inside the approved boundary. Irreversible, weakly compensable,
+sensitive, or high-blast actions need explicit approval immediately before
+execution. Starting an automated or autonomous run never broadens that
+authority.
+
+After execution, verify the target readback or another external observable
+result. Record partial completion and the compensating action plainly. Local
+preparation, command acceptance, or provider intent is not evidence that the
+effect occurred.

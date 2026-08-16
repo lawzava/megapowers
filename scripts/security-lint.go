@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -18,7 +20,7 @@ var (
 	reB64   = regexp.MustCompile(`(?i)base64([[:space:]]+[^|]*)?(-d|-di|--decode)[^|]*\|[[:space:]]*(env[[:space:]]+)?([^[:space:]]*/)?(sh|bash|zsh|dash|ksh|python[0-9.]*|node|perl|ruby)([[:space:]]|$)`)
 	reEval  = regexp.MustCompile("(?i)eval[^#]*(\\$\\(|`)[^)]*(curl|wget|fetch)")
 	reSafe  = regexp.MustCompile(`(?i)ignore (all |the )?(previous|prior) (instruction|message|context)|disregard (all |the )?(previous|prior|the above)|disable (the )?(sandbox|safety|guardrail|security)|bypass (the )?permission|bypass permissions|turn off (the )?(sandbox|safety)`)
-	reSkill = regexp.MustCompile(`^plugins/[^/]+/skills/[^/]+/SKILL\.md$`)
+	reSkill = regexp.MustCompile(`^plugins/[^/]+/skills/`)
 )
 
 var bidiRunes = []rune{
@@ -49,8 +51,8 @@ func runSecurityLint(args []string) int {
 		return 2
 	}
 	for entry := range allow {
-		if reSkill.MatchString(entry) {
-			fmt.Fprintf(os.Stderr, "security-lint: disallowed allowlist entry: %s (a shipped skill may never be allowlisted; fix the skill, not the allowlist).\n", entry)
+		if !validAllowlistEntry(entry) {
+			fmt.Fprintf(os.Stderr, "security-lint: disallowed allowlist entry: %s (only explicit test fixtures and historical records may be allowlisted).\n", entry)
 			return 1
 		}
 	}
@@ -87,17 +89,34 @@ func runSecurityLint(args []string) int {
 	}
 	emitAll := func(group []finding) {
 		for _, h := range group {
-			fmt.Printf("%s:%s: %s\n", h.rel, h.ln, h.msg)
+			fmt.Printf("%s:%s: %s\n", displayPath(h.rel), h.ln, h.msg)
 			hits++
 		}
 	}
 
 	for _, f := range uniq {
-		st, err := os.Stat(f)
-		if err != nil || !st.Mode().IsRegular() {
+		st, err := os.Lstat(f)
+		if os.IsNotExist(err) {
 			continue
 		}
 		rel := relpath(root, f)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "security-lint: unreadable input: %s\n", rel)
+			return 2
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			if isExpectedSkillLink(root, f, rel) {
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "security-lint: refusing symlink input: %s\n", displayPath(rel))
+			return 2
+		}
+		if !st.Mode().IsRegular() {
+			continue
+		}
+		if isControlFile(rel) {
+			continue
+		}
 		if allow[rel] {
 			continue
 		}
@@ -168,44 +187,56 @@ func loadAllowlist(path string) (map[string]bool, error) {
 }
 
 func listDefaultScope(root string) ([]string, error) {
-	var files []string
-	err := filepath.WalkDir(filepath.Join(root, "plugins"), func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if d.Name() == "SKILL.md" {
-			files = append(files, path)
-		}
-		if strings.Contains(path, string(filepath.Separator)+"hooks"+string(filepath.Separator)) {
-			files = append(files, path)
-		}
-		return nil
-	})
+	output, err := exec.Command("git", "-C", root, "ls-files", "-co", "--exclude-standard", "-z").Output()
 	if err != nil {
 		return nil, err
 	}
-	err = filepath.WalkDir(filepath.Join(root, "templates"), func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	parts := bytes.Split(output, []byte{0})
+	files := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if len(part) == 0 {
+			continue
 		}
-		if !d.IsDir() {
-			files = append(files, path)
-		}
-		return nil
-	})
-	return files, err
+		files = append(files, filepath.Join(root, filepath.FromSlash(string(part))))
+	}
+	return files, nil
+}
+
+func validAllowlistEntry(entry string) bool {
+	clean := filepath.ToSlash(filepath.Clean(entry))
+	if clean != entry || filepath.IsAbs(entry) || clean == ".." || strings.HasPrefix(clean, "../") {
+		return false
+	}
+	if reSkill.MatchString(clean) {
+		return false
+	}
+	if clean == "CHANGELOG.md" || clean == "evals/RESULTS.md" {
+		return true
+	}
+	return strings.Contains(clean, "/tests/") || strings.Contains(clean, "/fixtures/") || strings.HasSuffix(clean, ".test.sh")
+}
+
+func isControlFile(rel string) bool {
+	return rel == "scripts/security-lint.go" || rel == "scripts/security-lint.allowlist"
+}
+
+func displayPath(path string) string {
+	path = strings.ReplaceAll(path, "\r", `\r`)
+	path = strings.ReplaceAll(path, "\n", `\n`)
+	return path
 }
 
 func listArgsScope(args []string) ([]string, error) {
 	var files []string
 	for _, p := range args {
-		st, err := os.Stat(p)
+		st, err := os.Lstat(p)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "security-lint: input is missing or unsupported: %s\n", p)
 			return nil, err
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			fmt.Fprintf(os.Stderr, "security-lint: symlink input is unsupported: %s\n", p)
+			return nil, fmt.Errorf("symlink input")
 		}
 		if st.IsDir() {
 			err := filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
@@ -230,6 +261,24 @@ func listArgsScope(args []string) ([]string, error) {
 		return nil, fmt.Errorf("unsupported")
 	}
 	return files, nil
+}
+
+func isExpectedSkillLink(root, path, rel string) bool {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) != 3 || parts[0] != ".agents" || parts[1] != "skills" || parts[2] == "" {
+		return false
+	}
+	target, err := os.Readlink(path)
+	if err != nil || filepath.IsAbs(target) {
+		return false
+	}
+	resolved := filepath.Clean(filepath.Join(filepath.Dir(path), target))
+	targetRel, err := filepath.Rel(root, resolved)
+	if err != nil {
+		return false
+	}
+	want := filepath.Join("plugins", "megapowers", "skills", parts[2])
+	return targetRel == want
 }
 
 func relpath(root, p string) string {

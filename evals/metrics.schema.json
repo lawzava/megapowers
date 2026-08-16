@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lawzava/megapowers/evals/metrics.schema.json",
+  "title": "Megapowers evaluation result row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "study",
+    "evidence_class",
+    "case_id",
+    "run_id",
+    "block_id",
+    "arm",
+    "harness",
+    "source",
+    "prompt_hash",
+    "fixture_hash",
+    "plugin_hash",
+    "status",
+    "rc",
+    "duration_ms",
+    "verdict",
+    "metrics",
+    "artifacts",
+    "environment",
+    "timestamp"
+  ],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "study": { "$ref": "#/$defs/identifier" },
+    "evidence_class": { "enum": ["behavioral", "regression"] },
+    "case_id": { "$ref": "#/$defs/identifier" },
+    "run_id": { "$ref": "#/$defs/identifier" },
+    "block_id": { "$ref": "#/$defs/identifier" },
+    "arm": { "enum": ["treatment", "control", "regression"] },
+    "harness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "cli_version", "model", "effort"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "cli_version": { "$ref": "#/$defs/identifier" },
+        "model": { "$ref": "#/$defs/identifier" },
+        "effort": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "revision"],
+      "properties": {
+        "repository": { "$ref": "#/$defs/identifier" },
+        "revision": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "prompt_hash": { "$ref": "#/$defs/hash" },
+    "fixture_hash": { "$ref": "#/$defs/hash" },
+    "plugin_hash": {
+      "$ref": "#/$defs/hash",
+      "description": "Content hash of the installed plugin set. installed-plugin-ab controls use the SHA-256 of empty bytes; treatments must not."
+    },
+    "status": { "enum": ["completed", "timeout", "harness_error"] },
+    "rc": { "type": "integer" },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "verdict": { "enum": ["pass", "fail", "indeterminate", "harness_error"] },
+    "metrics": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$" },
+      "additionalProperties": { "type": "number" }
+    },
+    "artifacts": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$" },
+      "additionalProperties": { "$ref": "#/$defs/hash" }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "arch", "sandbox", "locale"],
+      "properties": {
+        "os": { "$ref": "#/$defs/identifier" },
+        "arch": { "$ref": "#/$defs/identifier" },
+        "sandbox": { "$ref": "#/$defs/identifier" },
+        "locale": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "phase": { "$ref": "#/$defs/identifier" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "evidence_class": { "const": "behavioral" } } },
+      "then": { "properties": { "arm": { "enum": ["treatment", "control"] } } }
+    },
+    {
+      "if": { "properties": { "evidence_class": { "const": "regression" } } },
+      "then": { "properties": { "arm": { "const": "regression" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidence_class": { "const": "behavioral" },
+          "study": { "const": "installed-plugin-ab" },
+          "arm": { "const": "control" }
+        },
+        "required": ["evidence_class", "study", "arm"]
+      },
+      "then": {
+        "properties": {
+          "plugin_hash": {
+            "const": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidence_class": { "const": "behavioral" },
+          "study": { "const": "installed-plugin-ab" },
+          "arm": { "const": "treatment" }
+        },
+        "required": ["evidence_class", "study", "arm"]
+      },
+      "then": {
+        "properties": {
+          "plugin_hash": {
+            "not": {
+              "const": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

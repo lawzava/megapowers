@@ -7,14 +7,14 @@ inventory="$ROOT/evals/coverage-inventory.sh"
 test -x "$inventory"
 out="$("$inventory")"
 grep -q '^# megapowers eval coverage inventory$' <<<"$out"
-grep -q '^33 shipped skills$' <<<"$out"
-grep -q '| skill | declared scenarios | declared studies | declared evaluation |' <<<"$out"
-grep -q '| greenfield-go-stack | 0 | 0 | none |' <<<"$out"
-grep -q '| test-driven-development |' <<<"$out"
-if grep -Eq '\| (covered|uncovered) \|' <<<"$out"; then
-  echo 'FAIL declaration inventory claims derived coverage proof' >&2
+declared_count="$(find "$ROOT/plugins" -type f -name SKILL.md | wc -l | tr -d ' ')"
+grep -q "^$declared_count shipped skills$" <<<"$out"
+grep -q '| skill | deterministic regressions | behavioral studies | behavioral evidence |' <<<"$out"
+grep -q '| autonomous-run |' <<<"$out"
+if grep -Eq '\| (covered|uncovered|present) \|' <<<"$out"; then
+  echo 'FAIL inventory upgrades declarations or regressions into efficacy claims' >&2
   exit 1
 fi
-grep -q 'manually maintained evidence association' "$ROOT/evals/studies/coverage.tsv"
+grep -q 'deterministic regressions are not behavioral skill evidence' "$ROOT/evals/studies/coverage.tsv"
 
 echo "coverage inventory contract: ok"

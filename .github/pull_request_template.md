@@ -1,9 +1,9 @@
-**What & why**
+**Outcome and reason**
 
-**Gates**
-- [ ] `scripts/validate.sh` green
-- [ ] `bash evals/run-all.sh` green
-- [ ] Behavioral guidance changes: baseline/pressure-tested per writing-skills
-  (or n/a: editorial only)
-- [ ] New/changed oracles are mutation-tested; new/changed hooks have tests and
-  fail open
+**Evidence**
+
+- [ ] `scripts/validate.sh`
+- [ ] Focused regression or mutation test for changed executable behavior
+- [ ] Guidance change: source-bound installed-plugin A/B for Claude Code and Codex, or not applicable
+- [ ] New claims distinguish deterministic, behavioral, and report-only evidence
+- [ ] No credentials, private paths, raw transcripts, or generated agent artifacts

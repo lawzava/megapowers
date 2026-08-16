@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "prose": {
+    "minimum_fact_retention": 1.0,
+    "maximum_invented_facts": 0,
+    "require_noop_preservation": true
+  },
+  "code_quality": {
+    "minimum_seeded_defect_reduction": 1,
+    "maximum_convention_regressions": 0,
+    "minimum_absolute_lift": 0.10,
+    "minimum_paired_runs": 10,
+    "confidence_level": 0.95
+  },
+  "tdd": {
+    "require_test_before_implementation": true,
+    "require_red_before_implementation": true,
+    "require_passing_oracle": true
+  },
+  "autonomy_status": {
+    "minimum_fact_retention": 1.0,
+    "maximum_invented_facts": 0,
+    "release_gate": false
+  }
+}

@@ -1,3 +1,0 @@
-You are working in a small git repository (your current working directory).
-
-Task: add a `.worktrees/` entry to `.gitignore` so worktree checkouts are never tracked, and append a short note to `NOTES.md` saying that git worktrees live under `.worktrees/`.

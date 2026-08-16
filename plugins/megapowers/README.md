@@ -1,57 +1,35 @@
-# megapowers (plugin)
+# megapowers plugin
 
-The workflow core: seventeen process skills that take an idea to reviewed,
-tested, merged code. Each phase of the work has its own skill with clear entry
-conditions, so the right practice is applied at the right moment.
+One native-first workflow plugin for current Claude Code and Codex.
 
-## The skills, by phase
+## Contents
 
-- Understand and design: `brainstorming`
-- Plan: `writing-plans`
-- Execute a plan: `executing-plans` (inline, yourself),
-  `subagent-driven-development` (a fresh subagent per task, with per-task
-  review)
-- Coordinate nested work: native recursive coordinator guidance for Codex and
-  Claude Code, with concurrent writers limited to disjoint owned paths in one
-  shared checkout
-- Implement: `test-driven-development` (write the failing test first),
-  `systematic-debugging` (root cause before any fix)
-- Verify and review: `verification-before-completion` (evidence before
-  claiming done), `requesting-code-review`, `receiving-code-review`
-- Integrate: `using-git-worktrees` (isolated feature work),
-  `finishing-a-development-branch` (merge, PR, keep, or discard)
-- Maintain: `upgrading-megapowers` (inspect, upgrade, and offer relevant additions)
-- Memory: `project-memory` (durable project knowledge across sessions)
-- Communicate: `humanizing-prose` (strip AI tells from user-facing prose)
-- Meta: `using-megapowers` (the session-start check-for-a-skill rule),
-  `writing-skills` (create and test new skills)
+- `skills/`: ten task-level skills for orchestration, design, implementation,
+  debugging, verification, effects, durable runs, independent review, prose,
+  and code quality.
+- `hooks/`: one destructive-command tripwire, with Claude Code and Codex
+  adapters.
+- `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: native plugin
+  metadata.
 
-## Discoverability and context cost
-
-A SessionStart hook (Claude Code) injects the `using-megapowers` skill plus a
-one-sentence preface and a model-catalog block rendered from models.toml
-(`hooks/render-model-catalog`) at session start, so the agent checks for a
-matching skill before acting instead of waiting for you to name one, and every
-session knows the available models, tiers, and delegates without invoking a
-skill. The injection is about 348 words (~450 tokens). Skill descriptions are
-always-on metadata; full skill bodies load only when invoked.
-`scripts/validate.sh` enforces the context budgets. Verify yourself:
-`bash hooks/tests/session-start.test.sh` prints the exact payload word count
-(and gates it at 440).
+The plugin uses native harness planning, agents, goals, permissions, memory,
+worktrees, and browser tools. It ships no model router or orchestration daemon.
 
 ## Install
 
-```
-/plugin install megapowers@megapowers
-```
+Add the repository marketplace, then install `megapowers@megapowers`. The
+complete commands and fresh-session checks are in
+[docs/install.md](../../docs/install.md).
 
-For Codex installation and OpenCode's portable-skills-only setup, use the
-canonical [setup guide](../../docs/setup.md). OpenCode does not load this as a
-native plugin bundle.
+## Security
+
+The hook catches a narrow set of obvious catastrophic shell commands. It is not
+a sandbox. The independent-review skill sends only an explicit file or immutable
+commit range after a disclosure and approval step. Read
+[SECURITY.md](../../SECURITY.md) before enabling either path.
 
 ## Attribution
 
-megapowers is a restyled fork of
+The workflow descends from
 [Superpowers](https://github.com/obra/superpowers) by Jesse Vincent, used under
-the MIT License (© 2025 Jesse Vincent). See the repository `ATTRIBUTION.md` for
-the full upstream notice and license terms.
+the MIT License. Full notices are in [ATTRIBUTION.md](../../ATTRIBUTION.md).

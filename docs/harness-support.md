@@ -1,204 +1,50 @@
-# Harness support matrix
+# Harness support
 
-Last reviewed: 2026-08-11.
+Last reviewed: 2026-08-16.
 
-Three harnesses are targeted: Claude Code, Codex, and OpenCode. They do not have
-the same extension surface. Three facts apply across the whole matrix:
+Current stable Claude Code and Codex are the only supported harnesses. Portable
+skills may load elsewhere, but this repository does not test or document those
+environments.
 
-- `mega-guardrails` ships hook manifests for Claude Code and Codex, and a
-  plugin pair for OpenCode. Claude gets the destructive guard, injection
-  probe, and formatter; Codex's cross-harness dispatcher runs the destructive
-  adapter and makes the others no-ops; OpenCode gets the DENY tier of the
-  destructive guard through a plugin, with the ASK tier delivered
-  declaratively through config instead.
-- Scope is deliberate. A harness earns a section by being one this repo is
-  actually run under, not by being able to read a `SKILL.md`. Skills are portable
-  markdown, so other harnesses may well load them; that is not the same as being
-  supported here, and nothing is tested against one.
-- The Gemini CLI was discontinued for consumer use in mid-2026, and Google
-  Antigravity was dropped as a target in 2026-08. Visual/browser work routes
-  through `playwright-cli` plus a vision-capable model (see
-  `mega-orchestration`).
+| Capability | Claude Code | Codex |
+|---|---|---|
+| Marketplace metadata | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
+| Plugin manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
+| Ten task skills | Supported | Supported |
+| Destructive-command guard | High-confidence denies only | High-confidence denies only |
+| Native agents and parallel work | Use harness-native features | Use harness-native features |
+| Durable goals | Prefer native goal support | Prefer native goal support |
+| Independent review provider | Claude or Codex CLI, different from author | Claude or Codex CLI, different from author |
+| Credentialed installed A/B | Release evidence arm | Release evidence arm |
+| Exact-tag install smoke | Post-publish oracle | Post-publish oracle |
 
-## Claude Code
+## Shared contract
 
-Status: supported.
+Skills use portable `name` and `description` frontmatter. Full bodies remain
+harness-neutral except `independent-review`, whose purpose is to select one of
+the two supported provider CLIs explicitly.
 
-- Plugin marketplace: `.claude-plugin/marketplace.json`.
-- Plugin manifests: `plugins/*/.claude-plugin/plugin.json`.
-- Native components used here: `skills/`, `agents/`, `hooks/`.
-- Skill standard: skills follow the Agent Skills open standard (agentskills.io),
-  the same `skills/<name>/SKILL.md` layout the other harnesses read; Claude Code
-  layers its own frontmatter extensions on top.
-- Lightest install: a folder under `~/.claude/skills/` (or `.claude/skills/`)
-  that contains a `.claude-plugin/plugin.json` loads as `<name>@skills-dir` the
-  next session, with no marketplace or install step.
-- Manifest validation: `claude plugin validate <path> --strict` treats warnings
-  as errors, so it belongs in CI; `claude plugin eval` runs a plugin's eval
-  cases (with a no-plugin baseline arm).
-- Skill content lifecycle, which is a design constraint rather than a detail: an
-  invoked skill's rendered body enters the conversation once and stays for the
-  session, and the file is not re-read on later turns, so anything meant to hold
-  for a whole task is a standing instruction, not a step. On compaction, Claude
-  Code re-attaches the most recent invocation of each skill after the summary,
-  keeping the first 5,000 tokens of each under a combined 25,000-token cap,
-  filled newest-first: a long body is truncated and an old skill in a deep stack
-  is dropped entirely. `scripts/validate.sh` budgets both.
-- Frontmatter beyond the portable set. The Agent Skills spec has six fields
-  (`name`, `description`, `license`, `compatibility`, `metadata`,
-  `allowed-tools`), and the claude.ai upload, Skills API, and `package_skill.py`
-  paths reject anything else. Claude Code additionally reads `context: fork`
-  (run the skill as its own background subagent), `paths` (glob-gate automatic
-  activation), `disable-model-invocation`, `disallowed-tools`, `arguments`, and
-  `argument-hint`. Shipped skills stay portable; the extensions are worth
-  adopting per skill, against the cost of leaving that packaging path.
-- Dynamic workflows: Claude Code's built-in multi-agent workflow runner is
-  separate from these skills. Use it for very large audits, migrations, and
-  repeated orchestrated jobs; use these skills for normal process guidance.
-  Repeatable multi-agent shapes can be saved to `.claude/workflows/` (shared
-  through the repo, invoked as `/<name>`), but plugins cannot ship workflows, so
-  the marketplace cannot distribute them; the templates carry examples instead.
-  Trust caveat: workflow subagents always run in acceptEdits, so their file
-  edits are auto-approved regardless of session mode.
-- Recursive SDD: Claude Code supports nested Agent calls. Agent teams are
-  outside this mode because they cannot nest. Megapowers requires disjoint path
-  ownership in the shared checkout; Claude Code does not enforce that ownership.
-  Megapowers runs a plan preflight before dispatch to reject overlapping
-  declarations; no registry, scheduler, or worktree manager participates.
+Repository instructions, existing code, and configured project tools are
+authoritative. megapowers supplies workflow defaults only where the repository
+is silent.
 
-## Codex
+The plugin does not configure models, agent roles, context budgets, sandbox
+rules, or permission policy. Those are harness and repository concerns. This
+avoids pinning quickly changing native surfaces into plugin guidance.
 
-Status: supported for skills, marketplace metadata, lifecycle hooks, and native
-agent role templates.
+## Hook behavior
 
-- Repo instructions: `AGENTS.md`.
-- Repo marketplace: `.agents/plugins/marketplace.json`.
-- Plugin manifests: `plugins/*/.codex-plugin/plugin.json` for `megapowers`,
-  `mega-go`, `mega-python`, `mega-ts`, `mega-orchestration`, and
-  `mega-guardrails`, and `mega-frontend`.
-- Native role templates: `mega-orchestration/assets/codex-agents/` packages
-  Terra-pinned `builder` and `reviewer` profiles to copy into
-  `~/.codex/agents/` or a project's `.codex/agents/`. They are optional for
-  role-aware Codex surfaces; native v2 does not select them automatically.
-- Optional per-skill metadata: Codex reads `agents/openai.yaml` beside a
-  skill's `SKILL.md` for interface and policy fields. Setting
-  `policy.allow_implicit_invocation: false` prevents implicit activation while
-  explicit `$skill-name` invocation still works. This repo pilots that policy
-  only on `wayfinding`; other harnesses may ignore the sidecar and discover the
-  portable skill normally. The repository validator excludes explicit-only
-  skills from Codex's implicit initial-list budget and keeps them in the
-  cross-harness upper bound. See OpenAI's
-  [Build skills](https://learn.chatgpt.com/docs/build-skills.md) documentation.
-- Native multi-agent work: prefer Codex native subagents when running inside
-  Codex. The shipped baseline deliberately opts into the under-development v2
-  collaboration surface. V2 is same-model context sharding and exposes
-  `fork_turns`, but no per-spawn role, model, or effort selector. Its session
-  ceiling is ten subagents; the shipped policy keeps ordinary batches to six,
-  uses fresh context for independent work, leaves ordinary fan-out spawning and
-  integration with the root, and requires gating workers to return before
-  completion. Codex
-  0.144.4 does not hard-enforce `agents.max_depth` under v2, so the template
-  supplies a model-visible policy that stops nesting at depth five instead.
-- Recursive SDD: Codex supports native nested subagents. Megapowers requires
-  disjoint path ownership in the shared checkout; Codex does not enforce that
-  ownership or the Git restrictions. Megapowers runs a plan preflight before
-  dispatch; no registry, scheduler, or worktree manager participates.
-- From Claude Code, prefer OpenAI's first-party
-  [`codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) for Codex
-  review, adversarial review, rescue, transfer, and background job management.
-  It uses the local Codex CLI, app server, authentication, and configuration.
-- Other harnesses can reach Codex through `codex exec`, the Codex SDK, or
-  `codex mcp-server`. Full channel and sandbox-auth mechanics live in
-  `mega-orchestration`'s `references/providers/codex.md`; a starter MCP
-  registration ships as `templates/codex-mcp-settings.json`.
-- `mega-guardrails` supplies the Codex destructive-command hook. Its formatter
-  and statusline remain Claude Code-only.
+Both adapters forward high-confidence denials only. Reversible risk remains
+with each harness's native permission system.
 
-## OpenCode
+On either harness the hook is a narrow accident tripwire. It does not replace
+the sandbox, OS permissions, review, or `safe-effects` approval for external
+mutations.
 
-Status: supported. Target version 1.18.16; the plugin SDK types published as
-`@opencode-ai/plugin` are pinned to 1.17.12 and lag the binary.
+## Freshness policy
 
-This repository still ships no credentials bridge or review-receipt adapter
-for OpenCode; use OpenCode's own credential configuration for those.
-
-- Repo instructions: `AGENTS.md`.
-- Skill format: `skills/<name>/SKILL.md`. `name` must match the directory name
-  (regex `^[a-z0-9]+(-[a-z0-9]+)*$`), and `description` is capped at 1024
-  characters; every skill here validates.
-- Installation: `npx skills add lawzava/megapowers` (the skills CLI discovers
-  this repo's skills through the marketplace manifest), or copy/symlink
-  selected canonical skill directories into any discovery path below.
-- Discovery paths (project paths walk up to the git root):
-
-  | Scope   | Paths                                                                   |
-  |---------|-------------------------------------------------------------------------|
-  | Project | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/`               |
-  | Global  | `~/.config/opencode/skills/`, `~/.claude/skills/`, `~/.agents/skills/`  |
-
-  OpenCode invokes skills through a native `skill` tool, gated by a
-  `permission.skill` config (allow / ask / deny patterns, per agent). The
-  `~/.claude/skills/` and `~/.agents/skills/` fallbacks can be turned off with
-  `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS` when you want OpenCode to read only its
-  own paths.
-- Plugins: two ship, both JavaScript modules loaded from
-  `~/.config/opencode/plugins/`, `.opencode/plugins/`, or the `plugin` array in
-  `opencode.json`. **Symlink them, do not copy them.** Each shells out to a
-  bash script resolved relative to its own file, and node resolves an ESM
-  specifier to its realpath, so a symlink keeps that path pointing into the
-  checkout while a copy leaves it pointing at a directory that does not exist.
-  A copied `deny-destructive.js` now refuses to load rather than silently
-  allowing every command it exists to stop.
-  - `plugins/megapowers/opencode/session-catalog.js`
-    (`MegapowersSessionCatalog`) injects the model catalog rendered for this
-    harness (`--caller opencode`, so the lead line names OpenCode rather than
-    the catalog `[lead]`) plus a caller-identity line (`--caller-adapter
-    opencode --caller-model <id>`) into the system prompt on every chat request,
-    via
-    `experimental.chat.system.transform`. The catalog render is memoised once
-    per process; the append happens every request.
-  - `plugins/mega-guardrails/opencode/deny-destructive.js`
-    (`MegapowersDenyDestructive`) enforces the DENY tier of the existing bash
-    tripwire from `tool.execute.before`.
-- Agent role templates: `plugins/mega-orchestration/assets/opencode-agents/`
-  (mirrored at `templates/opencode-agents/`) ships `builder.md`, pinned to the
-  moonshot provider's strong tier, and `reviewer.md`, pinned to the qwen
-  provider's frontier tier, a different vendor from builder's on purpose so
-  the review role's independence is real rather than promised. `reviewer.md`
-  sets `permission: edit: deny`, which removes the edit tool. That is a real
-  narrowing and it is not read-only enforcement: `bash: allow` still reaches
-  the filesystem through a redirect or `sed -i`, so read-only stays a prompt
-  contract here as on every other harness. Copy either file into
-  `.opencode/agent/` (project) or `~/.config/opencode/agent/` (global); the
-  agent files carry no relative dependencies, so copying them is safe. Both `.opencode/agent/` and `.opencode/agents/` load agent
-  markdown on 1.18.16; upstream documents only the singular.
-- Charter and config templates: `templates/OPENCODE.md` is the OpenCode
-  sibling of `templates/CLAUDE.md` and `~/.codex/AGENTS.md`; OpenCode does not
-  read a file literally named `OPENCODE.md`, so save it as `AGENTS.md` or
-  reference it through the `instructions` array. `templates/opencode.json`
-  wires both plugins through the `plugin` array and sets `permission.bash`
-  patterns for the ASK tier described below.
-- Two known gaps:
-  - `permission.ask` does not exist as a plugin hook in 1.18.16, so no plugin
-    can raise a confirmation prompt. The ASK tier is delivered declaratively
-    by `permission.bash` patterns instead. How 1.18.16 matches a glob against
-    a compound command (a pipeline, `&&`, a subshell) is not confirmed, so
-    those patterns are a convenience rather than a boundary.
-  - `experimental.chat.system.transform` is undocumented upstream. The catalog
-    injection is pinned to observed 1.18.16 behavior and no-ops if it changes.
-- `delegate-resolve` retiers a `self` route onto the nearest tier the caller's
-  own provider publishes when the requested tier is not available there, and
-  reports the substitution as `TIER_FALLBACK=<requested>-><resolved>` instead
-  of erroring. This is what lets a bring-your-own-model OpenCode lead resolve
-  every role even when its provider publishes a single tier.
-
-## Operating systems
-
-Skills are plain markdown and work wherever the host tool runs. Hooks and most
-helpers are Bash with jq, git, and grep; the eval scorer is Go. CI exercises
-Linux.
-macOS is expected to work but is not CI-covered. Windows is untested: native
-Windows cannot run the shell helpers, while Git Bash and WSL have not been
-verified. The `run-hook.cmd` wrapper finds Git Bash for SessionStart and no-ops
-when Bash is absent. Treat hook enforcement as unverified on Windows; the
-skills themselves remain portable.
+A support claim must be checked against a current CLI, the checked-in native
+manifest, a fresh config home, and the exact plugin revision. Structural
+validation runs without credentials. Behavioral claims require the
+installed-plugin A/B protocol for both harnesses. See
+[advanced/evals.md](./advanced/evals.md).

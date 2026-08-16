@@ -1,188 +1,65 @@
 # Attribution
 
-megapowers builds on the work of others. This file records upstream sources
-and the licenses they are used under.
+megapowers builds on the following work.
 
-## Superpowers (the `megapowers` workflow plugin)
+## Superpowers
 
-The `megapowers` workflow plugin is a fork and restyling of **Superpowers** by
-Jesse Vincent (obra): https://github.com/obra/superpowers.
+The workflow core descends from
+[Superpowers](https://github.com/obra/superpowers) by Jesse Vincent. The
+planning, test-first, debugging, verification, worktree, and delegation methods
+were rewritten and consolidated into the current task-level skills.
 
-- Upstream license: MIT
-- Required notice, retained here per that license:
+Upstream license: MIT, Copyright (c) 2025 Jesse Vincent.
 
-  > MIT License
-  >
-  > Copyright (c) 2025 Jesse Vincent
-  >
-  > Permission is hereby granted, free of charge, to any person obtaining a copy
-  > of this software and associated documentation files (the "Software"), to deal
-  > in the Software without restriction, including without limitation the rights
-  > to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-  > copies of the Software, and to permit persons to whom the Software is
-  > furnished to do so, subject to the following conditions:
-  >
-  > The above copyright notice and this permission notice shall be included in all
-  > copies or substantial portions of the Software.
-  >
-  > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  > IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  > FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-  > AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-  > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-  > SOFTWARE.
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
 
-The methodology (brainstorming, planning, TDD, systematic debugging, review,
-worktrees, subagent orchestration) originates with Superpowers. megapowers
-rewrites the prose style and renames the skills; the underlying process is
-Jesse Vincent's.
+## humanizer
 
-Every Superpowers-derived skill also carries a one-line origin footer in its
-`SKILL.md` body, so the notice travels with copies installed through the
-bare-`SKILL.md` skills CLI channel (`npx skills add ...`), not only with the
-plugin bundle that ships this file.
+`humanizing-prose` adapts the editing approach from
+[humanizer](https://github.com/blader/humanizer) by Siqi Chen. The current skill
+keeps the fact-preservation and direct-writing contract while removing a fixed
+vocabulary checklist.
 
-### Fork point and maintenance
+Upstream license: MIT, Copyright (c) 2025 Siqi Chen.
 
-megapowers vendored the Superpowers process core as a snapshot. That snapshot
-has no git parent in this repo, and the pre-publication history is squashed (see
-the initial public release commit). The fork tracked upstream as of the initial
-vendoring in early July 2026; the exact upstream commit is not recorded. The
-contemporaneous upstream release line was Superpowers v6.1.0 (dated 2026-06-30),
-which is the baseline a future backport review should diff against.
+## Everything Claude Code
 
-Maintenance rule: upstream Superpowers releases are reviewed for backports on
-each megapowers release.
+The Go-specific `code-quality` reference retains stable context, error, and
+goroutine guidance adapted from `golang-patterns` in
+[Everything Claude Code](https://github.com/affaan-m/everything-claude-code) by
+Affaan Mustafa.
 
-## golang-patterns (in the `mega-go` plugin)
+Upstream license: MIT, Copyright (c) 2026 Affaan Mustafa.
 
-The `golang-patterns` skill is vendored from **Everything Claude Code** by
-Affaan Mustafa: https://github.com/affaan-m/everything-claude-code
-(path `.kiro/skills/golang-patterns`).
+## codex-plugin-cc
 
-- Upstream license: MIT
-- Required notice, retained per that license:
+The adversarial-review framing and structured review outcome concepts were
+informed by [codex-plugin-cc](https://github.com/openai/codex-plugin-cc) by
+OpenAI. The current review package, disclosure, and receipt implementation is a
+new Go standard-library tool with a narrower explicit-input contract.
 
-  > MIT License
-  >
-  > Copyright (c) 2026 Affaan Mustafa
-  >
-  > Permission is hereby granted, free of charge, to any person obtaining a copy
-  > of this software and associated documentation files (the "Software"), to deal
-  > in the Software without restriction, including without limitation the rights
-  > to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-  > copies of the Software, and to permit persons to whom the Software is
-  > furnished to do so, subject to the following conditions:
-  >
-  > The above copyright notice and this permission notice shall be included in all
-  > copies or substantial portions of the Software.
-  >
-  > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  > IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  > FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-  > AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-  > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-  > SOFTWARE.
+Upstream license: Apache-2.0. Upstream notice: Copyright 2026 OpenAI.
 
-## OpenAI GPT-5.6 prompt guidance (prompting reference in `mega-orchestration`)
+## caveman
 
-`plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/codex.md`
-follows OpenAI's **Prompting guidance for GPT-5.6 Sol**:
-https://developers.openai.com/api/docs/guides/prompt-guidance-gpt-5p6.
+The treatment and terse-control measurement design in `evals/` was informed by
+[caveman](https://github.com/JuliusBrussee/caveman) by Julius Brussee. No text or
+code was copied.
 
-- Upstream terms: developer documentation, Copyright 2026 OpenAI, all rights
-  reserved. This is not the Apache-2.0 grant covering codex-plugin-cc below, and
-  nothing here relicenses it.
-- The material is rewritten for this repo. These passages are not, and are listed
-  so a later edit can tell whose wording it is changing. Line numbers are as of
-  2026-08-05 and shift if the file is rewrapped.
-  - codex.md:76-77, verbatim: "GPT-5-class models follow prompt contracts
-    closely, so conflicting rules can create more instability than missing
-    detail."
-  - codex.md:143, verbatim: "Keep reusable prefixes stable and avoid unnecessary
-    churn in large system prompts".
-  - codex.md:98-100, three upstream bullets merged into one sentence, their
-    wording otherwise verbatim: "Use low for latency-sensitive work when it
-    preserves quality", "medium as a balanced starting point", "high or xhigh
-    only when evals show a meaningful gain".
-  - codex.md:119-121, near-verbatim, with "model" changed to "delegate": upstream
-    reads "prompt for a short visible preamble before the first tool call, then
-    sparse outcome-based updates at major phase changes. Do not ask the model to
-    narrate routine tool calls."
-  - codex.md:126-129, close paraphrase of the autonomy policy, retaining the
-    phrase "external, destructive, costly, or scope-expanding".
-
-## codex-plugin-cc (prompting reference in `mega-orchestration`)
-
-`plugins/mega-orchestration/skills/multi-agent-delegation/references/providers/codex.md`
-adapts the adversarial-review framing and the review output schema from
-**codex-plugin-cc** by OpenAI:
-https://github.com/openai/codex-plugin-cc.
-
-- Upstream license: Apache-2.0. Upstream NOTICE: "Copyright 2026 OpenAI"
-  (retained here per that license).
-- The material is rewritten, not copied: restyled to this repo's register and
-  condensed, with the schema's field names preserved. This entry records the
-  provenance and the changes.
-
-## frontend-design (the `mega-frontend` plugin)
-
-`plugins/mega-frontend/skills/designing-frontends/SKILL.md` adapts
-**frontend-design** from Anthropic's skills repo:
-https://github.com/anthropics/skills.
-
-- Upstream license: Apache-2.0.
-- Rewritten to this repo's register and renamed to avoid colliding with the
-  upstream skill in shared `.agents/skills` namespaces; the calibration
-  section carries a review date. This entry records the provenance and the
-  changes. The complete terms travel with the skill at
-  `plugins/mega-frontend/skills/designing-frontends/LICENSE.txt`.
-
-## skill-creator (description-optimization guidance in `megapowers`)
-
-The "Optimizing the Description" section of
-`plugins/megapowers/skills/writing-skills/testing-skills-with-subagents.md`
-adapts the description eval loop from **skill-creator** in Anthropic's skills
-repo: https://github.com/anthropics/skills.
-
-- Upstream license: Apache-2.0.
-- Rewritten, not copied; this entry records the provenance.
-
-## humanizer (the `humanizing-prose` skill)
-
-`plugins/megapowers/skills/humanizing-prose/SKILL.md` adapts the AI-tell
-taxonomy from **humanizer** by Siqi Chen (blader):
-https://github.com/blader/humanizer.
-
-- Upstream license: MIT, Copyright (c) 2025 Siqi Chen.
-- humanizer itself derives from Wikipedia's "Signs of AI writing"
-  (WikiProject AI Cleanup, CC BY-SA). The skill's wording here is re-derived
-  against a measured baseline rather than copied; both sources are credited,
-  and the skill carries a one-line origin footer.
-
-## gstack (decision-brief and review-checklist artifacts)
-
-Two adaptations from **gstack** by Garry Tan:
-https://github.com/garrytan/gstack (MIT, Copyright (c) 2026 Garry Tan).
-
-- The dual-scale effort bullet in
-  `plugins/megapowers/skills/brainstorming/SKILL.md` (human-team time and
-  agent time side by side) adapts gstack's decision-brief format.
-- The "Agent-era failure modes" checks and the "Don't flag" list in
-  `plugins/megapowers/skills/requesting-code-review/code-reviewer.md` adapt
-  categories from gstack's review checklist.
-- Rewritten, not copied; this entry records the provenance.
-
-## caveman (eval methodology note in `evals/`)
-
-The "Control arms" section of `evals/README.md` adapts the three-arm
-(baseline / terse control / skill) measurement design from **caveman** by
-Julius Brussee: https://github.com/JuliusBrussee/caveman (MIT, Copyright (c)
-2026 Julius Brussee). Methodology credit; no text or code is copied.
-
-## Other sources
-
-Additional upstream credits are added as further modules land, once their
-upstream licenses are confirmed.
+Upstream license: MIT, Copyright (c) 2026 Julius Brussee.

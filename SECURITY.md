@@ -1,117 +1,109 @@
 # Security
 
-## Scope
+megapowers is not a security boundary. It installs model instructions, shell
+hooks, and an optional external-review tool into the agent's permission context.
+Review the exact revision before installing it.
 
-Nothing in this repository is a security boundary.
+## Installed capabilities
 
-- `mega-guardrails`' `deny-destructive` hook is a tripwire against accidents,
-  not a sandbox. It string-matches obviously catastrophic commands and can be
-  bypassed by anyone trying. Real containment comes from your runtime's
-  sandbox and OS permissions.
-- The `effect-broker` skill gates irreversible actions by declared action
-  class; a model that misdeclares is not stopped by it.
-- Hook manifests ship for Claude Code and Codex. Codex's installed
-  mega-guardrails plugin dispatches PreToolUse to the destructive-command
-  adapter after a `/hooks` trust decision. Nothing blocks or gates on OpenCode
-  or OpenCode.
+| Component | Reads | Writes | Network |
+|---|---|---|---|
+| Ten skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
+| Destructive-command hook | Proposed shell command from hook input | Hook decision on standard output | None |
+| Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | Selected Claude or Codex provider call after approval |
 
-If your threat model includes a malicious or compromised model, none of these
-help; use OS-level sandboxing.
+There is no daemon, model router, formatter, status line, or background
+scheduler.
 
-## Indirect prompt injection
+## Destructive-command guard
 
-This marketplace ships executable instructions. A skill body or reference doc
-is text your agent reads and then acts on, so it is an instruction channel, not
-inert documentation. Three inputs deserve to be treated as untrusted by
-default:
+The hook catches a narrow set of obvious catastrophic commands. It uses
+command-string parsing for precision, not evasion resistance.
 
-- **The skills and hooks you install.** They run in your agent's full
-  permission context. A compromised or careless one is the dominant real-world
-  failure mode of 2025-2026: public research that scanned thousands of
-  published skills found a minority carrying prompt-injection payloads, and
-  separately showed hook and rule files that steered agents into leaking
-  environment variables and local secrets. The class matters more than the
-  vendor: any file the model reads can carry an instruction.
-- **Page and screenshot content the browser delegate reasons over.** A page the
-  delegate visits can contain text aimed at the model rather than at you.
-- **Repositories a delegate reads.** An untrusted repo's READMEs, comments, and
-  config reach the model through the same channel.
+- Claude Code and Codex receive the same high-confidence denials.
+- Reversible risk stays with each harness's native permission system.
+- A hook evaluation error is visible and nonzero. Do not treat a broken hook as
+  protection.
 
-What this repo does about it:
+The guard can miss obfuscated, aliased, encoded, generated, or indirect
+commands. It can also reject harmless text that resembles a destructive
+command. Use the harness sandbox, OS permissions, least-privilege credentials,
+backups, and explicit review as the real controls.
 
-- No hook makes a network call. Every hook script reads only stdin, the file
-  just written, the session transcript, or local git state, and writes only its
-  decision or a local marker. Verify with
-  `grep -rnE 'curl|wget|/dev/tcp' plugins/*/hooks`.
-- No skill instructs the agent to fetch remote content and run it. Browser and
-  delegate work routes through `playwright-cli` and named delegate CLIs, not an
-  opaque `curl | sh`.
-- `scripts/security-lint.sh` ships in this repo and scans its own skills,
-  hooks, and templates for the documented injection markers (a fetch of remote
-  content in an executable step, a base64 blob piped into a shell, `eval` of
-  fetched content, unicode direction-override characters, and disable-safety
-  instructions), failing on a hit. Executable fetches require an exact
-  file-level allowlist entry; whole hosting domains are never trusted. It runs
-  in CI as part of `scripts/validate.sh` and can be run locally the same way,
-  or directly with `scripts/security-lint.sh`. On systems without `grep -P`, it
-  warns that the unicode bidi scan was skipped.
+`safe-effects` covers deploys, messages, charges, migrations, destructive
+queries, DNS changes, and other external mutations. It is still model guidance,
+not enforcement.
 
-What it cannot do: the harness executes what you trust it with. This repo
-cannot stop a model you have told to follow a malicious instruction, and it
-cannot vouch for a skill you install from anywhere else. Review before you
-install.
+## Independent-review disclosure
 
-## Before you install
+The review tool accepts only one explicit file or one immutable commit range.
+It does not infer the dirty worktree or include untracked files. Before an
+external call it prints the provider, source identity, paths, file count, byte
+count, and package hash, then requires `--approve-external`.
 
-These skills and hooks run in your agent's full permission context. Read them
-first, the way you would read a shell script before piping it into `bash`:
+It rejects:
 
-- Skim each `SKILL.md` you will load and each `hooks/*` script.
-- Look for the markers `scripts/security-lint.sh` checks for: a fetch of remote
-  content in an executable step (`curl`/`wget` to a URL, especially piped into
-  a shell), obfuscated commands (a base64 blob decoded into a shell, unusual
-  unicode), and any instruction that tells the agent to disable a sandbox,
-  bypass a permission prompt, or ignore its own rules.
-- Prefer a pinned install (a marketplace ref to a release tag) over tracking
-  `main`, so an upstream change is a version you choose rather than a silent
-  update. See `docs/setup.md`, "Pinning to a release".
+- author and reviewer providers that match;
+- provider binaries resolved inside the repository;
+- symlinks, submodules, non-text files, and oversized packages;
+- secret-like paths and common credential patterns;
+- project routing configuration and unrestricted environment forwarding.
 
-Capability disclosure. Every hook here is a local shell script that makes no
-network call. What each plugin runs:
+Pattern matching cannot identify every secret. Inspect the disclosure and the
+source itself before approval. Raw transcripts are not retained by default.
+Receipts are advisory records, not signatures or tamper-proof attestations.
+After token validation, the tool executes a private read-only copy whose bytes
+match the approved provider hash rather than the mutable provider pathname.
+Explicit receipt output must already exist at an absolute canonical path that
+neither overlaps nor contains the repository. Writes are rooted at an opened
+directory handle; the default remains under Git metadata.
 
-| Plugin | Hook (event) | Reads / writes | Skills | Network |
-| --- | --- | --- | --- | --- |
-| `megapowers` | `session-start` (SessionStart) | reads its own `using-megapowers` skill; writes a context string to stdout | process skills (planning, TDD, debugging, review, worktrees, memory) | none |
-| `mega-guardrails` | `deny-destructive` (PreToolUse: Bash); `auto-format` (PostToolUse: Write/Edit); cross-harness dispatchers select the Codex destructive adapter and no-op formatter | deny-destructive reads the proposed command on stdin and writes an allow/ask/deny decision; the Codex adapter maps that same decision onto Codex's hook contract; auto-format reads the just-written file path and reformats that one file (`gofmt`/`goimports`/`prettier`) under Claude Code | none (hooks and an optional statusline only) | none |
-| `mega-orchestration` | `run-loop`, `delegate-nudge` (both Stop) | both read stdin and the session transcript; run-loop also reads `.megapowers/run/<id>/status`; delegate-nudge also reads `git diff` and writes a one-line marker to `.git/megapowers-delegate-nudge-seen`; both write a stop decision to stdout | orchestration and delegation skills | none |
-| `mega-go` | none | reads and writes nothing (skills only) | `golang-patterns`, `greenfield-go-stack` | none |
-| `mega-python` | none | reads and writes nothing (skills only) | `python-patterns`, `greenfield-python-stack` | none |
-| `mega-ts` | none | reads and writes nothing (skills only) | `typescript-patterns`, `greenfield-ts-stack` | none |
-| `mega-frontend` | none | reads and writes nothing (skills only) | `designing-frontends` | none |
+See [docs/advanced/independent-review.md](./docs/advanced/independent-review.md)
+for the exact workflow.
 
-The optional `mega-guardrails` statusline (manual install, Linux only) reads
-`/proc`, `df`, `date`, and `git`, and writes only to the statusline; it too
-makes no network call.
+## Prompt injection and supply chain
 
-## Release integrity
+Every `SKILL.md`, reference, hook, and repository instruction is an instruction
+channel. A malicious repository or dependency can place text in the agent's
+context. Treat installed plugin revisions, reviewed repositories, browser
+content, issue text, and generated artifacts as untrusted input.
 
-Releases are tagged. Pin your install to a tag rather than tracking `main`.
-Each tag resolves to an exact commit you can verify with
-`git ls-remote --tags https://github.com/lawzava/megapowers`, `git tag`, or
-`gh release view <tag>`. Release tags from v0.1.3 on are GPG-signed: verify one
-with `git tag -v <tag>` (the v0.1.1 and v0.1.2 tags predate signing and are
-stable inspectable refs, not cryptographic provenance).
+This repository's security lint scans the full installable tracked and
+nonignored untracked tree. It rejects documented executable-fetch, obfuscation,
+directional-control, and disable-safety patterns unless a narrow file-level
+allowlist explains a necessary fixture. That scan reduces accidental exposure;
+it does not prove an instruction safe.
 
-## Reporting
+Before installation:
 
-For anything with real blast radius (the deny-destructive suite passing a
-command that wipes a disk, a hook that fails closed and locks a session, or a
-skill or hook that leaks user data), the preferred channel is GitHub Private
-Vulnerability Reporting: the repository's Security tab, "Report a
-vulnerability". For non-sensitive tripwire gaps a GitHub issue is fine; anything
-with real blast radius should go through the private channel.
+1. Inspect both plugin manifests and `plugins/megapowers/hooks/`.
+2. Read every skill likely to run in your environment.
+3. Run `scripts/security-lint.sh` and `scripts/validate.sh`.
+4. Verify the selected Git revision and use a pinned checkout when update
+   timing matters.
 
-None of this repo's components hold secrets or run as services, so coordinated
-disclosure is often unnecessary. Please include the exact command/input, the
-expected vs actual behavior, and your harness (Claude Code / Codex / OpenCode /
-OpenCode + version).
+## Credentials and artifacts
+
+Installed A/B and PR replay never copy credentials into actor-visible homes or
+launch a provider directly. Real runs require a reviewed, hash-pinned broker
+that owns authentication outside an attested OS isolation boundary. A missing,
+mismatched, or overbroad attestation fails closed. Publish bundles contain only
+sanitized result rows and manifests, not credentials, raw prompts, responses,
+transcripts, repositories, or absolute paths. Inspect them before sharing.
+
+Broker paths must be absolute, canonical, free of symlinks, outside actor-visible
+and output trees, and point to a self-contained executable. Each invocation runs
+a private read-only copy whose bytes match the pinned hash.
+
+Do not store credentials in repository configuration, fixtures, eval case
+manifests, or review receipts.
+
+## Report a vulnerability
+
+Use GitHub Private Vulnerability Reporting for a command that can bypass a
+high-confidence denial, a secret disclosure, unsafe package capture, or another
+finding with real blast radius. A public issue is appropriate for a harmless
+false positive or documentation defect.
+
+Include the exact revision, Claude Code or Codex version, input, expected
+decision, actual decision, and the smallest safe reproduction.

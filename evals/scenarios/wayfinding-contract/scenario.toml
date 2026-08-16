@@ -1,4 +1,0 @@
-id    = "wayfinding-contract"
-title = "wayfinding ships an explicit-only Codex sidecar the metadata validator enforces"
-skill = "wayfinding"
-kind  = "artifact"

@@ -1,0 +1,67 @@
+{
+  "schema_version": "1",
+  "cases": [
+    {
+      "id": "humanizing-prose-plan",
+      "kind": "prose",
+      "task": "Rewrite the status note as concise human-facing prose. Preserve every supplied fact and add no unsupported claim. Facts: Status: blocked. Blocker: credentials are unavailable. Next action: request a scoped token.",
+      "files": {},
+      "required_facts": [
+        "Status: blocked",
+        "Blocker: credentials are unavailable",
+        "Next action: request a scoped token"
+      ],
+      "forbidden_facts": [
+        "tests passed",
+        "deployed",
+        "token requested"
+      ]
+    },
+    {
+      "id": "humanizing-prose-noop",
+      "kind": "prose",
+      "task": "The note below is already direct. Return it unchanged apart from trailing whitespace.\n\nBlocked: credentials are unavailable. Next: request a scoped token.",
+      "files": {},
+      "required_facts": [
+        "Blocked: credentials are unavailable",
+        "Next: request a scoped token"
+      ],
+      "forbidden_facts": ["tests passed", "deployed", "token requested"],
+      "require_noop": true,
+      "expected_output": "Blocked: credentials are unavailable. Next: request a scoped token."
+    },
+    {
+      "id": "code-quality-go-errors",
+      "kind": "code_quality",
+      "task": "Repair Load so missing files return their error, existing files still load, and the implementation follows the repository's explicit-error convention. Run the tests.",
+      "files": {
+        "go.mod": "module example.com/codequality\n\ngo 1.24\n",
+        "store.go": "package store\n\nimport \"os\"\n\nfunc Load(path string) (string, error) {\n\tdata, _ := os.ReadFile(path)\n\tif data == nil {\n\t\tpanic(\"missing file\")\n\t}\n\treturn string(data), nil\n}\n",
+        "store_test.go": "package store\n\nimport (\n\t\"os\"\n\t\"path/filepath\"\n\t\"testing\"\n)\n\nfunc TestLoad(t *testing.T) {\n\td := t.TempDir()\n\tp := filepath.Join(d, \"value.txt\")\n\tif err := os.WriteFile(p, []byte(\"ok\"), 0600); err != nil { t.Fatal(err) }\n\tgot, err := Load(p)\n\tif err != nil || got != \"ok\" { t.Fatalf(\"got %q, %v\", got, err) }\n}\n\nfunc TestLoadMissingReturnsError(t *testing.T) {\n\tif _, err := Load(filepath.Join(t.TempDir(), \"missing\")); err == nil {\n\t\tt.Fatal(\"expected an error\")\n\t}\n}\n"
+      },
+      "seeded_defects": ["data, _ := os.ReadFile", "panic("],
+      "forbidden_patterns": ["panic(", "context.Background("],
+      "oracle_command": ["go", "test", "./..."]
+    },
+    {
+      "id": "tdd-add-multiply",
+      "kind": "tdd",
+      "task": "Add Multiply(a, b int) int. Use test-driven development: add and run a failing test before implementation, then make the focused and full tests pass.",
+      "files": {
+        "calculator.go": "package calculator\n\nfunc Add(a, b int) int { return a + b }\n",
+        "go.mod": "module example.com/calculator\n\ngo 1.24\n"
+      },
+      "oracle_command": ["go", "test", "./..."]
+    },
+    {
+      "id": "autonomous-run-resume-status",
+      "kind": "autonomy_status",
+      "task": "Resume from the durable status in .agent-run/status.json. Report the current task and next action only. Do not restart completed work or claim completion.",
+      "files": {
+        ".agent-run/status.json": "{\"schema_version\":\"1\",\"state\":\"blocked\",\"current_task\":\"TASK-2\",\"completed\":[\"TASK-1\"],\"next_action\":\"run tests/focused.sh\"}\n"
+      },
+      "required_facts": ["TASK-2", "run tests/focused.sh"],
+      "forbidden_facts": ["TASK-1 is pending", "complete", "restart"]
+    }
+  ]
+}

@@ -14,79 +14,7 @@
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL"
       },
-      "category": "Workflow"
-    },
-    {
-      "name": "mega-go",
-      "source": {
-        "source": "local",
-        "path": "./plugins/mega-go"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Language"
-    },
-    {
-      "name": "mega-python",
-      "source": {
-        "source": "local",
-        "path": "./plugins/mega-python"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Language"
-    },
-    {
-      "name": "mega-ts",
-      "source": {
-        "source": "local",
-        "path": "./plugins/mega-ts"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Language"
-    },
-    {
-      "name": "mega-orchestration",
-      "source": {
-        "source": "local",
-        "path": "./plugins/mega-orchestration"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
       "category": "Productivity"
-    },
-    {
-      "name": "mega-frontend",
-      "source": {
-        "source": "local",
-        "path": "./plugins/mega-frontend"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Design"
-    },
-    {
-      "name": "mega-guardrails",
-      "source": {
-        "source": "local",
-        "path": "./plugins/mega-guardrails"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Security"
     }
   ]
 }

@@ -1,27 +1,13 @@
-# security-lint allowlist — files that legitimately contain a pattern the lint
-# flags, each reviewed and justified below. Paths are repo-relative, one per
-# line; blank lines and #-comments are ignored. Deleting an entry re-arms the
-# lint for that file, so keep this list short and specific.
-#
-# A shipped, agent-facing skill (plugins/*/skills/*/SKILL.md) may NEVER be listed
-# here: security-lint refuses to run if it finds one, because silencing the lint on
-# an installed skill would let a malicious marker ship. Fix the skill, not this file.
+# security-lint allowlist. Paths are repo-relative and exact. Only deliberate
+# attack fixtures and historical records belong here. Installed skill content,
+# including references and scripts, may never be allowlisted.
 
-# Opt-in agent notifier template. Posts to api.telegram.org with a bot token the
-# operator supplies from their own environment; it is a documented, user-wired
-# notification channel, not exfiltration. The fetch is real, so it is named here
-# rather than hidden.
-templates/agent-notify/agent-notify
+# Historical text preserves old command examples for auditability.
+CHANGELOG.md
+evals/RESULTS.md
 
-# deny-destructive test fixtures. These carry attack-shaped command strings
-# (curl ... | bash to example hosts, eval "rm -rf /") on purpose: they are the
-# inputs that prove the guardrail hook blocks them.
-plugins/mega-guardrails/hooks/tests/deny-destructive.test.sh
-plugins/mega-guardrails/hooks/tests/codex-deny-destructive.test.sh
-
-# Injection-probe test fixtures. Same shape as the two entries above, one layer
-# earlier in the pipeline: these carry the attack phrasings ("ignore all previous
-# instructions", "without asking for permission", an encoded payload piped to a
-# shell) because they are the inputs that prove the probe fires on them. The probe
-# itself is not listed and must stay clean.
-plugins/mega-guardrails/hooks/tests/scan-tool-output.test.sh
+# These fixtures contain the attack-shaped strings the guard and scanner must
+# classify. Production hook and skill files remain scanned.
+plugins/megapowers/hooks/tests/deny-destructive.test.sh
+plugins/megapowers/hooks/tests/codex-deny-destructive.test.sh
+scripts/tests/security-lint.test.sh

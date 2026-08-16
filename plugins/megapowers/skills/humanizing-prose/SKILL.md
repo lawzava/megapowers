@@ -1,35 +1,26 @@
 ---
 name: humanizing-prose
-description: Use to draft or edit user-facing docs, release notes, PR descriptions, PR comments, review replies, announcements, or errors. Triggers on "humanize", "sounds like AI", "slop", or "read naturally".
-license: MIT
+description: Use when drafting or editing plans, task briefs, commits, responses, reviews, PRs, docs, release notes, errors, or any other human-facing prose.
 ---
 
 # Humanizing Prose
 
-Make prose direct, specific, and proportionate. Preserve every fact, number,
-command, and name unless the task authorizes changing it.
+Apply this contract whenever an agent writes for a person, including plans,
+task briefs, commits, responses, reviews, PRs, docs, release notes, and errors.
 
-Replace sales punchlines, stacked adjectives, filler, and generic optimism with
-the concrete change, evidence, or limitation. Prefer ordinary verbs and short
-declarative sentences. Let the structure follow the content rather than a
-formulaic rhythm. Remove an unsupported claim rather than inventing a fact to
-replace it.
+Lead with the outcome. Keep the concrete change, decision, evidence,
+limitation, or next action the reader needs; remove padding, sales language,
+stacked adjectives, generic optimism, and session history that changes no
+decision. Prefer ordinary verbs and proportionate structure over a fixed
+template.
 
-Common tells include `delve`, `tapestry`, `seamless`, `robust`, `leverage`,
-`journey`, "Let's dive in", and elaborate copulas such as "serves as". Replace
-them only when they make the prose less precise.
+Preserve identifiers, numbers, commands, caveats, uncertainty, decisions, and
+all other source facts. Never invent facts to improve rhythm, certainty, or
+completeness. Do not rewrite quotations, code, or command names. Leave
+already-direct prose alone; a mandatory rewrite pass creates churn without
+improving the message. Punctuation follows meaning, not a style taboo.
 
-Do not rewrite quotations, code, command names, or text that discusses a phrase
-rather than using it. Leave clear, appropriately dry writing alone.
-
-For PR comments, review replies, and issue updates, keep the current decision,
-material impact, and minimum evidence the reader needs. Internal work history,
-discarded reasoning, every test run, earlier corrections, and repeated finding
-summaries are session state, not publishable prose, unless one explains a
-current risk. Prefer the existing thread to a new top-level narrative.
-When a top-level update is necessary, limit it to the current verdict, blocker,
-and next action in at most three bullets. Post the review trigger as its own
-minimal comment.
-
-Origin: Adapted from humanizer (MIT, (c) 2025 Siqi Chen),
-https://github.com/blader/humanizer.
+For reviews, PR comments, and issue updates, publish the current verdict,
+material impact, and minimum evidence. Omit internal work logs, discarded
+reasoning, repeated findings, and test transcripts unless one explains a
+current risk. Reply in the existing thread when possible.
