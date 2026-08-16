@@ -45,6 +45,28 @@ installed_row() {
     jq -c --arg plugin_hash "$plugin_hash" '.study = "installed-plugin-ab" | .plugin_hash = $plugin_hash'
 }
 
+write_publish_rows() {
+  local file="$1" treatment_passes="$2" control_passes="$3" pairs="$4"
+  : > "$file"
+  local pair arm verdict rc
+  for pair in $(seq 1 "$pairs"); do
+    for arm in treatment control; do
+      verdict=fail
+      rc=0
+      if [[ $arm == treatment && $pair -le $treatment_passes ]] ||
+         [[ $arm == control && $pair -le $control_passes ]]; then
+        verdict=pass
+        rc=0
+      fi
+      installed_row "$arm-$pair" "block-$pair" "$arm" \
+        "$([[ $arm == treatment ]] && printf '%s' "$treatment_plugin_hash" || printf '%s' "$empty_plugin_hash")" |
+        jq -c --arg verdict "$verdict" --argjson rc "$rc" \
+          '.environment.sandbox = "bwrap" | .verdict = $verdict | .rc = $rc | .metrics.task_success = (if $verdict == "pass" then 1 else 0 end)' \
+          >> "$file"
+    done
+  done
+}
+
 expect_reject() {
   local name="$1" file="$2"
   if go run "$ROOT/evals/score.go" --strict "$file" >"$tmp/$name.out" 2>"$tmp/$name.err"; then
@@ -145,6 +167,7 @@ grep -q 'treatment' "$tmp/valid.out"
 grep -q 'control' "$tmp/valid.out"
 grep -q 'Named metric means' "$tmp/valid.out"
 grep -q 'fact_retention' "$tmp/valid.out"
+grep -q 'mcnemar_p' "$tmp/valid.out"
 
 {
   installed_row treatment-1 block-1 treatment "$treatment_plugin_hash"
@@ -152,6 +175,13 @@ grep -q 'fact_retention' "$tmp/valid.out"
 } >"$tmp/valid-installed-ab.jsonl"
 go run "$ROOT/evals/score.go" --strict "$tmp/valid-installed-ab.jsonl" >"$tmp/valid-installed-ab.out"
 grep -q 'installed-plugin-ab' "$tmp/valid-installed-ab.out"
+
+{
+  installed_row treatment-1 block-1 treatment "$treatment_plugin_hash"
+  installed_row control-1 block-1 control "$empty_plugin_hash" | jq -c '.verdict = "fail" | .rc = 1 | .metrics.task_success = 0'
+} >"$tmp/nonzero-installed-actor.jsonl"
+expect_reject nonzero-installed-actor "$tmp/nonzero-installed-actor.jsonl"
+grep -q 'installed-plugin completed rows must have actor rc 0' "$tmp/nonzero-installed-actor.err"
 
 {
   installed_row treatment-1 block-1 treatment "$treatment_plugin_hash"
@@ -164,5 +194,37 @@ if go run "$ROOT/evals/score.go" --strict \
   exit 1
 fi
 grep -q 'broker-attested OS boundary' "$tmp/non-broker-sandbox.err"
+
+write_publish_rows "$tmp/perfect-treatment.jsonl" 10 10 10
+go run "$ROOT/evals/score.go" --strict \
+  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  "$tmp/perfect-treatment.jsonl" >/dev/null
+
+write_publish_rows "$tmp/control-diagnostic.jsonl" 10 0 10
+go run "$ROOT/evals/score.go" --strict \
+  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  "$tmp/control-diagnostic.jsonl" >/dev/null
+
+write_publish_rows "$tmp/paired-mcnemar.jsonl" 12 0 12
+go run "$ROOT/evals/score.go" --strict "$tmp/paired-mcnemar.jsonl" >"$tmp/paired-mcnemar.out"
+grep -q '| 0.000488 |' "$tmp/paired-mcnemar.out"
+
+write_publish_rows "$tmp/imperfect-treatment.jsonl" 9 10 10
+if go run "$ROOT/evals/score.go" --strict \
+  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  "$tmp/imperfect-treatment.jsonl" >"$tmp/imperfect-publish.out" 2>"$tmp/imperfect-publish.err"; then
+  echo 'FAIL publishability accepted an imperfect treatment' >&2
+  exit 1
+fi
+grep -q 'require every treatment run to pass' "$tmp/imperfect-publish.err"
+
+write_publish_rows "$tmp/too-few-pairs.jsonl" 9 9 9
+if go run "$ROOT/evals/score.go" --strict \
+  --publishable-gates "$ROOT/evals/studies/installed-ab/gates.json" \
+  "$tmp/too-few-pairs.jsonl" >"$tmp/too-few-pairs.out" 2>"$tmp/too-few-pairs.err"; then
+  echo 'FAIL publishability accepted too few paired runs' >&2
+  exit 1
+fi
+grep -q 'balanced pairs; require 10' "$tmp/too-few-pairs.err"
 
 echo 'strict score fail-closed contract: ok'

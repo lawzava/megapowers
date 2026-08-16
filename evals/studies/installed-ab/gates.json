@@ -8,9 +8,8 @@
   "code_quality": {
     "minimum_seeded_defect_reduction": 1,
     "maximum_convention_regressions": 0,
-    "minimum_absolute_lift": 0.10,
     "minimum_paired_runs": 10,
-    "confidence_level": 0.95
+    "require_all_treatment_passes": true
   },
   "tdd": {
     "require_test_before_implementation": true,

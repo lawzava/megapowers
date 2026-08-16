@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Stamp one already-certified release candidate. This script never tags,
-# publishes, or runs post-publish smoke.
+# Certify one already-stamped release candidate. This script never mutates,
+# tags, publishes, or runs post-publish smoke.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,11 +23,26 @@ grep -q "^## ${version//./\\.} - " CHANGELOG.md || {
   printf "release.sh: CHANGELOG.md has no '## %s - ' entry; write it first\n" "$version" >&2
   exit 2
 }
+latest_version="$(awk '$1 == "##" { print $2; exit }' CHANGELOG.md)"
+[[ $latest_version == "$version" ]] || {
+  printf 'release.sh: %s is not the newest CHANGELOG.md version (%s)\n' "$version" "$latest_version" >&2
+  exit 2
+}
+for manifest in plugins/megapowers/.claude-plugin/plugin.json plugins/megapowers/.codex-plugin/plugin.json; do
+  jq -e --arg version "$version" '.version == $version' "$manifest" >/dev/null || {
+    printf 'release.sh: %s must already declare version %s before behavioral certification\n' "$manifest" "$version" >&2
+    exit 2
+  }
+done
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   printf 'release.sh: candidate is not a Git checkout\n' >&2
   exit 2
 }
+if git show-ref --verify --quiet "refs/tags/v$version"; then
+  printf 'release.sh: tag v%s already exists\n' "$version" >&2
+  exit 2
+fi
 head_revision="$(git rev-parse HEAD)"
 untracked="$(mktemp)"
 deterministic_results="$(mktemp)"
@@ -35,12 +50,35 @@ cleanup() { rm -f "$untracked" "$deterministic_results"; }
 trap cleanup EXIT HUP INT TERM
 git ls-files --others --exclude-standard -z > "$untracked"
 if ! git diff --quiet || ! git diff --cached --quiet || [[ -s $untracked ]]; then
-  printf 'release.sh: candidate must be a clean HEAD before certification and stamping\n' >&2
+  printf 'release.sh: candidate must be a clean HEAD before certification\n' >&2
   exit 2
 fi
 
 [[ -d $certificate_root ]] || {
   printf 'release.sh: certificate root is missing: %s\n' "$certificate_root" >&2
+  exit 2
+}
+candidate_plugin_hash="$(go run evals/studies/installed-ab/run.go --hash-plugin --repo "$ROOT")" || {
+  printf 'release.sh: candidate plugin tree cannot be verified\n' >&2
+  exit 2
+}
+candidate_case_identities="$(go run evals/studies/installed-ab/run.go --case-identities --repo "$ROOT")" || {
+  printf 'release.sh: candidate release cases cannot be verified\n' >&2
+  exit 2
+}
+jq -e 'type == "object" and
+  (.case_catalog_hash | test("^sha256:[0-9a-f]{64}$")) and
+  (.gates_hash | test("^sha256:[0-9a-f]{64}$")) and
+  (.cases | type == "array" and length > 0) and all(.cases[];
+  (.case_id | type == "string" and length > 0) and
+  (.prompt_hash | test("^sha256:[0-9a-f]{64}$")) and
+  (.fixture_hash | test("^sha256:[0-9a-f]{64}$")) and
+  (.report_only | type == "boolean"))' <<<"$candidate_case_identities" >/dev/null || {
+  printf 'release.sh: candidate release case identities are malformed\n' >&2
+  exit 2
+}
+[[ $candidate_plugin_hash =~ ^sha256:[0-9a-f]{64}$ ]] || {
+  printf 'release.sh: candidate plugin hash is malformed\n' >&2
   exit 2
 }
 
@@ -50,8 +88,7 @@ validate_certificate() {
   local manifest="$publish/manifest.json"
   local results="$publish/results.jsonl"
   local gates="evals/studies/installed-ab/gates.json"
-  local cases="evals/studies/installed-ab/cases.json"
-  local entry entry_count=0 model effort treatment_hash control_hash minimum_pairs minimum_lift confidence
+  local entry entry_count=0 model effort treatment_hash control_hash minimum_pairs require_all_treatment
 
   [[ -d $publish && ! -L $publish ]] || {
     printf 'release.sh: %s publish directory is missing or unsafe\n' "$harness" >&2
@@ -70,12 +107,12 @@ validate_certificate() {
   }
 
   minimum_pairs="$(jq -er '.code_quality.minimum_paired_runs' "$gates")"
-  minimum_lift="$(jq -er '.code_quality.minimum_absolute_lift' "$gates")"
-  confidence="$(jq -er '.code_quality.confidence_level' "$gates")"
+  require_all_treatment="$(jq -er '.code_quality.require_all_treatment_passes' "$gates")"
   jq -e --arg harness "$harness" \
+    --arg candidate_plugin_hash "$candidate_plugin_hash" \
+    --argjson release_identity "$candidate_case_identities" \
     --argjson minimum_pairs "$minimum_pairs" \
-    --argjson minimum_lift "$minimum_lift" \
-    --argjson confidence "$confidence" '
+    --argjson require_all_treatment "$require_all_treatment" '
     . as $manifest |
     type == "object" and
     .schema_version == "1" and
@@ -85,13 +122,15 @@ validate_certificate() {
     (.model | type == "string" and length > 0) and
     (.effort | type == "string" and length > 0) and
     (.broker_hash | test("^sha256:[0-9a-f]{64}$")) and
+    .case_catalog_hash == $release_identity.case_catalog_hash and
+    .gates_hash == $release_identity.gates_hash and
     (.treatment_plugin_hash | test("^sha256:[0-9a-f]{64}$")) and
+    .treatment_plugin_hash == $candidate_plugin_hash and
     .empty_control_plugin_hash == "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" and
     .treatment_plugin_hash != .empty_control_plugin_hash and
     .publishability.publishable == true and
     .publishability.minimum_paired_runs == $minimum_pairs and
-    .publishability.minimum_absolute_lift == $minimum_lift and
-    .publishability.confidence_level == $confidence and
+    .publishability.require_all_treatment_passes == $require_all_treatment and
     (.arms | type == "array" and length > 0) and
     all(.arms[];
       .evidence == "credentialed-behavioral-run" and
@@ -110,21 +149,26 @@ validate_certificate() {
   effort="$(jq -er .effort "$manifest")"
   treatment_hash="$(jq -er .treatment_plugin_hash "$manifest")"
   control_hash="$(jq -er .empty_control_plugin_hash "$manifest")"
-  jq -se --slurpfile manifest "$manifest" --slurpfile cases "$cases" \
+  jq -se --slurpfile manifest "$manifest" \
+    --argjson case_identities "$candidate_case_identities" \
     --arg harness "$harness" --arg revision "$head_revision" \
     --arg model "$model" --arg effort "$effort" \
     --arg treatment_hash "$treatment_hash" --arg control_hash "$control_hash" '
     ($manifest[0]) as $m |
     length > 0 and
     length == ($m.arms | length) and
-    ([.[].case_id] | unique | sort) == ([$cases[0].cases[].id] | unique | sort) and
+    ([.[].case_id] | unique | sort) == ($case_identities.cases | map(.case_id) | unique | sort) and
     all(.[]; . as $row |
+        ($case_identities.cases | map(select(.case_id == $row.case_id)) | first) as $identity |
+        $identity != null and
         .study == "installed-plugin-ab" and
         .evidence_class == "behavioral" and
         .harness.name == $harness and
         .harness.model == $model and
         .harness.effort == $effort and
         .source.revision == $revision and
+        .prompt_hash == $identity.prompt_hash and
+        .fixture_hash == $identity.fixture_hash and
         (.environment.sandbox == "bwrap" or
          .environment.sandbox == "container" or
          .environment.sandbox == "seatbelt" or
@@ -132,8 +176,8 @@ validate_certificate() {
          .environment.sandbox == "appcontainer") and
         ((.arm == "treatment" and .plugin_hash == $treatment_hash) or
          (.arm == "control" and .plugin_hash == $control_hash)) and
-        ((.metrics.report_only // 0) != 1 or
-         any($cases[0].cases[]; .id == $row.case_id and .kind == "autonomy_status"))) and
+        ((if $identity.report_only then (.metrics.report_only == 1)
+          else ((.metrics.report_only // 0) != 1) end))) and
     all(.[];
         . as $row | any($m.arms[];
             .case_id == $row.case_id and
@@ -162,13 +206,4 @@ bash evals/run-all.sh --json "$deterministic_results"
 go run evals/score.go --strict "$deterministic_results" >/dev/null
 scripts/check-freshness.sh
 
-stamp_manifest() {
-  local manifest="$1" tmp
-  tmp="$(mktemp)"
-  jq --arg version "$version" '.version = $version' "$manifest" > "$tmp"
-  mv "$tmp" "$manifest"
-}
-stamp_manifest plugins/megapowers/.claude-plugin/plugin.json
-stamp_manifest plugins/megapowers/.codex-plugin/plugin.json
-
-printf 'release.sh: certified and stamped %s; no tag or publish action performed\n' "$version"
+printf 'release.sh: certified already-stamped %s; no tag or publish action performed\n' "$version"

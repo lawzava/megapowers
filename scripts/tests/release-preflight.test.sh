@@ -7,6 +7,9 @@ trap 'rm -rf "$tmp"' EXIT
 
 hash='sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 plugin_hash='sha256:1111111111111111111111111111111111111111111111111111111111111111'
+case_identities='{"case_catalog_hash":"","gates_hash":"","cases":[]}'
+cached_plugin_hash=''
+cached_case_identities=''
 treatment_inventory_hash='sha256:88e40f75e81a425ed2408db9ee50732561aef45d592f1dc5dc6d7a977260903e'
 control_inventory_hash='sha256:37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570'
 repo=''
@@ -23,12 +26,16 @@ new_repo() {
     "$repo/docs" "$repo/evals/studies/install-smoke" "$repo/evals/studies/installed-ab"
   cp "$ROOT/scripts/release.sh" "$repo/scripts/release.sh"
   cp "$ROOT/evals/score.go" "$repo/evals/score.go"
+  cp "$ROOT/evals/studies/installed-ab/run.go" "$repo/evals/studies/installed-ab/run.go"
   cp "$ROOT/evals/studies/installed-ab/gates.json" "$repo/evals/studies/installed-ab/gates.json"
-  printf '%s\n' '{"schema_version":"1","cases":[{"id":"case-1","kind":"code_quality"}]}' \
+  printf '%s\n' '{"schema_version":"1","cases":[
+    {"id":"case-1","kind":"code_quality","task":"repair the fixture","files":{"fixture.go":"BUG"},"seeded_defects":["BUG"],"forbidden_patterns":["FORBIDDEN"],"oracle_command":["true"]},
+    {"id":"report-1","kind":"autonomy_status","task":"report status","files":{},"required_facts":["current task"]}
+  ]}' \
     > "$repo/evals/studies/installed-ab/cases.json"
   printf '%s\n' '# Changelog' '' '## 1.2.3 - test' > "$repo/CHANGELOG.md"
-  printf '%s\n' '{"name":"megapowers","version":"0.0.0"}' > "$repo/plugins/megapowers/.claude-plugin/plugin.json"
-  printf '%s\n' '{"name":"megapowers","version":"0.0.0"}' > "$repo/plugins/megapowers/.codex-plugin/plugin.json"
+  printf '%s\n' '{"name":"megapowers","version":"1.2.3"}' > "$repo/plugins/megapowers/.claude-plugin/plugin.json"
+  printf '%s\n' '{"name":"megapowers","version":"1.2.3"}' > "$repo/plugins/megapowers/.codex-plugin/plugin.json"
   printf '%s\n' 'git clone --branch v0.0.0 repo megapowers-v0.0.0' > "$repo/docs/install.md"
   printf '%s\n' 'tag=v0.0.0' > "$repo/evals/studies/install-smoke/README.md"
   printf '%s\n' '#!/usr/bin/env bash' \
@@ -48,6 +55,12 @@ new_repo() {
   git -C "$repo" config user.email fixture@example.invalid
   git -C "$repo" add .
   git -C "$repo" -c commit.gpgsign=false commit -qm fixture
+  if [[ -z $cached_plugin_hash ]]; then
+    cached_plugin_hash="$(go run "$repo/evals/studies/installed-ab/run.go" --hash-plugin --repo "$repo")"
+    cached_case_identities="$(go run "$repo/evals/studies/installed-ab/run.go" --case-identities --repo "$repo")"
+  fi
+  plugin_hash="$cached_plugin_hash"
+  case_identities="$cached_case_identities"
 }
 
 write_cert() {
@@ -60,37 +73,33 @@ write_cert() {
     harness:$harness,model:"test-model",effort:"high",
     broker_hash:$plugin_hash,treatment_plugin_hash:$plugin_hash,
     empty_control_plugin_hash:$hash,
-    publishability:{publishable:true,minimum_paired_runs:10,minimum_absolute_lift:0.1,confidence_level:0.95,cases:[],reasons:[]},
+    publishability:{publishable:true,minimum_paired_runs:10,require_all_treatment_passes:true,cases:[],reasons:[]},
     arms:[]
   }' > "$publish/manifest.json"
-  local pair arm arm_plugin_hash verdict rc task_success
-  for pair in $(seq 1 "$pairs"); do
-    for arm in treatment control; do
-      arm_plugin_hash="$plugin_hash"
-      verdict=pass
-      rc=0
-      task_success=1
-      if [[ $arm == control ]]; then
-        arm_plugin_hash="$hash"
-        verdict=fail
-        rc=1
-        task_success=0
-      fi
-      jq -cn --arg harness "$harness" --arg arm "$arm" --arg revision "$revision" \
-        --arg hash "$hash" --arg plugin_hash "$arm_plugin_hash" \
-        --arg verdict "$verdict" --argjson rc "$rc" --argjson task_success "$task_success" \
-        --arg run_id "run-$pair-$arm" --arg block_id "block-$pair" '{
+  jq --arg case_catalog_hash "$(jq -r .case_catalog_hash <<<"$case_identities")" \
+    --arg gates_hash "$(jq -r .gates_hash <<<"$case_identities")" \
+    '.case_catalog_hash = $case_catalog_hash | .gates_hash = $gates_hash' \
+    "$publish/manifest.json" > "$tmp/manifest.json"
+  mv "$tmp/manifest.json" "$publish/manifest.json"
+  jq -cn --arg harness "$harness" --arg revision "$revision" \
+    --arg empty_hash "$hash" --arg treatment_hash "$plugin_hash" \
+    --argjson pairs "$pairs" --argjson identities "$case_identities" '
+      $identities.cases[] as $case |
+      range(1; $pairs + 1) as $pair |
+      ["treatment", "control"][] as $arm |
+      ($arm == "treatment" or $case.report_only) as $passed |
+      {
           schema_version:"1",study:"installed-plugin-ab",evidence_class:"behavioral",
-          case_id:"case-1",run_id:$run_id,block_id:$block_id,arm:$arm,
+          case_id:$case.case_id,run_id:("\($case.case_id)-\($pair)-\($arm)"),block_id:("\($case.case_id)-\($pair)"),arm:$arm,
           harness:{name:$harness,cli_version:"1.0.0",model:"test-model",effort:"high"},
-          source:{repository:"megapowers",revision:$revision},prompt_hash:$hash,
-          fixture_hash:$hash,plugin_hash:$plugin_hash,status:"completed",rc:$rc,
-          duration_ms:1,verdict:$verdict,metrics:{task_success:$task_success},artifacts:{},
+          source:{repository:"megapowers",revision:$revision},prompt_hash:$case.prompt_hash,
+          fixture_hash:$case.fixture_hash,plugin_hash:(if $arm == "treatment" then $treatment_hash else $empty_hash end),status:"completed",rc:0,
+          duration_ms:1,verdict:(if $passed then "pass" else "fail" end),
+          metrics:({task_success:(if $passed then 1 else 0 end)} + (if $case.report_only then {report_only:1} else {} end)),artifacts:{},
           environment:{os:"linux",arch:"amd64",sandbox:"bwrap",locale:"C"},
           timestamp:"2026-08-16T00:00:00Z"
-      }' >> "$publish/results.jsonl"
-    done
-  done
+      }
+    ' > "$publish/results.jsonl"
   jq -s --arg evidence "$evidence" \
     --arg treatment_inventory_hash "$treatment_inventory_hash" \
     --arg control_inventory_hash "$control_inventory_hash" '
@@ -120,13 +129,29 @@ run_release() {
 }
 
 unchanged_version() {
-  [[ $(jq -r .version "$repo/plugins/megapowers/.claude-plugin/plugin.json") == 0.0.0 ]]
+  [[ $(jq -r .version "$repo/plugins/megapowers/.claude-plugin/plugin.json") == 1.2.3 ]]
 }
 
 new_repo missing
 if run_release; then echo 'FAIL missing certificate root was accepted'; exit 1; fi
 unchanged_version || { echo 'FAIL missing certificate mutated manifests'; exit 1; }
 [[ ! -s $repo/gate.log ]] || { echo 'FAIL gates ran before certificate acceptance'; exit 1; }
+
+new_repo unstamped
+jq '.version = "0.0.0"' "$repo/plugins/megapowers/.claude-plugin/plugin.json" > "$tmp/manifest.json"
+mv "$tmp/manifest.json" "$repo/plugins/megapowers/.claude-plugin/plugin.json"
+if run_release; then echo 'FAIL unstamped candidate was accepted'; exit 1; fi
+[[ ! -s $repo/gate.log ]] || { echo 'FAIL gates ran before version acceptance'; exit 1; }
+
+new_repo old-version
+sed -i '2i ## 1.2.4 - newer' "$repo/CHANGELOG.md"
+if run_release; then echo 'FAIL non-latest release version was accepted'; exit 1; fi
+[[ ! -s $repo/gate.log ]] || { echo 'FAIL gates ran for a non-latest release version'; exit 1; }
+
+new_repo existing-tag
+git -C "$repo" tag v1.2.3
+if run_release; then echo 'FAIL existing release tag was accepted'; exit 1; fi
+[[ ! -s $repo/gate.log ]] || { echo 'FAIL gates ran for an existing release tag'; exit 1; }
 
 new_repo selftest
 write_both selftest-only-not-certification
@@ -147,7 +172,7 @@ unchanged_version || { echo 'FAIL missing broker attestation mutated manifests';
 
 new_repo publishability
 write_both
-jq '.publishability.publishable = false | .publishability.reasons = ["weak lift"]' \
+jq '.publishability.publishable = false | .publishability.reasons = ["treatment failure"]' \
   "$cert/codex/publish/manifest.json" > "$tmp/manifest.json"
 mv "$tmp/manifest.json" "$cert/codex/publish/manifest.json"
 if run_release; then echo 'FAIL non-publishable behavioral evidence was accepted'; exit 1; fi
@@ -184,12 +209,73 @@ mv "$tmp/results.jsonl" "$cert/claude/publish/results.jsonl"
 if run_release; then echo 'FAIL a release-gated case was allowed to self-declare report-only'; exit 1; fi
 unchanged_version || { echo 'FAIL forged report-only evidence mutated manifests'; exit 1; }
 
+new_repo missing-report-only
+write_both
+jq -c 'if .case_id == "report-1" then del(.metrics.report_only) else . end' \
+  "$cert/claude/publish/results.jsonl" > "$tmp/results.jsonl"
+mv "$tmp/results.jsonl" "$cert/claude/publish/results.jsonl"
+if run_release; then echo 'FAIL report-only case without its marker was accepted'; exit 1; fi
+unchanged_version || { echo 'FAIL missing report-only marker mutated manifests'; exit 1; }
+
+new_repo stale-prompt
+write_both
+jq -c 'if .case_id == "case-1" then .prompt_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" else . end' \
+  "$cert/claude/publish/results.jsonl" > "$tmp/results.jsonl"
+mv "$tmp/results.jsonl" "$cert/claude/publish/results.jsonl"
+jq '(.arms[] | select(.case_id == "case-1") | .prompt_hash) = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' \
+  "$cert/claude/publish/manifest.json" > "$tmp/manifest.json"
+mv "$tmp/manifest.json" "$cert/claude/publish/manifest.json"
+if run_release; then echo 'FAIL stale prompt certificate was accepted'; exit 1; fi
+unchanged_version || { echo 'FAIL stale prompt certificate mutated manifests'; exit 1; }
+
+new_repo stale-fixture
+write_both
+jq -c 'if .case_id == "case-1" then .fixture_hash = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" else . end' \
+  "$cert/claude/publish/results.jsonl" > "$tmp/results.jsonl"
+mv "$tmp/results.jsonl" "$cert/claude/publish/results.jsonl"
+jq '(.arms[] | select(.case_id == "case-1") | .fixture_hash) = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
+  "$cert/claude/publish/manifest.json" > "$tmp/manifest.json"
+mv "$tmp/manifest.json" "$cert/claude/publish/manifest.json"
+if run_release; then echo 'FAIL stale fixture certificate was accepted'; exit 1; fi
+unchanged_version || { echo 'FAIL stale fixture certificate mutated manifests'; exit 1; }
+
+new_repo hidden-case-drift
+write_both
+git -C "$repo" update-index --assume-unchanged evals/studies/installed-ab/cases.json
+jq '(.cases[] | select(.id == "case-1") | .oracle_command) = ["false"]' \
+  "$repo/evals/studies/installed-ab/cases.json" > "$tmp/cases.json"
+mv "$tmp/cases.json" "$repo/evals/studies/installed-ab/cases.json"
+if run_release; then echo 'FAIL hidden case-catalog drift was accepted'; exit 1; fi
+unchanged_version || { echo 'FAIL hidden case drift mutated manifests'; exit 1; }
+
+new_repo hidden-gates-drift
+write_both
+git -C "$repo" update-index --assume-unchanged evals/studies/installed-ab/gates.json
+jq '.code_quality.minimum_seeded_defect_reduction = 2' \
+  "$repo/evals/studies/installed-ab/gates.json" > "$tmp/gates.json"
+mv "$tmp/gates.json" "$repo/evals/studies/installed-ab/gates.json"
+if run_release; then echo 'FAIL hidden gates drift was accepted'; exit 1; fi
+unchanged_version || { echo 'FAIL hidden gates drift mutated manifests'; exit 1; }
+
 new_repo sandbox
 write_both
 jq -c '.environment.sandbox = "workspace-write"' "$cert/claude/publish/results.jsonl" > "$tmp/results.jsonl"
 mv "$tmp/results.jsonl" "$cert/claude/publish/results.jsonl"
 if run_release; then echo 'FAIL non-broker sandbox provenance was accepted'; exit 1; fi
 unchanged_version || { echo 'FAIL invalid sandbox provenance mutated manifests'; exit 1; }
+
+new_repo plugin-tree
+plugin_hash='sha256:1111111111111111111111111111111111111111111111111111111111111111'
+write_both
+if run_release; then echo 'FAIL certificate for an unrelated plugin tree was accepted'; exit 1; fi
+unchanged_version || { echo 'FAIL mismatched plugin tree mutated manifests'; exit 1; }
+
+new_repo ignored-plugin
+write_both
+printf '%s\n' 'plugins/megapowers/ignored-payload' >> "$repo/.git/info/exclude"
+printf '%s\n' 'unshipped behavior' > "$repo/plugins/megapowers/ignored-payload"
+if run_release; then echo 'FAIL certificate with ignored plugin payload was accepted'; exit 1; fi
+unchanged_version || { echo 'FAIL ignored plugin payload mutated manifests'; exit 1; }
 
 new_repo dirty
 write_both
@@ -200,12 +286,7 @@ unchanged_version || { echo 'FAIL dirty candidate mutated manifests'; exit 1; }
 new_repo valid
 write_both
 run_release || { cat "$tmp/release.out"; echo 'FAIL valid certificate was refused'; exit 1; }
-[[ $(jq -r .version "$repo/plugins/megapowers/.claude-plugin/plugin.json") == 1.2.3 ]] || {
-  echo 'FAIL Claude manifest was not stamped'; exit 1;
-}
-[[ $(jq -r .version "$repo/plugins/megapowers/.codex-plugin/plugin.json") == 1.2.3 ]] || {
-  echo 'FAIL Codex manifest was not stamped'; exit 1;
-}
+unchanged_version || { echo 'FAIL certified candidate manifest changed'; exit 1; }
 [[ $(cat "$repo/gate.log") == $'deterministic\nfresh' ]] || {
   echo 'FAIL deterministic/freshness gate order changed'; cat "$repo/gate.log"; exit 1;
 }

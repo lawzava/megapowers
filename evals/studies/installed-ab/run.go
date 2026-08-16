@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,7 +14,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -55,11 +55,10 @@ type gatesFile struct {
 		RequireNoopPreservation bool    `json:"require_noop_preservation"`
 	} `json:"prose"`
 	CodeQuality struct {
-		MinimumSeededDefectReduction int     `json:"minimum_seeded_defect_reduction"`
-		MaximumConventionRegressions int     `json:"maximum_convention_regressions"`
-		MinimumAbsoluteLift          float64 `json:"minimum_absolute_lift"`
-		MinimumPairedRuns            int     `json:"minimum_paired_runs"`
-		ConfidenceLevel              float64 `json:"confidence_level"`
+		MinimumSeededDefectReduction int  `json:"minimum_seeded_defect_reduction"`
+		MaximumConventionRegressions int  `json:"maximum_convention_regressions"`
+		MinimumPairedRuns            int  `json:"minimum_paired_runs"`
+		RequireAllTreatmentPasses    bool `json:"require_all_treatment_passes"`
 	} `json:"code_quality"`
 	TDD struct {
 		RequireTestBeforeImplementation bool `json:"require_test_before_implementation"`
@@ -74,17 +73,18 @@ type gatesFile struct {
 }
 
 type runOptions struct {
-	Harness    string
-	Model      string
-	Effort     string
-	Repo       string
-	Out        string
-	TempRoot   string
-	Timestamp  time.Time
-	Selftest   bool
-	Broker     string
-	BrokerHash string
-	PairedRuns int
+	Harness      string
+	Model        string
+	Effort       string
+	Repo         string
+	Out          string
+	TempRoot     string
+	Timestamp    time.Time
+	Selftest     bool
+	Broker       string
+	BrokerHash   string
+	PairedRuns   int
+	ActorTimeout time.Duration
 }
 
 type actorRequest struct {
@@ -96,6 +96,7 @@ type actorRequest struct {
 	Home       string
 	Project    string
 	PluginRoot string
+	Timeout    time.Duration
 }
 
 type actorEvent struct {
@@ -175,22 +176,22 @@ type armManifest struct {
 }
 
 type caseAssessment struct {
-	CaseID              string  `json:"case_id"`
-	PairedRuns          int     `json:"paired_runs"`
-	TreatmentPasses     int     `json:"treatment_passes"`
-	ControlPasses       int     `json:"control_passes"`
-	ObservedLift        float64 `json:"observed_lift"`
-	ConfidenceLowerLift float64 `json:"confidence_lower_lift"`
-	Publishable         bool    `json:"publishable"`
+	CaseID            string  `json:"case_id"`
+	PairedRuns        int     `json:"paired_runs"`
+	TreatmentPasses   int     `json:"treatment_passes"`
+	ControlPasses     int     `json:"control_passes"`
+	TreatmentPassRate float64 `json:"treatment_pass_rate"`
+	ControlPassRate   float64 `json:"control_pass_rate"`
+	ObservedLift      float64 `json:"observed_lift"`
+	Publishable       bool    `json:"publishable"`
 }
 
 type publishability struct {
-	Publishable         bool             `json:"publishable"`
-	MinimumPairedRuns   int              `json:"minimum_paired_runs"`
-	MinimumAbsoluteLift float64          `json:"minimum_absolute_lift"`
-	ConfidenceLevel     float64          `json:"confidence_level"`
-	Cases               []caseAssessment `json:"cases"`
-	Reasons             []string         `json:"reasons"`
+	Publishable               bool             `json:"publishable"`
+	MinimumPairedRuns         int              `json:"minimum_paired_runs"`
+	RequireAllTreatmentPasses bool             `json:"require_all_treatment_passes"`
+	Cases                     []caseAssessment `json:"cases"`
+	Reasons                   []string         `json:"reasons"`
 }
 
 type publishManifest struct {
@@ -201,19 +202,37 @@ type publishManifest struct {
 	Model                  string         `json:"model"`
 	Effort                 string         `json:"effort"`
 	BrokerHash             string         `json:"broker_hash"`
+	CaseCatalogHash        string         `json:"case_catalog_hash"`
+	GatesHash              string         `json:"gates_hash"`
 	TreatmentPluginHash    string         `json:"treatment_plugin_hash"`
 	EmptyControlPluginHash string         `json:"empty_control_plugin_hash"`
 	Publishability         publishability `json:"publishability"`
 	Arms                   []armManifest  `json:"arms"`
 }
 
+type caseIdentity struct {
+	CaseID      string `json:"case_id"`
+	PromptHash  string `json:"prompt_hash"`
+	FixtureHash string `json:"fixture_hash"`
+	ReportOnly  bool   `json:"report_only"`
+}
+
+type releaseIdentity struct {
+	CaseCatalogHash string         `json:"case_catalog_hash"`
+	GatesHash       string         `json:"gates_hash"`
+	Cases           []caseIdentity `json:"cases"`
+}
+
 func main() {
-	var selftest, validate, run, credentialed bool
+	var selftest, validate, run, hashPlugin, caseIdentities, credentialed bool
 	var casesPath, gatesPath, harness, model, effort, out, repo, broker, brokerPin string
 	var pairedRuns int
+	var actorTimeout time.Duration
 	flag.BoolVar(&selftest, "selftest", false, "run credential-free runner contracts")
 	flag.BoolVar(&validate, "validate-config", false, "validate cases and gates")
 	flag.BoolVar(&run, "run", false, "run a real installed-plugin study")
+	flag.BoolVar(&hashPlugin, "hash-plugin", false, "print the verified current plugin tree hash")
+	flag.BoolVar(&caseIdentities, "case-identities", false, "print current release case identities")
 	flag.BoolVar(&credentialed, "credentialed", false, "acknowledge use of real harness credentials")
 	flag.StringVar(&casesPath, "cases", "", "case catalog")
 	flag.StringVar(&gatesPath, "gates", "", "gate catalog")
@@ -225,16 +244,17 @@ func main() {
 	flag.StringVar(&broker, "sandbox-broker", "", "absolute path to a trusted OS-isolation broker")
 	flag.StringVar(&brokerPin, "broker-sha256", "", "pinned sha256 of the trusted broker")
 	flag.IntVar(&pairedRuns, "paired-runs", 0, "paired runs per case, defaults to the configured minimum")
+	flag.DurationVar(&actorTimeout, "actor-timeout", 20*time.Minute, "maximum time for one actor run")
 	flag.Parse()
 
 	modes := 0
-	for _, enabled := range []bool{selftest, validate, run} {
+	for _, enabled := range []bool{selftest, validate, run, hashPlugin, caseIdentities} {
 		if enabled {
 			modes++
 		}
 	}
 	if modes != 1 {
-		fatal(errors.New("choose exactly one of --selftest, --validate-config, or --run"))
+		fatal(errors.New("choose exactly one of --selftest, --validate-config, --hash-plugin, --case-identities, or --run"))
 	}
 	if selftest {
 		if err := runSelftest(); err != nil {
@@ -246,11 +266,24 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	if hashPlugin {
+		hash, err := verifiedPluginHash(root)
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Println(hash)
+		return
+	}
 	if casesPath == "" {
 		casesPath = filepath.Join(root, "evals", "studies", "installed-ab", "cases.json")
 	}
 	if gatesPath == "" {
 		gatesPath = filepath.Join(root, "evals", "studies", "installed-ab", "gates.json")
+	}
+	if run || caseIdentities {
+		if err := verifyReleaseConfiguration(root, casesPath, gatesPath); err != nil {
+			fatal(err)
+		}
 	}
 	cases, gates, err := loadConfiguration(casesPath, gatesPath)
 	if err != nil {
@@ -258,6 +291,22 @@ func main() {
 	}
 	if validate {
 		fmt.Printf("installed-ab config: %d cases valid\n", len(cases.Cases))
+		return
+	}
+	if caseIdentities {
+		identities := make([]caseIdentity, 0, len(cases.Cases))
+		for _, c := range cases.Cases {
+			identities = append(identities, caseIdentity{CaseID: c.ID, PromptHash: hashBytes([]byte(c.Task)), FixtureHash: hashFixture(c.Files), ReportOnly: c.Kind == "autonomy_status"})
+		}
+		caseCatalogHash, gatesHash, err := configurationHashes(cases, gates)
+		if err != nil {
+			fatal(err)
+		}
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(releaseIdentity{CaseCatalogHash: caseCatalogHash, GatesHash: gatesHash, Cases: identities}); err != nil {
+			fatal(err)
+		}
 		return
 	}
 	if !credentialed {
@@ -269,6 +318,9 @@ func main() {
 	if model == "" || out == "" {
 		fatal(errors.New("--run requires --model and --out"))
 	}
+	if actorTimeout < 10*time.Second || actorTimeout > 2*time.Hour {
+		fatal(errors.New("--actor-timeout must be in [10s,2h]"))
+	}
 	brokerHash, err := validateBroker(broker, brokerPin, root, out)
 	if err != nil {
 		fatal(err)
@@ -279,7 +331,7 @@ func main() {
 	if pairedRuns < gates.CodeQuality.MinimumPairedRuns {
 		fatal(fmt.Errorf("--paired-runs must be at least %d", gates.CodeQuality.MinimumPairedRuns))
 	}
-	opts := runOptions{Harness: harness, Model: model, Effort: effort, Repo: root, Out: out, Timestamp: time.Now().UTC(), Broker: broker, BrokerHash: brokerHash, PairedRuns: pairedRuns}
+	opts := runOptions{Harness: harness, Model: model, Effort: effort, Repo: root, Out: out, Timestamp: time.Now().UTC(), Broker: broker, BrokerHash: brokerHash, PairedRuns: pairedRuns, ActorTimeout: actorTimeout}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if _, _, err := executeStudy(ctx, cases, gates, opts, brokerActor{Path: broker, ExpectedHash: brokerHash}); err != nil {
@@ -395,7 +447,7 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 	if gates.CodeQuality.MinimumSeededDefectReduction < 1 || gates.CodeQuality.MaximumConventionRegressions != 0 {
 		return errors.New("code-quality gate must reduce defects without convention regressions")
 	}
-	if gates.CodeQuality.MinimumAbsoluteLift <= 0 || gates.CodeQuality.MinimumPairedRuns < 2 || gates.CodeQuality.ConfidenceLevel <= 0 || gates.CodeQuality.ConfidenceLevel >= 1 {
+	if gates.CodeQuality.MinimumPairedRuns < 2 || !gates.CodeQuality.RequireAllTreatmentPasses {
 		return errors.New("code-quality aggregate gate is incomplete")
 	}
 	if !gates.TDD.RequireTestBeforeImplementation || !gates.TDD.RequireRedBeforeImplementation || !gates.TDD.RequirePassingOracle {
@@ -405,6 +457,18 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 		return errors.New("autonomy status must remain a strict report-only gate")
 	}
 	return nil
+}
+
+func configurationHashes(cases casesFile, gates gatesFile) (string, string, error) {
+	caseBytes, err := json.Marshal(cases)
+	if err != nil {
+		return "", "", err
+	}
+	gateBytes, err := json.Marshal(gates)
+	if err != nil {
+		return "", "", err
+	}
+	return hashBytes(caseBytes), hashBytes(gateBytes), nil
 }
 
 func safeRelative(name string) error {
@@ -509,15 +573,23 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 		os.RemoveAll(root)
 		return nil, publishManifest{}, err
 	}
-	defer os.RemoveAll(root)
+	defer removePrivateTree(root)
 
 	revision := gitOutput(opts.Repo, "rev-parse", "HEAD")
 	if revision == "" {
 		revision = strings.Repeat("0", 40)
 	}
-	pluginHash, err := hashTree(filepath.Join(opts.Repo, "plugins", "megapowers"))
-	if err != nil {
-		return nil, publishManifest{}, err
+	pluginHash := hashBytes([]byte("in-process-selftest-plugin"))
+	actorPluginRoot := filepath.Join(opts.Repo, "plugins", "megapowers")
+	if !opts.Selftest {
+		pluginHash, err = verifiedPluginHash(opts.Repo)
+		if err != nil {
+			return nil, publishManifest{}, err
+		}
+		actorPluginRoot = filepath.Join(root, "verified-plugin")
+		if err := stagePortablePluginTree(filepath.Join(opts.Repo, "plugins", "megapowers"), actorPluginRoot, pluginHash); err != nil {
+			return nil, publishManifest{}, err
+		}
 	}
 	controlHash := emptyControlPluginHash()
 	cliVersion := "selftest"
@@ -530,7 +602,11 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 	if opts.Selftest {
 		brokerHash = hashBytes([]byte("in-process-selftest-fake"))
 	}
-	manifest := publishManifest{SchemaVersion: "1", Study: "installed-plugin-ab", Evidence: evidenceLabel(opts.Selftest), Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, BrokerHash: brokerHash, TreatmentPluginHash: pluginHash, EmptyControlPluginHash: controlHash}
+	caseCatalogHash, gatesHash, err := configurationHashes(cases, gates)
+	if err != nil {
+		return nil, publishManifest{}, err
+	}
+	manifest := publishManifest{SchemaVersion: "1", Study: "installed-plugin-ab", Evidence: evidenceLabel(opts.Selftest), Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, BrokerHash: brokerHash, CaseCatalogHash: caseCatalogHash, GatesHash: gatesHash, TreatmentPluginHash: pluginHash, EmptyControlPluginHash: controlHash}
 	rows := make([]resultRow, 0, len(cases.Cases)*pairedRuns*2)
 	for i, c := range cases.Cases {
 		promptHash := hashBytes([]byte(c.Task))
@@ -561,11 +637,18 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 				pluginRoot := ""
 				armPluginHash := controlHash
 				if arm == "treatment" {
-					pluginRoot = filepath.Join(opts.Repo, "plugins", "megapowers")
+					pluginRoot = actorPluginRoot
 					armPluginHash = pluginHash
 				}
-				request := actorRequest{Case: c, Arm: arm, Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, Home: home, Project: project, PluginRoot: pluginRoot}
-				result, actorErr := subject.Run(ctx, request)
+				actorTimeout := opts.ActorTimeout
+				if actorTimeout == 0 {
+					actorTimeout = 20 * time.Minute
+				}
+				request := actorRequest{Case: c, Arm: arm, Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, Home: home, Project: project, PluginRoot: pluginRoot, Timeout: actorTimeout}
+				actorCtx, cancelActor := context.WithTimeout(ctx, actorTimeout)
+				result, actorErr := subject.Run(actorCtx, request)
+				timedOut := errors.Is(actorCtx.Err(), context.DeadlineExceeded)
+				cancelActor()
 				if result.CLIVersion != "" {
 					cliVersion = result.CLIVersion
 				}
@@ -576,14 +659,21 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 				row.DurationMS = max(result.Duration.Milliseconds(), 0)
 				row.RC = result.RC
 				row.Artifacts = map[string]string{"response": hashBytes([]byte(result.Response)), "trace": hashBytes(result.Trace)}
-				if actorErr != nil || result.RC != 0 {
+				if actorErr != nil || result.RC != 0 || timedOut {
 					row.Status = "harness_error"
+					if timedOut {
+						row.Status = "timeout"
+						row.RC = 124
+					}
 					row.Verdict = "harness_error"
 					row.Metrics = map[string]float64{"task_success": 0}
 					rows = append(rows, row)
 					inventory := cleanInventory(result.Inventory)
 					manifest.Arms = append(manifest.Arms, armManifest{CaseID: c.ID, BlockID: blockID, Arm: arm, PromptHash: promptHash, FixtureHash: fixtureHash, PluginHash: armPluginHash, PluginNames: inventory, InventoryHash: hashInventory(inventory), EvidenceOnly: evidenceLabel(opts.Selftest)})
 					_ = writePublish(opts.Out, rows, manifest)
+					if timedOut {
+						return rows, manifest, fmt.Errorf("%s/%s actor timed out after %s", c.ID, arm, actorTimeout)
+					}
 					if actorErr != nil {
 						return rows, manifest, fmt.Errorf("%s/%s actor error: %w", c.ID, arm, actorErr)
 					}
@@ -623,10 +713,9 @@ func hashInventory(names []string) string {
 
 func assessPublishability(rows []resultRow, gates gatesFile) publishability {
 	assessment := publishability{
-		Publishable:         true,
-		MinimumPairedRuns:   gates.CodeQuality.MinimumPairedRuns,
-		MinimumAbsoluteLift: gates.CodeQuality.MinimumAbsoluteLift,
-		ConfidenceLevel:     gates.CodeQuality.ConfidenceLevel,
+		Publishable:               true,
+		MinimumPairedRuns:         gates.CodeQuality.MinimumPairedRuns,
+		RequireAllTreatmentPasses: gates.CodeQuality.RequireAllTreatmentPasses,
 	}
 	type counts struct{ treatmentPass, treatmentTotal, controlPass, controlTotal int }
 	byCase := map[string]*counts{}
@@ -658,26 +747,19 @@ func assessPublishability(rows []resultRow, gates gatesFile) publishability {
 		caseIDs = append(caseIDs, caseID)
 	}
 	sort.Strings(caseIDs)
-	z := math.Sqrt2 * math.Erfinv(gates.CodeQuality.ConfidenceLevel)
 	for _, caseID := range caseIDs {
 		cell := byCase[caseID]
 		paired := minInt(cell.treatmentTotal, cell.controlTotal)
 		treatmentRate := rate(cell.treatmentPass, cell.treatmentTotal)
 		controlRate := rate(cell.controlPass, cell.controlTotal)
 		observed := treatmentRate - controlRate
-		treatmentLower, _ := wilson(cell.treatmentPass, cell.treatmentTotal, z)
-		_, controlUpper := wilson(cell.controlPass, cell.controlTotal, z)
-		confidenceLower := treatmentLower - controlUpper
-		publishable := paired >= gates.CodeQuality.MinimumPairedRuns && cell.treatmentTotal == cell.controlTotal && observed >= gates.CodeQuality.MinimumAbsoluteLift && confidenceLower >= gates.CodeQuality.MinimumAbsoluteLift
-		assessment.Cases = append(assessment.Cases, caseAssessment{CaseID: caseID, PairedRuns: paired, TreatmentPasses: cell.treatmentPass, ControlPasses: cell.controlPass, ObservedLift: observed, ConfidenceLowerLift: confidenceLower, Publishable: publishable})
+		publishable := paired >= gates.CodeQuality.MinimumPairedRuns && cell.treatmentTotal == cell.controlTotal && cell.treatmentPass == cell.treatmentTotal
+		assessment.Cases = append(assessment.Cases, caseAssessment{CaseID: caseID, PairedRuns: paired, TreatmentPasses: cell.treatmentPass, ControlPasses: cell.controlPass, TreatmentPassRate: treatmentRate, ControlPassRate: controlRate, ObservedLift: observed, Publishable: publishable})
 		if paired < gates.CodeQuality.MinimumPairedRuns || cell.treatmentTotal != cell.controlTotal {
 			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s has %d balanced pairs, require %d", caseID, paired, gates.CodeQuality.MinimumPairedRuns))
 		}
-		if observed < gates.CodeQuality.MinimumAbsoluteLift {
-			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s observed lift %.4f is below %.4f", caseID, observed, gates.CodeQuality.MinimumAbsoluteLift))
-		}
-		if confidenceLower < gates.CodeQuality.MinimumAbsoluteLift {
-			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s confidence lower lift %.4f is below %.4f at %.3f confidence", caseID, confidenceLower, gates.CodeQuality.MinimumAbsoluteLift, gates.CodeQuality.ConfidenceLevel))
+		if cell.treatmentPass != cell.treatmentTotal {
+			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s treatment passed %d/%d; require every treatment run to pass", caseID, cell.treatmentPass, cell.treatmentTotal))
 		}
 		assessment.Publishable = assessment.Publishable && publishable
 	}
@@ -686,18 +768,6 @@ func assessPublishability(rows []resultRow, gates gatesFile) publishability {
 		assessment.Reasons = append(assessment.Reasons, "no completed treatment/control results")
 	}
 	return assessment
-}
-
-func wilson(successes, total int, z float64) (float64, float64) {
-	if total == 0 {
-		return 0, 1
-	}
-	n := float64(total)
-	p := float64(successes) / n
-	z2 := z * z
-	center := (p + z2/(2*n)) / (1 + z2/n)
-	half := z * math.Sqrt((p*(1-p)+z2/(4*n))/n) / (1 + z2/n)
-	return maxFloat(0, center-half), minFloat(1, center+half)
 }
 
 func rate(successes, total int) float64 {
@@ -709,20 +779,6 @@ func rate(successes, total int) float64 {
 
 func minInt(a, b int) int {
 	if a < b {
-		return a
-	}
-	return b
-}
-
-func minFloat(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func maxFloat(a, b float64) float64 {
-	if a > b {
 		return a
 	}
 	return b
@@ -941,35 +997,334 @@ func hashFixture(files map[string]string) string {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
-func hashTree(root string) (string, error) {
-	var names []string
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+type trackedPluginFile struct {
+	mode   string
+	object string
+}
+
+// verifiedPluginHash binds evidence to the exact regular files Git will ship.
+// Ignored or untracked payloads, symlinks, special files, and worktree drift
+// fail closed instead of entering an otherwise clean-looking certificate.
+func verifiedPluginHash(repo string) (string, error) {
+	const pluginPath = "plugins/megapowers"
+	formatOutput, err := exec.Command("git", "-C", repo, "rev-parse", "--show-object-format").Output()
+	if err != nil {
+		return "", fmt.Errorf("read repository object format: %w", err)
+	}
+	objectFormat := strings.TrimSpace(string(formatOutput))
+	if objectFormat != "sha1" && objectFormat != "sha256" {
+		return "", fmt.Errorf("unsupported repository object format %q", objectFormat)
+	}
+	listing, err := exec.Command("git", "-C", repo, "ls-tree", "-r", "-z", "HEAD", "--", pluginPath).Output()
+	if err != nil {
+		return "", fmt.Errorf("list committed plugin tree: %w", err)
+	}
+	expected := make(map[string]trackedPluginFile)
+	for _, raw := range bytes.Split(listing, []byte{0}) {
+		if len(raw) == 0 {
+			continue
+		}
+		parts := bytes.SplitN(raw, []byte{'\t'}, 2)
+		if len(parts) != 2 {
+			return "", errors.New("committed plugin tree has malformed metadata")
+		}
+		header := strings.Fields(string(parts[0]))
+		name := filepath.ToSlash(string(parts[1]))
+		if len(header) != 3 || header[1] != "blob" || (header[0] != "100644" && header[0] != "100755") {
+			return "", fmt.Errorf("committed plugin entry %q is not a regular portable file", name)
+		}
+		expected[name] = trackedPluginFile{mode: header[0], object: header[2]}
+	}
+	if len(expected) == 0 {
+		return "", errors.New("committed plugin tree is empty")
+	}
+
+	root := filepath.Join(repo, filepath.FromSlash(pluginPath))
+	type hashedFile struct {
+		name    string
+		mode    string
+		content []byte
+	}
+	files := make([]hashedFile, 0, len(expected))
+	seen := make(map[string]bool, len(expected))
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		repoRelative, err := filepath.Rel(repo, path)
 		if err != nil {
 			return err
 		}
-		if !entry.IsDir() {
-			rel, err := filepath.Rel(root, path)
-			if err != nil {
-				return err
-			}
-			names = append(names, filepath.ToSlash(rel))
+		repoName := filepath.ToSlash(repoRelative)
+		want, ok := expected[repoName]
+		if !ok {
+			return fmt.Errorf("plugin tree contains uncommitted path %q", repoName)
 		}
+		pathInfo, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if !pathInfo.Mode().IsRegular() {
+			return fmt.Errorf("plugin path %q is not a regular file", repoName)
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		openedInfo, statErr := file.Stat()
+		content, readErr := io.ReadAll(file)
+		closeErr := file.Close()
+		if statErr != nil || readErr != nil || closeErr != nil {
+			return fmt.Errorf("read plugin path %q", repoName)
+		}
+		if !openedInfo.Mode().IsRegular() || !os.SameFile(pathInfo, openedInfo) {
+			return fmt.Errorf("plugin path %q changed while it was verified", repoName)
+		}
+		mode := "100644"
+		if openedInfo.Mode().Perm()&0o111 != 0 {
+			mode = "100755"
+		}
+		if mode != want.mode {
+			return fmt.Errorf("plugin path %q mode differs from HEAD", repoName)
+		}
+		if gitBlobHash(content, objectFormat) != want.object {
+			return fmt.Errorf("plugin path %q content differs from HEAD", repoName)
+		}
+		pluginRelative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		files = append(files, hashedFile{name: filepath.ToSlash(pluginRelative), mode: mode, content: content})
+		seen[repoName] = true
 		return nil
 	})
 	if err != nil {
 		return "", err
 	}
-	sort.Strings(names)
-	h := sha256.New()
-	for _, name := range names {
-		content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
-		if err != nil {
-			return "", err
+	for name := range expected {
+		if !seen[name] {
+			return "", fmt.Errorf("committed plugin path %q is missing", name)
 		}
-		fmt.Fprintf(h, "%d:%s:%d:", len(name), name, len(content))
-		h.Write(content)
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
+	h := sha256.New()
+	for _, file := range files {
+		fmt.Fprintf(h, "%d:%s:%s:%d:", len(file.name), file.name, file.mode, len(file.content))
+		h.Write(file.content)
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func gitBlobHash(content []byte, format string) string {
+	header := []byte(fmt.Sprintf("blob %d%c", len(content), 0))
+	if format == "sha256" {
+		h := sha256.New()
+		h.Write(header)
+		h.Write(content)
+		return hex.EncodeToString(h.Sum(nil))
+	}
+	h := sha1.New()
+	h.Write(header)
+	h.Write(content)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func verifyReleaseConfiguration(repo, casesPath, gatesPath string) error {
+	expectedCases := filepath.Join(repo, "evals", "studies", "installed-ab", "cases.json")
+	expectedGates := filepath.Join(repo, "evals", "studies", "installed-ab", "gates.json")
+	for _, pair := range []struct {
+		got  string
+		want string
+	}{{casesPath, expectedCases}, {gatesPath, expectedGates}} {
+		got, err := filepath.Abs(pair.got)
+		if err != nil {
+			return err
+		}
+		want, err := filepath.Abs(pair.want)
+		if err != nil {
+			return err
+		}
+		if filepath.Clean(got) != filepath.Clean(want) {
+			return errors.New("release runs require the checkout's committed cases.json and gates.json")
+		}
+		if err := verifyRegularFileAtHEAD(repo, want); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyRegularFileAtHEAD(repo, path string) error {
+	relative, err := filepath.Rel(repo, path)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errors.New("release configuration path escapes the checkout")
+	}
+	repoName := filepath.ToSlash(relative)
+	formatOutput, err := exec.Command("git", "-C", repo, "rev-parse", "--show-object-format").Output()
+	if err != nil {
+		return fmt.Errorf("read repository object format: %w", err)
+	}
+	objectFormat := strings.TrimSpace(string(formatOutput))
+	if objectFormat != "sha1" && objectFormat != "sha256" {
+		return fmt.Errorf("unsupported repository object format %q", objectFormat)
+	}
+	listing, err := exec.Command("git", "-C", repo, "ls-tree", "-z", "HEAD", "--", repoName).Output()
+	if err != nil || len(listing) == 0 {
+		return fmt.Errorf("release configuration %q is not committed at HEAD", repoName)
+	}
+	entry := bytes.TrimSuffix(listing, []byte{0})
+	parts := bytes.SplitN(entry, []byte{'\t'}, 2)
+	if len(parts) != 2 || filepath.ToSlash(string(parts[1])) != repoName {
+		return fmt.Errorf("release configuration %q has malformed Git metadata", repoName)
+	}
+	header := strings.Fields(string(parts[0]))
+	if len(header) != 3 || header[0] != "100644" || header[1] != "blob" {
+		return fmt.Errorf("release configuration %q is not a regular non-executable file", repoName)
+	}
+	pathInfo, err := os.Lstat(path)
+	if err != nil || !pathInfo.Mode().IsRegular() || pathInfo.Mode().Perm()&0o111 != 0 {
+		return fmt.Errorf("release configuration %q is not a regular non-executable worktree file", repoName)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	openedInfo, statErr := file.Stat()
+	content, readErr := io.ReadAll(file)
+	closeErr := file.Close()
+	if statErr != nil || readErr != nil || closeErr != nil || !os.SameFile(pathInfo, openedInfo) {
+		return fmt.Errorf("release configuration %q changed while it was verified", repoName)
+	}
+	if gitBlobHash(content, objectFormat) != header[2] {
+		return fmt.Errorf("release configuration %q content differs from HEAD", repoName)
+	}
+	return nil
+}
+
+func hashPortablePluginTree(root string) (string, error) {
+	type fileRecord struct {
+		name    string
+		mode    string
+		content []byte
+	}
+	var files []fileRecord
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		pathInfo, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if !pathInfo.Mode().IsRegular() {
+			return fmt.Errorf("plugin path %q is not a regular file", path)
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		openedInfo, statErr := file.Stat()
+		content, readErr := io.ReadAll(file)
+		closeErr := file.Close()
+		if statErr != nil || readErr != nil || closeErr != nil {
+			return fmt.Errorf("read plugin path %q", path)
+		}
+		if !openedInfo.Mode().IsRegular() || !os.SameFile(pathInfo, openedInfo) {
+			return fmt.Errorf("plugin path %q changed while it was hashed", path)
+		}
+		name, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		mode := "100644"
+		if openedInfo.Mode().Perm()&0o111 != 0 {
+			mode = "100755"
+		}
+		files = append(files, fileRecord{name: filepath.ToSlash(name), mode: mode, content: content})
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(files) == 0 {
+		return "", errors.New("plugin tree is empty")
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
+	h := sha256.New()
+	for _, file := range files {
+		fmt.Fprintf(h, "%d:%s:%s:%d:", len(file.name), file.name, file.mode, len(file.content))
+		h.Write(file.content)
+	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func stagePortablePluginTree(source, destination, expectedHash string) error {
+	if err := os.Mkdir(destination, 0o700); err != nil {
+		return fmt.Errorf("create verified plugin directory: %w", err)
+	}
+	directories := []string{destination}
+	err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		if relative == "." {
+			return nil
+		}
+		target := filepath.Join(destination, relative)
+		if entry.IsDir() {
+			if err := os.Mkdir(target, 0o700); err != nil {
+				return err
+			}
+			directories = append(directories, target)
+			return nil
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("plugin path %q is not a regular file", path)
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		mode := fs.FileMode(0o400)
+		if info.Mode().Perm()&0o111 != 0 {
+			mode = 0o500
+		}
+		if err := os.WriteFile(target, content, mode); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	actualHash, err := hashPortablePluginTree(destination)
+	if err != nil {
+		return err
+	}
+	if actualHash != expectedHash {
+		return errors.New("plugin tree changed before its verified execution copy was created")
+	}
+	sort.Slice(directories, func(i, j int) bool { return len(directories[i]) > len(directories[j]) })
+	for _, directory := range directories {
+		if err := os.Chmod(directory, 0o500); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func hashBytes(content []byte) string {
@@ -1023,6 +1378,16 @@ func atomicWrite(path string, content []byte, mode fs.FileMode) error {
 		return err
 	}
 	return os.Rename(name, path)
+}
+
+func removePrivateTree(root string) {
+	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err == nil && entry.IsDir() {
+			_ = os.Chmod(path, 0o700)
+		}
+		return nil
+	})
+	_ = os.RemoveAll(root)
 }
 
 type brokerActor struct {
@@ -1096,6 +1461,7 @@ type brokerRequest struct {
 	PluginRepo     string   `json:"plugin_repo,omitempty"`
 	TaskReadRoots  []string `json:"task_read_roots"`
 	TaskWriteRoots []string `json:"task_write_roots"`
+	TimeoutMS      int64    `json:"timeout_ms"`
 }
 
 type isolationAttestation struct {
@@ -1159,7 +1525,11 @@ func makeBrokerRequest(request actorRequest) (brokerRequest, []string) {
 		pluginRepo = request.PluginRoot
 		roots = append(roots, request.PluginRoot)
 	}
-	return brokerRequest{SchemaVersion: "1", Harness: request.Harness, Model: request.Model, Effort: request.Effort, Arm: request.Arm, Task: request.Case.Task, Project: request.Project, PluginRepo: pluginRepo, TaskReadRoots: roots, TaskWriteRoots: []string{request.Project}}, roots
+	brokerTimeout := request.Timeout - 5*time.Second
+	if brokerTimeout <= 0 {
+		brokerTimeout = request.Timeout
+	}
+	return brokerRequest{SchemaVersion: "1", Harness: request.Harness, Model: request.Model, Effort: request.Effort, Arm: request.Arm, Task: request.Case.Task, Project: request.Project, PluginRepo: pluginRepo, TaskReadRoots: roots, TaskWriteRoots: []string{request.Project}, TimeoutMS: brokerTimeout.Milliseconds()}, roots
 }
 
 func validateIsolation(response brokerResponse, expectedRoots []string, arm string) error {
@@ -1281,6 +1651,13 @@ type fakeActor struct {
 	ObservedMode []fs.FileMode
 }
 
+type blockingActor struct{}
+
+func (blockingActor) Run(ctx context.Context, request actorRequest) (actorResult, error) {
+	<-ctx.Done()
+	return actorResult{RC: 124, Inventory: inventoryFor(request), Sandbox: "in-process-selftest"}, ctx.Err()
+}
+
 func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, error) {
 	info, err := os.Stat(request.Home)
 	if err != nil {
@@ -1346,7 +1723,7 @@ func runSelftest() error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(parent)
+	defer removePrivateTree(parent)
 	out := filepath.Join(parent, "success")
 	fake := &fakeActor{}
 	opts := runOptions{Harness: "codex", Model: "fake-selftest", Effort: "test", Repo: root, Out: out, TempRoot: parent, Timestamp: time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC), Selftest: true, PairedRuns: 1}
@@ -1435,13 +1812,47 @@ func runSelftest() error {
 	if !stagedCopyBound {
 		return errors.New("staged broker did not retain approved bytes")
 	}
+	pluginSource := filepath.Join(parent, "plugin-source")
+	pluginStage := filepath.Join(parent, "plugin-stage")
+	if err := os.Mkdir(pluginSource, 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(pluginSource, "SKILL.md"), []byte("approved\n"), 0o600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(pluginSource, "hook"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		return err
+	}
+	approvedPluginHash, err := hashPortablePluginTree(pluginSource)
+	if err != nil {
+		return err
+	}
+	if err := stagePortablePluginTree(pluginSource, pluginStage, approvedPluginHash); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(pluginSource, "SKILL.md"), []byte("changed\n"), 0o600); err != nil {
+		return err
+	}
+	stagedPluginHash, err := hashPortablePluginTree(pluginStage)
+	if err != nil {
+		return err
+	}
+	stagedSkill, err := os.Stat(filepath.Join(pluginStage, "SKILL.md"))
+	if err != nil {
+		return err
+	}
+	privatePluginCopy := stagedPluginHash == approvedPluginHash && stagedSkill.Mode().Perm() == 0o400
+	printCheck("treatment uses a verified private plugin copy", privatePluginCopy)
+	if !privatePluginCopy {
+		return errors.New("staged plugin did not retain approved read-only bytes")
+	}
 	privateBrokerCWD := brokerCommand(context.Background(), stagedBroker).Dir == filepath.Dir(stagedBroker)
 	printCheck("broker working directory is the verified private directory", privateBrokerCWD)
 	if !privateBrokerCWD {
 		return errors.New("sandbox broker retained a mutable original working directory")
 	}
-	brokerPayload, brokerRoots := makeBrokerRequest(actorRequest{Case: cases.Cases[0], Arm: "treatment", Harness: "codex", Model: "fake", Effort: "test", Project: filepath.Join(parent, "actor-project"), PluginRoot: filepath.Join(root, "plugins", "megapowers")})
-	repoExcluded := brokerPayload.PluginRepo == filepath.Join(root, "plugins", "megapowers") && len(brokerRoots) == 2 && !samePaths(brokerRoots, []string{filepath.Join(parent, "actor-project"), root})
+	brokerPayload, brokerRoots := makeBrokerRequest(actorRequest{Case: cases.Cases[0], Arm: "treatment", Harness: "codex", Model: "fake", Effort: "test", Project: filepath.Join(parent, "actor-project"), PluginRoot: filepath.Join(root, "plugins", "megapowers"), Timeout: time.Minute})
+	repoExcluded := brokerPayload.PluginRepo == filepath.Join(root, "plugins", "megapowers") && brokerPayload.TimeoutMS == 55_000 && len(brokerRoots) == 2 && !samePaths(brokerRoots, []string{filepath.Join(parent, "actor-project"), root})
 	printCheck("broker request excludes repository root", repoExcluded)
 	if !repoExcluded {
 		return errors.New("broker request exposed repository root")
@@ -1464,23 +1875,23 @@ func runSelftest() error {
 	if !insufficientBlocked {
 		return errors.New("insufficient paired runs were publishable")
 	}
-	weak := assessPublishability(syntheticGateRows(10, 10, 10), gates)
-	weakBlocked := !weak.Publishable && weak.Cases[0].ObservedLift < gates.CodeQuality.MinimumAbsoluteLift
-	printCheck("weak lift blocks publication", weakBlocked)
-	if !weakBlocked {
-		return errors.New("weak lift was publishable")
+	unreliable := assessPublishability(syntheticGateRows(9, 10, 10), gates)
+	unreliableBlocked := !unreliable.Publishable && unreliable.Cases[0].TreatmentPassRate == 0.9
+	printCheck("treatment reliability blocks publication", unreliableBlocked)
+	if !unreliableBlocked {
+		return errors.New("imperfect treatment reliability was publishable")
 	}
-	uncertain := assessPublishability(syntheticGateRows(6, 4, 10), gates)
-	confidenceBlocked := !uncertain.Publishable && uncertain.Cases[0].ObservedLift >= gates.CodeQuality.MinimumAbsoluteLift && uncertain.Cases[0].ConfidenceLowerLift < gates.CodeQuality.MinimumAbsoluteLift
-	printCheck("confidence bound blocks uncertain lift", confidenceBlocked)
-	if !confidenceBlocked {
-		return errors.New("uncertain lift was publishable")
+	diagnostic := assessPublishability(syntheticGateRows(10, 0, 10), gates)
+	controlDiagnostic := diagnostic.Publishable && diagnostic.Cases[0].ControlPassRate == 0
+	printCheck("control outcomes remain diagnostic", controlDiagnostic)
+	if !controlDiagnostic {
+		return errors.New("control outcome incorrectly blocked a reliable treatment")
 	}
-	strong := assessPublishability(syntheticGateRows(10, 0, 10), gates)
-	strongPublishable := strong.Publishable && strong.Cases[0].ConfidenceLowerLift >= gates.CodeQuality.MinimumAbsoluteLift
-	printCheck("strong repeated lift clears publication", strongPublishable)
-	if !strongPublishable {
-		return errors.New("strong repeated lift was not publishable")
+	perfect := assessPublishability(syntheticGateRows(10, 10, 10), gates)
+	perfectPublishable := perfect.Publishable && perfect.Cases[0].TreatmentPassRate == 1
+	printCheck("perfect treatment reliability clears publication", perfectPublishable)
+	if !perfectPublishable {
+		return errors.New("perfect treatment reliability was not publishable")
 	}
 	hashesDiffer := manifest.TreatmentPluginHash != manifest.EmptyControlPluginHash && manifest.EmptyControlPluginHash == emptyControlPluginHash() && inventoriesCorrect(manifest)
 	printCheck("treatment and empty-control hashes differ", hashesDiffer)
@@ -1511,6 +1922,18 @@ func runSelftest() error {
 	printCheck("actor errors fail closed", failClosed)
 	if !cleanupFailure || !failClosed {
 		return errors.New("failure path did not clean up and fail closed")
+	}
+
+	timeoutOut := filepath.Join(parent, "timeout")
+	timeoutOpts := opts
+	timeoutOpts.Out = timeoutOut
+	timeoutOpts.ActorTimeout = time.Millisecond
+	timedRows, _, timeoutErr := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: cases.Cases[:1]}, gates, timeoutOpts, blockingActor{})
+	leftovers, _ = filepath.Glob(filepath.Join(parent, "megapowers-installed-ab-*"))
+	deadlineClosed := timeoutErr != nil && len(timedRows) == 1 && timedRows[0].Status == "timeout" && timedRows[0].Verdict == "harness_error" && timedRows[0].RC == 124 && len(leftovers) == 0
+	printCheck("actor deadlines fail closed", deadlineClosed)
+	if !deadlineClosed {
+		return errors.New("actor deadline did not fail closed and clean up")
 	}
 
 	sanitized := publishFilesOnly(out) && publishFilesOnly(failOut) && publishContainsNo(parent, []string{"credentials", "actor-final", "transcript", "prompt.txt", "home"})

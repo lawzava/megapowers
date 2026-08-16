@@ -21,7 +21,7 @@ grep -qF 'plugins/megapowers' "$validator" || fail 'validator does not name the 
 grep -qF '.claude-plugin/marketplace.json' "$validator" || fail 'Claude marketplace is not validated'
 grep -qF '.agents/plugins/marketplace.json' "$validator" || fail 'Codex marketplace is not validated'
 grep -qF 'grep -qF "## $claude_version - " CHANGELOG.md' "$validator" ||
-  fail 'pre-stamp release candidate cannot validate its current manifest version'
+  fail 'release candidate cannot validate its current manifest version'
 if grep -q 'release_version=.*head -1' "$validator"; then
   fail 'validator deadlocks changelog-first release candidates on the newest entry'
 fi

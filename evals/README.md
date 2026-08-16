@@ -69,6 +69,7 @@ go run evals/studies/installed-ab/run.go --run --credentialed \
   --harness codex --model <exact-model> --effort <exact-effort> \
   --sandbox-broker /absolute/path/to/reviewed-broker \
   --broker-sha256 "$BROKER_SHA256" --paired-runs 10 \
+  --actor-timeout 20m \
   --out results/installed-ab-codex
 ```
 
@@ -79,10 +80,15 @@ Cases and thresholds live in
 [`studies/installed-ab/`](./studies/installed-ab/). Current gates cover prose
 fact retention and no-op behavior, code-quality defect reduction without
 convention regression, and test-first ordering with an observed red run. The
-autonomous resume case is report-only.
+autonomous resume case is report-only. Release certification requires every
+treatment run to pass after the configured number of balanced pairs. Control
+outcomes remain required diagnostics; they are not an uplift gate for these
+explicit regression tasks.
 
-`--selftest` proves isolation, cleanup, fail-closed execution, result shape,
-and artifact sanitization. It does not produce behavioral evidence.
+`--selftest` proves isolation-contract handling, cleanup, fail-closed execution,
+result shape, and artifact sanitization with an in-process fake actor. Broker
+selftests and the Claude preflight provide the actual OS-boundary evidence. No
+selftest produces behavioral evidence.
 
 ## PR replay
 

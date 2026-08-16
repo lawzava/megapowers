@@ -37,6 +37,7 @@ go run evals/studies/installed-ab/run.go --run --credentialed \
   --harness codex --model <exact-model> --effort <exact-effort> \
   --sandbox-broker /absolute/path/to/reviewed-broker \
   --broker-sha256 "$BROKER_SHA256" --paired-runs 10 \
+  --actor-timeout 20m \
   --out results/installed-ab-codex
 ```
 
@@ -52,7 +53,12 @@ Current release gates include:
 - code quality reduces seeded defects without task or repository-convention
   regression;
 - test-first work edits and executes a failing test before implementation;
-- paired behavioral rows meet the thresholds declared in `gates.json`.
+- every treatment row passes after the balanced run count in `gates.json`.
+
+Control rows remain mandatory paired diagnostics. Their results and exact
+McNemar comparison are reported, but do not gate explicit tasks that already
+tell both arms what correct behavior is. This certifies treatment reliability,
+not a general claim that the plugin improves model capability.
 
 The autonomous resume case remains report-only until repeated real runs justify
 a threshold. A selftest never produces release certification.
@@ -92,11 +98,11 @@ responses, transcripts, credentials, or absolute paths.
 
 ## Release order
 
-1. Freeze the candidate revision.
+1. Set the release version, then freeze and commit the candidate revision.
 2. Run deterministic validation.
 3. Run source-bound installed A/B for Claude Code and Codex when behavioral
    guidance changed.
-4. Review the certificate and only then stamp, tag, and publish.
+4. Review the certificate, then tag and publish the same committed revision.
 5. Run exact-tag fresh-install smoke against the public tag.
 
 The post-publish smoke proves delivery from the public ref. It cannot rescue a
