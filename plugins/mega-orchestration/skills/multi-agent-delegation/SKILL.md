@@ -116,9 +116,24 @@ writes a provenance receipt bound to that identity. Stdout is the receipt JSON
 and nothing else; the `=== VERDICT ===` block on stderr carries the verdict, the
 round, and the receipt path.
 
+`scripts/review-ack` is the receipt's counterpart for a confirmed false
+positive: run only at the human's direction, it records their verbatim
+dismissal bound to the exact pending tree, and any further edit re-arms the
+risky-logic gate.
+
 `delegate-run` dispatches one reviewer and writes one receipt. Council panels,
 generation identifiers, and member scope are lead-managed orchestration state,
 not launcher protocol. Do not claim those fields are receipt-backed.
+
+A review dispatched through a raw provider MCP tool instead of the launcher
+gets none of this: no receipt, no round in the ledger, no read-only role
+marker, so the delegate's own Stop gates treat it as a lead and can displace
+its verdict (2026-08 transcripts show exactly that). Raw MCP is for
+conversation and scoped implementation; reviews go through `delegate-run`.
+When an MCP dispatch is used anyway, pin `model` AND the reasoning-effort
+config the route resolved (never leave effort at the provider default), and
+expect a call over 120 seconds to be backgrounded by the caller's harness:
+collect the result with the task tool rather than re-dispatching.
 
 `council_member` generates an answer before an artifact exists and therefore
 does not require an author declaration. `judge` ranks those generated artifacts

@@ -35,6 +35,22 @@ command -v jq >/dev/null 2>&1 || exit 0
 prompt="$(jq -r 'if type == "object" then (.prompt // "") else "" end' 2>/dev/null)"
 [ -n "$prompt" ] || exit 0
 
+skill=""
+
+# An explicit /skill-name is an invocation, not a phrase to weigh: the user
+# typed the skill's own address, and the 2026-08 transcript audit found one
+# no-oping in silence because the harness only expands a slash command in first
+# position. It outranks the derived table and the paste-shape gate below, both
+# of which exist for heuristic matches. The token must follow start-of-prompt
+# or whitespace, so a pasted path (.../skills/using-megapowers/SKILL.md) or a
+# repository-relative fragment never fires it.
+shopt -s nocasematch
+slash_names='using-megapowers|brainstorming|writing-plans|executing-plans|subagent-driven-development|test-driven-development|systematic-debugging|verification-before-completion|requesting-code-review|receiving-code-review|finishing-a-development-branch|using-git-worktrees|humanizing-prose|project-memory|writing-skills|upgrading-megapowers'
+if [[ $prompt =~ (^|[[:space:]])/($slash_names)([^a-z-]|$) ]]; then
+  skill="${BASH_REMATCH[2],,}"
+fi
+
+if [ -z "$skill" ]; then
 # The router speaks only for a short typed statement. A paste is not an
 # instruction: if a user pastes a log and says something, they are asking about
 # the log, not making a claim about their own work.
@@ -65,10 +81,6 @@ prompt="$(jq -r 'if type == "object" then (.prompt // "") else "" end' 2>/dev/nu
 [ "${#prompt}" -le 600 ] || exit 0
 newlines="${prompt//[!$'\n']/}"
 [ "${#newlines}" -le 1 ] || exit 0
-
-# Case insensitive matching without forking a tr or a grep: this runs
-# synchronously on every prompt, so the whole match loop stays in the shell.
-shopt -s nocasematch
 
 # Each row is "<skill-name> <extended-regex>". Four rules keep the patterns cheap,
 # portable, and quiet:
@@ -198,11 +210,11 @@ routes=(
   "test-driven-development (^|[^a-z])tdd([^a-z]|\$)|test.first([^a-z]|\$)|writ[a-z]* the tests? first([^a-z]|\$)|red.green.refactor([^a-z]|\$)|implement and test([^a-z]|\$)|implement (all|the|this|these|those|both|it|a|an|my|our|every|each|missing)([^a-z]|\$)|fix (all|it|this|that|these|those|them|both|the (bug|test|failure))([^a-z]|\$)|add (a|an|the|another) (feature|endpoint|command)([^a-z]*\$| (for|to|that|which|with)([^a-z]|\$))|with tests[^a-z]*\$"
 )
 
-skill=""
 for route in "${routes[@]}"; do
   regex="${route#* }"
   if [[ $prompt =~ $regex ]]; then skill="${route%% *}"; break; fi
 done
+fi
 [ -n "$skill" ] || exit 0
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

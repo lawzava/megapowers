@@ -263,3 +263,42 @@ from it or fail to exist.
 A deletion classifies nothing in every one of these, and that is deliberate:
 removed content executes nowhere, and reading the base copy back would fire on
 an ordinary `rm` of a document.
+
+## The two escapes: a receipt, or a human's dismissal
+
+The gate clears for exactly two artifacts, both bound to the same subject (the
+pending-delta fingerprint, the base commit, the physical worktree root, and the
+submodule state), so both stop applying the moment the tree moves.
+
+The receipt is the launcher's: an independent different-vendor reviewer
+approved this tree. The ack (`scripts/review-ack`, honored beside the receipt
+check) is the human's: they read the named match and called it a false
+positive. The 2026-08 transcript audit found a session where the human typed
+the authorization in chat and the gate had nowhere to put it, so it re-fired on
+every stop while the matched word sat in the pending diff and the session
+needed a fresh interactive unblock each turn. The ack is that decision made
+durable, for one tree state only. It is written at the human's direction,
+records their verbatim words, and the pass it buys is announced in a notice
+rather than silent, so a forged ack is a lie that says its own name.
+
+## The block must not eat the answer it interrupted
+
+The Stop event fires on the turn that carried the deliverable. On Claude the
+agent's next message replaces that reply; on Codex the block arrives as a
+`hook_prompt` after the final message and the reply to it becomes the
+session's last word (2026-08-14: a dispatched reviewer's four findings were
+displaced twice by receipt talk). Every block reason therefore ends with the
+same hand-off: restate the interrupted reply in full, then address the gate;
+and a session dispatched only to review reports its verdict and names the
+missing receipt rather than trying to obtain one for a tree it does not own.
+
+## The cap-aware remedy
+
+`max_rounds` is counted per branch by the launcher's ledger. Once it is
+reached, delegate-run refuses to dispatch (exit 10, no round consumed), so a
+reason that still prescribed the launcher would prescribe a command that
+cannot succeed, pinning the session between a gate demanding a receipt and a
+launcher refusing to produce one. The gate reads the same ledger with the same
+key derivation and, at the cap, switches the remedy to the human hand-off the
+launcher's own refusal prescribes. The block itself remains: the risk did not
+get smaller because the reviewer stopped converging.

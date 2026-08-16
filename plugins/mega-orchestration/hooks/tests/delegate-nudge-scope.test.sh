@@ -29,6 +29,10 @@ TR="$TMP/.git/transcript.jsonl"
 pass=0
 fail=0
 hook_out() {
+  # The unscanned note is said once per tree state; these cases assert what a
+  # note SAYS and routinely run the hook twice on one tree, so each run resets
+  # the dedupe state. The once-only property is delegate-nudge.test.sh's case.
+  rm -f "$(git rev-parse --git-path megapowers-unscanned-note 2>/dev/null)" 2>/dev/null
   printf '{"stop_hook_active":false,"transcript_path":"%s","permission_mode":"default"}' "$TR" \
     | bash "$HOOK" 2>/dev/null
 }

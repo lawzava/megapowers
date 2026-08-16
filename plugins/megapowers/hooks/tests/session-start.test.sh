@@ -30,6 +30,12 @@ if printf '%s' "$ctx" | grep -q 'Core Rule'; then pass=$((pass + 1)); else fail=
 if printf '%s' "$ctx" | grep -qi 'no dash punctuation'; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL communication-register no-dash-punctuation rule missing from payload\n'; fi
 if printf '%s' "$ctx" | grep -qi 'for takeover'; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL communication-register takeover rule missing from payload\n'; fi
 
+# The SessionStart payload names the running model, and the lead line must not
+# assert a catalog model to a session running a different one (2026-08 audit).
+out_m="$(printf '{"hook_event_name":"SessionStart","source":"startup","model":"model-under-test-x"}' | bash "$HOOK" 2>/dev/null)"
+ctx_m="$(printf '%s' "$out_m" | jq -r '.hookSpecificOutput.additionalContext' 2>/dev/null || true)"
+if printf '%s' "$ctx_m" | grep -q 'this session runs model-under-test-x'; then pass=$((pass + 1)); else fail=$((fail + 1)); printf '  FAIL the lead line must name a differing running model\n'; fi
+
 # Catalog block present when a catalog resolves (MODELS_TOML is honored through
 # render-model-catalog, which session-start shells).
 CAT_TMP="$(mktemp -d)"

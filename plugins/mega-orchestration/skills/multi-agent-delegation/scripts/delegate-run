@@ -31,7 +31,7 @@ enforcement_shipped="$here/../../../enforcement.toml"
 
 usage() {
   echo "usage: delegate-run --role <role> (--author-vendor <vendor> | --author-model <id> | --author-provider <name>)... --artifact <worktree|file> --claim <text> [--receipt <file>] [--screenshot <file>]... [--transcript-dir <dir>] [--allow-context-separation] [--config <file>] [--models <file>]" >&2
-  echo "       --transcript-dir retains this dispatch's prompt, review package, and raw provider output under <dir>. Discarded when omitted." >&2
+  echo "       --transcript-dir retains this dispatch's prompt, review package, and raw provider output under <dir>. Inside a repository it defaults to .git/megapowers-review-transcripts; outside one, omitted means discarded." >&2
   echo "       --allow-context-separation lets a review with no reachable cross-vendor route run as a fresh same-vendor session instead. The receipt records independence=context-separation and independent=false, so it does NOT clear the risky-logic Stop gate." >&2
   echo "       MEGAPOWERS_DELEGATE_TIMEOUT bounds the provider dispatch in seconds (default 540, minimum 1; it cannot be disabled and requires timeout(1) or gtimeout(1)). MEGAPOWERS_REVIEW_PACKAGE_BYTES caps the WHOLE review package (default 200000); over it the largest files are named with a snapshot path to read them from, and a change whose mandatory sections alone exceed the cap is refused." >&2
 }
@@ -159,6 +159,24 @@ case "$role" in
     ;;
 esac
 
+# Retention must not depend on the operator having remembered the flag: the
+# round-cap refusal can only point at rounds that still exist, and the 2026-08
+# audit found it apologizing for rounds nobody kept. Inside a repository the
+# default lands beside the round ledger under the git dir, so it reaches no
+# diff and needs no ignore rule. Outside one there is nowhere sensible to
+# default to, and the discard behavior stands.
+if [ -z "$transcript_dir" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  default_tdir="$(git rev-parse --git-path megapowers-review-transcripts)"
+  # Fails SOFT, unlike the explicit flag below: nobody asked for this location,
+  # so an unwritable git dir must surface its own diagnosis (the ledger check)
+  # rather than a refusal about a directory the caller never named.
+  if mkdir -p "$default_tdir" 2>/dev/null; then
+    transcript_dir="$default_tdir"
+    echo "delegate-run: retaining this dispatch's transcript under $transcript_dir (default; choose another location with --transcript-dir)" >&2
+  else
+    echo "delegate-run: could not create the default transcript location $default_tdir, so this dispatch will not be retained" >&2
+  fi
+fi
 # Fail on an unusable transcript directory now, not after the provider has already
 # been paid for a round.
 if [ -n "$transcript_dir" ]; then
@@ -1470,7 +1488,7 @@ printf '%s\n' "$route" > "$tmpdir/route.txt"
 
 prompt="$(printf '%s\n\n%s\n\n%s\n' \
   "<task>Adversarially review this artifact. Claim to refute: $claim</task>" \
-  "<verification>$review_target Cite inspected paths in evidence.commands and screenshot paths in evidence.screenshots. Return only the requested JSON object.</verification>" \
+  "<verification>$review_target Cite inspected paths in evidence.commands and screenshot paths in evidence.screenshots. The package is a static snapshot of the pending change, not a runnable checkout, so the project's tests generally cannot be executed from it: name every oracle you could not execute as an explicit limitation in your findings, never as a test that ran, and when the claim is concurrency, auth, or billing behavior, say plainly that the verdict rests on reading alone. Return only the requested JSON object.</verification>" \
   "<output_contract>Use the Megapowers review verdict v1 schema. APPROVE only when no critical or major finding remains.</output_contract>")"
 printf '%s\n' "$prompt" > "$tmpdir/prompt.txt"
 
@@ -1635,6 +1653,12 @@ case "$round" in
     exit 2
     ;;
 esac
+# Said on every dispatch, not only at exhaustion: the 2026-08 audit found the
+# cap surfacing for the first time as a refusal, after the budget was gone.
+echo "delegate-run: round $round of $max_rounds for role '$role' on '$round_key'." >&2
+if [ "$round" -eq "$max_rounds" ]; then
+  echo "delegate-run: this is the last round before the cap. Without an approve, the next dispatch is refused and the decision passes to the human." >&2
+fi
 
 # One directory per dispatch. Role plus subject identity plus round is NOT unique
 # for all time now that an approve resets the count: re-reviewing an unchanged tree

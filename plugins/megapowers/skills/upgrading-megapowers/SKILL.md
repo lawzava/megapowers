@@ -69,8 +69,12 @@ versions or refs, pins, scopes, sources, duplicate status, and required restart
 or hook state. On partial failure, stop before optional additions and report
 applied, failed, and not attempted actions with the safest recovery step.
 
-Do not remove stale cached versions until every session using them has
-restarted.
+Stale cached version directories are not inert: a session that locates plugin
+scripts by glob picks whichever version the glob finds first, and the 2026-08
+audit caught a superseded cached `delegate-resolve` serving a session running
+the newer release. Do not remove them until every session using them has
+restarted; once sessions have restarted, remove the superseded version
+directories from the plugin cache as part of the upgrade.
 
 Origin: Derived from Superpowers (MIT, (c) 2025 Jesse Vincent),
 https://github.com/obra/superpowers.

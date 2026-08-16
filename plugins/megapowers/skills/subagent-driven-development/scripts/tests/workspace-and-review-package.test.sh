@@ -188,6 +188,38 @@ else
   nope "fatal capture does not publish a partial review package" "partial output exists: $fatal_out"
 fi
 
+# A non-regular untracked path (device node from a sandbox dotfile mask, socket)
+# is listed by ls-files but git cannot hash it: "unsupported file type", exit
+# 128. That is not a capture failure, it is an unreviewable path; it must be
+# noted and skipped, not abort the package. Device nodes need root to create,
+# so the shim injects git's real error for one path.
+irregular_repo="$(make_repo rp-irregular)"
+printf 'masked\n' > "$irregular_repo/.bash_profile"
+printf 'real\n' > "$irregular_repo/real.txt"
+cat > "$git_shim/git" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1-}" = diff ] &&
+   [ "${2-}" = --no-index ] &&
+   [ "${3-}" = -- ] &&
+   [ "${4-}" = /dev/null ] &&
+   [ "${5-}" = .bash_profile ]; then
+  printf 'error: .bash_profile: unsupported file type\nfatal: cannot hash .bash_profile\n' >&2
+  exit 128
+fi
+exec "$REAL_GIT" "$@"
+EOF
+irregular_out="$scratch/irregular.diff"
+rc=0
+(
+  cd "$irregular_repo"
+  REAL_GIT="$real_git" PATH="$git_shim:$PATH" \
+    "$PACKAGE" HEAD~2 HEAD "$irregular_out"
+) >/dev/null 2>&1 || rc=$?
+check "unsupported-file-type untracked path does not abort the package" 0 "$rc"
+contains "package notes the skipped non-regular path" "$irregular_out" \
+  "skipped non-regular untracked path"
+contains "package still carries regular untracked content" "$irregular_out" "+real"
+
 echo
 echo "passed: $passed, failed: $failed"
 [ "$failed" -eq 0 ]

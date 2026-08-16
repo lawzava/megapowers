@@ -8,6 +8,9 @@
     ],
     "Stop": [
       { "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh answer-style.sh" } ] }
+    ],
+    "SubagentStop": [
+      { "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh answer-style.sh" } ] }
     ]
   }
 }
