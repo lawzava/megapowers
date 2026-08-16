@@ -6,6 +6,12 @@ DIFF_ID="$HERE/../../skills/multi-agent-delegation/scripts/review-diff-id"
 RESOLVER="$HERE/../../skills/multi-agent-delegation/scripts/delegate-resolve"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP/bin"
+for binary in claude codex opencode; do
+  printf '#!/bin/sh\nexit 0\n' > "$TMP/bin/$binary"
+  chmod +x "$TMP/bin/$binary"
+done
+export PATH="$TMP/bin:$PATH"
 cd "$TMP" || exit 1
 git init -q
 git config user.email test@example.com
