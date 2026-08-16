@@ -129,6 +129,7 @@ var (
 	identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$`)
 	hashPattern       = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	metricPattern     = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
+	brokerBoundaries  = map[string]bool{"bwrap": true, "container": true, "seatbelt": true, "sandbox-exec": true, "appcontainer": true}
 )
 
 func requiredIdentifier(name, value string) error {
@@ -473,6 +474,9 @@ func validatePublishable(rows []resultRow, gates publishGateFile) error {
 	for _, row := range rows {
 		if row.EvidenceClass != "behavioral" || row.Study != installedABStudy {
 			return errors.New("publishability gates accept installed-plugin-ab behavioral rows only")
+		}
+		if !brokerBoundaries[row.Environment.Sandbox] {
+			return fmt.Errorf("case %q does not record a broker-attested OS boundary", row.CaseID)
 		}
 		if row.Metrics["report_only"] == 1 {
 			continue

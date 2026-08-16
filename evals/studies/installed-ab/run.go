@@ -111,6 +111,7 @@ type actorResult struct {
 	Events     []actorEvent
 	Inventory  []string
 	CLIVersion string
+	Sandbox    string
 	RC         int
 	Duration   time.Duration
 }
@@ -569,6 +570,9 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 					cliVersion = result.CLIVersion
 				}
 				row := baseRow(c, arm, blockID, opts, revision, cliVersion, promptHash, fixtureHash, armPluginHash)
+				if result.Sandbox != "" {
+					row.Environment.Sandbox = portableIdentifier(result.Sandbox)
+				}
 				row.DurationMS = max(result.Duration.Milliseconds(), 0)
 				row.RC = result.RC
 				row.Artifacts = map[string]string{"response": hashBytes([]byte(result.Response)), "trace": hashBytes(result.Trace)}
@@ -736,13 +740,17 @@ func baseRow(c studyCase, arm, block string, opts runOptions, revision, cliVersi
 	if timestamp.IsZero() {
 		timestamp = time.Now().UTC()
 	}
+	sandbox := "broker-isolated"
+	if opts.Selftest {
+		sandbox = "in-process-selftest"
+	}
 	return resultRow{
 		SchemaVersion: "1", Study: "installed-plugin-ab", EvidenceClass: "behavioral", CaseID: c.ID,
 		RunID: fmt.Sprintf("%s-%s-%s", block, arm, timestamp.Format("20060102T150405Z")), BlockID: block, Arm: arm,
 		Harness:    harnessIdentity{Name: opts.Harness, CLIVersion: portableIdentifier(cliVersion), Model: portableIdentifier(opts.Model), Effort: portableIdentifier(opts.Effort)},
 		Source:     sourceIdentity{Repository: "megapowers", Revision: portableIdentifier(revision)},
 		PromptHash: promptHash, FixtureHash: fixtureHash, PluginHash: pluginHash,
-		Environment: environment{OS: runtime.GOOS, Arch: runtime.GOARCH, Sandbox: "workspace-write", Locale: portableIdentifier(locale())},
+		Environment: environment{OS: runtime.GOOS, Arch: runtime.GOARCH, Sandbox: sandbox, Locale: portableIdentifier(locale())},
 		Timestamp:   timestamp.Format(time.RFC3339), Artifacts: map[string]string{}, Metrics: map[string]float64{},
 	}
 }
@@ -1141,7 +1149,7 @@ func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult
 	if err := validateIsolation(response, roots, request.Arm); err != nil {
 		return actorResult{RC: 125}, err
 	}
-	return actorResult{Response: response.Response, Trace: []byte(response.Trace), Events: response.Events, Inventory: response.PluginInventory, CLIVersion: response.CLIVersion, RC: response.RC, Duration: time.Duration(response.DurationMS) * time.Millisecond}, nil
+	return actorResult{Response: response.Response, Trace: []byte(response.Trace), Events: response.Events, Inventory: response.PluginInventory, CLIVersion: response.CLIVersion, Sandbox: response.Isolation.Boundary, RC: response.RC, Duration: time.Duration(response.DurationMS) * time.Millisecond}, nil
 }
 
 func makeBrokerRequest(request actorRequest) (brokerRequest, []string) {
@@ -1283,9 +1291,9 @@ func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, e
 	f.PluginRoots = append(f.PluginRoots, request.PluginRoot)
 	f.ObservedMode = append(f.ObservedMode, info.Mode().Perm())
 	if request.Arm == f.FailArm {
-		return actorResult{RC: 42, Inventory: inventoryFor(request)}, errors.New("synthetic actor failure")
+		return actorResult{RC: 42, Inventory: inventoryFor(request), Sandbox: "in-process-selftest"}, errors.New("synthetic actor failure")
 	}
-	result := actorResult{Inventory: inventoryFor(request), CLIVersion: "selftest", Trace: []byte("synthetic trace"), RC: 0, Duration: time.Millisecond}
+	result := actorResult{Inventory: inventoryFor(request), CLIVersion: "selftest", Sandbox: "in-process-selftest", Trace: []byte("synthetic trace"), RC: 0, Duration: time.Millisecond}
 	if request.Arm == "control" {
 		result.Response = "A generic response without the supplied facts."
 		return result, nil
@@ -1359,6 +1367,14 @@ func runSelftest() error {
 	printCheck("identical treatment and control inputs", identical)
 	if !identical {
 		return errors.New("paired input hashes differ")
+	}
+	boundaryRecorded := true
+	for _, row := range rows {
+		boundaryRecorded = boundaryRecorded && row.Environment.Sandbox == "in-process-selftest"
+	}
+	printCheck("rows record the actor sandbox boundary", boundaryRecorded)
+	if !boundaryRecorded {
+		return errors.New("result rows lost the actor sandbox boundary")
 	}
 	inventoryOK := inventoriesCorrect(manifest)
 	printCheck("plugin inventory records empty control", inventoryOK)
