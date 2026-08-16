@@ -18,6 +18,8 @@ for claim in \
   "already-direct prose remains unchanged" \
   "autonomous status resumption stays report-only" \
   "simultaneous test and implementation edit rejected" \
+  "unchanged TDD fixture fails its public oracle" \
+  "TDD oracle rejects protected fixture tampering" \
   "live runs require isolated broker" \
   "treatment uses a verified private plugin copy" \
   "broker request excludes repository root" \

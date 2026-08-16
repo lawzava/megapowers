@@ -55,8 +55,10 @@
       "task": "Add Multiply(a, b int) int. Use test-driven development: add and run a failing test before implementation, then make the focused and full tests pass.",
       "files": {
         "calculator.go": "package calculator\n\nfunc Add(a, b int) int { return a + b }\n",
+        "calculator_acceptance_test.go": "package calculator\n\nimport \"testing\"\n\nfunc TestMultiplyAcceptance(t *testing.T) {\n\tif got := Multiply(6, 7); got != 42 {\n\t\tt.Fatalf(\"Multiply(6, 7) = %d, want 42\", got)\n\t}\n}\n",
         "go.mod": "module example.com/calculator\n\ngo 1.24\n"
       },
+      "protected_files": ["calculator_acceptance_test.go"],
       "oracle_command": ["go", "test", "./..."]
     },
     {
