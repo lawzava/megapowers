@@ -395,8 +395,52 @@ check ASK 'git restore ":/**"'
 check ASK 'git checkout -- ":/*"'
 check ASK 'git restore ":/."'
 check ASK 'git branch -D feature'
+# The suite's own worktree integration deletes the branch it just merged. Every
+# deleted name must match worktree-agent-* for the allowance to apply.
+check ALLOW 'git branch -D worktree-agent-a58d3c4a973b215f8'
+check ALLOW 'git add x && git commit -qm m && git worktree remove --force ../wt && git branch -D worktree-agent-abc'
+check ASK 'git branch -D worktree-agent-abc main'
+check ASK 'git branch -D worktree-agent- feature'
 check ASK 'git push --force origin main'
 check ASK 'git push -f'
+# An ssh-carried command is this hook's own domain: it wraps arbitrary shell,
+# and the 2026-08 audit found a production SFTP decommission (user deletion,
+# ACL grants, sudo edits over ssh) crossing every gate in silence. The remote
+# command string runs through the same classifier at the next depth, keeping
+# the same tiers: a catastrophe is a catastrophe on any machine.
+check DENY 'ssh prod "rm -rf /"'
+check ASK 'ssh transfer.helloriver.com "userdel -r charles"'
+check ASK 'ssh -p 2222 root@prod "git reset --hard"'
+check ASK 'ssh -o StrictHostKeyChecking=no -i ~/.ssh/key prod "git clean -fdx"'
+check ALLOW 'ssh prod uptime'
+check ALLOW 'ssh prod'
+check ALLOW 'ssh prod "cat /var/log/auth.log"'
+# Account and access-control changes are auth changes: outward-facing and hard
+# to reverse, locally or over ssh. visudo -c only validates and stays quiet.
+check ASK 'userdel -r charles'
+check ASK 'usermod -aG sudo riverhealth'
+check ASK 'chpasswd < /tmp/pw'
+check ASK 'visudo -f /etc/sudoers.d/riverhealth'
+check ALLOW 'visudo -cf /etc/sudoers.d/riverhealth'
+check ASK 'setfacl -R -m u:riverhealth:rX /home/charles'
+check ASK 'setfacl -m u:other:r /etc/app.conf'
+check ASK 'setfacl -m u:other:r /var/www/uploads'
+# Exact roots, not only descendants: verify round 1 found bare /opt slipping
+# the /opt/* glob.
+check ASK 'setfacl -m u:mallory:rwx /opt'
+check ASK 'setfacl -m u:mallory:rx /home'
+check ASK 'setfacl -m u:mallory:rx /etc'
+check ALLOW 'setfacl -m u:ci:r build/output.txt'
+# Identity creation and credential changes are access grants too (review
+# round 1): a useradd -G sudo is a privilege grant wearing a create verb.
+check ASK 'useradd -m -G sudo riverhealth'
+check ASK 'adduser riverhealth'
+check ASK 'groupadd deployers'
+check ASK 'groupmod -a -U mallory sudo'
+check ASK 'passwd charles'
+check ASK 'ssh prod "useradd -m riverhealth"'
+check ALLOW 'cat /etc/passwd'
+check ALLOW 'grep charles /etc/passwd'
 # Remote destructive ops are out of scope by design (the effect-broker skill
 # owns real-world effects); the hook must pass them through, not pattern-match.
 check ALLOW 'aws s3 rm s3://bucket/path --recursive'

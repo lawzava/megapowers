@@ -68,7 +68,17 @@ grep -qiE '(without|do[[:space:]]+not[[:space:]]+ask[[:space:]]+for)[[:space:]]+
   && add_marker "an instruction to skip an approval"
 grep -qiE '(send|post|upload|exfiltrat|transmit|forward)[a-z]*[[:space:]]+([^[:space:]]+[[:space:]]+){0,6}(to[[:space:]]+)?https?://' <<<"$body" \
   && add_marker "an instruction to send data to a URL"
-grep -qE '(\.env\b|~/\.ssh|id_rsa|AWS_SECRET_ACCESS_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY|\.aws/credentials|\.npmrc|\.netrc)' <<<"$body" \
+# A credential NAME alone is subject matter: listings, grep hits, and docs say
+# .env and ~/.ssh constantly, and the 2026-08 audit counted 9 benign fires in
+# one session on that shape. Only an action verb AIMED at the credential, on
+# the same line, is imperative phrasing; the verb list is read-and-exfiltrate
+# vocabulary, not every verb that can precede a path.
+# Bare verb forms only: an imperative aimed at the agent is uninflected, while
+# a doc describing behavior conjugates ("the CLI reads ~/.ssh") and stays out.
+# `.{0,80}` and not `[^\n]{0,80}`: a bracket expression treats \n as the two
+# literal characters backslash and n, so it excluded ordinary words containing
+# `n` from the gap. grep is line-based, so `.` cannot cross a line anyway.
+grep -qiE '(^|[^a-z])(cat|read|print|dump|show|copy|send|post|upload|curl|fetch|leak|paste|exfiltrate)[[:space:]].{0,80}(\.env([[:space:]]|$|[^A-Za-z.])|~/\.ssh|id_rsa|AWS_SECRET_ACCESS_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY|\.aws/credentials|\.npmrc|\.netrc)' <<<"$body" \
   && add_marker "credential paths or secret names"
 grep -qiE '(base64[[:space:]]+-?-?d|atob\(|echo[[:space:]]+[A-Za-z0-9+/=]{40,}[[:space:]]*\|[[:space:]]*(sh|bash))' <<<"$body" \
   && add_marker "an encoded payload with a decode step"

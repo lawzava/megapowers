@@ -41,6 +41,30 @@ named="$(skills_named "$out")"
 [ "${#ctx}" -lt 200 ] && ok || bad "emitted text under 200 characters (got ${#ctx})"
 [ "$(printf '%s' "$ctx" | grep -c '')" -le 1 ] && ok || bad "emitted text is one line"
 
+# An explicit /skill-name is an invocation, not a phrase to weigh: the user
+# typed the skill's own address. The 2026-08 audit found one silently no-op
+# unless it was the prompt's first token. It outranks every derived row and
+# the paste-shape gate, and it must stand alone after whitespace so a pasted
+# path fragment stays silent.
+for pair in \
+  "/using-megapowers|megapowers:using-megapowers" \
+  "Use teams,subagents, workflows, whatever you need. /using-megapowers|megapowers:using-megapowers" \
+  "/brainstorming a notification system|megapowers:brainstorming" \
+  "refactor the module then /test-driven-development|megapowers:test-driven-development" \
+  "$(printf 'line one of a long brief\nline two with detail\nfollow /using-megapowers')|megapowers:using-megapowers"
+do
+  prompt="${pair%|*}"; want="${pair##*|}"
+  got="$(skills_named "$(run_router "$prompt")")"
+  [ "$got" = "$want" ] && ok || bad "explicit slash '$prompt' names $want (got '$got')"
+done
+for prompt in \
+  "see /home/z/.claude/plugins/cache/megapowers/megapowers/0.12.0/skills/using-megapowers/SKILL.md" \
+  "the file plugins/megapowers/skills/brainstorming/SKILL.md is stale"
+do
+  got="$(skills_named "$(run_router "$prompt")")"
+  [ -z "$got" ] && ok || bad "path fragment '$prompt' stays silent (got '$got')"
+done
+
 # The other three confirmed misses from the transcript audit.
 for pair in \
   "i don't know which queries cause that|megapowers:systematic-debugging" \

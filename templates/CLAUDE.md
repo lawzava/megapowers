@@ -83,8 +83,11 @@ finishing-a-development-branch.
 Route specialized work to the best model through mega-orchestration instead of
 doing everything inline. The session catalog block renders the lead, tiers, and
 floor at start, so model choices need no skill invocation.
-`scripts/delegate-resolve <role>` resolves a route. Put model updates in a
-project `.megapowers/models.toml` or user `~/.config/megapowers/models.toml`
+`skills/multi-agent-delegation/scripts/delegate-resolve <role>` (under the
+mega-orchestration plugin's active version directory) resolves a route; the
+script lives inside the skill, not at the plugin root, and a stale cached
+version directory beside the active one is the wrong copy. Put model updates
+in a project `.megapowers/models.toml` or user `~/.config/megapowers/models.toml`
 override layer, which survives plugin updates.
 
 Two flags, two jobs. `--author-model` or `--author-vendor` names whoever wrote

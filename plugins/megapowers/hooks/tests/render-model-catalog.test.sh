@@ -67,6 +67,20 @@ out="$(MODELS_TOML="$TMP/cat.toml" "$R" --caller alpha)"
 printf '%s' "$out" | grep -qx "lead: alpha frontier (alpha-max)" && ok || no "caller matching the catalog lead renders the plain lead line"
 if printf '%s' "$out" | grep -q "harness running this session"; then no "no correction when the caller is the catalog lead"; else ok; fi
 
+# --caller-model names the model actually running. The 2026-08 audit found the
+# line asserting the catalog's lead model to sessions running a different one;
+# when the running model differs it is said, and when it matches (or is
+# unknown) the line stays exactly as before.
+out="$(MODELS_TOML="$TMP/cat.toml" "$R" --caller alpha --caller-model alpha-next)"
+printf '%s' "$out" | grep -q "^lead: alpha frontier (alpha-max); this session runs alpha-next" \
+  && ok || no "a differing running model is named on the lead line"
+out="$(MODELS_TOML="$TMP/cat.toml" "$R" --caller alpha --caller-model alpha-max)"
+printf '%s' "$out" | grep -qx "lead: alpha frontier (alpha-max)" \
+  && ok || no "a matching running model changes nothing"
+out="$(MODELS_TOML="$TMP/cat.toml" "$R" --caller alpha --caller-model "")"
+printf '%s' "$out" | grep -qx "lead: alpha frontier (alpha-max)" \
+  && ok || no "an empty running model fails open to the plain line"
+
 # Fail-open extends to the flag: an empty or missing value renders the default
 # block rather than erroring out of a session start.
 out="$(MODELS_TOML="$TMP/cat.toml" "$R" --caller "")"; rc=$?

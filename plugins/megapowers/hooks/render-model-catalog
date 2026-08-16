@@ -20,9 +20,11 @@
 set -u
 
 caller=""
+caller_model=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --caller) caller="${2:-}"; shift 2 || shift $# ;;
+    --caller-model) caller_model="${2:-}"; shift 2 || shift $# ;;
     *) shift ;;
   esac
 done
@@ -114,11 +116,18 @@ render() {
   # The lead line is the one claim a session acts on without reading further, so
   # it names whoever is actually in charge. A declared caller that is not the
   # catalog lead gets the line, and [lead] follows as the fallback it is.
+  # The running model rides the line only when it DIFFERS from the catalog's
+  # lead model: the 2026-08 audit found this block asserting a model that was
+  # not running, which is the one claim on the line a session cannot check.
+  runline=""
+  if [ -n "$caller_model" ] && [ "$caller_model" != "$lm" ]; then
+    runline="; this session runs $caller_model"
+  fi
   if [ -n "$caller" ] && [ "$caller" != "$lp" ]; then
-    printf 'lead: %s, the harness running this session. Catalog default (undeclared sessions only): %s%s%s\n' \
-      "$caller" "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
+    printf 'lead: %s, the harness running this session%s. Catalog default (undeclared sessions only): %s%s%s\n' \
+      "$caller" "$runline" "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
   else
-    printf 'lead: %s%s%s\n' "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}"
+    printf 'lead: %s%s%s%s\n' "$lp" "${lt:+ $lt}" "${lm:+ ($lm)}" "$runline"
   fi
   printf 'tiers: %s\n' "$tier_lines"
 [ -n "$eff_lines" ] && printf 'efforts: %s\n' "$eff_lines"

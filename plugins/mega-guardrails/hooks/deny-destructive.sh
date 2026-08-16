@@ -90,7 +90,7 @@ emit() {
 # DENY/ASK fixture through it and fails if any stops hitting. Correctness rule: the
 # prefilter may only fast-ALLOW on a no-hit. It never denies, and an oversized hit
 # degrades to ASK, never a plain allow.
-PREFILTER_TOKENS='\b(rm|find|chmod|dd|mkfs|wipefs|blkdiscard|shred|git|bash|sh|zsh|dash|ash|ksh|eval)\b|curl|wget|fetch|/dev/|:\(\)'
+PREFILTER_TOKENS='\b(rm|find|chmod|dd|mkfs|wipefs|blkdiscard|shred|git|bash|sh|zsh|dash|ash|ksh|eval|ssh|userdel|deluser|usermod|useradd|adduser|groupdel|groupadd|groupmod|gpasswd|chpasswd|passwd|visudo|setfacl)\b|curl|wget|fetch|/dev/|:\(\)'
 rc=0
 printf '%s' "$cmd" | grep -Eq "$PREFILTER_TOKENS" || rc=$?
 if [ "$rc" -eq 1 ]; then
@@ -554,6 +554,7 @@ git_is_risky() {
   shell_words "$1" || return 1
   local w sub="" reset_hard=0 clean_force=0 clean_dry=0 branch_force=0 branch_del=0 pushforce=0 skip=0
   local co_dot=0 rst_dot=0 rst_staged=0 rst_worktree=0
+  local branch_names=()
   for w in "${WORDS[@]}"; do
     if [ -z "$sub" ]; then
       if [ "$skip" -eq 1 ]; then skip=0; continue; fi
@@ -578,6 +579,8 @@ git_is_risky() {
           -d|--delete) branch_del=1 ;;
           -f|--force) branch_force=1 ;;
           -[A-Za-z]*) [[ "$w" = *D* ]] && { branch_del=1; branch_force=1; }; [[ "$w" = *d* ]] && branch_del=1; [[ "$w" = *f* ]] && branch_force=1 ;;
+          --*) : ;;
+          *) branch_names+=("$w") ;;
         esac ;;
       push) case "$w" in --force-with-lease*|--force-if-includes) : ;; --force|-f) pushforce=1 ;; +[!-]*) pushforce=1 ;; esac ;;   # bare --force is risky even if a lease flag is also present (last one wins); lease-only is safe
       # whole-tree discard: a pathspec that resolves to the repo root ('.', './',
@@ -596,7 +599,16 @@ git_is_risky() {
   done
   [ "$reset_hard" -eq 1 ] && return 0
   [ "$clean_force" -eq 1 ] && [ "$clean_dry" -eq 0 ] && return 0
-  { [ "$branch_del" -eq 1 ] && [ "$branch_force" -eq 1 ]; } && return 0
+  if [ "$branch_del" -eq 1 ] && [ "$branch_force" -eq 1 ]; then
+    # Force-deleting only worktree-agent-* branches is the harness's own
+    # merged-worktree cleanup; anything else in the list keeps the prompt.
+    local n agent_only=1
+    [ "${#branch_names[@]}" -eq 0 ] && agent_only=0
+    for n in "${branch_names[@]}"; do
+      case "$n" in worktree-agent-?*) : ;; *) agent_only=0 ;; esac
+    done
+    [ "$agent_only" -eq 0 ] && return 0
+  fi
   [ "$pushforce" -eq 1 ] && return 0            # bare --force/-f present (a lease flag doesn't neutralize it)
   [ "$co_dot" -eq 1 ] && return 0               # git checkout . / checkout -- . (whole-tree discard)
   # restore of the worktree at '.': plain `git restore .` (worktree by default) or any
@@ -684,6 +696,7 @@ strip_quoted() {
 # scanning for a deny (deny outranks ask). Collects bash -c/eval payloads in _PAYLOADS.
 scan_level() {
   local seg name tail take pw ask_reason="" ew joined
+  local sw skiparg hostseen sshjoined vischeck
   _PAYLOADS=()
   while IFS= read -r -d '' seg || [ -n "$seg" ]; do
     resolve_command "$seg" || continue
@@ -716,6 +729,54 @@ scan_level() {
         for ew in "${WORDS[@]}"; do [ -n "$ew" ] || continue; joined="${joined:+$joined }$ew"; done
         [ -n "$joined" ] && _PAYLOADS+=("$joined")
         ;;
+      ssh)
+        # An ssh command line carries a program for ANOTHER machine's shell: the
+        # 2026-08 audit found a production decommission (user deletion, ACL
+        # grants, sudo edits) crossing this hook in silence because only the
+        # word `ssh` was ever seen. The remote command is a payload like a
+        # `bash -c` body and runs through the same classifier at the next
+        # depth. Flags that take a separate argument are skipped with it; the
+        # first non-flag word is the destination and everything after it is
+        # the remote program.
+        shell_words "$tail" || WORDS=()
+        skiparg=0; hostseen=0; sshjoined=""
+        for sw in "${WORDS[@]}"; do
+          [ -n "$sw" ] || continue
+          if [ "$hostseen" = 1 ]; then sshjoined="${sshjoined:+$sshjoined }$sw"; continue; fi
+          if [ "$skiparg" = 1 ]; then skiparg=0; continue; fi
+          case "$sw" in
+            -[bBcDeFIiJLlmOopQRSWw]) skiparg=1 ;;
+            -*) : ;;
+            *) hostseen=1 ;;
+          esac
+        done
+        [ -n "$sshjoined" ] && _PAYLOADS+=("$sshjoined")
+        ;;
+      # Account and access-control changes are AUTH changes: outward-facing,
+      # hard to reverse, and identical in shape locally and over ssh (where
+      # they arrive here as an ssh payload). ASK, never deny: decommissioning
+      # a user is sometimes exactly the job.
+      userdel|deluser|usermod|useradd|adduser|groupdel|groupadd|groupmod|gpasswd|chpasswd|passwd)
+        ask_reason="account, group, or credential change ($name). An access change is outward-facing and hard to reverse (a useradd -G sudo is a privilege grant wearing a create verb); confirm it is intended, and for a remote host consider the effect-broker checklist first." ;;
+      visudo)
+        # `visudo -c` (any cluster carrying c) only validates a sudoers file.
+        shell_words "$tail" || WORDS=()
+        vischeck=0
+        for pw in "${WORDS[@]}"; do
+          case "$pw" in -[A-Za-z]*c*|-c*) vischeck=1; break ;; esac
+        done
+        [ "$vischeck" = 0 ] && ask_reason="sudoers edit (visudo). A sudo policy change is an auth change; confirm it is intended." ;;
+      setfacl)
+        # Recursive grants and grants on system or other-user paths change who
+        # can read whose files; a single project-file ACL stays quiet.
+        shell_words "$tail" || WORDS=()
+        for pw in "${WORDS[@]}"; do
+          case "$pw" in
+            -*R*|--recursive|/home|/home/*|/etc|/etc/*|/root|/root/*|/var|/var/*|/srv|/srv/*|/opt|/opt/*)
+              ask_reason="ACL change on another user's files or system config (setfacl). An access grant is an auth change; confirm it is intended."
+              break ;;
+          esac
+        done ;;
     esac
     [ -n "$ask_reason" ] && [ -z "$REASON" ] && { REASON="$ask_reason"; DECISION="ask"; }
   done < <(split_segments)

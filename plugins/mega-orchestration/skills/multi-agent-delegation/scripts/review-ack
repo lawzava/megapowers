@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Record a human's false-positive dismissal of the risky-logic gate, bound to
+# the exact pending tree. hooks/delegate-nudge.sh honors it for that tree
+# alone: the fingerprint covers the staged diff, the unstaged diff, and the
+# untracked files, plus the base commit and the worktree root, so any further
+# edit re-arms the gate.
+#
+# Same standing as the gate itself: an accident backstop, not a security
+# boundary. It makes a human decision durable for one tree state; it does not
+# prove one happened. Run it only at the human's explicit direction, and pass
+# their words through --human so the record says who dismissed what.
+#
+# Usage: review-ack --human "<the human's verbatim authorization>" [dir]
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Replacement objects are off for the same reason review-diff-id turns them
+# off: the recorded binding must describe the tree git actually reports.
+export GIT_NO_REPLACE_OBJECTS=1
+
+human=""
+dir="."
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --human) [ $# -ge 2 ] || { echo "review-ack: --human needs the human's words" >&2; exit 2; }
+             human="$2"; shift 2 ;;
+    -h|--help) echo "usage: review-ack --human \"<verbatim authorization>\" [dir]"; exit 0 ;;
+    -*) echo "review-ack: unknown flag $1" >&2; exit 2 ;;
+    *) dir="$1"; shift ;;
+  esac
+done
+[ -n "${human//[[:space:]]/}" ] || {
+  echo "review-ack: an empty authorization records nobody's decision. Pass the human's words with --human." >&2
+  exit 2
+}
+command -v jq >/dev/null 2>&1 || { echo "review-ack: jq is required" >&2; exit 2; }
+
+cd "$dir"
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+  echo "review-ack: not inside a git worktree" >&2
+  exit 2
+}
+diff_id_tool="$here/review-diff-id"
+[ -x "$diff_id_tool" ] || { echo "review-ack: cannot find review-diff-id beside this script" >&2; exit 2; }
+id="$("$diff_id_tool" .)" || { echo "review-ack: could not fingerprint the pending tree" >&2; exit 2; }
+sub="$("$diff_id_tool" --submodules .)" || {
+  echo "review-ack: could not fingerprint submodule state" >&2
+  exit 2
+}
+root="$(git rev-parse --show-toplevel)"
+root="$(cd "$root" && pwd -P)"
+base="$(git rev-parse --verify -q HEAD 2>/dev/null)" || base=""
+# No commits: the empty tree, matching what delegate-nudge computes there.
+[ -n "$base" ] || base="$(git hash-object -t tree /dev/null)"
+
+ack="$(git rev-parse --git-path megapowers-review-ack.json)"
+jq -nc --arg id "$id" --arg root "$root" --arg base "$base" --arg sub "$sub" \
+  --arg human "$human" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{
+    schema: "megapowers.review-ack.v1",
+    subject: ({kind:"worktree-diff", artifact:$root, id:$id, base:$base}
+              + (if $sub == "" then {} else {submodules:$sub} end)),
+    human_authorization: $human,
+    created_at: $at
+  }' > "$ack"
+echo "review-ack: recorded the human's dismissal for the current pending tree in $ack."
+echo "review-ack: it covers exactly this tree state; any further edit, stage, or commit re-arms the gate."
