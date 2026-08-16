@@ -1,6 +1,6 @@
 {
   "name": "mega-go",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Greenfield Go stack selection, idiomatic Go patterns, and agent scripting.",
   "author": {
     "name": "lawzava"

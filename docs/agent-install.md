@@ -65,7 +65,7 @@ The verb is `add`, not `install`. `codex plugin marketplace add` accepts
 `owner/repo[@ref]` (codex-cli 0.142.5+); unpinned tracks the default branch.
 Updates: `codex plugin marketplace upgrade megapowers`, then re-run
 `codex plugin add` for each plugin. Change-controlled installs pin with
-`@v0.13.0` instead and update by re-adding at the new tag. To track a fork,
+`@v0.14.0` instead and update by re-adding at the new tag. To track a fork,
 clone it and run `codex plugin marketplace add ./` from the checkout.
 After the core plugin is installed, use its `upgrading-megapowers` skill for
 future updates. It preserves the active channel and pinning policy and offers

@@ -5,6 +5,53 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.14.0 - 2026-08-16
+
+Every defect the 2026-08 post-upgrade transcript audit confirmed, fixed: the
+gates stop eating deliverables and trapping delegates, Grok's adapter ships in
+the tree with its dead Stop guard corrected, and remote auth changes stop
+crossing the guardrails in silence.
+
+### Added
+
+- The Grok adapter ships in `templates/grok/` (Stop and PreToolUse wrappers,
+  hook manifest, lead charter with a delegate clause) with tests that drive
+  Grok's real payload shapes. The installed copy's Stop hooks had never fired:
+  Grok sends no `reason` field and the guard required one. `[adapters.grok]`
+  joins the shipped catalogs.
+- `review-ack` records a human's confirmed false-positive dismissal of the
+  risky-logic gate, bound to the exact pending tree; any further edit re-arms
+  the gate, and the pass it buys is announced, never silent.
+- `deny-destructive` classifies the command an `ssh` invocation carries with
+  the same tiers as a local one, and asks on account, group, credential,
+  sudo-policy, and system-path ACL changes, locally or remote.
+- The skill router fires on an explicit `/skill-name` typed anywhere in a
+  prompt, and the dash gate now also governs subagent replies (SubagentStop).
+
+### Fixed
+
+- The risky-logic gate no longer displaces the reply it interrupted: every
+  block tells the agent to restate its answer first, a dispatched reviewer is
+  told the receipt is the dispatching session's to obtain, and a branch whose
+  verify loop already hit the round cap gets the human hand-off instead of a
+  launcher command that would be refused.
+- `delegate-run` retains transcripts by default under
+  `.git/megapowers-review-transcripts`, announces "round N of M" on every
+  dispatch, and the reviewer prompt requires unexecuted oracles to be named
+  as limitations rather than implied test runs.
+- `delegate-resolve` retiers an uncataloged `--caller-model` onto a
+  co-declared provider or a unique catalog model family instead of refusing.
+- `review-package` skips untracked paths git cannot hash (sandbox-masked
+  device nodes) instead of aborting the whole package.
+- `deny-destructive` no longer prompts on the suite's own merged-worktree
+  cleanup (`git branch -D worktree-agent-*`).
+- The injection probe's credential marker needs an action verb aimed at the
+  credential, so listings and docs naming `.env` or `~/.ssh` stay quiet.
+- The session catalog's lead line names the actually running model when it
+  differs from the catalog's lead model.
+- The unscanned-content notice is said once per tree state instead of every
+  stop.
+
 ## 0.13.0 - 2026-08-15
 
 Upgrades stop guessing which baseline you adopted, and discovery gets cheap.
