@@ -17,6 +17,63 @@ second scheduler or agent runtime.
 `orchestrating` applies this routing to non-trivial work. Inline work remains the
 default because every dispatch has briefing, integration, and review cost.
 
+## Choose from one personal registry
+
+For non-trivial delegation, `orchestrating` looks for the optional personal
+registry at `~/.config/megapowers/agent-capabilities.md`. This is one editable
+source across local harnesses. It stays outside repositories and the installed
+plugin.
+
+The file is Markdown so the lead can read it directly. A compact structured
+block keeps the vocabulary consistent:
+
+```yaml
+version: 1
+refreshed_at: 2026-08-18
+expires_at: 2026-09-01
+policy:
+  capability_floor: strong
+  optimize: [speed, cost]
+  escalate_on: [oracle_failure, high_risk, unresolved_ambiguity]
+profiles:
+  balanced-build:
+    roles: [writer, challenger]
+    reasoning: strong
+    speed: balanced
+    cost: medium
+    write: true
+bindings:
+  <harness>:
+    balanced-build:
+      model: <native-model-id>
+      effort: high
+      agent_type: <native-agent-type>
+      family: <opaque-family>
+      access: native
+      status: available
+      rankable: true
+```
+
+`reasoning`, `speed`, and `cost` are relative operator judgments, not measured
+facts. A binding is eligible for capability ranking only when `rankable: true`,
+its model and effort are known, it is available to the active harness, fits the
+lane's role and write boundary, meets the reasoning floor, and has native
+access. Keep ambient or otherwise unverified bindings unranked; use them only
+through an explicit task-shape route. For independent review, its opaque
+`family` must differ from every artifact author's family. Among eligible
+bindings, prefer the fastest, then the cheapest. Escalate only at a declared
+trigger.
+
+Missing, expired, malformed, or unreadable data falls back to native defaults.
+This is model-readable guidance, not parser-enforced validation: if the lead
+cannot establish that the required fields and expiry are usable, it ignores the
+registry.
+`manual` describes something the operator can run; `approved-external` still
+requires the explicit disclosure workflow. Neither is a native agent. The
+registry is advisory, not authority: it cannot grant permissions, authorize
+source disclosure, or approve writes and side effects. Do not put credentials,
+account identifiers, command lines, or private source paths in it.
+
 ## Delegate safely
 
 A useful task brief names:
