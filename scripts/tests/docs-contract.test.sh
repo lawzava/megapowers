@@ -53,5 +53,13 @@ grep -q 'approval_token' "$ROOT/docs/advanced/independent-review.md" ||
   fail 'review docs omit the inspection token'
 grep -q -- '--approve-external "$approval_token"' "$ROOT/docs/advanced/independent-review.md" ||
   fail 'review docs do not bind dispatch to the inspected token'
+grep -q 'claude plugin update megapowers@megapowers --scope <scope>' "$ROOT/docs/install.md" ||
+  fail 'install docs omit the observed Claude scope on update'
+grep -q 'codex plugin marketplace upgrade megapowers --json' "$ROOT/docs/install.md" ||
+  fail 'install docs omit the JSON Codex marketplace refresh'
+grep -q 'codex plugin add megapowers@megapowers --json' "$ROOT/docs/install.md" ||
+  fail 'install docs omit the Codex reinstall after refresh'
+grep -q 'git -C <marketplace-install-location> rev-parse HEAD' "$ROOT/docs/install.md" ||
+  fail 'install docs omit refreshed-snapshot verification before registration'
 
 printf 'docs contract: ok\n'

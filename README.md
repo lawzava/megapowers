@@ -4,9 +4,10 @@
 [![Latest tag](https://img.shields.io/github/v/tag/lawzava/megapowers?label=release)](https://github.com/lawzava/megapowers/tags)
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
-megapowers is exactly one plugin for current Claude Code and Codex. It adds ten
-task-level skills and a small destructive-command tripwire. It does not replace
-native agents, plans, goals, permissions, worktrees, memory, or browser tools.
+megapowers is exactly one plugin for current Claude Code and Codex. It adds
+eleven task-level skills and a small destructive-command tripwire. It does not
+replace native agents, plans, goals, permissions, worktrees, memory, or browser
+tools.
 
 The plugin is deliberately small. There is no model router, session catalog,
 formatter, status line, custom scheduler, hosted service, or compatibility
@@ -48,6 +49,7 @@ the full body loads only when selected.
 | Send an explicit artifact to a different provider for adversarial review | `independent-review` |
 | Write direct human-facing prose without dropping or inventing facts | `humanizing-prose` |
 | Make code-quality judgments from repository context and stable language guidance | `code-quality` |
+| Upgrade Megapowers without changing its source, scope, pins, or local edits | `upgrading-megapowers` |
 
 Repository instructions, existing code, and configured project tools remain
 authoritative. See [docs/orchestration.md](./docs/orchestration.md) for the
@@ -55,7 +57,7 @@ native-first task shapes.
 
 ## What installs
 
-- Ten portable `SKILL.md` directories.
+- Eleven portable `SKILL.md` directories.
 - One `PreToolUse` shell hook for obvious catastrophic commands.
 - One Go standard-library independent-review tool, loaded only with that skill.
 
@@ -78,7 +80,7 @@ Three evidence classes are kept separate:
 3. PR replay uses hidden correctness tests against pinned historical changes.
    It is report-only until repeated real runs support a release threshold.
 
-No current ten-skill behavioral result is claimed from selftests. Historical
+No current eleven-skill behavioral result is claimed from selftests. Historical
 measurements, including null results and their limitations, remain in
 [evals/RESULTS.md](./evals/RESULTS.md). Current protocols and gates are in
 [evals/README.md](./evals/README.md) and
