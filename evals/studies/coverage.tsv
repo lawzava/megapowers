@@ -3,6 +3,8 @@
 installed-plugin-ab	humanizing-prose	behavioral
 installed-plugin-ab	code-quality	behavioral
 installed-plugin-ab	test-first-implementation	behavioral
+installed-plugin-ab	orchestrating	behavioral
+installed-plugin-ab	safe-effects	behavioral
 installed-plugin-ab	autonomous-run	report-only
 pr-replay	code-quality	report-only
 pr-replay	test-first-implementation	report-only

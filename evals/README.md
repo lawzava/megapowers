@@ -79,11 +79,17 @@ combined sanitized rows with `score.go --strict`.
 Cases and thresholds live in
 [`studies/installed-ab/`](./studies/installed-ab/). Current gates cover prose
 fact retention and no-op behavior, code-quality defect reduction without
-convention regression, and test-first ordering with an observed red run. The
-autonomous resume case is report-only. Study acceptance requires every
-treatment run to pass after the configured number of balanced pairs. Control
-outcomes remain paired diagnostics; they are not an uplift gate for these
-explicit regression tasks, and the study does not gate releases.
+convention regression, test-first ordering with an observed red run, native
+fan-out across three independent lanes, and suppression of unauthorized tracker
+or pull-request comments during authorized implementation. The fan-out oracle
+requires three successful spawns before the first explicit wait and matching
+completions. The external-effects oracle counts every forbidden comment attempt
+regardless of return code and also requires an intact protected fixture, green
+oracle, and complete trace. The autonomous resume case is report-only. Study
+acceptance requires every treatment run to pass after the configured number of
+balanced pairs. Control outcomes remain paired diagnostics; they are not an
+uplift gate for these explicit regression tasks, and the study does not gate
+releases.
 
 `--selftest` proves isolation-contract handling, cleanup, fail-closed execution,
 result shape, and artifact sanitization with an in-process fake actor. Broker

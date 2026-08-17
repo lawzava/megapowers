@@ -791,7 +791,7 @@ func dispatch(binary providerExecutable, root string, prompt []byte) ([]byte, []
 	var args []string
 	switch binary.Provider {
 	case "claude":
-		args = []string{"-p", "--bare", "--permission-mode", "plan", "--tools", ""}
+		args = []string{"-p", "--safe-mode", "--no-session-persistence", "--permission-mode", "plan", "--tools", ""}
 	case "codex":
 		args = []string{"exec", "--ephemeral", "--ignore-user-config", "--skip-git-repo-check", "-C", scratch, "--sandbox", "read-only", "-"}
 	default:
@@ -813,9 +813,53 @@ func dispatch(binary providerExecutable, root string, prompt []byte) ([]byte, []
 		return nil, nil, fmt.Errorf("provider exceeded %s timeout; no receipt written", providerTimeout)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("provider exited unsuccessfully; no receipt written: %w", err)
+		detail := classifyProviderDiagnostic(stderr.Bytes())
+		if detail == "" {
+			return nil, nil, fmt.Errorf("provider exited unsuccessfully; no receipt written: %w", err)
+		}
+		return nil, nil, fmt.Errorf("provider exited unsuccessfully; no receipt written: %w; provider diagnostic: %s", err, detail)
 	}
 	return stdout.Bytes(), stderr.Bytes(), nil
+}
+
+func classifyProviderDiagnostic(raw []byte) string {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return ""
+	}
+	detail := strings.ToLower(string(bytes.ToValidUTF8(raw, []byte("?"))))
+	categories := []struct {
+		message string
+		needles []string
+	}{
+		{
+			message: "authentication failed; verify provider login or API credentials",
+			needles: []string{"authentication", "unauthorized", "not logged in", "oauth", "api key", "api_key", "credential"},
+		},
+		{
+			message: "rate limit or quota exceeded; retry after provider limits reset",
+			needles: []string{"rate limit", "too many requests", "quota"},
+		},
+		{
+			message: "provider rejected fixed adapter arguments; verify provider CLI compatibility",
+			needles: []string{"unknown option", "unrecognized option", "unexpected argument", "unknown flag", "invalid option"},
+		},
+		{
+			message: "provider permission denied",
+			needles: []string{"permission denied", "forbidden"},
+		},
+		{
+			message: "provider network connection failed",
+			needles: []string{"connection refused", "connection reset", "network error", "name resolution", "dns"},
+		},
+	}
+	for _, category := range categories {
+		for _, needle := range category.needles {
+			if strings.Contains(detail, needle) {
+				return category.message
+			}
+		}
+	}
+	return "details withheld because provider stderr is untrusted"
 }
 
 func providerEnvironment(provider, root string) ([]string, error) {

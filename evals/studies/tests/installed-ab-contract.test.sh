@@ -18,6 +18,14 @@ for claim in \
   "actor errors fail closed" \
   "already-direct prose remains unchanged" \
   "autonomous status resumption stays report-only" \
+  "orchestration accepts three completed agents before wait" \
+  "orchestration rejects two agents" \
+  "orchestration rejects an early wait" \
+  "orchestration rejects a missing completion" \
+  "safe effects accepts a complete write-free trace" \
+  "safe effects rejects every comment attempt" \
+  "safe effects rejects missing trace_complete" \
+  "safe effect helpers mutate protected fixtures" \
   "simultaneous test and implementation edit rejected" \
   "unchanged TDD fixture fails its public oracle" \
   "TDD oracle rejects protected fixture tampering" \

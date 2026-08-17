@@ -32,6 +32,11 @@ contains() {
   if grep -Eqi -- "$pattern" "$file"; then ok "$name"; else bad "$name"; fi
 }
 
+contains_document() {
+  local name="$1" file="$2" pattern="$3"
+  if tr '\n' ' ' < "$file" | grep -Eqi -- "$pattern"; then ok "$name"; else bad "$name"; fi
+}
+
 not_contains() {
   local name="$1" pattern="$2"
   shift 2
@@ -71,6 +76,9 @@ contains 'root instructions carry repository authority' "$AGENT_RULES" "$authori
 contains 'code quality carries repository authority' "$QUALITY" "$authority"
 
 contains 'orchestration prefers native capabilities' "$SKILLS/orchestrating/SKILL.md" 'native (harness )?(capabilities|agents|subagents|goals|planning|permissions|review)'
+contains_document 'orchestration explicitly authorizes native delegation' "$SKILLS/orchestrating/SKILL.md" 'explicitly authorizes? native (agents?|subagents?)|native (agent|subagent) delegation is explicitly authorized'
+contains_document 'orchestration routes independent read-heavy lanes' "$SKILLS/orchestrating/SKILL.md" '(two|2) or more (independent |disjoint )?(read-heavy )?(lanes|workstreams)|read-heavy (lanes|workstreams).*(independent|parallel)'
+contains_document 'orchestration dispatches eligible lanes in parallel' "$SKILLS/orchestrating/SKILL.md" '(dispatch|run|delegate).*(lanes|workstreams).*(parallel|concurrent)|(parallel|concurrent).*(dispatch|run|delegate)'
 contains 'autonomy prefers native goals' "$SKILLS/autonomous-run/SKILL.md" 'native goals?'
 contains 'autonomy persists durable checkpoints' "$SKILLS/autonomous-run/SKILL.md" 'durable (checkpoint|state)'
 contains 'autonomy derives status from evidence' "$SKILLS/autonomous-run/SKILL.md" '(derive|reconstruct).*status.*(journal|checkpoint|evidence)'
@@ -99,8 +107,12 @@ contains 'implementation requires green evidence' "$SKILLS/test-first-implementa
 contains 'debugging requires root cause first' "$SKILLS/systematic-debugging/SKILL.md" 'root cause.*before.*fix|before.*fix.*root cause'
 contains 'debugging fixes through regression' "$SKILLS/systematic-debugging/SKILL.md" 'failing regression test|regression test.*before'
 contains 'effects require exact authorization' "$SKILLS/safe-effects/SKILL.md" 'authorization.*exact (target|effect)|exact (target|effect).*authorization'
+contains_document 'effects require exact tracker-comment authorization' "$SKILLS/safe-effects/SKILL.md" '(public )?(tracker|issue|PR) comments?.*(exact|explicit) authorization|(exact|explicit) authorization.*(public )?(tracker|issue|PR) comments?'
+contains_document 'implementation authority excludes outward writes' "$SKILLS/safe-effects/SKILL.md" '(implement|implementation|investigate|investigation|proceed).*(does not|do not|is not).*(authoriz|permission).*(comment|message|update|write)'
 contains 'effects require duplicate prevention' "$SKILLS/safe-effects/SKILL.md" 'idempotenc|duplicate-prevention'
 contains 'effects require target readback' "$SKILLS/safe-effects/SKILL.md" '(target|external).*readback|readback.*(target|external)'
+contains_document 'prose prohibits routine progress comments' "$PROSE" '(do not|never).*(publish|post|send).*(routine progress|progress narration).*(tracker|issue|PR)? ?comments?|comments?.*(do not|never).*(routine progress|progress narration)'
+contains_document 'prose prohibits published test transcripts' "$PROSE" '(do not|never).*(publish|post|send|dump).*(test transcripts?)|test transcripts?.*(do not|never).*(publish|post|send|dump)'
 contains 'completion uses fresh oracle evidence' "$SKILLS/verify-and-finish/SKILL.md" 'fresh.*oracle|oracle.*fresh'
 contains 'completion separates external proof' "$SKILLS/verify-and-finish/SKILL.md" 'external (verification|oracle|proof)'
 

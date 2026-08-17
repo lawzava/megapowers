@@ -5,8 +5,12 @@ description: Use when a task is non-trivial, multi-part, long-running, high-stak
 
 # Orchestrating
 
-Choose the least structure that preserves correctness and context. Inline work
-is the default because delegation adds briefing, integration, and review cost.
+Choose the least structure that preserves correctness and context. Keep one
+clear, bounded dependency path inline because delegation adds briefing,
+integration, and review cost. This skill explicitly authorizes native agents
+and subagents for a task with two or more independent lanes, especially
+read-heavy discovery, investigation, or review. Dispatch eligible lanes in
+parallel; keep shared writes and critical-path integration with one lead.
 
 ## Route by task shape
 
@@ -15,7 +19,7 @@ is the default because delegation adds briefing, integration, and review cost.
   are unresolved.
 - Use native harness capabilities for planning, agents, subagents, permissions,
   reviews, goals, and waiting before adding a plugin-specific control plane.
-- Split work only when ownership is disjoint and outputs can be accepted
+- Split work when ownership is disjoint and outputs can be accepted
   independently. Keep a shared critical path with one owner.
 - Use `autonomous-run` for a goal that must survive milestones or sessions.
 - Use `independent-review` when residual risk justifies another provider, not

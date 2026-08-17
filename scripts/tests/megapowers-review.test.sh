@@ -83,8 +83,9 @@ ACTIVE_PATH="$EXTERNAL_BIN:$PATH"
 run_tool() {
   last_out="$(
     cd "$REPO" || exit 97
+    unset ANTHROPIC_API_KEY
     PATH="$ACTIVE_PATH" MEGAPOWERS_TEST_LEAK='do-not-forward' \
-      ANTHROPIC_API_KEY='test-anthropic-credential' OPENAI_API_KEY='test-openai-credential' \
+      OPENAI_API_KEY='test-openai-credential' \
       "$GO_BIN" run "$TOOL" "$@" 2>&1
   )"
   last_rc=$?
@@ -254,6 +255,15 @@ else
   bad 'pre-dispatch disclosure and provider output are visible'
 fi
 
+if ! grep -q '^ANTHROPIC_API_KEY=' "$TMP/provider.env" && \
+   grep -q -- '--safe-mode' "$TMP/provider.args" && \
+   grep -q -- '--no-session-persistence' "$TMP/provider.args" && \
+   ! grep -q -- '--bare' "$TMP/provider.args"; then
+  ok 'Claude review supports subscription OAuth without persistent customizations'
+else
+  bad 'Claude review supports subscription OAuth without persistent customizations'
+fi
+
 if [ -s "$TMP/provider.path" ] && [ "$(cat "$TMP/provider.path")" != "$PROVIDER_PATH" ]; then
   ok 'provider executes from a verified private copy'
 else
@@ -310,7 +320,17 @@ else
   bad 'opt-in transcript is private and hash-bound in receipt'
 fi
 
-printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 23\n' > "$EXTERNAL_BIN/codex"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'cat >/dev/null\n'
+  printf 'printf "\\033[31mprovider authentication failed\\033[0m\\n" >&2\n'
+  printf 'printf "api_key = \\"sk-abcdefghijklmnopqrstuvwxyz123456\\"\\n" >&2\n'
+  printf 'printf "CLAUDE_CODE_OAUTH_TOKEN=eyJhbGciOiJIUzI1NiJ9.sensitive.signature\\n" >&2\n'
+  printf 'printf "account=user@example.com org=org_12345 url=https://example.invalid/?token=secret\\n" >&2\n'
+  printf 'printf "tenant=internal-customer\\n" >&2\n'
+  printf 'i=0; while [ "$i" -lt 6000 ]; do printf x >&2; i=$((i + 1)); done\n'
+  printf 'exit 23\n'
+} > "$EXTERNAL_BIN/codex"
 chmod +x "$EXTERNAL_BIN/codex"
 must_succeed 'inspect failing provider binary for a bound token' \
   inspect --file app.go --provider codex
@@ -320,6 +340,19 @@ mkdir -m 700 "$FAIL_OUT"
 must_fail_with 'nonzero provider exit fails review' 'provider exited' \
   review --file app.go --provider codex --author claude \
   --approve-external "$CODEX_TOKEN" --out "$FAIL_OUT"
+if printf '%s\n' "$last_out" | grep -q 'provider diagnostic: authentication failed; verify provider login or API credentials' && \
+   ! printf '%s\n' "$last_out" | grep -q 'sk-abcdefghijklmnopqrstuvwxyz123456' && \
+   ! printf '%s\n' "$last_out" | grep -q 'eyJhbGciOiJIUzI1NiJ9' && \
+   ! printf '%s\n' "$last_out" | grep -q 'user@example.com' && \
+   ! printf '%s\n' "$last_out" | grep -q 'org_12345' && \
+   ! printf '%s\n' "$last_out" | grep -q 'example.invalid' && \
+   ! printf '%s\n' "$last_out" | grep -q 'internal-customer' && \
+   [[ "$last_out" != *$'\033'* ]] && \
+   [ "$(printf '%s' "$last_out" | wc -c | tr -d ' ')" -le 4096 ]; then
+  ok 'provider failure includes only a classified secret-safe diagnostic'
+else
+  bad 'provider failure includes only a classified secret-safe diagnostic'
+fi
 if [ ! -e "$FAIL_OUT" ] || [ -z "$(find "$FAIL_OUT" -name receipt.json -print -quit 2>/dev/null)" ]; then
   ok 'failed provider writes no receipt'
 else
