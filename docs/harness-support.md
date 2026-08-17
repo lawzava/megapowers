@@ -1,6 +1,6 @@
 # Harness support
 
-Last reviewed: 2026-08-16.
+Last reviewed: 2026-08-18.
 
 Current stable Claude Code and Codex are the only supported harnesses. Portable
 skills may load elsewhere, but this repository does not test or document those
@@ -13,6 +13,7 @@ environments.
 | Eleven task skills | Supported | Supported |
 | Destructive-command guard | High-confidence denies only | High-confidence denies only |
 | Native agents and parallel work | Use harness-native features | Use harness-native features |
+| Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
 | Independent review provider | Claude or Codex CLI, different from author | Claude or Codex CLI, different from author |
 | Credentialed installed A/B | Optional diagnostic arm | Optional diagnostic arm |
@@ -30,9 +31,11 @@ Repository instructions, existing code, and configured project tools are
 authoritative. megapowers supplies workflow defaults only where the repository
 is silent.
 
-The plugin does not configure models, agent roles, context budgets, sandbox
-rules, or permission policy. Those are harness and repository concerns. This
-avoids pinning quickly changing native surfaces into plugin guidance.
+The plugin ships no model or role configuration and does not create model,
+agent, context, sandbox, or permission availability. An optional user-owned
+registry can describe relative capabilities and native bindings for the lead's
+selection. It is advisory input: harness and repository policy still decide
+what exists and what is authorized.
 
 ## Hook behavior
 

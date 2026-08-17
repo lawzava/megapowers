@@ -45,6 +45,12 @@ fi
 grep -q 'exactly one plugin' "$ROOT/README.md" || fail 'README does not state the one-plugin boundary'
 grep -q 'Claude Code and Codex' "$ROOT/README.md" || fail 'README does not state the two supported harnesses'
 grep -q 'installed-plugin A/B' "$ROOT/README.md" || fail 'README does not identify optional behavioral evidence'
+grep -qE '[~]/[.]config/megapowers/agent-capabilities[.]md' "$ROOT/docs/orchestration.md" ||
+  fail 'orchestration docs omit the personal capability registry'
+grep -Eq 'advisory.*(not|no).*authorit|does not (grant|supply) authority' "$ROOT/docs/orchestration.md" ||
+  fail 'orchestration docs do not keep registry data advisory'
+grep -Eq 'not parser-enforced|no parser' "$ROOT/docs/orchestration.md" ||
+  fail 'orchestration docs imply deterministic registry parsing'
 grep -q 'report-only' "$ROOT/docs/advanced/evals.md" || fail 'eval docs do not label PR replay report-only'
 grep -q 'not a security boundary' "$ROOT/SECURITY.md" || fail 'security boundary warning missing'
 grep -Eq 'inspect --file .* --provider claude' "$ROOT/docs/advanced/independent-review.md" ||
