@@ -82,6 +82,12 @@ contains 'orchestration prefers native capabilities' "$SKILLS/orchestrating/SKIL
 contains_document 'orchestration explicitly authorizes native delegation' "$SKILLS/orchestrating/SKILL.md" 'explicitly authorizes? native (agents?|subagents?)|native (agent|subagent) delegation is explicitly authorized'
 contains_document 'orchestration routes independent read-heavy lanes' "$SKILLS/orchestrating/SKILL.md" '(two|2) or more (independent |disjoint )?(read-heavy )?(lanes|workstreams)|read-heavy (lanes|workstreams).*(independent|parallel)'
 contains_document 'orchestration dispatches eligible lanes in parallel' "$SKILLS/orchestrating/SKILL.md" '(dispatch|run|delegate).*(lanes|workstreams).*(parallel|concurrent)|(parallel|concurrent).*(dispatch|run|delegate)'
+contains 'orchestration discovers the personal capability registry' "$SKILLS/orchestrating/SKILL.md" '[~]/[.]config/megapowers/agent-capabilities[.]md'
+contains_document 'orchestration chooses the fastest cheapest qualifying binding' "$SKILLS/orchestrating/SKILL.md" '(fastest|lowest latency).*(cheapest|lowest cost).*(qualif|meet)|(qualif|meet).*(fastest|lowest latency).*(cheapest|lowest cost)'
+contains_document 'orchestration rejects unavailable registry bindings' "$SKILLS/orchestrating/SKILL.md" '(active|current) harness.*(available|callable)|(available|callable).*(active|current) harness'
+contains_document 'orchestration ranks only verified registry bindings' "$SKILLS/orchestrating/SKILL.md" 'rankable.*(declared|known|verified).*(model|effort)|(model|effort).*(declared|known|verified).*rankable'
+contains_document 'orchestration treats the registry as advisory' "$SKILLS/orchestrating/SKILL.md" '(registry|capability card).*(does not|cannot).*(authoriz|grant).*(disclos|external|write|side effect|permission)'
+contains_document 'orchestration falls back from an unusable registry' "$SKILLS/orchestrating/SKILL.md" '(missing|stale|malformed|inaccessible).*(native default|ignore|do not use)|(native default|ignore|do not use).*(missing|stale|malformed|inaccessible)'
 contains 'autonomy prefers native goals' "$SKILLS/autonomous-run/SKILL.md" 'native goals?'
 contains 'autonomy persists durable checkpoints' "$SKILLS/autonomous-run/SKILL.md" 'durable (checkpoint|state)'
 contains 'autonomy derives status from evidence' "$SKILLS/autonomous-run/SKILL.md" '(derive|reconstruct).*status.*(journal|checkpoint|evidence)'
@@ -157,7 +163,7 @@ lineage='superpowers|obra/superpowers|jesse vincent|derived from|inspired by|^or
 not_contains 'agent-loaded guidance omits historical lineage' "$lineage" "$SKILLS" "$AGENT_RULES" "$ROOT/plugins/megapowers/hooks"
 
 total_words="$(find "$SKILLS" -mindepth 2 -maxdepth 2 -type f -name SKILL.md -print0 | xargs -0 cat | wc -w)"
-if [ "$total_words" -le 2850 ]; then ok 'primary skill guidance stays within 2850 words'; else bad 'primary skill guidance stays within 2850 words'; fi
+if [ "$total_words" -le 3000 ]; then ok 'primary skill guidance stays within 3000 words'; else bad 'primary skill guidance stays within 3000 words'; fi
 
 while IFS= read -r skill; do
   words="$(wc -w < "$SKILLS/$skill/SKILL.md")"

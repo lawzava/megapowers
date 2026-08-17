@@ -55,6 +55,11 @@ Repository instructions, existing code, and configured project tools remain
 authoritative. See [docs/orchestration.md](./docs/orchestration.md) for the
 native-first task shapes.
 
+For non-trivial delegation, `orchestrating` can read one optional personal
+capability registry from `~/.config/megapowers/agent-capabilities.md`. The file
+stays outside the plugin and supplies advisory choices only; it creates no
+agent access or authority.
+
 ## What installs
 
 - Eleven portable `SKILL.md` directories.
