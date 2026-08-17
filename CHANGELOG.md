@@ -5,6 +5,30 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.15.1 - 2026-08-18
+
+Megapowers restores reliable native delegation, subscription-backed Claude
+review, and strict boundaries around outward progress comments.
+
+### Added
+
+- Installed-plugin behavioral cases require three independent agent lanes to
+  dispatch before waiting and fail closed on incomplete traces.
+- Safe-effects evaluation exposes local tracker and pull-request comment
+  helpers, then rejects every attempted unauthorized write regardless of its
+  exit status.
+
+### Fixed
+
+- `orchestrating` explicitly authorizes native agents and subagents for two or
+  more independent lanes, especially read-heavy discovery and review.
+- The Claude review adapter preserves subscription OAuth, disables persistent
+  customizations, and maps untrusted provider errors to secret-safe diagnostic
+  categories.
+- `safe-effects` separates implementation authority from public comment
+  authority, while `humanizing-prose` keeps routine progress and test
+  transcripts out of trackers and pull requests.
+
 ## 0.15.0 - 2026-08-16
 
 Megapowers is now one native-first plugin for Claude Code and Codex. The
