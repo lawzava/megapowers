@@ -53,7 +53,22 @@ Current study acceptance checks include:
 - code quality reduces seeded defects without task or repository-convention
   regression;
 - test-first work edits and executes a failing test before implementation;
+- three independent read-heavy lanes produce at least three successful native
+  agent spawns before the first explicit wait, matching completions, all seeded
+  facts, no inventions, and a complete trace;
+- authorized implementation leaves protected fixtures intact, passes its
+  oracle, records a complete trace, and makes no tracker or pull-request comment
+  attempt, including failed attempts;
 - every treatment row passes after the balanced run count in `gates.json`.
+
+For these trace-sensitive cases, the reviewed broker emits normalized ordered
+events. Agent identities travel in `path` on `agent_spawn` and
+`agent_complete`; explicit waits use `agent_wait`. Comment attempts use
+`tracker_comment` or `pr_comment` regardless of return code. Exactly one
+successful `trace_complete` must be the final event of a non-empty raw trace,
+and the broker omits it if capture is incomplete. Runner selftests
+mutation-check two-agent fan-out, early waits, missing completions, comment
+attempts, and missing completion markers.
 
 Control rows remain mandatory paired diagnostics. Their results and exact
 McNemar comparison are reported, but do not gate explicit tasks that already

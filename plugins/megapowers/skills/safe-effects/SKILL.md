@@ -9,6 +9,11 @@ Authorization must cover the exact target, effect, environment, and scope. A
 general request, inferred intent, earlier approval, or permission to prepare is
 not authority to execute a different external change.
 
+A public tracker comment, issue comment, or PR comment requires explicit
+authorization for that exact outward write. Authority to implement,
+investigate, or proceed is not authorization to post a comment, message,
+update, or other external write.
+
 Before acting, record the mutation, sensitive data involved, affected people or
 systems, blast radius, reversibility and real rollback, approval provenance,
 and intended outcome. Observe or simulate first when a meaningful preview

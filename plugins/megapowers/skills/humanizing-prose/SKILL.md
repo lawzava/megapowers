@@ -20,7 +20,8 @@ completeness. Do not rewrite quotations, code, or command names. Leave
 already-direct prose alone; a mandatory rewrite pass creates churn without
 improving the message. Punctuation follows meaning, not a style taboo.
 
-For reviews, PR comments, and issue updates, publish the current verdict,
-material impact, and minimum evidence. Omit internal work logs, discarded
-reasoning, repeated findings, and test transcripts unless one explains a
-current risk. Reply in the existing thread when possible.
+For an authorized review, PR comment, or issue update, publish the current
+verdict, material impact, and minimum evidence. Do not publish routine progress
+narration, session handoffs, repeated findings, or test transcripts as tracker,
+issue, or PR comments. Keep them in working context and reply in the existing
+thread when possible.
