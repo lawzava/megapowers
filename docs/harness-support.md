@@ -10,7 +10,7 @@ environments.
 |---|---|---|
 | Marketplace metadata | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
 | Plugin manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
-| Ten task skills | Supported | Supported |
+| Eleven task skills | Supported | Supported |
 | Destructive-command guard | High-confidence denies only | High-confidence denies only |
 | Native agents and parallel work | Use harness-native features | Use harness-native features |
 | Durable goals | Prefer native goal support | Prefer native goal support |
@@ -20,9 +20,11 @@ environments.
 
 ## Shared contract
 
-Skills use portable `name` and `description` frontmatter. Full bodies remain
-harness-neutral except `independent-review`, whose purpose is to select one of
-the two supported provider CLIs explicitly.
+Skills use portable `name` and `description` frontmatter. `SKILL.md` bodies
+remain harness-neutral except `independent-review`, whose purpose is to select
+one of the two supported provider CLIs explicitly. Channel-specific upgrade
+commands live in a directly linked reference loaded only after channel
+detection.
 
 Repository instructions, existing code, and configured project tools are
 authoritative. megapowers supplies workflow defaults only where the repository

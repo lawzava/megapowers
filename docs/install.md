@@ -72,24 +72,50 @@ git -C "megapowers-$release_tag" status --short
 
 ## Update
 
-Read [CHANGELOG.md](../CHANGELOG.md), then update the channel already in use.
+Use `upgrading-megapowers` for an agent-driven update. It inventories the
+installed version, enabled state, source, scope, pins, local edits, duplicates,
+and active caches before asking once for the exact writes. A current install is
+a valid no-op. Preserve the channel already in use and read
+[CHANGELOG.md](../CHANGELOG.md) before changing it.
+
+Before approving a floating update, resolve the latest stable tag to its commit
+and compare it with the observed marketplace repository's default-branch head.
+Stop if they differ; marketplace refresh follows the branch snapshot and must
+not install unreleased branch state as a stable upgrade.
 
 Claude Code:
 
 ```bash
 claude plugin marketplace update megapowers
-claude plugin update megapowers@megapowers
+git -C <marketplace-install-location> rev-parse HEAD
+claude plugin update megapowers@megapowers --scope <scope>
 ```
+
+Replace `<scope>` with the scope reported by `claude plugin list --json`; do not
+infer or change it during an update. Get `<marketplace-install-location>` from
+`claude plugin marketplace list --json`.
 
 Codex:
 
 ```bash
-codex plugin marketplace upgrade megapowers
+codex plugin marketplace upgrade megapowers --json
+git -C <marketplace-install-location> rev-parse HEAD
+codex plugin add megapowers@megapowers --json
 ```
 
-Restart the harness and repeat the registration and skill-loading checks. A
-pinned local checkout changes only when you deliberately replace or update that
-checkout.
+Marketplace refresh updates Codex's source snapshot; `plugin add` registers the
+new snapshot as the installed cache. Get its marketplace root from
+`codex plugin marketplace list --json`. After either marketplace refresh,
+require the reported `HEAD` to still equal the approved stable commit before
+running `plugin update/add`; otherwise stop with the installed plugin untouched.
+
+Claude's `plugin list --json` reports scope and install path; Codex's reports
+source, enabled state, and version, while its `installedPath` comes from the
+`plugin add --json` result. Compare that exact cache with the target ref. Ignore
+harness-owned `.codex-marketplace-install.json` and `.in_use` markers during
+source-edit and byte-parity checks. Restart before expecting new guidance. Do
+not delete an older cache while a live session may still use it. A pinned local
+checkout changes only when you deliberately replace or update that checkout.
 
 ## Uninstall
 

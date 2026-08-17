@@ -22,6 +22,7 @@ expected_skills=$(printf '%s\n' \
   safe-effects \
   systematic-debugging \
   test-first-implementation \
+  upgrading-megapowers \
   verify-and-finish)
 
 assert_single_marketplace_plugin() {
@@ -47,7 +48,7 @@ done
 
 actual_skills=$(git -C "$ROOT" ls-files 'plugins/megapowers/skills/*/SKILL.md' | cut -d/ -f4 | sort)
 [[ $actual_skills == "$expected_skills" ]] ||
-  fail "plugin skill inventory differs from the ten native-first skills"
+  fail "plugin skill inventory differs from the eleven native-first skills"
 
 actual_links=$(git -C "$ROOT" ls-files -s '.agents/skills/*' | awk '$1 == "120000" { sub(".*/", "", $4); print $4 }' | sort)
 [[ $actual_links == "$expected_skills" ]] ||

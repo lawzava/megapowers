@@ -8,7 +8,7 @@ Review the exact revision before installing it.
 
 | Component | Reads | Writes | Network |
 |---|---|---|---|
-| Ten skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
+| Eleven skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
 | Destructive-command hook | Proposed shell command from hook input | Hook decision on standard output | None |
 | Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | Selected Claude or Codex provider call after approval |
 

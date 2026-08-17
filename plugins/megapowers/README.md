@@ -4,9 +4,9 @@ One native-first workflow plugin for current Claude Code and Codex.
 
 ## Contents
 
-- `skills/`: ten task-level skills for orchestration, design, implementation,
+- `skills/`: eleven task-level skills for orchestration, design, implementation,
   debugging, verification, effects, durable runs, independent review, prose,
-  and code quality.
+  code quality, and safe upgrades.
 - `hooks/`: one destructive-command tripwire, with Claude Code and Codex
   adapters.
 - `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: native plugin

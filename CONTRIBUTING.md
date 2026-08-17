@@ -26,7 +26,7 @@ A runner selftest proves mechanics only. It is not behavioral evidence.
 
 ## Scope
 
-- Keep the marketplace at exactly one plugin and the inventory at ten skills.
+- Keep the marketplace at exactly one plugin and the inventory at eleven skills.
 - Keep semantic skills portable. Harness-specific mechanics belong at a narrow
   adapter or documented provider boundary.
 - Prefer native agents, goals, permissions, worktrees, memory, and browser tools.

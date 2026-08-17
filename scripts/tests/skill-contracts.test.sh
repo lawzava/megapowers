@@ -12,6 +12,7 @@ orchestrating
 safe-effects
 systematic-debugging
 test-first-implementation
+upgrading-megapowers
 verify-and-finish"
 
 pass=0
@@ -46,7 +47,7 @@ not_contains() {
 printf '== skill contracts ==\n'
 
 actual="$(find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
-if [ "$actual" = "$EXPECTED" ]; then ok 'inventory is exactly ten skills'; else bad 'inventory is exactly ten skills'; fi
+if [ "$actual" = "$EXPECTED" ]; then ok 'inventory is exactly eleven skills'; else bad 'inventory is exactly eleven skills'; fi
 
 while IFS= read -r skill; do
   file="$SKILLS/$skill/SKILL.md"
@@ -70,6 +71,8 @@ AGENT_RULES="$ROOT/AGENTS.md"
 QUALITY="$SKILLS/code-quality/SKILL.md"
 PROSE="$SKILLS/humanizing-prose/SKILL.md"
 REVIEW="$SKILLS/independent-review/SKILL.md"
+UPGRADE="$SKILLS/upgrading-megapowers/SKILL.md"
+UPGRADE_CHANNELS="$SKILLS/upgrading-megapowers/references/channels.md"
 
 authority='Repository instructions, existing code, and configured project tools are authoritative; skills supply defaults only where the repository is silent\.'
 contains 'root instructions carry repository authority' "$AGENT_RULES" "$authority"
@@ -116,6 +119,25 @@ contains_document 'prose prohibits published test transcripts' "$PROSE" '(do not
 contains 'completion uses fresh oracle evidence' "$SKILLS/verify-and-finish/SKILL.md" 'fresh.*oracle|oracle.*fresh'
 contains 'completion separates external proof' "$SKILLS/verify-and-finish/SKILL.md" 'external (verification|oracle|proof)'
 
+contains_document 'upgrade inspects provenance before writes' "$UPGRADE" '(inspect|inventory).*(version|scope|source|pin|local edits?).*(before|prior).*(write|change)|(before|prior).*(write|change).*(inspect|inventory).*(version|scope|source|pin|local edits?)'
+contains_document 'upgrade preserves existing policy' "$UPGRADE" 'preserve.*(source|channel).*(scope).*(pin|local edits?)|(source|channel).*(scope).*(pin|local edits?).*preserve'
+contains_document 'upgrade preserves enabled state' "$UPGRADE" 'preserve.*enabled state|enabled state.*preserve'
+contains_document 'upgrade requires one exact approval' "$UPGRADE" '(one|single).*exact.*approval.*(target|source|scope).*(write|restart|verification)'
+contains_document 'upgrade treats current state as a no-op' "$UPGRADE" '(already )?current.*(verified )?no-op|(verified )?no-op.*(already )?current'
+contains_document 'upgrade keeps one channel per harness' "$UPGRADE" '(one|single) (installation )?(source|channel) per harness|(one|single) installation channel per harness'
+contains_document 'upgrade binds marketplace head to stable release' "$UPGRADE" '(stable release|release tag).*(commit).*(marketplace|source|default branch).*(head).*(match|equal)|(marketplace|source|default branch).*(head).*(stable release|release tag).*(commit).*(match|equal)'
+contains_document 'upgrade rechecks refreshed snapshot before registration' "$UPGRADE" '(after|following).*(refresh).*(before).*(registr|install).*(commit|head).*(match|equal)|(commit|head).*(after|following).*(refresh).*(before).*(registr|install).*(match|equal)'
+contains 'upgrade links the current channel reference' "$UPGRADE" 'references/channels[.]md'
+contains_document 'upgrade refreshes and reinstalls Claude' "$UPGRADE_CHANNELS" 'claude plugin marketplace update megapowers.*claude plugin update megapowers@megapowers'
+contains_document 'upgrade refreshes and reinstalls Codex' "$UPGRADE_CHANNELS" 'codex plugin marketplace upgrade megapowers.*codex plugin add megapowers@megapowers'
+contains_document 'upgrade reads marketplace sources separately' "$UPGRADE_CHANNELS" 'claude plugin marketplace list --json.*codex plugin marketplace list --json'
+contains_document 'upgrade retains the Codex installed path' "$UPGRADE_CHANNELS" 'codex plugin add megapowers@megapowers --json.*installedPath'
+contains_document 'upgrade ignores harness cache markers for parity' "$UPGRADE_CHANNELS" '[.]codex-marketplace-install[.]json.*[.]in_use.*(runtime|harness).*(exclude|ignore)|(exclude|ignore).*[.]codex-marketplace-install[.]json.*[.]in_use'
+contains_document 'upgrade stops after a failed write' "$UPGRADE" '(write|command).*(fail|error).*(stop|do not continue).*(applied|not attempted)|(stop|do not continue).*(write|command).*(fail|error).*(applied|not attempted)'
+contains_document 'upgrade verifies registration and cached bytes' "$UPGRADE" '(registration|plugin list).*(cached|cache).*(bytes|parity)|(cached|cache).*(bytes|parity).*(registration|plugin list)'
+contains_document 'upgrade protects live stale caches' "$UPGRADE" '(do not|never).*(delete|remove).*(stale|superseded).*(cache).*(active|restart|session)|(active|restart|session).*(do not|never).*(delete|remove).*(stale|superseded).*(cache)'
+contains_document 'upgrade does not invoke providers without approval' "$UPGRADE" '(do not|never).*(invoke|start|run).*(model|provider|session).*(without|unless).*(authoriz|approval)'
+
 contains 'review resolves the packaged tool beside the skill' "$REVIEW" 'scripts/megapowers-review\.go.*beside this.*SKILL\.md|beside this.*SKILL\.md.*scripts/megapowers-review\.go'
 contains 'review exposes inspect mode' "$REVIEW" 'go run "\$review_tool" inspect'
 contains 'review exposes explicit file mode' "$REVIEW" '--file'
@@ -128,14 +150,14 @@ contains 'review requires different providers' "$REVIEW" '(author|provider).*dif
 contains 'review labels receipts advisory' "$REVIEW" 'receipt.*advisory|advisory.*receipt'
 contains 'review disables transcript retention by default' "$REVIEW" 'transcript.*(off|not retained).*default|not retain.*transcript.*default'
 
-deleted='brainstorming|executing-plans|finishing-a-development-branch|project-memory|receiving-code-review|requesting-code-review|subagent-driven-development|test-driven-development|upgrading-megapowers|using-git-worktrees|using-megapowers|verification-before-completion|writing-plans|writing-skills|best-of-n|configuring-model-routes|council-adjudication|cross-model-verification|effect-broker|multi-agent-delegation|wayfinding|designing-frontends|golang-patterns|greenfield-(go|python|ts)-stack|python-patterns|scripting-in-go|typescript-patterns'
+deleted='brainstorming|executing-plans|finishing-a-development-branch|project-memory|receiving-code-review|requesting-code-review|subagent-driven-development|test-driven-development|using-git-worktrees|using-megapowers|verification-before-completion|writing-plans|writing-skills|best-of-n|configuring-model-routes|council-adjudication|cross-model-verification|effect-broker|multi-agent-delegation|wayfinding|designing-frontends|golang-patterns|greenfield-(go|python|ts)-stack|python-patterns|scripting-in-go|typescript-patterns'
 not_contains 'deleted skill names are absent' "$deleted" "$SKILLS" "$AGENT_RULES"
 
 lineage='superpowers|obra/superpowers|jesse vincent|derived from|inspired by|^origin:'
 not_contains 'agent-loaded guidance omits historical lineage' "$lineage" "$SKILLS" "$AGENT_RULES" "$ROOT/plugins/megapowers/hooks"
 
 total_words="$(find "$SKILLS" -mindepth 2 -maxdepth 2 -type f -name SKILL.md -print0 | xargs -0 cat | wc -w)"
-if [ "$total_words" -le 2500 ]; then ok 'primary skill guidance stays within 2500 words'; else bad 'primary skill guidance stays within 2500 words'; fi
+if [ "$total_words" -le 2850 ]; then ok 'primary skill guidance stays within 2850 words'; else bad 'primary skill guidance stays within 2850 words'; fi
 
 while IFS= read -r skill; do
   words="$(wc -w < "$SKILLS/$skill/SKILL.md")"
