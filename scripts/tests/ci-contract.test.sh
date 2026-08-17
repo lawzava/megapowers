@@ -37,6 +37,8 @@ credential_count="$(grep -c 'persist-credentials: false' "$ci")"
 
 grep -qF '@anthropic-ai/claude-code@2.1.233' "$ci" ||
   fail 'Claude Code CLI is not version-pinned'
+grep -qF 'apt-get install -y jq ripgrep shellcheck' "$ci" ||
+  fail 'CI does not install the declared ripgrep test dependency'
 grep -qF 'go run evals/score.go --strict results.jsonl' "$ci" ||
   fail 'CI does not strict-score deterministic results'
 grep -qF 'if: always()' "$ci" || fail 'CI does not preserve result artifacts after failure'
