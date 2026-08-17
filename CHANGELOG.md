@@ -5,6 +5,28 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.15.2 - 2026-08-18
+
+Megapowers restores the agent-driven upgrade workflow removed in `v0.15.0`
+without bringing back legacy harnesses, model routing, or multi-plugin setup.
+
+### Added
+
+- `upgrading-megapowers` inspects installed provenance, preserves enabled state,
+  source, scope, pins, and local edits, then obtains one exact approval before
+  changing the detected Claude Code or Codex channel.
+- Floating updates bind the marketplace head to the approved stable release
+  commit before writing and verify registration plus exact cached bytes after.
+
+### Fixed
+
+- Codex updates re-register `megapowers@megapowers` after marketplace refresh;
+  refresh alone does not replace the installed cache.
+- Claude updates preserve the observed installation scope, while both channels
+  use their actual source and install-path readback fields.
+- Stale cache cleanup waits for active sessions to restart and requires separate
+  approval; model-backed loading checks also remain separately authorized.
+
 ## 0.15.1 - 2026-08-18
 
 Megapowers restores reliable native delegation, subscription-backed Claude

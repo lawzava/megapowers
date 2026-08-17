@@ -1,6 +1,6 @@
 {
   "name": "megapowers",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "Native-first agentic workflow skills and a high-confidence destructive-command guard for Claude Code and Codex.",
   "author": {
     "name": "lawzava"
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "megapowers",
     "shortDescription": "Native-first agentic workflows and safety.",
-    "longDescription": "Ten task-level skills for orchestration, design, implementation, debugging, verification, effects, autonomous work, independent review, prose, and code quality, plus a destructive-command guard.",
+    "longDescription": "Eleven task-level skills for orchestration, design, implementation, debugging, verification, effects, autonomous work, independent review, prose, code quality, and safe upgrades, plus a destructive-command guard.",
     "developerName": "lawzava",
     "category": "Workflow",
     "capabilities": [
