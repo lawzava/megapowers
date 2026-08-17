@@ -5,6 +5,27 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.15.2 - 2026-08-18
+
+Delegation can use one personal capability registry across local harnesses
+without restoring plugin-owned model routing.
+
+### Added
+
+- `orchestrating` reads an optional
+  `~/.config/megapowers/agent-capabilities.md` registry before delegation.
+- The documented registry schema separates portable role requirements from
+  harness-native model, effort, access, and availability bindings.
+
+### Changed
+
+- Agent selection ranks only native bindings with known model and effort,
+  choosing the fastest and then cheapest option that meets the task boundary.
+- Manual and approved-external routes remain explicit and unranked; registry
+  data cannot grant access, permissions, disclosure, writes, or side effects.
+- The primary skill guidance budget increases from 2,500 to 2,700 words for
+  the registry selection contract; the per-skill 400-word cap is unchanged.
+
 ## 0.15.1 - 2026-08-18
 
 Megapowers restores reliable native delegation, subscription-backed Claude
