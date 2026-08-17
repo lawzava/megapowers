@@ -1,6 +1,6 @@
 # Harness support
 
-Last reviewed: 2026-08-18.
+Last reviewed: 2026-08-17.
 
 Current stable Claude Code and Codex are the only supported harnesses. Portable
 skills may load elsewhere, but this repository does not test or document those

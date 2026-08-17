@@ -1,7 +1,7 @@
 {
   "name": "megapowers",
   "description": "Native-first agentic workflow skills and a high-confidence destructive-command guard for Claude Code and Codex.",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "author": {
     "name": "lawzava"
   },

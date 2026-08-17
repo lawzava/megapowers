@@ -5,18 +5,13 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## 0.15.2 - 2026-08-18
+## 0.15.3 - 2026-08-18
 
-Megapowers restores safe agent-driven upgrades and adds one personal capability
-registry without bringing back legacy harnesses or plugin-owned model routing.
+Delegation can use one personal capability registry across local harnesses
+without restoring plugin-owned model routing.
 
 ### Added
 
-- `upgrading-megapowers` inspects installed provenance, preserves enabled state,
-  source, scope, pins, and local edits, then obtains one exact approval before
-  changing the detected Claude Code or Codex channel.
-- Floating updates bind the marketplace head to the approved stable release
-  commit before writing and verify registration plus exact cached bytes after.
 - `orchestrating` reads an optional
   `~/.config/megapowers/agent-capabilities.md` registry before delegation.
 - The documented registry schema separates portable role requirements from
@@ -28,8 +23,26 @@ registry without bringing back legacy harnesses or plugin-owned model routing.
   choosing the fastest and then cheapest option that meets the task boundary.
 - Manual and approved-external routes remain explicit and unranked; registry
   data cannot grant access, permissions, disclosure, writes, or side effects.
-- The primary skill guidance budget increases from 2,500 to 3,000 words for
-  both new contracts; the per-skill 400-word cap is unchanged.
+- The primary skill guidance budget increases from 2,850 to 3,000 words for
+  the registry contract; the per-skill 400-word cap is unchanged.
+
+### Fixed
+
+- CI installs the `ripgrep` dependency used by deterministic contracts, and
+  freshness metadata uses a runner-valid UTC review date.
+
+## 0.15.2 - 2026-08-18
+
+Megapowers restores the agent-driven upgrade workflow removed in `v0.15.0`
+without bringing back legacy harnesses, model routing, or multi-plugin setup.
+
+### Added
+
+- `upgrading-megapowers` inspects installed provenance, preserves enabled state,
+  source, scope, pins, and local edits, then obtains one exact approval before
+  changing the detected Claude Code or Codex channel.
+- Floating updates bind the marketplace head to the approved stable release
+  commit before writing and verify registration plus exact cached bytes after.
 
 ### Fixed
 
