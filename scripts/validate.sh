@@ -124,6 +124,7 @@ script_tests=(
   scripts/tests/hook-contract.test.sh
   scripts/tests/megapowers-review.test.sh
   scripts/tests/native-first-contract.test.sh
+  scripts/tests/output-style-contract.test.sh
   scripts/tests/release-preflight.test.sh
   scripts/tests/security-lint.test.sh
   scripts/tests/skill-contracts.test.sh
@@ -131,6 +132,7 @@ script_tests=(
 )
 
 hook_tests=(
+  plugins/megapowers/hooks/tests/codex-output-style.test.sh
   plugins/megapowers/hooks/tests/codex-deny-destructive.test.sh
   plugins/megapowers/hooks/tests/deny-destructive.test.sh
   plugins/megapowers/hooks/tests/dispatch.test.sh

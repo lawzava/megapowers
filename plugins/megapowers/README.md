@@ -7,13 +7,21 @@ One native-first workflow plugin for current Claude Code and Codex.
 - `skills/`: eleven task-level skills for orchestration, design, implementation,
   debugging, verification, effects, durable runs, independent review, prose,
   code quality, and safe upgrades.
-- `hooks/`: one destructive-command tripwire, with Claude Code and Codex
-  adapters.
+- `output-styles/`: the shared source for direct, concise technical replies.
+- `hooks/`: a Codex startup hook for the shared style and one
+  destructive-command tripwire with Claude Code and Codex adapters.
 - `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: native plugin
   metadata.
 
 The plugin uses native harness planning, agents, goals, permissions, memory,
 worktrees, and browser tools. It ships no model router or orchestration daemon.
+
+Claude Code applies the output style automatically while the plugin is enabled.
+It preserves the built-in coding instructions and overrides a manually selected
+output style. The trusted Codex startup hook adds the same style as developer
+context without changing user config. Codex requires review and trust before it
+runs plugin hooks. Both adapters apply only to the main conversation; ordinary
+subagents do not inherit them.
 
 ## Install
 

@@ -28,6 +28,11 @@ Start a fresh session. Ask Claude Code to load `humanizing-prose` and summarize
 its preservation rules. This checks discovery and full skill loading without
 claiming broader behavioral quality.
 
+While megapowers is enabled, Claude Code automatically applies its direct,
+concise output style. The style preserves built-in coding instructions and
+overrides another selected output style. Disable the plugin before starting a
+session that needs a different style.
+
 For a project-scoped install, add `--scope project` to both marketplace and
 install commands. For a local user-only install, use `--scope local`.
 
@@ -45,8 +50,12 @@ codex plugin marketplace list --json
 codex plugin list --json
 ```
 
-Start a fresh session. Ask Codex to load `humanizing-prose` and summarize its
-preservation rules.
+Start a fresh session, then review and trust the plugin hooks when Codex asks.
+Codex skips both hook features until they are trusted. Once trusted, the startup
+hook applies the shared direct, concise style without editing user config.
+
+Ask Codex to load `humanizing-prose` and summarize its preservation rules. This
+checks skill discovery separately from the startup style.
 
 ## Pin a release
 
