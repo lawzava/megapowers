@@ -5,7 +5,7 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## 0.15.4 - 2026-08-19
+## 0.15.4 - 2026-08-18
 
 Megapowers makes direct, concise technical replies the default on Claude Code
 and Codex without changing global user configuration.
