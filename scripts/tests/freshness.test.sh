@@ -18,6 +18,7 @@ grep -qF 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' "$workflow"
 grep -qF 'persist-credentials: false' "$workflow"
 
 "$script" --max-age-days 36500 >/dev/null
+TZ=UTC "$script" --max-age-days 36500 >/dev/null
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/freshness-test.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
