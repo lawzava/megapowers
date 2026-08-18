@@ -7,7 +7,7 @@
     {
       "name": "megapowers",
       "source": "./plugins/megapowers",
-      "description": "Eleven task-level skills plus a high-confidence destructive-command guard.",
+      "description": "Eleven task-level skills, a concise default output style, and a high-confidence destructive-command guard.",
       "category": "workflow"
     }
   ]

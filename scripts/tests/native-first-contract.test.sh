@@ -63,29 +63,31 @@ done <<< "$expected_skills"
 
 hooks="$ROOT/plugins/megapowers/hooks/hooks.json"
 jq -e '
-  (.hooks | keys) == ["PreToolUse"] and
+  (.hooks | keys) == ["PreToolUse", "SessionStart"] and
   (.hooks.PreToolUse | length) == 1 and
   .hooks.PreToolUse[0].matcher == "Bash" and
   (.hooks.PreToolUse[0].hooks | length) == 1 and
   (.hooks.PreToolUse[0].hooks[0].command | contains("deny-destructive.sh")) and
   (.hooks.PreToolUse[0].hooks[0].command | contains("codex-deny-destructive.sh"))
-' "$hooks" >/dev/null || fail "hooks.json must expose only the destructive Bash guard"
+' "$hooks" >/dev/null || fail "hooks.json must expose the native adapters"
 
 expected_hook_files=$(printf '%s\n' \
   codex-deny-destructive.sh \
+  codex-output-style.sh \
   deny-destructive.sh \
   dispatch.sh \
   hooks.json \
   run-hook.cmd)
-actual_hook_files=$(git -C "$ROOT" ls-files 'plugins/megapowers/hooks/*' | awk -F/ 'NF == 4 { print $4 }' | sort)
+actual_hook_files=$(find "$ROOT/plugins/megapowers/hooks" -maxdepth 1 -type f -printf '%f\n' | sort)
 [[ $actual_hook_files == "$expected_hook_files" ]] ||
-  fail "hooks/ contains non-destructive integrations"
+  fail "hooks/ differs from the supported adapter inventory"
 
 expected_hook_tests=$(printf '%s\n' \
   codex-deny-destructive.test.sh \
+  codex-output-style.test.sh \
   deny-destructive.test.sh \
   dispatch.test.sh)
-actual_hook_tests=$(git -C "$ROOT" ls-files 'plugins/megapowers/hooks/tests/*' | awk -F/ 'NF == 5 { print $5 }' | sort)
+actual_hook_tests=$(find "$ROOT/plugins/megapowers/hooks/tests" -maxdepth 1 -type f -printf '%f\n' | sort)
 [[ $actual_hook_tests == "$expected_hook_tests" ]] ||
   fail "hooks/tests contains obsolete hook coverage"
 

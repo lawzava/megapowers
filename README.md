@@ -5,9 +5,9 @@
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
 megapowers is exactly one plugin for current Claude Code and Codex. It adds
-eleven task-level skills and a small destructive-command tripwire. It does not
-replace native agents, plans, goals, permissions, worktrees, memory, or browser
-tools.
+eleven task-level skills, one shared default communication style, and a small
+destructive-command tripwire. It does not replace native agents, plans, goals,
+permissions, worktrees, memory, or browser tools.
 
 The plugin is deliberately small. There is no model router, session catalog,
 formatter, status line, custom scheduler, hosted service, or compatibility
@@ -63,8 +63,16 @@ agent access or authority.
 ## What installs
 
 - Eleven portable `SKILL.md` directories.
+- One shared style for direct, concise technical replies: a forced Claude Code
+  output style and a trusted Codex startup hook.
 - One `PreToolUse` shell hook for obvious catastrophic commands.
 - One Go standard-library independent-review tool, loaded only with that skill.
+
+Claude Code applies the style while the plugin is enabled. It preserves Claude
+Code's built-in software-engineering instructions, but the plugin default
+overrides a manually selected output style. Codex adds the same style as
+developer context at session startup and after compaction once the user trusts
+the bundled hooks. Neither adapter changes global user configuration.
 
 Claude Code and Codex receive the same high-confidence denials. Reversible risk
 remains with each harness's own permission system. The hook is an accident
@@ -95,6 +103,9 @@ measurements, including null results and their limitations, remain in
 
 - Skills are instructions, not enforcement. Model and harness behavior can
   change.
+- The communication style applies to the main conversation, not ordinary
+  subagents, and it cannot suppress tool-result rendering. Codex skips the
+  adapter until the user trusts the plugin hooks.
 - The destructive guard matches a narrow set of command strings. OS sandboxing
   and least privilege remain the real boundary.
 - Independent review discloses approved source content to the selected provider.

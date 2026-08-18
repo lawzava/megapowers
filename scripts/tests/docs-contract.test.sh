@@ -38,7 +38,7 @@ active_docs=(
   "$ROOT/evals/README.md"
 )
 
-if rg -ni 'OpenCode|Grok|model(s|)[.]toml|delegates[.]toml|model catalog|model routing|SessionStart|mega-(orchestration|guardrails|go|python|ts|frontend)' "${active_docs[@]}"; then
+if rg -ni 'OpenCode|Grok|model(s|)[.]toml|delegates[.]toml|model catalog|model routing|mega-(orchestration|guardrails|go|python|ts|frontend)' "${active_docs[@]}"; then
   fail 'active docs retain removed runtime or plugin claims'
 fi
 
