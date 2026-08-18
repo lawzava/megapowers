@@ -5,6 +5,25 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.15.4 - 2026-08-19
+
+Megapowers makes direct, concise technical replies the default on Claude Code
+and Codex without changing global user configuration.
+
+### Added
+
+- Claude Code receives a forced plugin output style with answer-first,
+  ASD-STE100-inspired guidance and explicit prose budgets.
+- Codex receives the same style as startup developer context through a bundled
+  hook after the user reviews and trusts the plugin hooks.
+
+### Changed
+
+- The shared style preserves exact identifiers, commands, numbers, caveats,
+  decisions, and material uncertainty while removing routine narration.
+- Validation now checks both native adapters, shared-source parity, hook scope,
+  documentation, and executable packaging.
+
 ## 0.15.3 - 2026-08-18
 
 Delegation can use one personal capability registry across local harnesses
