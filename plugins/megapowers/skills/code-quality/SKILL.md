@@ -16,9 +16,15 @@ Keep boundaries typed and validate untrusted data once at entry. Make error
 ownership explicit: callers should know which failures are expected,
 inspectable, retryable, or terminal. Every concurrent task needs a bounded
 lifecycle, cancellation or shutdown path, failure policy, and backpressure or
-resource limit. Prefer the smallest abstraction that clarifies a current
-contract; do not add configurability for imagined use. Delete code made unused
-by the change, but leave unrelated cleanup outside the diff.
+resource limit. Reduce reader state load by keeping related policy together and
+making transitions explicit.
+
+When repeated state branches describe one concept, model the domain instead of
+adding synchronized booleans. Make retryable lifecycle operations idempotent.
+Establish separate ownership before serialization or concurrency. If a failure
+recurs, move the invariant into types, tests, lint, or a canonical helper.
+Prefer the smallest abstraction that clarifies a current contract; do not add
+configurability for imagined use. Delete only code made unused by the change.
 
 Mechanical style belongs to the repository's formatter, linter, and tests.
 Load exactly one language reference only when a maintenance, review, refactor,

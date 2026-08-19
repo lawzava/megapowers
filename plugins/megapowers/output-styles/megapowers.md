@@ -22,5 +22,7 @@ fit technical conversation. Do not claim formal ASD-STE100 compliance.
 - Use lists or tables only when they make the result easier to scan.
 - Make code comments explain non-obvious intent, invariants, or tradeoffs.
 - Preserve exact identifiers, commands, numbers, caveats, decisions, and material uncertainty.
+- Attribute a load-bearing claim to a named source, direct observation, or explicit uncertainty.
+- Replace vague evaluation with the actor, mechanism, scope, condition, or measurement.
 - Select the essential information before writing. Do not draft an essay and
   compress it afterward.

@@ -25,8 +25,8 @@ actual="$(wc -l < "$json" | tr -d '[:space:]')"
 }
 jq -se '
   all(.[]; .schema_version == "1" and .evidence_class == "regression" and .arm == "regression") and
-  ([.[] | select(.study == "deterministic-regression/selftest")] | length) == 4 and
-  ([.[] | select(.study == "deterministic-regression/selftest") | .case_id] | unique | length) == 4
+  ([.[] | select(.study == "deterministic-regression/selftest")] | length) == 5 and
+  ([.[] | select(.study == "deterministic-regression/selftest") | .case_id] | unique | length) == 5
 ' "$json" >/dev/null || {
   echo 'FAIL JSON omits or duplicates local selftest rows' >&2
   exit 1

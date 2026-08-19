@@ -10,7 +10,9 @@ second scheduler or agent runtime.
 | One clear, bounded change | Work inline. Load the task skill that supplies the missing discipline. |
 | Unclear behavior, interface, risk, or acceptance oracle | Use `design-and-plan`. |
 | Several disjoint deliverables | Use native agents with explicit, non-overlapping ownership. |
-| Work that must survive interruption | Use a native goal plus `autonomous-run` checkpoints. |
+| Ordinary handoff, takeover, or harness switch | Inspect current state inline and use `verify-and-finish`; prior authority does not transfer. |
+| An approved goal that must survive interruption | Use a native goal plus `autonomous-run` checkpoints. |
+| Historical rationale or contested evidence | Use `evidence-research`; research does not authorize a change or publication. |
 | Residual high-stakes uncertainty after executable checks | Use `independent-review`. |
 | Deploy, message, migration, charge, destructive query, or external write | Use `safe-effects` before execution. |
 
@@ -82,7 +84,8 @@ A useful task brief names:
 - exact file or module ownership;
 - relevant interfaces and constraints;
 - the acceptance oracle;
-- what the worker must not change.
+- what the worker must not change;
+- one return artifact and the condition for returning it.
 
 Parallel ownership must be disjoint. Keep shared interfaces and dependent tasks
 sequential. The lead remains the single writer for integration and Git, reads
@@ -96,16 +99,18 @@ provider materially reduces residual risk.
 
 Prefer the harness's native goal and wait mechanisms. Add ignored
 `.megapowers/run/<id>/` files only when work must resume after context or process
-loss:
+loss under a currently approved autonomous goal:
 
 - `charter.md` freezes outcome, boundaries, authority, and cap.
-- `checkpoint.md` records the current milestone, evidence, blocker, and next
-  command.
+- `checkpoint.md` records workspace and artifact identity, current milestone,
+  evidence, delegate ownership, remaining effect authority, blocker, and next
+  safe command.
 - `journal.jsonl` records observed transitions and their evidence.
 
 Update durable state at real transitions, not every turn. On resume, reconcile
-it with fresh repository state before acting. A journal proves only what its
-recorded oracle proved.
+repository, worktree, branch, HEAD, runtime, and external state before acting.
+Stop on missing or contradictory evidence. A handoff or harness switch does not
+inherit prior authority. A journal proves only what its oracle proved.
 
 ## Stop rules
 

@@ -16,8 +16,19 @@ for claim in \
   "temporary state removed after success" \
   "temporary state removed after actor failure" \
   "actor errors fail closed" \
+  "actor failures publish explicit rejection" \
   "already-direct prose remains unchanged" \
   "autonomous status resumption stays report-only" \
+  "workflow accepts ordered skill selection" \
+  "workflow rejects a missing skill" \
+  "workflow rejects reversed skill order" \
+  "workflow rejects a forbidden skill" \
+  "workflow rejects an unlisted extra skill" \
+  "workflow rejects a missing required event" \
+  "workflow rejects a forbidden event attempt" \
+  "workflow rejects an incomplete trace" \
+  "workflow rejects relaxed gates" \
+  "continuity workflows stay report-only" \
   "orchestration accepts three completed agents before wait" \
   "orchestration rejects two agents" \
   "orchestration rejects an early wait" \
@@ -27,11 +38,14 @@ for claim in \
   "safe effects rejects missing trace_complete" \
   "safe effect helpers mutate protected fixtures" \
   "simultaneous test and implementation edit rejected" \
+  "implementation filenames cannot spoof a test edit" \
   "unchanged TDD fixture fails its public oracle" \
   "TDD oracle rejects protected fixture tampering" \
   "live runs require isolated broker" \
   "treatment uses a verified private plugin copy" \
   "broker request excludes repository root" \
+  "broker request carries the isolated oracle" \
+  "broker request carries the disposable actor home" \
   "isolation attestation rejects credentials and siblings" \
   "actor deadlines fail closed" \
   "insufficient paired runs fail study acceptance" \
@@ -91,7 +105,7 @@ if grep -qE '\.credentials\.json|auth\.json|claude -p|codex exec|dangerously-ski
   exit 1
 fi
 for marker in 'plugin list --json' installPath installedPath \
-  'skills/test-first-implementation/SKILL.md'; do
+  'skills/evidence-research/SKILL.md'; do
   grep -qF "$marker" "$smoke" || {
     echo "FAIL install smoke lacks registration marker: $marker" >&2
     exit 1

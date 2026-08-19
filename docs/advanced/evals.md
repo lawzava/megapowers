@@ -76,8 +76,8 @@ tell both arms what correct behavior is. This measures treatment reliability,
 not a general claim that the plugin improves model capability or a prerequisite
 for release.
 
-The autonomous resume case remains report-only until repeated real runs justify
-a threshold. A selftest never produces behavioral evidence.
+The autonomous resume and continuity cases remain diagnostic until repeated
+real runs justify a threshold. A selftest never produces behavioral evidence.
 
 ## PR replay
 

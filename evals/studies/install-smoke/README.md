@@ -3,7 +3,7 @@
 This post-publish oracle installs exactly one `megapowers` plugin into fresh,
 unauthenticated Claude Code and Codex homes. It verifies registration JSON,
 harness-reported cache paths, both cached manifests and versions, and the exact
-installed bytes of `test-first-implementation`. It does not invoke a model or
+installed bytes of `evidence-research`. It does not invoke a model or
 claim behavioral quality.
 
 Credential-free runner check:

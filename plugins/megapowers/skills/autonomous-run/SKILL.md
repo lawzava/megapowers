@@ -5,29 +5,32 @@ description: Use when an approved goal must continue unattended across many step
 
 # Autonomous Run
 
-Prefer native goals and native scheduling when the harness provides them. Use
-this skill only for the durable checkpoint mechanics needed to resume honestly
-after context or process loss; do not build a second task runner around native
-capabilities.
+Prefer native goals and scheduling. Select this skill only for a currently
+approved autonomous goal with an existing or newly approved charter. A crash,
+compaction, ordinary handoff, or harness switch does not inherit authority.
 
-Freeze the objective, done criteria, boundaries, authorized effects, and time,
-step, or token cap before starting. For a multi-session run, keep one ignored
-directory at `.megapowers/run/<id>/` with:
+Keep durable state in one ignored `.megapowers/run/<id>/` directory:
 
-- `charter.md`: frozen objective, done criteria, scope, authority, and cap.
-- `checkpoint.md`: current milestone, completed evidence, blockers, next
-  command, workspace identity, and UTC update time.
+- `charter.md`: objective, done criteria, scope, authority, and cap.
+- `checkpoint.md`: milestone, workspace, branch or worktree, HEAD, artifact
+  identities, completed evidence, delegate ownership and expected return
+  artifacts, blockers, next safe action, remaining effect authority, and UTC
+  freshness.
 - `journal.jsonl`: append-only observed transitions and their evidence.
 
 Update the checkpoint only at a milestone or real state transition. Journal
-what a command or external system proved, not an intention or progress guess.
-Derive status from the journal, checkpoint, and fresh evidence; chat history is
-not a status oracle.
+what an oracle proved, not intent or a progress guess. Derive status from the
+journal, checkpoint, and fresh evidence; chat history is not a status oracle.
 
-On resume, read repository instructions, charter, checkpoint, journal tail,
-and current workspace state. Reconcile differences before acting. Mark done
-only after every done criterion passes its stated oracle. Mark blocked only for
-a concrete dependency outside the run's authority, with the evidence and next
-unblocking event. Pause at the declared cap without presenting partial work as
-completion. Use `safe-effects` for every external mutation regardless of
-autonomy level.
+On resume, reread repository instructions, charter, checkpoint, journal tail,
+and current workspace state. Compare the repository, worktree, branch, HEAD,
+runtime, and relevant external state. If evidence is missing, contradictory, or
+shows a workspace mismatch, stop before acting. Do not execute the next command
+until scope and authority are re-established. A native goal does not transfer
+automatically across harnesses.
+
+Use `paused` when a cap or intentional stop ends authorized execution. Preserve
+the checkpoint and wait for renewed authority. Use `blocked` only for a concrete
+external dependency outside current authority, with its evidence and unblocking
+event. Mark done only after every criterion passes its stated oracle. Use
+`safe-effects` for every external mutation.

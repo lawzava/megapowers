@@ -222,6 +222,9 @@ run_selftest installed-ab-runner-selftest \
 run_selftest pr-replay-runner-selftest \
   "$EVALS/studies/pr-replay/replay.go" \
   go run "$EVALS/studies/pr-replay/replay.go" --selftest
+run_selftest session-observability-selftest \
+  "$EVALS/studies/session-observability/run.go" \
+  go run "$EVALS/studies/session-observability/run.go" --selftest
 
 strict_failed=0
 if command -v go >/dev/null 2>&1; then

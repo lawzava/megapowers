@@ -6,6 +6,12 @@ installed-plugin-ab	test-first-implementation	behavioral
 installed-plugin-ab	orchestrating	behavioral
 installed-plugin-ab	safe-effects	behavioral
 installed-plugin-ab	autonomous-run	report-only
+installed-plugin-ab	design-and-plan	behavioral
+installed-plugin-ab	evidence-research	behavioral
+installed-plugin-ab	independent-review	behavioral
+installed-plugin-ab	systematic-debugging	behavioral
+installed-plugin-ab	upgrading-megapowers	behavioral
+installed-plugin-ab	verify-and-finish	behavioral
 pr-replay	code-quality	report-only
 pr-replay	test-first-implementation	report-only
-install-smoke	test-first-implementation	delivery
+install-smoke	evidence-research	delivery
