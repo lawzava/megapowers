@@ -5,7 +5,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_DEFAULT="$(cd "$HERE/../../.." && pwd)"
 . "$HERE/../lib.sh"
 
-QUOTE_SENTENCE="Production code follows a failing test. A test written after implementation can describe the code but cannot prove it would have caught the missing behavior."
+QUOTE_SENTENCE="A research conclusion is not authority to implement or publish."
 
 quote_ok() {
   tr '\n' ' ' < "$1" 2>/dev/null | grep -qF "$QUOTE_SENTENCE"
@@ -26,9 +26,9 @@ if [ "${1:-}" = "--selftest" ]; then
   st="$(mktemp -d)"; trap 'rm -rf "$st"' EXIT; sf=0
   printf '%s\n' "$QUOTE_SENTENCE" > "$st/verbatim.out"
   cp "$st/verbatim.out" "$st/cached.out"
-  printf 'Write a failing test before production code so the test proves the behavior.\n' > "$st/generic.out"
+  printf 'Research does not automatically allow a change.\n' > "$st/generic.out"
   if quote_ok "$st/verbatim.out"; then echo "ok   verbatim sentence matches"; else echo "FAIL verbatim sentence not matched"; sf=1; fi
-  printf '%s\n' "${QUOTE_SENTENCE/failing/Failing}" > "$st/midcase.out"
+  printf '%s\n' "${QUOTE_SENTENCE/research/Research}" > "$st/midcase.out"
   if quote_ok "$st/midcase.out"; then echo "FAIL case change matched"; sf=1; else echo "ok   case change rejected"; fi
   if quote_ok "$st/generic.out"; then echo "FAIL generic phrasing matched"; sf=1; else echo "ok   generic phrasing rejected"; fi
   if installed_skill_ok "$st/verbatim.out" "$st/cached.out"; then echo "ok   identical installed bytes accepted"; else echo "FAIL identical installed bytes rejected"; sf=1; fi
@@ -133,9 +133,9 @@ verify_installed_bytes() { # <harness> <fresh-home> <install-path>
       note "$harness" FAIL "cached Codex manifest or version differs"; return 1;
     }
   installed_skill_ok \
-    "$REPO/plugins/megapowers/skills/test-first-implementation/SKILL.md" \
-    "$install_path/skills/test-first-implementation/SKILL.md" || {
-    note "$harness" FAIL "cached test-first-implementation bytes differ"; return 1;
+    "$REPO/plugins/megapowers/skills/evidence-research/SKILL.md" \
+    "$install_path/skills/evidence-research/SKILL.md" || {
+    note "$harness" FAIL "cached evidence-research bytes differ"; return 1;
   }
   note "$harness" PASS "registered megapowers $EXPECTED_VERSION with exact cached skill bytes"
 }

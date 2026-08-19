@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
 megapowers is exactly one plugin for current Claude Code and Codex. It adds
-eleven task-level skills, one shared default communication style, and a small
+twelve task-level skills, one shared default communication style, and a small
 destructive-command tripwire. It does not replace native agents, plans, goals,
 permissions, worktrees, memory, or browser tools.
 
@@ -50,6 +50,7 @@ the full body loads only when selected.
 | Write direct human-facing prose without dropping or inventing facts | `humanizing-prose` |
 | Make code-quality judgments from repository context and stable language guidance | `code-quality` |
 | Upgrade Megapowers without changing its source, scope, pins, or local edits | `upgrading-megapowers` |
+| Research current facts, historical rationale, or contested evidence | `evidence-research` |
 
 Repository instructions, existing code, and configured project tools remain
 authoritative. See [docs/orchestration.md](./docs/orchestration.md) for the
@@ -62,7 +63,8 @@ agent access or authority.
 
 ## What installs
 
-- Eleven portable `SKILL.md` directories.
+- Twelve portable `SKILL.md` directories. `skills/catalog.json` marks maturity;
+  `evidence-research` starts as experimental.
 - One shared style for direct, concise technical replies: a forced Claude Code
   output style and a trusted Codex startup hook.
 - One `PreToolUse` shell hook for obvious catastrophic commands.
@@ -93,7 +95,7 @@ Three evidence classes are kept separate:
 3. PR replay uses hidden correctness tests against pinned historical changes.
    It is report-only until repeated real runs support a release threshold.
 
-No current eleven-skill behavioral result is claimed from selftests. Historical
+No current twelve-skill behavioral result is claimed from selftests. Historical
 measurements, including null results and their limitations, remain in
 [evals/RESULTS.md](./evals/RESULTS.md). Current protocols and gates are in
 [evals/README.md](./evals/README.md) and
@@ -128,6 +130,8 @@ The deterministic suite fails on malformed, incomplete, indeterminate,
 timed-out, or harness-error results. Contributions that change behavioral
 guidance need deterministic regression coverage. Credentialed installed-plugin
 A/B remains optional diagnostic evidence. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+The repository-local verification-map pilot is documented in
+[docs/advanced/verification-maps.md](./docs/advanced/verification-maps.md).
 
 ## License and origin
 

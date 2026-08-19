@@ -35,6 +35,9 @@ PRs, docs, release notes, and errors. Lead with the outcome; keep only facts
 and reasoning the reader needs. Preserve identifiers, numbers, commands,
 caveats, uncertainty, and decisions. Remove padding, never invent facts, and
 leave already-direct prose alone.
+Attribute load-bearing claims to a named source, direct observation, or explicit
+uncertainty. Replace vague evaluation with the actor, mechanism, scope,
+condition, or measurement.
 
 ## Skills
 

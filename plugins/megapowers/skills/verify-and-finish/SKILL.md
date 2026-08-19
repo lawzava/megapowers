@@ -11,6 +11,10 @@ result, and state only what it proves. A focused test does not prove the full
 suite; artifact inspection does not prove runtime behavior; confidence proves
 nothing.
 
+Name the load-bearing safety fact behind an impact claim and the proof level it
+needs. Separate declared configuration from effective runtime behavior. When a
+result can be stale, bind it to the exact artifact identity and commit SHA.
+
 Keep these evidence classes explicit:
 
 - Executed check: behavior observed now in the named environment.
@@ -23,6 +27,9 @@ criterion requires an external oracle, exercise the real boundary and record
 the environment and correlation identity. If a required tool or environment is
 unavailable, report the criterion as unverified rather than substituting a
 nearby check.
+
+For a user-facing product, run the real user journey. Use an agreed substitute
+oracle only when the real journey is unavailable, and name what it cannot prove.
 
 Before a handoff, commit, PR, merge, release, or cleanup, run the repository's
 canonical checks and inspect the current diff and workspace state. Do not

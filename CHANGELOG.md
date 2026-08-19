@@ -5,6 +5,34 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.16.0 - 2026-08-20
+
+Megapowers adds evidence-led research while tightening workflow routing,
+verification, continuity, and technical prose.
+
+### Added
+
+- The experimental `evidence-research` skill classifies support for
+  load-bearing claims and keeps research separate from implementation or
+  publication authority.
+- A lifecycle catalog records stable and experimental skills without extending
+  portable skill frontmatter.
+- Installed-plugin workflow diagnostics measure ordered skill selection,
+  forbidden activations, required events, continuity routes, and approval
+  boundaries.
+- A content-minimized session-observability study and verification-map pilot
+  support maintainer investigation without adding a runtime scheduler.
+
+### Changed
+
+- Planning, orchestration, autonomous work, code quality, effects, testing,
+  review, and completion guidance now use stronger authority and evidence
+  boundaries.
+- Shared prose guidance adopts accountable attribution, concrete evaluation,
+  and calibrated claim strength while preserving already-direct text.
+- The primary skill guidance budget increases from 3,000 to 3,600 words for
+  the twelfth skill and the strengthened workflow contracts.
+
 ## 0.15.4 - 2026-08-18
 
 Megapowers makes direct, concise technical replies the default on Claude Code

@@ -1,0 +1,37 @@
+{
+  "schema_version": "1",
+  "application": "megapowers",
+  "status": "pilot",
+  "journeys": [
+    {
+      "id": "local-candidate",
+      "surface": "candidate repository mechanics",
+      "harness": "local",
+      "doctor": ["go", "version"],
+      "runner": ["scripts/validate.sh"],
+      "isolated_state": "runner-owned temporary directories under TMPDIR",
+      "cleanup": "automatic cleanup by each bounded runner",
+      "evidence": ["canonical checks", "manifest parity", "deterministic eval rows"]
+    },
+    {
+      "id": "claude-exact-tag-install",
+      "surface": "published Claude Code plugin registration and cached bytes",
+      "harness": "claude",
+      "doctor": ["claude", "plugin", "validate", "--strict", "plugins/megapowers"],
+      "runner": ["bash", "evals/studies/install-smoke/run-smoke.sh", "--harness", "claude", "--version", "<version>"],
+      "isolated_state": "fresh runner-owned Claude configuration directory",
+      "cleanup": "remove only the runner-owned temporary directory",
+      "evidence": ["exact tag", "plugin registration", "cached skill bytes", "guard behavior"]
+    },
+    {
+      "id": "codex-exact-tag-install",
+      "surface": "published Codex plugin registration and cached bytes",
+      "harness": "codex",
+      "doctor": ["codex", "doctor", "--json"],
+      "runner": ["bash", "evals/studies/install-smoke/run-smoke.sh", "--harness", "codex", "--version", "<version>"],
+      "isolated_state": "fresh runner-owned Codex configuration directory",
+      "cleanup": "remove only the runner-owned temporary directory",
+      "evidence": ["exact tag", "plugin registration", "cached skill bytes", "guard behavior"]
+    }
+  ]
+}

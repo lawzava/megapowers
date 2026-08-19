@@ -17,8 +17,9 @@ update, or other external write.
 Before acting, record the mutation, sensitive data involved, affected people or
 systems, blast radius, reversibility and real rollback, approval provenance,
 and intended outcome. Observe or simulate first when a meaningful preview
-exists. Use an idempotency or duplicate-prevention strategy whenever retries
-could repeat the effect.
+exists. After a retry or crash, reconcile prior attempts before acting again.
+Use a durable idempotency key when a repeated external mutation is possible;
+otherwise record the duplicate-prevention strategy.
 
 Proceed only inside the approved boundary. Irreversible, weakly compensable,
 sensitive, or high-blast actions need explicit approval immediately before

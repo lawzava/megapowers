@@ -12,6 +12,11 @@ one layer into another.
 Exact-tag install smoke runs after publication and proves delivery from the
 public ref. It is a delivery check, not behavioral evidence.
 
+The maintainer-only session observability study accepts explicit normalized
+files and emits content-minimized aggregate diagnostics. It is neither a shipped
+skill nor release evidence. See
+[`studies/session-observability/`](./studies/session-observability/).
+
 ## Deterministic regressions
 
 Run the bounded suite:

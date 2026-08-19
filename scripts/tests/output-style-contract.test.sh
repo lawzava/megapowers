@@ -32,6 +32,10 @@ grep -qF 'Default to 100 prose words or fewer.' "$STYLE" || fail 'style omits it
 grep -qF 'Do not exceed 250 prose words' "$STYLE" || fail 'style omits its prose ceiling'
 grep -qF 'Preserve exact identifiers, commands, numbers, caveats, decisions, and material uncertainty.' "$STYLE" ||
   fail 'style can discard load-bearing facts'
+grep -qF 'named source, direct observation, or explicit uncertainty' "$STYLE" ||
+  fail 'style permits vague attribution'
+grep -qF 'actor, mechanism, scope, condition, or measurement' "$STYLE" ||
+  fail 'style permits generic evaluation'
 
 jq -e '
   .hooks.SessionStart

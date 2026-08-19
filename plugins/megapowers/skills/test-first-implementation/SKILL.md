@@ -34,4 +34,7 @@ completion claim.
 Generated output, throwaway prototypes that will be deleted, and prose-only
 configuration may not have an executable behavior to test. Apply the nearest
 deterministic correctness check instead; do not turn that exception into a way
-around testing product behavior.
+around testing product behavior. When a direct executable oracle is stronger
+than a brittle characterization test, record the exception. Confirm the
+pre-change failure or deficiency, then run that oracle before and after the
+change.

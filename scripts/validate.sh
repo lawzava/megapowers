@@ -129,6 +129,7 @@ script_tests=(
   scripts/tests/security-lint.test.sh
   scripts/tests/skill-contracts.test.sh
   scripts/tests/validation-contract.test.sh
+  scripts/tests/verification-map-contract.test.sh
 )
 
 hook_tests=(
@@ -146,6 +147,7 @@ eval_tests=(
   evals/tests/score-failclosed.test.sh
   evals/studies/tests/installed-ab-contract.test.sh
   evals/studies/tests/pr-replay-contract.test.sh
+  evals/studies/tests/session-observability-contract.test.sh
 )
 
 run_check "test entrypoints executable" 10s bash -c '

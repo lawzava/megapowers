@@ -16,6 +16,7 @@ expected_skills=$(printf '%s\n' \
   autonomous-run \
   code-quality \
   design-and-plan \
+  evidence-research \
   humanizing-prose \
   independent-review \
   orchestrating \
@@ -46,11 +47,11 @@ for manifest in \
     fail "${manifest#"$ROOT/"} must declare megapowers"
 done
 
-actual_skills=$(git -C "$ROOT" ls-files 'plugins/megapowers/skills/*/SKILL.md' | cut -d/ -f4 | sort)
+actual_skills=$(git -C "$ROOT" ls-files 'plugins/megapowers/skills/*/SKILL.md' | awk -F/ '{print $4}' | sort)
 [[ $actual_skills == "$expected_skills" ]] ||
-  fail "plugin skill inventory differs from the eleven native-first skills"
+  fail "plugin skill inventory differs from the twelve native-first skills"
 
-actual_links=$(git -C "$ROOT" ls-files -s '.agents/skills/*' | awk '$1 == "120000" { sub(".*/", "", $4); print $4 }' | sort)
+actual_links=$(git -C "$ROOT" ls-files -s '.agents/skills/*' | awk '$1 == "120000" { sub("^.agents/skills/", "", $4); if ($4 !~ "/") print $4 }' | sort)
 [[ $actual_links == "$expected_skills" ]] ||
   fail ".agents/skills links differ from the plugin skill inventory"
 while IFS= read -r skill; do
