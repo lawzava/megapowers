@@ -32,7 +32,9 @@ For a user-facing product, run the real user journey. Use an agreed substitute
 oracle only when the real journey is unavailable, and name what it cannot prove.
 
 Before a handoff, commit, PR, merge, release, or cleanup, run the repository's
-canonical checks and inspect the current diff and workspace state. Do not
+canonical checks and inspect the current diff and workspace state. When the
+task names a target branch, confirm the checked-out branch matches that named
+target before the commit; on a mismatch, stop and resolve it first. Do not
 commit, publish, merge, delete a branch, or remove a worktree unless the user
 authorized that destination. Destructive cleanup requires explicit target
 confirmation and ownership evidence.

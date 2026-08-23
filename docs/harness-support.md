@@ -10,7 +10,7 @@ environments.
 |---|---|---|
 | Marketplace metadata | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
 | Plugin manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
-| Twelve task skills | Supported | Supported |
+| Thirteen task skills | Supported | Supported |
 | Default communication style | Forced plugin output style | Trusted startup hook |
 | Destructive-command guard | High-confidence denies only | High-confidence denies only |
 | Native agents and parallel work | Use harness-native features | Use harness-native features |

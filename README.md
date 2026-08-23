@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
 megapowers is exactly one plugin for current Claude Code and Codex. It adds
-twelve task-level skills, one shared default communication style, and a small
+thirteen task-level skills, one shared default communication style, and a small
 destructive-command tripwire. It does not replace native agents, plans, goals,
 permissions, worktrees, memory, or browser tools.
 
@@ -51,6 +51,7 @@ the full body loads only when selected.
 | Make code-quality judgments from repository context and stable language guidance | `code-quality` |
 | Upgrade Megapowers without changing its source, scope, pins, or local edits | `upgrading-megapowers` |
 | Research current facts, historical rationale, or contested evidence | `evidence-research` |
+| Configure, debug, or verify an MCP server connection | `mcp-setup` |
 
 Repository instructions, existing code, and configured project tools remain
 authoritative. See [docs/orchestration.md](./docs/orchestration.md) for the
@@ -63,8 +64,8 @@ agent access or authority.
 
 ## What installs
 
-- Twelve portable `SKILL.md` directories. `skills/catalog.json` marks maturity;
-  `evidence-research` starts as experimental.
+- Thirteen portable `SKILL.md` directories. `skills/catalog.json` marks
+  maturity; `evidence-research` and `mcp-setup` start as experimental.
 - One shared style for direct, concise technical replies: a forced Claude Code
   output style and a trusted Codex startup hook.
 - One `PreToolUse` shell hook for obvious catastrophic commands.
@@ -95,7 +96,7 @@ Three evidence classes are kept separate:
 3. PR replay uses hidden correctness tests against pinned historical changes.
    It is report-only until repeated real runs support a release threshold.
 
-No current twelve-skill behavioral result is claimed from selftests. Historical
+No current thirteen-skill behavioral result is claimed from selftests. Historical
 measurements, including null results and their limitations, remain in
 [evals/RESULTS.md](./evals/RESULTS.md). Current protocols and gates are in
 [evals/README.md](./evals/README.md) and
