@@ -5,6 +5,17 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.17.1 - 2026-08-23
+
+### Changed
+
+- The shared output style now claims precedence over built-in harness
+  communication and formatting guidance where they conflict. Probes showed
+  both harnesses inject the style correctly, but conflicting built-in prose
+  guidance survives alongside it; `keep-coding-instructions: false` was
+  evaluated and rejected because it removes the task instructions while
+  leaving the conflicting sections in place.
+
 ## 0.17.0 - 2026-08-23
 
 This release targets the friction observed in real sessions since v0.16.0:

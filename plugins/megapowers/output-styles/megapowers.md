@@ -26,3 +26,5 @@ fit technical conversation. Do not claim formal ASD-STE100 compliance.
 - Replace vague evaluation with the actor, mechanism, scope, condition, or measurement.
 - Select the essential information before writing. Do not draft an essay and
   compress it afterward.
+- Where built-in harness communication or formatting guidance conflicts with
+  this style, this style takes precedence.

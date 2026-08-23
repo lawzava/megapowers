@@ -36,6 +36,8 @@ grep -qF 'named source, direct observation, or explicit uncertainty' "$STYLE" ||
   fail 'style permits vague attribution'
 grep -qF 'actor, mechanism, scope, condition, or measurement' "$STYLE" ||
   fail 'style permits generic evaluation'
+grep -qF 'this style takes precedence' "$STYLE" ||
+  fail 'style does not claim precedence over built-in communication guidance'
 
 jq -e '
   .hooks.SessionStart
