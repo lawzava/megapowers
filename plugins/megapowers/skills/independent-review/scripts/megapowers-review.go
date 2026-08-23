@@ -215,19 +215,36 @@ func run(args []string) error {
 	if !approvalTokenMatches(opt.approveExternal, binary, cap.PackageSHA256) {
 		return errors.New("approval token does not match the current package and provider binary; run inspect again")
 	}
+	// Allocate the receipt run before dispatch so an unwritable destination
+	// fails before credentials or source reach the provider.
+	runRoot, runName, err := createReceiptRun(receiptDest)
+	if err != nil {
+		return fmt.Errorf("create receipt run directory: %w; the receipt destination must be writable before dispatch", err)
+	}
+	complete := false
+	defer func() {
+		_ = runRoot.Close()
+		if !complete {
+			_ = receiptDest.Root.RemoveAll(runName)
+		}
+	}()
 	prompt := makePrompt(cap.Package)
 	stdout, stderr, err := dispatch(binary, root, prompt)
 	if err != nil {
 		return err
 	}
 	if len(bytes.TrimSpace(stdout)) == 0 {
+		if detail := classifyProviderDiagnostic(stderr); detail != "" {
+			return fmt.Errorf("provider exited successfully but returned an empty review; no receipt written; provider diagnostic: %s", detail)
+		}
 		return errors.New("provider exited successfully but returned an empty review; no receipt written")
 	}
 
-	receiptPath, err := writeReceipt(receiptDest, opt, binary, cap, prompt, stdout, stderr)
+	receiptPath, err := writeReceipt(receiptDest, runRoot, runName, opt, binary, cap, prompt, stdout, stderr)
 	if err != nil {
 		return err
 	}
+	complete = true
 	if _, err := os.Stdout.Write(stdout); err != nil {
 		return fmt.Errorf("write provider output: %w", err)
 	}
@@ -815,6 +832,10 @@ func dispatch(binary providerExecutable, root string, prompt []byte) ([]byte, []
 	if err != nil {
 		detail := classifyProviderDiagnostic(stderr.Bytes())
 		if detail == "" {
+			// Some provider CLIs report failures on stdout only.
+			detail = classifyProviderDiagnostic(stdout.Bytes())
+		}
+		if detail == "" {
 			return nil, nil, fmt.Errorf("provider exited unsuccessfully; no receipt written: %w", err)
 		}
 		return nil, nil, fmt.Errorf("provider exited unsuccessfully; no receipt written: %w; provider diagnostic: %s", err, detail)
@@ -833,7 +854,7 @@ func classifyProviderDiagnostic(raw []byte) string {
 	}{
 		{
 			message: "authentication failed; verify provider login or API credentials",
-			needles: []string{"authentication", "unauthorized", "not logged in", "oauth", "api key", "api_key", "credential"},
+			needles: []string{"authentication", "unauthorized", "not logged in", "oauth", "api key", "api_key", "credential", "401", "token has expired", "login expired"},
 		},
 		{
 			message: "rate limit or quota exceeded; retry after provider limits reset",
@@ -938,19 +959,7 @@ func pathValueInsideRoot(value, root string) bool {
 	return insideRoot(abs, root) || insideRoot(resolved, root)
 }
 
-func writeReceipt(destination receiptDestination, opt options, binary providerExecutable, cap capture, prompt, stdout, stderr []byte) (string, error) {
-	runRoot, runName, err := createReceiptRun(destination)
-	if err != nil {
-		return "", fmt.Errorf("create receipt run directory: %w", err)
-	}
-	complete := false
-	defer func() {
-		_ = runRoot.Close()
-		if !complete {
-			_ = destination.Root.RemoveAll(runName)
-		}
-	}()
-
+func writeReceipt(destination receiptDestination, runRoot *os.Root, runName string, opt options, binary providerExecutable, cap capture, prompt, stdout, stderr []byte) (string, error) {
 	evidence := transcriptEvidence{Retained: opt.retainTranscript}
 	if opt.retainTranscript {
 		artifacts := []struct {
@@ -1000,7 +1009,6 @@ func writeReceipt(destination receiptDestination, opt options, binary providerEx
 	if err := writePrivate(runRoot, "receipt.json", encoded); err != nil {
 		return "", err
 	}
-	complete = true
 	return filepath.Join(destination.Path, runName, "receipt.json"), nil
 }
 
