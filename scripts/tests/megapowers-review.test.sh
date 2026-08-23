@@ -359,5 +359,40 @@ else
   bad 'failed provider writes no receipt'
 fi
 
+RO_OUT="$TMP/readonly-out"
+mkdir -m 500 "$RO_OUT"
+rm -f "$TMP/provider.stdin" "$TMP/provider.env"
+must_fail_with 'unwritable receipt destination fails early' 'receipt' \
+  review --file app.go --provider claude --author codex \
+  --approve-external "$APPROVAL_TOKEN" --out "$RO_OUT"
+if [ ! -e "$TMP/provider.stdin" ] && [ ! -e "$TMP/provider.env" ]; then
+  ok 'unwritable receipt destination is rejected before the provider runs'
+else
+  bad 'unwritable receipt destination is rejected before the provider runs'
+fi
+chmod 700 "$RO_OUT"
+
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'cat >/dev/null\n'
+  printf 'printf "401 OAuth access token has expired. Please run /login.\\n" >&2\n'
+  printf 'exit 0\n'
+} > "$EXTERNAL_BIN/claude"
+chmod +x "$EXTERNAL_BIN/claude"
+must_succeed 'inspect empty-output provider binary for a bound token' \
+  inspect --file app.go --provider claude
+EMPTY_TOKEN="$(printf '%s\n' "$last_out" | json_value approval_token)"
+EMPTY_OUT="$TMP/empty-out"
+mkdir -m 700 "$EMPTY_OUT"
+must_fail_with 'empty provider output surfaces a classified diagnostic' \
+  'authentication failed; verify provider login or API credentials' \
+  review --file app.go --provider claude --author codex \
+  --approve-external "$EMPTY_TOKEN" --out "$EMPTY_OUT"
+if [ -z "$(find "$EMPTY_OUT" -name receipt.json -print -quit 2>/dev/null)" ]; then
+  ok 'empty provider output writes no receipt'
+else
+  bad 'empty provider output writes no receipt'
+fi
+
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
