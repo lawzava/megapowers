@@ -9,6 +9,7 @@ design-and-plan
 evidence-research
 humanizing-prose
 independent-review
+mcp-setup
 orchestrating
 safe-effects
 systematic-debugging
@@ -48,7 +49,7 @@ not_contains() {
 printf '== skill contracts ==\n'
 
 actual="$(find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
-if [ "$actual" = "$EXPECTED" ]; then ok 'inventory is exactly twelve skills'; else bad 'inventory is exactly twelve skills'; fi
+if [ "$actual" = "$EXPECTED" ]; then ok 'inventory is exactly thirteen skills'; else bad 'inventory is exactly thirteen skills'; fi
 
 while IFS= read -r skill; do
   file="$SKILLS/$skill/SKILL.md"
@@ -144,6 +145,7 @@ contains 'implementation requires green evidence' "$SKILLS/test-first-implementa
 contains_document 'implementation permits a stronger direct oracle exception' "$SKILLS/test-first-implementation/SKILL.md" 'direct executable oracle.*stronger.*record.*exception.*pre-change failure'
 contains 'debugging requires root cause first' "$SKILLS/systematic-debugging/SKILL.md" 'root cause.*before.*fix|before.*fix.*root cause'
 contains 'debugging fixes through regression' "$SKILLS/systematic-debugging/SKILL.md" 'failing regression test|regression test.*before'
+contains_document 'debugging retests restricted-environment failures outside the restriction' "$SKILLS/systematic-debugging/SKILL.md" 'sandbox.*re-?run.*outside.*before declaring|outside.*(sandbox|restriction).*before declaring'
 contains 'effects require exact authorization' "$SKILLS/safe-effects/SKILL.md" 'authorization.*exact (target|effect)|exact (target|effect).*authorization'
 contains_document 'effects require exact tracker-comment authorization' "$SKILLS/safe-effects/SKILL.md" '(public )?(tracker|issue|PR) comments?.*(exact|explicit) authorization|(exact|explicit) authorization.*(public )?(tracker|issue|PR) comments?'
 contains_document 'implementation authority excludes outward writes' "$SKILLS/safe-effects/SKILL.md" '(implement|implementation|investigate|investigation|proceed).*(does not|do not|is not).*(authoriz|permission).*(comment|message|update|write)'
@@ -151,6 +153,7 @@ contains 'effects require duplicate prevention' "$SKILLS/safe-effects/SKILL.md" 
 contains 'effects require target readback' "$SKILLS/safe-effects/SKILL.md" '(target|external).*readback|readback.*(target|external)'
 contains_document 'effects reconcile retries and crashes' "$SKILLS/safe-effects/SKILL.md" 'retry.*crash.*reconcil'
 contains_document 'effects use durable idempotency keys where repeats are possible' "$SKILLS/safe-effects/SKILL.md" 'durable idempotency key.*repeated external mutation'
+contains_document 'effects stop re-refusing under direct supervision' "$SKILLS/safe-effects/SKILL.md" 'interactive supervision.*confirm.*once.*without re-refusing'
 contains_document 'prose prohibits routine progress comments' "$PROSE" '(do not|never).*(publish|post|send).*(routine progress|progress narration).*(tracker|issue|PR)? ?comments?|comments?.*(do not|never).*(routine progress|progress narration)'
 contains_document 'prose prohibits published test transcripts' "$PROSE" '(do not|never).*(publish|post|send|dump).*(test transcripts?)|test transcripts?.*(do not|never).*(publish|post|send|dump)'
 contains 'completion uses fresh oracle evidence' "$SKILLS/verify-and-finish/SKILL.md" 'fresh.*oracle|oracle.*fresh'
@@ -159,6 +162,7 @@ contains_document 'completion separates configuration from effective runtime' "$
 contains_document 'completion binds stale-prone proof to artifact identity' "$SKILLS/verify-and-finish/SKILL.md" 'stale.*artifact identity.*commit SHA|artifact identity.*commit SHA.*stale'
 contains_document 'completion requires real user journeys or agreed substitutes' "$SKILLS/verify-and-finish/SKILL.md" 'real user journey.*agreed substitute oracle'
 contains_document 'completion proves the load-bearing safety fact proportionately' "$SKILLS/verify-and-finish/SKILL.md" 'load-bearing safety fact.*proof level'
+contains_document 'completion confirms the named target branch' "$SKILLS/verify-and-finish/SKILL.md" 'checked-out branch.*named target.*(edit|commit)'
 
 contains_document 'upgrade inspects provenance before writes' "$UPGRADE" '(inspect|inventory).*(version|scope|source|pin|local edits?).*(before|prior).*(write|change)|(before|prior).*(write|change).*(inspect|inventory).*(version|scope|source|pin|local edits?)'
 contains_document 'upgrade preserves existing policy' "$UPGRADE" 'preserve.*(source|channel).*(scope).*(pin|local edits?)|(source|channel).*(scope).*(pin|local edits?).*preserve'
@@ -177,7 +181,15 @@ contains_document 'upgrade ignores harness cache markers for parity' "$UPGRADE_C
 contains_document 'upgrade stops after a failed write' "$UPGRADE" '(write|command).*(fail|error).*(stop|do not continue).*(applied|not attempted)|(stop|do not continue).*(write|command).*(fail|error).*(applied|not attempted)'
 contains_document 'upgrade verifies registration and cached bytes' "$UPGRADE" '(registration|plugin list).*(cached|cache).*(bytes|parity)|(cached|cache).*(bytes|parity).*(registration|plugin list)'
 contains_document 'upgrade protects live stale caches' "$UPGRADE" '(do not|never).*(delete|remove).*(stale|superseded).*(cache).*(active|restart|session)|(active|restart|session).*(do not|never).*(delete|remove).*(stale|superseded).*(cache)'
+contains_document 'upgrade snapshots caches registration may prune' "$UPGRADE" 'registration.*prune.*snapshot.*before registering.*restore'
 contains_document 'upgrade does not invoke providers without approval' "$UPGRADE" '(do not|never).*(invoke|start|run).*(model|provider|session).*(without|unless).*(authoriz|approval)'
+
+MCP="$SKILLS/mcp-setup/SKILL.md"
+contains_document 'mcp setup requires restart before new tools' "$MCP" 'restart the session before expecting new tools|register at session start.*restart'
+contains_document 'mcp setup names the headless auth limitation' "$MCP" '(headless|non-interactive) session cannot finish the grant|oauth.*only in an interactive session'
+contains_document 'mcp setup verifies with a fresh redacted probe' "$MCP" 'fresh probe.*redact|verify.*fresh.*(probe|session).*redact'
+contains_document 'mcp setup keeps one registration channel per server' "$MCP" 'one registration channel per server'
+contains_document 'mcp setup retests sandboxed probe failures' "$MCP" 'sandbox.*(re-?run|retest).*outside.*before concluding|outside the sandbox before concluding'
 
 contains 'review resolves the packaged tool beside the skill' "$REVIEW" 'scripts/megapowers-review\.go.*beside this.*SKILL\.md|beside this.*SKILL\.md.*scripts/megapowers-review\.go'
 contains 'review exposes inspect mode' "$REVIEW" 'go run "\$review_tool" inspect'
@@ -195,7 +207,7 @@ contains_document 'review explains dismissed findings' "$REVIEW" 'explain.*dismi
 
 CATALOG="$SKILLS/catalog.json"
 catalog_names="$(jq -r '.skills[].name' "$CATALOG" 2>/dev/null | sort)"
-if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count 12 '
+if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count 13 '
   .schema_version == "1" and
   (.skills | length) == $count and
   ([.skills[].name] | sort) == ([.skills[].name] | unique | sort) and
@@ -210,7 +222,7 @@ lineage='superpowers|obra/superpowers|jesse vincent|derived from|inspired by|^or
 not_contains 'agent-loaded guidance omits historical lineage' "$lineage" "$SKILLS" "$AGENT_RULES" "$ROOT/plugins/megapowers/hooks"
 
 total_words="$(find "$SKILLS" -mindepth 2 -maxdepth 2 -type f -name SKILL.md -print0 | xargs -0 cat | wc -w)"
-if [ "$total_words" -le 3600 ]; then ok 'primary skill guidance stays within 3600 words'; else bad 'primary skill guidance stays within 3600 words'; fi
+if [ "$total_words" -le 3900 ]; then ok 'primary skill guidance stays within 3900 words'; else bad 'primary skill guidance stays within 3900 words'; fi
 
 while IFS= read -r skill; do
   words="$(wc -w < "$SKILLS/$skill/SKILL.md")"

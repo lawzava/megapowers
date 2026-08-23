@@ -14,6 +14,11 @@ working path, and inspect recent changes without assuming they are causal. For
 flakiness, identify nondeterministic input, timing, shared state, or resource
 contention instead of retrying until green.
 
+Treat the execution environment as a suspect. When a sandbox, permission
+layer, or harness restriction can explain the failure, re-run the probe
+outside that restriction before declaring a tool, service, or dependency
+broken.
+
 State one evidence-backed hypothesis and test the cheapest decisive prediction
 while changing one variable. A failed hypothesis is evidence; update the model
 before trying another. After the cause is confirmed, write and run a failing

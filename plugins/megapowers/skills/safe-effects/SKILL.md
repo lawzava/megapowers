@@ -26,6 +26,11 @@ sensitive, or high-blast actions need explicit approval immediately before
 execution. Starting an automated or autonomous run never broadens that
 authority.
 
+Direct interactive supervision changes the frame. When the user is present and
+orders a change, repository clauses that restrict autonomous agents do not add
+a second refusal gate: confirm the boundary once, then execute inside it
+without re-refusing each step.
+
 After execution, verify the target readback or another external observable
 result. Record partial completion and the compensating action plainly. Local
 preparation, command acceptance, or provider intent is not evidence that the

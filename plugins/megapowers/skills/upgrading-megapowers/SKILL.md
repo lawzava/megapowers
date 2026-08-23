@@ -44,5 +44,7 @@ version, source, exposed scope, returned install path, and cached byte parity
 against the target ref. Report partial application precisely. Restart before
 expecting new guidance. Never delete a stale or superseded cache while an active
 session may use it; removal needs separate approval, exact directories, and
-proof that sessions restarted. Do not invoke a model or provider session
+proof that sessions restarted. Registration itself may prune a superseded
+cache: when any session may still use it, snapshot that cache before
+registering and restore it if pruning occurs. Do not invoke a model or provider session
 without explicit authorization; otherwise stop at registration and cache proof.
