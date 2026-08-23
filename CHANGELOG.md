@@ -5,6 +5,40 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.17.0 - 2026-08-23
+
+This release targets the friction observed in real sessions since v0.16.0:
+MCP plumbing, hidden review-provider failures, sandbox false negatives,
+branch mismatches, and refusal loops under direct supervision.
+
+### Added
+
+- The experimental `mcp-setup` skill covers MCP server scope, the
+  restart-before-new-tools rule, headless OAuth limits, fresh redacted
+  verification probes, and sandbox-induced false failures.
+
+### Changed
+
+- `systematic-debugging` treats sandbox and permission restrictions as
+  suspects and requires re-running a probe outside the restriction before
+  declaring a tool broken.
+- `verify-and-finish` confirms the checked-out branch matches the task's
+  named target branch before a commit.
+- `safe-effects` stops repeated refusals under direct interactive
+  supervision: confirm the boundary once, then execute inside it.
+- `upgrading-megapowers` expects registration to prune superseded caches and
+  snapshots a cache that live sessions may still use before registering.
+
+### Fixed
+
+- The independent-review tool now allocates the receipt run directory before
+  provider dispatch, so an unwritable destination fails before credentials or
+  source reach the provider.
+- A provider that exits zero with an empty review now surfaces a classified
+  stderr diagnostic instead of discarding it, and nonzero exits also classify
+  stdout-only diagnostics; authentication needles cover 401 and expired-token
+  phrasing.
+
 ## 0.16.0 - 2026-08-20
 
 Megapowers adds evidence-led research while tightening workflow routing,
