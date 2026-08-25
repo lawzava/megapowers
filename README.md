@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
 megapowers is exactly one plugin for current Claude Code and Codex. It adds
-thirteen task-level skills, one shared default communication style, and a small
+fourteen task-level skills, one shared default communication style, and a small
 destructive-command tripwire. It does not replace native agents, plans, goals,
 permissions, worktrees, memory, or browser tools.
 
@@ -41,6 +41,7 @@ the full body loads only when selected.
 |---|---|
 | Choose between inline work, native agents, a durable run, or review | `orchestrating` |
 | Specify behavior, resolve requirements, and write an executable plan | `design-and-plan` |
+| Stress-test a plan, decision, or idea through a round-based interview | `grill-me` |
 | Change behavior with a verified red, green, refactor loop | `test-first-implementation` |
 | Find a root cause before fixing a bug or flaky test | `systematic-debugging` |
 | Prove completion, handoff, commit, merge, or release claims | `verify-and-finish` |
@@ -96,7 +97,7 @@ Three evidence classes are kept separate:
 3. PR replay uses hidden correctness tests against pinned historical changes.
    It is report-only until repeated real runs support a release threshold.
 
-No current thirteen-skill behavioral result is claimed from selftests. Historical
+No current fourteen-skill behavioral result is claimed from selftests. Historical
 measurements, including null results and their limitations, remain in
 [evals/RESULTS.md](./evals/RESULTS.md). Current protocols and gates are in
 [evals/README.md](./evals/README.md) and

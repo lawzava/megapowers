@@ -17,6 +17,7 @@ expected_skills=$(printf '%s\n' \
   code-quality \
   design-and-plan \
   evidence-research \
+  grill-me \
   humanizing-prose \
   independent-review \
   mcp-setup \
@@ -50,7 +51,7 @@ done
 
 actual_skills=$(git -C "$ROOT" ls-files 'plugins/megapowers/skills/*/SKILL.md' | awk -F/ '{print $4}' | sort)
 [[ $actual_skills == "$expected_skills" ]] ||
-  fail "plugin skill inventory differs from the thirteen native-first skills"
+  fail "plugin skill inventory differs from the fourteen native-first skills"
 
 actual_links=$(git -C "$ROOT" ls-files -s '.agents/skills/*' | awk '$1 == "120000" { sub("^.agents/skills/", "", $4); if ($4 !~ "/") print $4 }' | sort)
 [[ $actual_links == "$expected_skills" ]] ||
