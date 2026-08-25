@@ -40,7 +40,7 @@ the full body loads only when selected.
 | Need | Skill |
 |---|---|
 | Choose between inline work, native agents, a durable run, or review | `orchestrating` |
-| Resolve requirements and write an executable plan | `design-and-plan` |
+| Specify behavior, resolve requirements, and write an executable plan | `design-and-plan` |
 | Change behavior with a verified red, green, refactor loop | `test-first-implementation` |
 | Find a root cause before fixing a bug or flaky test | `systematic-debugging` |
 | Prove completion, handoff, commit, merge, or release claims | `verify-and-finish` |

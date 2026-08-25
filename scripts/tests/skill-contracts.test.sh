@@ -70,6 +70,8 @@ $EXPECTED
 EOF
 
 AGENT_RULES="$ROOT/AGENTS.md"
+DESIGN="$SKILLS/design-and-plan/SKILL.md"
+FINISH="$SKILLS/verify-and-finish/SKILL.md"
 QUALITY="$SKILLS/code-quality/SKILL.md"
 RESEARCH="$SKILLS/evidence-research/SKILL.md"
 PROSE="$SKILLS/humanizing-prose/SKILL.md"
@@ -80,6 +82,14 @@ UPGRADE_CHANNELS="$SKILLS/upgrading-megapowers/references/channels.md"
 authority='Repository instructions, existing code, and configured project tools are authoritative; skills supply defaults only where the repository is silent\.'
 contains 'root instructions carry repository authority' "$AGENT_RULES" "$authority"
 contains 'code quality carries repository authority' "$QUALITY" "$authority"
+
+contains 'design scopes specifications to non-trivial observable behavior' "$DESIGN" 'non-trivial change.*observable behavior'
+contains_document 'design separates requirements from implementation' "$DESIGN" 'behavior contract.*requirements?.*(independent|separate).*(implementation|technical design)'
+contains_document 'design maps requirements to scenarios and oracles' "$DESIGN" 'requirements?.*concrete scenarios?.*acceptance oracle'
+contains_document 'design describes behavior changes as deltas' "$DESIGN" 'Added.*Modified.*Removed.*deltas?'
+contains_document 'design rejects stale specifications as current evidence' "$DESIGN" 'stale spec.*not evidence.*current behavior'
+contains_document 'design keeps specifications dependency-free' "$DESIGN" 'plain Markdown.*do not require.*CLI.*package.*fixed directory.*generated command.*archive'
+contains_document 'design gates durable specifications' "$DESIGN" 'durable artifact.*repository convention.*user approval'
 
 contains 'orchestration prefers native capabilities' "$SKILLS/orchestrating/SKILL.md" 'native (harness )?(capabilities|agents|subagents|goals|planning|permissions|review)'
 contains_document 'orchestration explicitly authorizes native delegation' "$SKILLS/orchestrating/SKILL.md" 'explicitly authorizes? native (agents?|subagents?)|native (agent|subagent) delegation is explicitly authorized'
@@ -163,6 +173,8 @@ contains_document 'completion binds stale-prone proof to artifact identity' "$SK
 contains_document 'completion requires real user journeys or agreed substitutes' "$SKILLS/verify-and-finish/SKILL.md" 'real user journey.*agreed substitute oracle'
 contains_document 'completion proves the load-bearing safety fact proportionately' "$SKILLS/verify-and-finish/SKILL.md" 'load-bearing safety fact.*proof level'
 contains_document 'completion confirms the named target branch' "$SKILLS/verify-and-finish/SKILL.md" 'checked-out branch.*named target.*(edit|commit)'
+contains_document 'completion reconciles affected behavior specifications' "$FINISH" 'before completion.*reconcile.*affected.*repository-owned behavior specification.*verified behavior'
+contains_document 'completion does not create unapproved durable specifications' "$FINISH" 'do not create.*durable specification.*without.*repository convention.*user approval'
 
 contains_document 'upgrade inspects provenance before writes' "$UPGRADE" '(inspect|inventory).*(version|scope|source|pin|local edits?).*(before|prior).*(write|change)|(before|prior).*(write|change).*(inspect|inventory).*(version|scope|source|pin|local edits?)'
 contains_document 'upgrade preserves existing policy' "$UPGRADE" 'preserve.*(source|channel).*(scope).*(pin|local edits?)|(source|channel).*(scope).*(pin|local edits?).*preserve'

@@ -31,6 +31,10 @@ nearby check.
 For a user-facing product, run the real user journey. Use an agreed substitute
 oracle only when the real journey is unavailable, and name what it cannot prove.
 
+Before completion, reconcile each affected repository-owned behavior
+specification with verified behavior. Do not create a durable specification
+without repository convention or user approval.
+
 Before a handoff, commit, PR, merge, release, or cleanup, run the repository's
 canonical checks and inspect the current diff and workspace state. When the
 task names a target branch, confirm the checked-out branch matches that named
