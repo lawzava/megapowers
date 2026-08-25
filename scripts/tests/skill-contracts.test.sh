@@ -7,6 +7,7 @@ EXPECTED="autonomous-run
 code-quality
 design-and-plan
 evidence-research
+grill-me
 humanizing-prose
 independent-review
 mcp-setup
@@ -49,7 +50,7 @@ not_contains() {
 printf '== skill contracts ==\n'
 
 actual="$(find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
-if [ "$actual" = "$EXPECTED" ]; then ok 'inventory is exactly thirteen skills'; else bad 'inventory is exactly thirteen skills'; fi
+if [ "$actual" = "$EXPECTED" ]; then ok 'inventory is exactly fourteen skills'; else bad 'inventory is exactly fourteen skills'; fi
 
 while IFS= read -r skill; do
   file="$SKILLS/$skill/SKILL.md"
@@ -219,7 +220,7 @@ contains_document 'review explains dismissed findings' "$REVIEW" 'explain.*dismi
 
 CATALOG="$SKILLS/catalog.json"
 catalog_names="$(jq -r '.skills[].name' "$CATALOG" 2>/dev/null | sort)"
-if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count 13 '
+if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count 14 '
   .schema_version == "1" and
   (.skills | length) == $count and
   ([.skills[].name] | sort) == ([.skills[].name] | unique | sort) and
@@ -234,7 +235,7 @@ lineage='superpowers|obra/superpowers|jesse vincent|derived from|inspired by|^or
 not_contains 'agent-loaded guidance omits historical lineage' "$lineage" "$SKILLS" "$AGENT_RULES" "$ROOT/plugins/megapowers/hooks"
 
 total_words="$(find "$SKILLS" -mindepth 2 -maxdepth 2 -type f -name SKILL.md -print0 | xargs -0 cat | wc -w)"
-if [ "$total_words" -le 3900 ]; then ok 'primary skill guidance stays within 3900 words'; else bad 'primary skill guidance stays within 3900 words'; fi
+if [ "$total_words" -le 4300 ]; then ok 'primary skill guidance stays within 4300 words'; else bad 'primary skill guidance stays within 4300 words'; fi
 
 while IFS= read -r skill; do
   words="$(wc -w < "$SKILLS/$skill/SKILL.md")"

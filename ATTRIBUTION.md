@@ -38,6 +38,16 @@ vocabulary checklist.
 
 Upstream license: MIT, Copyright (c) 2025 Siqi Chen.
 
+## Skills for Real Engineers
+
+`grill-me` adapts the round-based grilling interview from
+[mattpocock/skills](https://github.com/mattpocock/skills) by Matt Pocock. The
+current skill rewrites the design-tree and frontier protocol in repository
+style, makes it topic-agnostic, and defers fact resolution to
+`design-and-plan`.
+
+Upstream license: MIT, Copyright (c) 2026 Matt Pocock.
+
 ## Everything Claude Code
 
 The Go-specific `code-quality` reference retains stable context, error, and
