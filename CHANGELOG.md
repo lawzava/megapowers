@@ -5,6 +5,21 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.18.0 - 2026-08-25
+
+Megapowers adds dependency-free behavior specifications to planning and
+completion while preserving the native-first workflow.
+
+### Changed
+
+- `design-and-plan` creates proportional Markdown behavior contracts for
+  non-trivial observable changes. Contracts separate requirements from
+  implementation and include scope, scenarios, acceptance oracles, change
+  deltas, and stale-specification reconciliation.
+- `verify-and-finish` reconciles affected repository-owned behavior
+  specifications with verified behavior before completion. It does not create
+  durable specifications without repository convention or user approval.
+
 ## 0.17.1 - 2026-08-23
 
 ### Changed
