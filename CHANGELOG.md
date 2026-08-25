@@ -5,6 +5,23 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.19.0 - 2026-08-25
+
+Megapowers adds a round-based grilling interview as a fourteenth skill.
+
+### Added
+
+- `grill-me` stress-tests a plan, decision, idea, or draft through a
+  round-based interview. It maps decisions as a tree, asks the unblocked
+  frontier each round with one recommended answer per question, restates
+  settled decisions and open branches every round, resolves facts itself,
+  and grants no execution authority. Upstream credit is in ATTRIBUTION.md.
+
+### Changed
+
+- Skill inventory contracts move from thirteen to fourteen skills, and the
+  total guidance budget from 3900 to 4300 words.
+
 ## 0.18.0 - 2026-08-25
 
 Megapowers adds dependency-free behavior specifications to planning and
