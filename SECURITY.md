@@ -8,13 +8,21 @@ Review the exact revision before installing it.
 
 | Component | Reads | Writes | Network |
 |---|---|---|---|
-| Twelve skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
+| Fifteen skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
 | Codex output-style hook | Bundled static style | Developer context on standard output | None |
 | Destructive-command hook | Proposed shell command from hook input | Hook decision on standard output | None |
+| Memory-audit tool | One explicit audit manifest | Standard output only | None |
 | Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | Selected Claude or Codex provider call after approval |
 
 There is no daemon, model router, formatter, status line, or background
 scheduler.
+
+The memory-audit tool validates provenance, dates, retention decisions, and
+common credential patterns. It rejects symlink inputs and never edits provider
+memory. Pattern checks cannot establish that a claim is true or current; the
+memory-hygiene skill requires source inspection and one exact approval. After
+approval, the active agent applies that patch through the harness memory
+boundary and verifies every target by readback.
 
 ## Destructive-command guard
 

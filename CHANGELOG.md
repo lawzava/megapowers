@@ -5,6 +5,22 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Added
+
+- The experimental `memory-hygiene` skill audits Claude Code and Codex memory
+  through a read-only manifest, previews one evidence-bound patch, and applies
+  it automatically after exact user approval. Its Go validator rejects
+  unsupported retained evidence, stale volatile facts, missing provenance,
+  malformed dates, conflicts hidden by duplicate IDs, symlinks, and common
+  credential patterns.
+
+### Changed
+
+- Skill inventory contracts move from fourteen to fifteen skills, and the
+  total guidance budget moves from 4300 to 4600 words.
+
 ## 0.19.0 - 2026-08-25
 
 Megapowers adds a round-based grilling interview as a fourteenth skill.

@@ -55,7 +55,7 @@ grep -Eq 'not parser-enforced|no parser' "$ROOT/docs/orchestration.md" ||
   fail 'orchestration docs imply deterministic registry parsing'
 grep -q 'report-only' "$ROOT/docs/advanced/evals.md" || fail 'eval docs do not label PR replay report-only'
 grep -q 'not a security boundary' "$ROOT/SECURITY.md" || fail 'security boundary warning missing'
-grep -q '| Twelve skills |' "$ROOT/SECURITY.md" || fail 'security capability count is stale'
+grep -q '| Fifteen skills |' "$ROOT/SECURITY.md" || fail 'security capability count is stale'
 grep -Eq 'inspect --file .* --provider claude' "$ROOT/docs/advanced/independent-review.md" ||
   fail 'review docs do not bind inspection to the provider'
 grep -q 'approval_token' "$ROOT/docs/advanced/independent-review.md" ||

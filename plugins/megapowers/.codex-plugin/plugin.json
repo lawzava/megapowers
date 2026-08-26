@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "megapowers",
     "shortDescription": "Native-first agentic workflows and safety.",
-    "longDescription": "Twelve task-level skills for orchestration, evidence research, design, implementation, debugging, verification, effects, autonomous work, independent review, prose, code quality, and safe upgrades, plus concise startup communication and a destructive-command guard.",
+    "longDescription": "Fifteen task-level skills for orchestration, structured interviews, evidence research, design, implementation, debugging, verification, effects, autonomous work, independent review, memory hygiene, MCP setup, prose, code quality, and safe upgrades, plus concise startup communication and a destructive-command guard.",
     "developerName": "lawzava",
     "category": "Workflow",
     "capabilities": [

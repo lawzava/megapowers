@@ -122,6 +122,7 @@ script_tests=(
   scripts/tests/docs-contract.test.sh
   scripts/tests/freshness.test.sh
   scripts/tests/hook-contract.test.sh
+  scripts/tests/memory-hygiene.test.sh
   scripts/tests/megapowers-review.test.sh
   scripts/tests/native-first-contract.test.sh
   scripts/tests/output-style-contract.test.sh
