@@ -114,6 +114,16 @@ run_check "Go formatting" 30s bash -c '
   test -z "$output" || { printf "%s\n" "$output"; exit 1; }
 '
 
+# Each Go tool is a standalone main package, so vet runs per file.
+run_check "Go vet" 120s bash -c '
+  set -euo pipefail
+  mapfile -d "" files < <(find scripts evals plugins/megapowers -type f -name "*.go" -print0)
+  ((${#files[@]} > 0))
+  for file in "${files[@]}"; do
+    go vet "$file"
+  done
+'
+
 run_check "full-tree security lint" 60s scripts/security-lint.sh
 run_check "freshness metadata" 30s scripts/check-freshness.sh --max-age-days 36500
 
@@ -144,7 +154,6 @@ eval_tests=(
   evals/tests/coverage-inventory.test.sh
   evals/tests/portability-boundary.test.sh
   evals/tests/run-all-reporting.test.sh
-  evals/tests/run-failclosed.test.sh
   evals/tests/score-failclosed.test.sh
   evals/studies/tests/installed-ab-contract.test.sh
   evals/studies/tests/pr-replay-contract.test.sh

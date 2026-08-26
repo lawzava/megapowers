@@ -209,4 +209,20 @@ if [ "$rc" -ne 1 ] || ! printf '%s\n' "$out" | grep -q 'disallowed allowlist ent
   exit 1
 fi
 
+# Shipped artifacts must stay public-safe: a real machine home path is a leak,
+# while the documented fictional fixture homes stay allowed.
+printf '%s\n' 'export STATE_DIR=/home/lawzava/.local/state' > "$TMP/machine-path.md"
+out="$("$LINT" "$TMP/machine-path.md" 2>&1)"; rc=$?
+if [ "$rc" -ne 1 ] || ! printf '%s\n' "$out" | grep -q 'machine-specific home path'; then
+  echo "FAIL machine-specific home path was not reported (exit $rc)"
+  printf '%s\n' "$out"
+  exit 1
+fi
+
+printf '%s\n' 'rm -rf /home/alice/Code and /Users/alice/tmp and /home/charles/logs' > "$TMP/fixture-path.md"
+"$LINT" "$TMP/fixture-path.md" >/dev/null 2>&1 || {
+  echo "FAIL fictional fixture home path was rejected"
+  exit 1
+}
+
 echo "== security-lint: ok =="

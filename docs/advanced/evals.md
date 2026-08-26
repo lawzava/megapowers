@@ -11,7 +11,7 @@ go run evals/score.go --strict results.jsonl
 ```
 
 These runs need no model credentials. They validate schemas, runners, hooks,
-tools, and retained regression scenarios. Strict scoring rejects empty,
+and tools. Strict scoring rejects empty,
 malformed, duplicated, incomparable, incomplete, indeterminate, timed-out, or
 harness-error data.
 

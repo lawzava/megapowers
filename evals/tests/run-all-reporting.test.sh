@@ -37,28 +37,16 @@ grep -q '^## Deterministic regressions$' "$tmp/scorecard.md"
 
 # A failing run must still leave parseable result rows at the requested path.
 repo="$tmp/failing-repo"
-mkdir -p "$repo/evals/scenarios/fails"
-cp "$ROOT/evals/run.sh" "$ROOT/evals/run-all.sh" "$ROOT/evals/score.go" "$repo/evals/"
+mkdir -p "$repo/evals"
+cp "$ROOT/evals/run-all.sh" "$ROOT/evals/score.go" "$repo/evals/"
 cp -R "$ROOT/evals/studies" "$repo/evals/studies"
-printf 'id = "fails"\nkind = "artifact"\nskill = "fixture"\n' > "$repo/evals/scenarios/fails/scenario.toml"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$repo/evals/scenarios/fails/check.sh"
-printf '#!/usr/bin/env bash\nexit 9\n' > "$repo/evals/scenarios/fails/solve.sh"
-chmod +x "$repo/evals/"*.sh "$repo/evals/scenarios/fails/"*.sh
+printf '#!/usr/bin/env bash\nexit 9\n' > "$repo/evals/studies/install-smoke/run-smoke.sh"
+chmod +x "$repo/evals/run-all.sh" "$repo/evals/studies/install-smoke/run-smoke.sh"
 set +e
 bash "$repo/evals/run-all.sh" --json "$tmp/failure.jsonl" > "$tmp/failure.log"
 failure_rc=$?
 set -e
 [ "$failure_rc" -ne 0 ]
 jq -se 'length > 0 and any(.[]; .verdict == "harness_error" or .verdict == "fail")' "$tmp/failure.jsonl" >/dev/null
-
-# Even a malformed child result becomes a valid infrastructure-failure row.
-printf '#!/usr/bin/env bash\nprintf "not-json\\n"\nexit 1\n' > "$repo/evals/run.sh"
-chmod +x "$repo/evals/run.sh"
-set +e
-bash "$repo/evals/run-all.sh" --json "$tmp/malformed-child.jsonl" > "$tmp/malformed-child.log" 2>/dev/null
-malformed_rc=$?
-set -e
-[ "$malformed_rc" -ne 0 ]
-jq -se 'length > 0 and any(.[]; .status == "harness_error" and .verdict == "harness_error")' "$tmp/malformed-child.jsonl" >/dev/null
 
 echo 'run-all reporting contract: ok'

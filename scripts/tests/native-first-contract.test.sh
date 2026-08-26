@@ -100,6 +100,16 @@ actual_hook_tests=$(find "$ROOT/plugins/megapowers/hooks/tests" -maxdepth 1 -typ
   fail "hooks/tests contains obsolete hook coverage"
 
 removed_paths=(
+  .megapowers/enforcement.toml
+  evals/run.sh
+  evals/scenarios
+  evals/tests/run-failclosed.test.sh
+  docs/megapowers
+  docs/plans
+  docs/specs
+  .omc
+  .claude-flow
+  .swarm
   plugins/mega-orchestration
   plugins/mega-go
   plugins/mega-python

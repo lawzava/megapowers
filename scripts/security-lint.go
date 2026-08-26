@@ -21,7 +21,18 @@ var (
 	reEval  = regexp.MustCompile("(?i)eval[^#]*(\\$\\(|`)[^)]*(curl|wget|fetch)")
 	reSafe  = regexp.MustCompile(`(?i)ignore (all |the )?(previous|prior) (instruction|message|context)|disregard (all |the )?(previous|prior|the above)|disable (the )?(sandbox|safety|guardrail|security)|bypass (the )?permission|bypass permissions|turn off (the )?(sandbox|safety)`)
 	reSkill = regexp.MustCompile(`^plugins/[^/]+/skills/`)
+	reHome  = regexp.MustCompile(`(^|[^a-z0-9_.])(/home|/users)/([a-z0-9_-]+)`)
 )
+
+// Shipped artifacts must stay public-safe (AGENTS.md): only the documented
+// fictional fixture homes and the generic placeholder are allowed.
+var fixtureHomes = map[string]bool{
+	"alice":   true,
+	"bob":     true,
+	"charles": true,
+	"user":    true,
+	"example": true,
+}
 
 var bidiRunes = []rune{
 	'\u202A', '\u202B', '\u202C', '\u202D', '\u202E',
@@ -128,7 +139,7 @@ func runSecurityLint(args []string) int {
 		if len(data) == 0 || !isText(data) {
 			continue
 		}
-		var fetchHits, b64Hits, evalHits, safeHits, bidiHits []finding
+		var fetchHits, b64Hits, evalHits, safeHits, homeHits, bidiHits []finding
 		for _, rec := range logicalLines(string(data)) {
 			lower := strings.ToLower(rec.text)
 			if reFetch.MatchString(lower) && reHTTP.MatchString(lower) {
@@ -143,6 +154,12 @@ func runSecurityLint(args []string) int {
 			if reSafe.MatchString(lower) {
 				safeHits = append(safeHits, finding{rel, rec.n, "instruction to disable a safety mechanism"})
 			}
+			for _, m := range reHome.FindAllStringSubmatch(lower, -1) {
+				if !fixtureHomes[m[3]] {
+					homeHits = append(homeHits, finding{rel, rec.n, "machine-specific home path in shipped artifact"})
+					break
+				}
+			}
 			if hasBidi(rec.text) {
 				bidiHits = append(bidiHits, finding{rel, rec.n, "unicode direction-override / bidi control character"})
 			}
@@ -151,6 +168,7 @@ func runSecurityLint(args []string) int {
 		emitAll(b64Hits)
 		emitAll(evalHits)
 		emitAll(safeHits)
+		emitAll(homeHits)
 		emitAll(bidiHits)
 	}
 
