@@ -13,19 +13,9 @@ docs/megapowers/
 docs/plans/
 docs/specs/
 
-# Runtime state written by skills (sdd ledgers, autonomous-run dirs, evidence,
-# brainstorm servers) — never part of the published repo.
-# The CONTENTS are excluded, not the directory. Git never descends into an
-# excluded directory, so a `!` re-include under `.megapowers/` would be dead
-# text: the exception below only works because the pattern ends in `/*`.
-.megapowers/*
-
-# ...except the project enforcement layer, which is CONFIGURATION, not state.
-# Both Stop gates read it from the base commit and never from the pending tree,
-# so a change cannot ship an exemption for itself. An ignored file has no base
-# commit, which made the documented per-repository opt-out impossible to use in
-# any repository that ignored this directory, including this one.
-!.megapowers/enforcement.toml
+# Runtime state written by skills (autonomous-run dirs, evidence) — never part
+# of the published repo.
+.megapowers/
 
 # Local agent state and per-machine MCP config — never part of the published repo.
 .claude/

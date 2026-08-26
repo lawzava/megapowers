@@ -9,7 +9,8 @@ out="$("$inventory")"
 grep -q '^# megapowers eval coverage inventory$' <<<"$out"
 declared_count="$(find "$ROOT/plugins" -type f -name SKILL.md | wc -l | tr -d ' ')"
 grep -q "^$declared_count shipped skills$" <<<"$out"
-grep -q '| skill | deterministic regressions | behavioral studies | behavioral evidence |' <<<"$out"
+grep -q '| skill | behavioral studies | behavioral evidence |' <<<"$out"
+grep -q 'scripts/tests/skill-contracts.test.sh' <<<"$out"
 grep -q '| autonomous-run |' <<<"$out"
 if grep -Eq '\| (covered|uncovered|present) \|' <<<"$out"; then
   echo 'FAIL inventory upgrades declarations or regressions into efficacy claims' >&2

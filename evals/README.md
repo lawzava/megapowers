@@ -26,7 +26,7 @@ bash evals/run-all.sh --json results.jsonl
 go run evals/score.go --strict results.jsonl
 ```
 
-`run-all.sh` executes retained scenarios plus local runner selftests. It emits
+`run-all.sh` executes local runner selftests. It emits
 schema-versioned regression rows and persists them even when a check fails.
 Each child has a timeout.
 

@@ -5,6 +5,53 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Added
+
+- `independent-review` requires explicit user egress authorization before an
+  external dispatch and surfaces a dispatch stalled on a permission prompt or
+  provider instead of waiting silently. Both rules come from the 2026-08-23/26
+  session audit: a harness guardian denied two unapproved cross-vendor
+  dispatches, and one dispatch stalled ~12 hours on a canceled prompt.
+- `verify-and-finish` sweeps the diff for generated excess before a handoff or
+  PR, and its trigger names headless and SDK-driven sessions, where the skill
+  never fired despite five PR deliveries in the audited window.
+- `mcp-setup` prints configuration keys, never values, after a live diagnostic
+  echoed a database credential into a transcript.
+- `safe-effects` keeps outward artifact names and text inside the approved
+  disclosure; `autonomous-run` names provider limits and expired credentials
+  as blocked states to surface once rather than wait out silently.
+- `grill-me` declares interview rounds requested depth so the shipped prose
+  caps do not conflict with full-frontier rounds, and gains its previously
+  missing content regressions in `skill-contracts.test.sh`.
+- `security-lint` flags machine-specific home paths outside the documented
+  fictional fixture homes; `validate.sh` runs `go vet` per Go tool and the
+  banned agent-workspace paths join the native-first removed-path contract.
+- The docs contract derives the skill count and experimental set from
+  `skills/catalog.json`, ending hand-maintained count drift.
+
+### Changed
+
+- `code-quality` triggers on decisions the repository does not settle instead
+  of enumerating sibling skills' trigger nouns; `orchestrating` drops
+  "high-stakes" from its trigger.
+- Codex marketplace metadata gains the plugin description, and the upgrade
+  channel reference warns that Codex `config.toml` marketplace metadata can
+  lag the actual snapshot.
+- Stale skill counts corrected in `README.md`, `evals/RESULTS.md`, and
+  `.agents/skills/README.md`; README's experimental list now includes
+  `grill-me`.
+
+### Removed
+
+- The dead `.megapowers/enforcement.toml` project layer (its enforcement
+  engine was removed in 0.15.0) and its `.gitignore` re-include.
+- The scenario runner (`evals/run.sh`, its fail-closed test, the empty
+  scenario loop in `run-all.sh`, and the always-zero scenario column in the
+  coverage inventory). No scenario ever shipped; the machinery returns with
+  the first real one.
+
 ## 0.20.0 - 2026-08-26
 
 ### Added

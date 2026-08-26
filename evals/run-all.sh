@@ -52,7 +52,7 @@ tally() {
     ' >/dev/null 2>&1; then
     malformed_trace="$(mktemp)"
     printf '%s\n' "$row" > "$malformed_trace"
-    row="$(emit_selftest_row "runner-$id" "$EVALS/run.sh" harness_error 125 harness_error 0 "$malformed_trace")"
+    row="$(emit_selftest_row "runner-$id" "$EVALS/run-all.sh" harness_error 125 harness_error 0 "$malformed_trace")"
     rm -f "$malformed_trace"
   fi
   printf '%s\n' "$row" >> "$rows"
@@ -197,13 +197,6 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required to emit and validate result rows" >&2
   exit 2
 fi
-
-for sdir in "$EVALS"/scenarios/*/; do
-  [ -f "$sdir/scenario.toml" ] || continue
-  id="$(basename "$sdir")"
-  row="$(bash "$EVALS/run.sh" "$id" --timeout "$timeout_seconds")"
-  tally "$row" "$id"
-done
 
 if command -v go >/dev/null 2>&1; then
   run_selftest score-go-selftest "$EVALS/score.go" go run "$EVALS/score.go" --selftest
