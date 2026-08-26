@@ -11,6 +11,7 @@ grill-me
 humanizing-prose
 independent-review
 mcp-setup
+memory-hygiene
 orchestrating
 safe-effects
 systematic-debugging
@@ -50,7 +51,7 @@ not_contains() {
 printf '== skill contracts ==\n'
 
 actual="$(find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
-if [ "$actual" = "$EXPECTED" ]; then ok 'inventory is exactly fourteen skills'; else bad 'inventory is exactly fourteen skills'; fi
+if [ "$actual" = "$EXPECTED" ]; then ok 'inventory is exactly fifteen skills'; else bad 'inventory is exactly fifteen skills'; fi
 
 while IFS= read -r skill; do
   file="$SKILLS/$skill/SKILL.md"
@@ -77,6 +78,7 @@ QUALITY="$SKILLS/code-quality/SKILL.md"
 RESEARCH="$SKILLS/evidence-research/SKILL.md"
 PROSE="$SKILLS/humanizing-prose/SKILL.md"
 REVIEW="$SKILLS/independent-review/SKILL.md"
+MEMORY="$SKILLS/memory-hygiene/SKILL.md"
 UPGRADE="$SKILLS/upgrading-megapowers/SKILL.md"
 UPGRADE_CHANNELS="$SKILLS/upgrading-megapowers/references/channels.md"
 
@@ -123,6 +125,23 @@ contains_document 'research classifies load-bearing claims' "$RESEARCH" 'direct.
 contains_document 'research records sources and gaps' "$RESEARCH" 'sources consulted.*material gaps'
 contains_document 'research protects sensitive transcripts' "$RESEARCH" 'sensitive transcripts.*raw chat.*out of'
 contains_document 'research does not grant implementation or publication authority' "$RESEARCH" 'conclusion.*(does not|is not).*(authority|authorization).*(implement|publish)'
+
+contains_document 'memory hygiene starts read-only' "$MEMORY" 'start.*read-only|read-only.*first'
+contains_document 'memory hygiene quarantines candidates before promotion' "$MEMORY" 'candidate.*quarantine.*before.*(promot|retain)|quarantine.*candidate.*before.*(promot|retain)'
+contains_document 'memory hygiene retains hard facts only' "$MEMORY" 'retain only.*direct[- ]statement.*direct[- ]observation.*source-backed.*history-entry-only'
+contains_document 'memory hygiene rejects inference from active memory' "$MEMORY" '(inferred|speculative|unknown|contested).*(do not|never|cannot).*(retain|active)|do not retain.*(inferred|speculative|unknown|contested)'
+contains_document 'memory hygiene records provenance date and scope' "$MEMORY" 'source.*observed.*scope'
+contains_document 'memory hygiene revalidates volatile facts' "$MEMORY" 'volatile.*(revalidate|revalidation).*authoritative source'
+contains_document 'memory hygiene preserves conflicts' "$MEMORY" 'conflict.*(preserve|surface).*(do not|never).*(overwrite|resolve silently)|(do not|never).*(overwrite|resolve silently).*conflict'
+contains_document 'memory hygiene excludes secrets' "$MEMORY" '(secret|credential).*(do not|never).*(manifest|memory)|(do not|never).*(secret|credential)'
+contains_document 'memory hygiene limits missing transcripts to history metadata' "$MEMORY" 'missing transcript.*history-entry-only|history-entry-only.*missing transcript'
+contains_document 'memory hygiene previews provider writes for approval' "$MEMORY" 'exact (patch|change|diff).*(approval|authoriz).*(before|prior).*(write|apply)|(before|prior).*(write|apply).*(exact (patch|change|diff)).*(approval|authoriz)'
+contains_document 'memory hygiene maps edits to validated evidence' "$MEMORY" 'every (edit|change).*(validated record|record ID)|(validated record|record ID).*(every (edit|change))'
+contains_document 'memory hygiene automatically applies an approved patch' "$MEMORY" '(after|once).*(user )?approv.*(apply|execute).*(automatic|without another command)|(automatic|without another command).*(apply|execute).*(after|once).*(user )?approv'
+contains_document 'memory hygiene asks for approval only once' "$MEMORY" 'without.*(second|another).*approval|do not ask.*approv.*again'
+contains_document 'memory hygiene invalidates approval after target drift' "$MEMORY" '(target|memory).*(change|drift).*(invalid|void).*(approval)|approval.*(invalid|void).*(target|memory).*(change|drift)'
+contains_document 'memory hygiene keeps destructive rollback outside active memory' "$MEMORY" '(destructive|remove|delete).*(backup|rollback).*(outside|out of).*active memory|(backup|rollback).*(outside|out of).*active memory.*(destructive|remove|delete)'
+contains 'memory hygiene invokes its packaged validator' "$MEMORY" 'scripts/memory-audit[.]go'
 
 for artifact in plans 'task briefs' commits responses reviews PRs docs 'release notes' errors; do
   contains "prose covers $artifact" "$PROSE" "$artifact"
@@ -220,12 +239,13 @@ contains_document 'review explains dismissed findings' "$REVIEW" 'explain.*dismi
 
 CATALOG="$SKILLS/catalog.json"
 catalog_names="$(jq -r '.skills[].name' "$CATALOG" 2>/dev/null | sort)"
-if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count 14 '
+if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count 15 '
   .schema_version == "1" and
   (.skills | length) == $count and
   ([.skills[].name] | sort) == ([.skills[].name] | unique | sort) and
   ([.skills[].status] | all(. == "stable" or . == "experimental")) and
-  ([.skills[] | select(.name == "evidence-research" and .status == "experimental")] | length) == 1
+  ([.skills[] | select(.name == "evidence-research" and .status == "experimental")] | length) == 1 and
+  ([.skills[] | select(.name == "memory-hygiene" and .status == "experimental")] | length) == 1
 ' "$CATALOG" >/dev/null 2>&1; then ok 'skill lifecycle catalog is complete and portable'; else bad 'skill lifecycle catalog is complete and portable'; fi
 
 deleted='brainstorming|executing-plans|finishing-a-development-branch|project-memory|receiving-code-review|requesting-code-review|subagent-driven-development|test-driven-development|using-git-worktrees|using-megapowers|verification-before-completion|writing-plans|writing-skills|best-of-n|configuring-model-routes|council-adjudication|cross-model-verification|effect-broker|multi-agent-delegation|wayfinding|designing-frontends|golang-patterns|greenfield-(go|python|ts)-stack|python-patterns|scripting-in-go|typescript-patterns'
@@ -235,7 +255,7 @@ lineage='superpowers|obra/superpowers|jesse vincent|derived from|inspired by|^or
 not_contains 'agent-loaded guidance omits historical lineage' "$lineage" "$SKILLS" "$AGENT_RULES" "$ROOT/plugins/megapowers/hooks"
 
 total_words="$(find "$SKILLS" -mindepth 2 -maxdepth 2 -type f -name SKILL.md -print0 | xargs -0 cat | wc -w)"
-if [ "$total_words" -le 4300 ]; then ok 'primary skill guidance stays within 4300 words'; else bad 'primary skill guidance stays within 4300 words'; fi
+if [ "$total_words" -le 4600 ]; then ok 'primary skill guidance stays within 4600 words'; else bad 'primary skill guidance stays within 4600 words'; fi
 
 while IFS= read -r skill; do
   words="$(wc -w < "$SKILLS/$skill/SKILL.md")"

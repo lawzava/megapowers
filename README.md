@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
 megapowers is exactly one plugin for current Claude Code and Codex. It adds
-fourteen task-level skills, one shared default communication style, and a small
+fifteen task-level skills, one shared default communication style, and a small
 destructive-command tripwire. It does not replace native agents, plans, goals,
 permissions, worktrees, memory, or browser tools.
 
@@ -48,6 +48,7 @@ the full body loads only when selected.
 | Preview and authorize a real-world side effect | `safe-effects` |
 | Preserve honest state across long or interrupted work | `autonomous-run` |
 | Send an explicit artifact to a different provider for adversarial review | `independent-review` |
+| Audit memory and automatically apply one approved evidence-based cleanup | `memory-hygiene` |
 | Write direct human-facing prose without dropping or inventing facts | `humanizing-prose` |
 | Make code-quality judgments from repository context and stable language guidance | `code-quality` |
 | Upgrade Megapowers without changing its source, scope, pins, or local edits | `upgrading-megapowers` |
@@ -65,8 +66,9 @@ agent access or authority.
 
 ## What installs
 
-- Thirteen portable `SKILL.md` directories. `skills/catalog.json` marks
-  maturity; `evidence-research` and `mcp-setup` start as experimental.
+- Fifteen portable `SKILL.md` directories. `skills/catalog.json` marks
+  maturity; `evidence-research`, `mcp-setup`, and `memory-hygiene` start as
+  experimental.
 - One shared style for direct, concise technical replies: a forced Claude Code
   output style and a trusted Codex startup hook.
 - One `PreToolUse` shell hook for obvious catastrophic commands.

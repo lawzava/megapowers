@@ -9,6 +9,7 @@
     { "name": "humanizing-prose", "status": "stable" },
     { "name": "independent-review", "status": "stable" },
     { "name": "mcp-setup", "status": "experimental" },
+    { "name": "memory-hygiene", "status": "experimental" },
     { "name": "orchestrating", "status": "stable" },
     { "name": "safe-effects", "status": "stable" },
     { "name": "systematic-debugging", "status": "stable" },
