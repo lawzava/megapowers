@@ -2,12 +2,12 @@
 
 ## Current candidate truth
 
-The current repository is one twelve-skill plugin for Claude Code and Codex. Its
+The current repository is one fifteen-skill plugin for Claude Code and Codex. Its
 deterministic suite and runner selftests are engineering regressions only. They
 do not establish that the plugin improves agent behavior.
 
 No credentialed installed-plugin A/B result is published here for the current
-twelve-skill candidate. Installed A/B and PR replay are optional diagnostic
+fifteen-skill candidate. Installed A/B and PR replay are optional diagnostic
 studies, not release gates. Exact-tag install smoke runs after publication and
 proves delivery, not candidate quality.
 

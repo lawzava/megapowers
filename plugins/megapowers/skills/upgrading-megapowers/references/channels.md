@@ -40,3 +40,6 @@ cache with the approved target ref.
 Treat `.codex-marketplace-install.json` and `.in_use` as harness runtime
 markers: exclude them from user-edit detection and target byte parity. The
 recorded Codex `revision` may corroborate Git `HEAD`, but does not replace it.
+Codex `config.toml` marketplace metadata (`last_revision`, `last_updated`) has
+been observed lagging several releases behind the actual snapshot; never treat
+it as current state.
