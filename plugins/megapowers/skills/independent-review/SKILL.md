@@ -35,18 +35,17 @@ go run "$review_tool" review --base <base-revision> --head <head-revision> \
 
 The tool refuses an author and provider that do not differ. It does not infer a
 dirty worktree, include untracked files, or accept routing overrides.
-It rejects secret-like paths and content, binary data, symlinks, submodules,
-and oversized packages; uses fixed Claude and Codex adapters; rejects provider
-binaries inside the repository; and forwards only an explicit environment
-allowlist.
+Remaining package-content rejections are deterministic tool policy; see
+`docs/advanced/independent-review.md`.
 
-Review recaptures input and provider, then constant-time compares the token
-before forwarding credentials or source. It copies the approved provider bytes
-into a private read-only execution path and executes that copy, so later pathname
-replacement cannot change the reviewed binary. Any file or provider-binary change
-requires a new inspection. The pre-dispatch disclosure lists paths, byte count,
-source identity, and hashes. Pass `--approve-external` only after checking those
-fields.
+External dispatch sends artifact bytes to another vendor. Confirm the user
+authorized that egress for this artifact; a review mandate alone does not
+authorize disclosure. A dispatch waiting on a permission prompt or provider
+stall is blocked: surface it and ask; do not wait silently.
+
+Any file or provider-binary change requires a new inspection. The pre-dispatch
+disclosure lists paths, byte count, source identity, and hashes. Pass
+`--approve-external` only after checking those fields.
 Receipts are private and advisory, not an approval gate or tamper-proof
 attestation. The transcript is not retained by default. Use
 `--retain-transcript` only after a sensitive-data decision. Treat the

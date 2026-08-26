@@ -19,7 +19,8 @@ only in an interactive session; a headless or non-interactive session cannot
 finish the grant. Provision a token, complete the grant interactively
 beforehand, or route through a proxy command that owns its own authentication.
 Record where the credential lives, and never write it into configuration
-committed to a repository.
+committed to a repository. When inspecting configuration, print the keys,
+never the values.
 
 Verify with a fresh probe, not the current session: start a new
 non-interactive session, list the server's tools, and call one read-only tool.

@@ -24,7 +24,8 @@ recommended answer and its tradeoff. A question that depends on another open
 question belongs to a later round. After each round, wait for the answers,
 update the tree, and recompute the frontier. Open each round with a short
 restatement of settled decisions and open branches; the restated tree, not
-earlier history, carries the interview state.
+earlier history, carries the interview state. Rounds are requested depth: they
+may exceed a standing prose cap but stay scannable.
 
 ## Resolve facts yourself
 
