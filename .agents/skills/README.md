@@ -1,6 +1,6 @@
 # Repository-local skills
 
-These fourteen relative symlinks expose the canonical
+These relative symlinks, one per shipped skill, expose the canonical
 `plugins/megapowers/skills/<name>/SKILL.md` files to Codex while working in this
 checkout. Git tracks the links; there is no copy or generation step.
 

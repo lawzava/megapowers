@@ -43,8 +43,8 @@ Upstream license: MIT, Copyright (c) 2025 Siqi Chen.
 `grill-me` adapts the round-based grilling interview from
 [mattpocock/skills](https://github.com/mattpocock/skills) by Matt Pocock. The
 current skill rewrites the design-tree and frontier protocol in repository
-style, makes it topic-agnostic, and defers fact resolution to
-`design-and-plan`.
+style, makes it topic-agnostic, and resolves facts itself following the
+`design-and-plan` approach.
 
 Upstream license: MIT, Copyright (c) 2026 Matt Pocock.
 

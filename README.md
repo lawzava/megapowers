@@ -67,8 +67,8 @@ agent access or authority.
 ## What installs
 
 - Fifteen portable `SKILL.md` directories. `skills/catalog.json` marks
-  maturity; `evidence-research`, `mcp-setup`, and `memory-hygiene` start as
-  experimental.
+  maturity; `evidence-research`, `grill-me`, `mcp-setup`, and `memory-hygiene`
+  start as experimental.
 - One shared style for direct, concise technical replies: a forced Claude Code
   output style and a trusted Codex startup hook.
 - One `PreToolUse` shell hook for obvious catastrophic commands.
@@ -99,7 +99,7 @@ Three evidence classes are kept separate:
 3. PR replay uses hidden correctness tests against pinned historical changes.
    It is report-only until repeated real runs support a release threshold.
 
-No current fourteen-skill behavioral result is claimed from selftests. Historical
+No current fifteen-skill behavioral result is claimed from selftests. Historical
 measurements, including null results and their limitations, remain in
 [evals/RESULTS.md](./evals/RESULTS.md). Current protocols and gates are in
 [evals/README.md](./evals/README.md) and

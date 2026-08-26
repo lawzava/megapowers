@@ -56,6 +56,28 @@ grep -Eq 'not parser-enforced|no parser' "$ROOT/docs/orchestration.md" ||
 grep -q 'report-only' "$ROOT/docs/advanced/evals.md" || fail 'eval docs do not label PR replay report-only'
 grep -q 'not a security boundary' "$ROOT/SECURITY.md" || fail 'security boundary warning missing'
 grep -q '| Fifteen skills |' "$ROOT/SECURITY.md" || fail 'security capability count is stale'
+
+catalog_count="$(jq '.skills | length' "$ROOT/plugins/megapowers/skills/catalog.json")"
+[[ "$catalog_count" == 15 ]] || fail "skill catalog count changed to $catalog_count; update every pinned count in this test"
+grep -q 'fifteen-skill' "$ROOT/README.md" || fail 'README does not carry the current skill count'
+grep -q 'fifteen-skill' "$ROOT/evals/RESULTS.md" || fail 'RESULTS current-candidate section does not carry the current skill count'
+# RESULTS.md keeps dated counts below its historical divider; only the
+# current-candidate section must track the catalog.
+for file in README.md .agents/skills/README.md; do
+  if grep -Eqi '(ten|eleven|twelve|thirteen|fourteen|sixteen)[- ]skill' "$ROOT/$file"; then
+    fail "$file restates a stale skill count"
+  fi
+done
+if sed -n '1,/^## Historical record$/p' "$ROOT/evals/RESULTS.md" |
+  grep -Eqi '(ten|eleven|twelve|thirteen|fourteen|sixteen)[- ]skill'; then
+  fail 'evals/RESULTS.md current-candidate section restates a stale skill count'
+fi
+experimental_list="$(jq -r '[.skills[] | select(.status == "experimental") | "`" + .name + "`"] | join(", ")' \
+  "$ROOT/plugins/megapowers/skills/catalog.json")"
+while IFS= read -r name; do
+  grep -q "\`$name\`" "$ROOT/README.md" ||
+    fail "README omits experimental skill $name (catalog experimental set: $experimental_list)"
+done < <(jq -r '.skills[] | select(.status == "experimental") | .name' "$ROOT/plugins/megapowers/skills/catalog.json")
 grep -Eq 'inspect --file .* --provider claude' "$ROOT/docs/advanced/independent-review.md" ||
   fail 'review docs do not bind inspection to the provider'
 grep -q 'approval_token' "$ROOT/docs/advanced/independent-review.md" ||
