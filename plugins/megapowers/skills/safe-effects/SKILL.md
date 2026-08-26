@@ -12,7 +12,9 @@ not authority to execute a different external change.
 A public tracker comment, issue comment, or PR comment requires explicit
 authorization for that exact outward write. Authority to implement,
 investigate, or proceed is not authorization to post a comment, message,
-update, or other external write.
+update, or other external write. Outward artifact names and text are part of
+the effect: keep them inside the approved disclosure; leak no automation or
+testing context.
 
 Before acting, record the mutation, sensitive data involved, affected people or
 systems, blast radius, reversibility and real rollback, approval provenance,

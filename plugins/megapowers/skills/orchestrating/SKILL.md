@@ -1,6 +1,6 @@
 ---
 name: orchestrating
-description: Use when a task is non-trivial, multi-part, high-stakes, or must be routed across agents, handoffs, reviews, parallel work, or durable runs.
+description: Use when a task is non-trivial or multi-part, or must be routed across agents, handoffs, reviews, parallel work, or durable runs.
 ---
 
 # Orchestrating

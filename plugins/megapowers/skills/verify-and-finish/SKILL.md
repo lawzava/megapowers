@@ -1,6 +1,6 @@
 ---
 name: verify-and-finish
-description: Use when preparing to claim success, hand work off, commit, merge, open a PR, publish, deploy, or close a task.
+description: Use when preparing to claim success, hand work off, commit, merge, open a PR, publish, deploy, or close a task, including in headless and SDK-driven sessions.
 ---
 
 # Verify and Finish
@@ -36,7 +36,8 @@ specification with verified behavior. Do not create a durable specification
 without repository convention or user approval.
 
 Before a handoff, commit, PR, merge, release, or cleanup, run the repository's
-canonical checks and inspect the current diff and workspace state. When the
+canonical checks and inspect the current diff and workspace state. Sweep the
+diff for generated excess: provenance comments, redundant code, churn. When the
 task names a target branch, confirm the checked-out branch matches that named
 target before the commit; on a mismatch, stop and resolve it first. Do not
 commit, publish, merge, delete a branch, or remove a worktree unless the user

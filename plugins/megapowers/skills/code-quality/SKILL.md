@@ -1,6 +1,6 @@
 ---
 name: code-quality
-description: Use when implementation, maintenance, review, refactor, architecture, API, error, concurrency, or debugging work requires a code-quality judgment.
+description: Use when a code structure, API, error, concurrency, or idiom decision is not settled by the repository or its configured tools.
 ---
 
 # Code Quality

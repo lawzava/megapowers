@@ -72,6 +72,7 @@ $EXPECTED
 EOF
 
 AGENT_RULES="$ROOT/AGENTS.md"
+GRILL="$SKILLS/grill-me/SKILL.md"
 DESIGN="$SKILLS/design-and-plan/SKILL.md"
 FINISH="$SKILLS/verify-and-finish/SKILL.md"
 QUALITY="$SKILLS/code-quality/SKILL.md"
@@ -94,7 +95,17 @@ contains_document 'design rejects stale specifications as current evidence' "$DE
 contains_document 'design keeps specifications dependency-free' "$DESIGN" 'plain Markdown.*do not require.*CLI.*package.*fixed directory.*generated command.*archive'
 contains_document 'design gates durable specifications' "$DESIGN" 'durable artifact.*repository convention.*user approval'
 
+contains_document 'grill-me makes the interview the deliverable' "$GRILL" 'interview is the deliverable'
+contains_document 'grill-me asks the whole frontier each round' "$GRILL" 'ask the whole frontier in one round'
+contains_document 'grill-me gives one recommended answer per question' "$GRILL" 'each question one recommended answer'
+contains_document 'grill-me carries state in the restated tree' "$GRILL" 'restated tree.*carries the interview state'
+contains_document 'grill-me resolves facts itself' "$GRILL" 'facts are your job.*decisions are the user'
+contains_document 'grill-me defers dependent questions to later rounds' "$GRILL" 'depends on another open question.*later round'
+contains_document 'grill-me withholds execution authority' "$GRILL" 'finished interview does not authorize.*execution needs its own instruction'
+contains_document 'grill-me treats rounds as requested depth' "$GRILL" 'rounds? (are|count as) requested depth'
+
 contains 'orchestration prefers native capabilities' "$SKILLS/orchestrating/SKILL.md" 'native (harness )?(capabilities|agents|subagents|goals|planning|permissions|review)'
+not_contains 'orchestrating description avoids the review trigger noun' 'high-stakes' "$SKILLS/orchestrating/SKILL.md"
 contains_document 'orchestration explicitly authorizes native delegation' "$SKILLS/orchestrating/SKILL.md" 'explicitly authorizes? native (agents?|subagents?)|native (agent|subagent) delegation is explicitly authorized'
 contains_document 'orchestration routes independent read-heavy lanes' "$SKILLS/orchestrating/SKILL.md" '(two|2) or more (independent |disjoint )?(read-heavy )?(lanes|workstreams)|read-heavy (lanes|workstreams).*(independent|parallel)'
 contains_document 'orchestration dispatches eligible lanes in parallel' "$SKILLS/orchestrating/SKILL.md" '(dispatch|run|delegate).*(lanes|workstreams).*(parallel|concurrent)|(parallel|concurrent).*(dispatch|run|delegate)'
@@ -115,6 +126,7 @@ contains_document 'autonomy requires a currently approved goal' "$SKILLS/autonom
 contains_document 'autonomy does not inherit handoff authority' "$SKILLS/autonomous-run/SKILL.md" '(handoff|harness switch).*(does not|never).*(authoriz|authority)'
 contains_document 'autonomy stops on workspace mismatch' "$SKILLS/autonomous-run/SKILL.md" '(workspace|worktree|branch|HEAD).*(mismatch|contradict).*(stop|do not execute|before acting)'
 contains_document 'autonomy distinguishes paused and blocked' "$SKILLS/autonomous-run/SKILL.md" 'paused.*cap.*blocked.*external|blocked.*external.*paused.*cap'
+contains_document 'autonomy surfaces provider-limit blocks once' "$SKILLS/autonomous-run/SKILL.md" 'provider limit.*surface the block once|surface the block once.*silent'
 contains_document 'autonomy checkpoints delegate ownership and effect authority' "$SKILLS/autonomous-run/SKILL.md" 'delegate ownership.*return.*artifacts?.*effect authority'
 
 contains_document 'research fixes the question decision time boundary and stopping rule' "$RESEARCH" 'question.*decision.*time boundary.*stopping rule'
@@ -154,6 +166,7 @@ contains_document 'prose makes evaluative claims concrete' "$PROSE" 'actor.*mech
 contains_document 'prose calibrates unmeasured strength' "$PROSE" 'unmeasured intensifiers?.*(number|bounded scope|source)'
 not_contains 'prose imposes no punctuation ban' 'ban (commas|colons|semicolons|dashes|punctuation)|never use (commas|colons|semicolons|dashes|punctuation)' "$PROSE" "$AGENT_RULES"
 
+contains 'code quality triggers on decisions the repository does not settle' "$QUALITY" 'not settled by the repositor'
 contains 'language references load lazily' "$QUALITY" 'load (exactly|only) one.*language reference'
 for decision in maintenance review refactor architecture API concurrency debugging; do
   contains "language gate includes $decision" "$QUALITY" "$decision"
@@ -183,6 +196,7 @@ contains 'effects require duplicate prevention' "$SKILLS/safe-effects/SKILL.md" 
 contains 'effects require target readback' "$SKILLS/safe-effects/SKILL.md" '(target|external).*readback|readback.*(target|external)'
 contains_document 'effects reconcile retries and crashes' "$SKILLS/safe-effects/SKILL.md" 'retry.*crash.*reconcil'
 contains_document 'effects use durable idempotency keys where repeats are possible' "$SKILLS/safe-effects/SKILL.md" 'durable idempotency key.*repeated external mutation'
+contains_document 'effects keep outward naming inside approved disclosure' "$SKILLS/safe-effects/SKILL.md" 'artifact names.*approved disclosure|approved disclosure.*artifact names'
 contains_document 'effects stop re-refusing under direct supervision' "$SKILLS/safe-effects/SKILL.md" 'interactive supervision.*confirm.*once.*without re-refusing'
 contains_document 'prose prohibits routine progress comments' "$PROSE" '(do not|never).*(publish|post|send).*(routine progress|progress narration).*(tracker|issue|PR)? ?comments?|comments?.*(do not|never).*(routine progress|progress narration)'
 contains_document 'prose prohibits published test transcripts' "$PROSE" '(do not|never).*(publish|post|send|dump).*(test transcripts?)|test transcripts?.*(do not|never).*(publish|post|send|dump)'
@@ -193,6 +207,8 @@ contains_document 'completion binds stale-prone proof to artifact identity' "$SK
 contains_document 'completion requires real user journeys or agreed substitutes' "$SKILLS/verify-and-finish/SKILL.md" 'real user journey.*agreed substitute oracle'
 contains_document 'completion proves the load-bearing safety fact proportionately' "$SKILLS/verify-and-finish/SKILL.md" 'load-bearing safety fact.*proof level'
 contains_document 'completion confirms the named target branch' "$SKILLS/verify-and-finish/SKILL.md" 'checked-out branch.*named target.*(edit|commit)'
+contains_document 'completion sweeps generated excess before a PR' "$FINISH" 'generated excess.*provenance comments'
+contains 'completion applies in headless sessions' "$FINISH" 'headless.*(SDK|driven)|SDK-driven'
 contains_document 'completion reconciles affected behavior specifications' "$FINISH" 'before completion.*reconcile.*affected.*repository-owned behavior specification.*verified behavior'
 contains_document 'completion does not create unapproved durable specifications' "$FINISH" 'do not create.*durable specification.*without.*repository convention.*user approval'
 
@@ -222,6 +238,7 @@ contains_document 'mcp setup names the headless auth limitation' "$MCP" '(headle
 contains_document 'mcp setup verifies with a fresh redacted probe' "$MCP" 'fresh probe.*redact|verify.*fresh.*(probe|session).*redact'
 contains_document 'mcp setup keeps one registration channel per server' "$MCP" 'one registration channel per server'
 contains_document 'mcp setup retests sandboxed probe failures' "$MCP" 'sandbox.*(re-?run|retest).*outside.*before concluding|outside the sandbox before concluding'
+contains_document 'mcp setup never prints configuration values' "$MCP" 'print (the )?keys, never (the )?values'
 
 contains 'review resolves the packaged tool beside the skill' "$REVIEW" 'scripts/megapowers-review\.go.*beside this.*SKILL\.md|beside this.*SKILL\.md.*scripts/megapowers-review\.go'
 contains 'review exposes inspect mode' "$REVIEW" 'go run "\$review_tool" inspect'
@@ -236,6 +253,8 @@ contains 'review labels receipts advisory' "$REVIEW" 'receipt.*advisory|advisory
 contains 'review disables transcript retention by default' "$REVIEW" 'transcript.*(off|not retained).*default|not retain.*transcript.*default'
 contains_document 'review states artifact intent' "$REVIEW" 'state.*artifact intent'
 contains_document 'review explains dismissed findings' "$REVIEW" 'explain.*dismissed findings?'
+contains_document 'review requires explicit egress authorization' "$REVIEW" 'authorized (that|this) egress|egress.*explicit(ly)? authoriz'
+contains_document 'review surfaces stalled dispatches instead of waiting' "$REVIEW" '(permission prompt|provider stall).*surface|do not wait silently'
 
 CATALOG="$SKILLS/catalog.json"
 catalog_names="$(jq -r '.skills[].name' "$CATALOG" 2>/dev/null | sort)"
@@ -244,8 +263,8 @@ if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count 15 '
   (.skills | length) == $count and
   ([.skills[].name] | sort) == ([.skills[].name] | unique | sort) and
   ([.skills[].status] | all(. == "stable" or . == "experimental")) and
-  ([.skills[] | select(.name == "evidence-research" and .status == "experimental")] | length) == 1 and
-  ([.skills[] | select(.name == "memory-hygiene" and .status == "experimental")] | length) == 1
+  ([.skills[] | select(.status == "experimental") | .name] | sort) ==
+    ["evidence-research", "grill-me", "mcp-setup", "memory-hygiene"]
 ' "$CATALOG" >/dev/null 2>&1; then ok 'skill lifecycle catalog is complete and portable'; else bad 'skill lifecycle catalog is complete and portable'; fi
 
 deleted='brainstorming|executing-plans|finishing-a-development-branch|project-memory|receiving-code-review|requesting-code-review|subagent-driven-development|test-driven-development|using-git-worktrees|using-megapowers|verification-before-completion|writing-plans|writing-skills|best-of-n|configuring-model-routes|council-adjudication|cross-model-verification|effect-broker|multi-agent-delegation|wayfinding|designing-frontends|golang-patterns|greenfield-(go|python|ts)-stack|python-patterns|scripting-in-go|typescript-patterns'

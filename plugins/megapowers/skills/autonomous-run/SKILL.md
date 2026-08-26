@@ -31,6 +31,7 @@ automatically across harnesses.
 
 Use `paused` when a cap or intentional stop ends authorized execution. Preserve
 the checkpoint and wait for renewed authority. Use `blocked` only for a concrete
-external dependency outside current authority, with its evidence and unblocking
-event. Mark done only after every criterion passes its stated oracle. Use
+external dependency outside current authority, such as a provider limit or
+expired credential, with its evidence and unblocking event; surface the block
+once rather than waiting silently. Mark done only after every criterion passes its stated oracle. Use
 `safe-effects` for every external mutation.
