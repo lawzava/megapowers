@@ -5,6 +5,28 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.22.0 - 2026-08-27
+
+### Changed
+
+- `orchestrating` now scans task lanes before deep work, delegates one bounded
+  output-only investigation, batches independent read-heavy lanes, and uses
+  native team or task coordination for four or more durable lanes. It also
+  preflights child capabilities, limits inherited context, requires bounded
+  structured returns, uses milestone handoffs and delta-only follow-ups, and
+  controls nested delegation explicitly.
+- The orchestration execution map documents direct-agent, durable-team,
+  fresh-context, long-wait, and single-writer boundaries for Claude Code and
+  Codex without adding a scheduler.
+
+### Added
+
+- Installed A/B evaluation now separates latent three-lane fan-out, bounded
+  output-only work, and dependent inline work. Its fail-closed gates reject
+  serial fan-out, failed or excess spawn attempts, missing completions, raw
+  payload returns, invalid return schemas, oversized results, and unnecessary
+  inline delegation.
+
 ## 0.21.0 - 2026-08-26
 
 ### Added
