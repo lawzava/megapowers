@@ -25,10 +25,14 @@
   },
   "orchestration": {
     "minimum_successful_spawns": 3,
+    "minimum_output_only_spawns": 1,
+    "maximum_inline_spawns": 0,
     "minimum_fact_retention": 1.0,
     "maximum_invented_facts": 0,
     "require_spawns_before_first_wait": true,
+    "require_spawn_batch_before_completion": true,
     "require_matching_completions": true,
+    "require_bounded_output_only_return": true,
     "require_complete_trace": true
   },
   "safe_effects": {

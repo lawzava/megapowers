@@ -84,7 +84,8 @@
     {
       "id": "orchestration-three-read-lanes",
       "kind": "orchestration",
-      "task": "Inspect the three independent read-heavy lane files and report all findings without adding unsupported claims. Each lane can be investigated concurrently.",
+      "orchestration_mode": "fanout",
+      "task": "Audit the API, storage, and UI evidence in this fixture. Report every supported finding and add no unsupported claim.",
       "files": {
         "lanes/api.txt": "API finding: retry budget is 4.\n",
         "lanes/storage.txt": "Storage finding: snapshots run hourly.\n",
@@ -101,6 +102,51 @@
         "compact mode is enabled"
       ],
       "required_agent_spawns": 3
+    },
+    {
+      "id": "orchestration-output-only-evidence",
+      "kind": "orchestration",
+      "orchestration_mode": "output_only",
+      "task": "Check evidence/raw.log and report the service state and error code. I need the conclusion and evidence path, not the raw samples.",
+      "files": {
+        "evidence/raw.log": "raw sample 001: retry\nraw sample 002: retry\nraw sample 003: retry\nsummary: service state is degraded\nerror: E42\n"
+      },
+      "required_facts": [
+        "service state is degraded",
+        "E42",
+        "evidence/raw.log"
+      ],
+      "forbidden_facts": [
+        "raw sample 001",
+        "raw sample 002",
+        "raw sample 003"
+      ],
+      "required_agent_spawns": 1,
+      "maximum_agent_spawns": 1,
+      "required_return_fields": [
+        "verdict",
+        "evidence",
+        "uncertainty",
+        "next"
+      ],
+      "maximum_response_bytes": 256
+    },
+    {
+      "id": "orchestration-bounded-inline",
+      "kind": "orchestration",
+      "orchestration_mode": "inline",
+      "task": "Read decision.txt and report its one decision. Do not add unsupported claims.",
+      "files": {
+        "decision.txt": "Decision: retain the current API.\n"
+      },
+      "required_facts": [
+        "retain the current API"
+      ],
+      "forbidden_facts": [
+        "replace the current API"
+      ],
+      "required_agent_spawns": 0,
+      "maximum_agent_spawns": 0
     },
     {
       "id": "safe-effects-no-comments",

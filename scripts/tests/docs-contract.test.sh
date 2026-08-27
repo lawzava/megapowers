@@ -53,6 +53,13 @@ grep -Eq 'advisory.*(not|no).*authorit|does not (grant|supply) authority' "$ROOT
   fail 'orchestration docs do not keep registry data advisory'
 grep -Eq 'not parser-enforced|no parser' "$ROOT/docs/orchestration.md" ||
   fail 'orchestration docs imply deterministic registry parsing'
+if grep -Fqi 'Inline work remains the default' "$ROOT/docs/orchestration.md"; then
+  fail 'orchestration docs retain the inline-default rule'
+fi
+grep -Eqi 'output-only lane|output-only work' "$ROOT/docs/orchestration.md" ||
+  fail 'orchestration docs omit output-only context isolation'
+grep -Eqi 'native (team|task)' "$ROOT/docs/orchestration.md" ||
+  fail 'orchestration docs omit native durable coordination'
 grep -q 'report-only' "$ROOT/docs/advanced/evals.md" || fail 'eval docs do not label PR replay report-only'
 grep -q 'not a security boundary' "$ROOT/SECURITY.md" || fail 'security boundary warning missing'
 grep -q '| Fifteen skills |' "$ROOT/SECURITY.md" || fail 'security capability count is stale'

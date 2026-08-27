@@ -1,6 +1,6 @@
 # Harness support
 
-Last reviewed: 2026-08-18.
+Last reviewed: 2026-08-27.
 
 Current stable Claude Code and Codex are the only supported harnesses. Portable
 skills may load elsewhere, but this repository does not test or document those
@@ -13,7 +13,7 @@ environments.
 | Fifteen task skills | Supported | Supported |
 | Default communication style | Forced plugin output style | Trusted startup hook |
 | Destructive-command guard | High-confidence denies only | High-confidence denies only |
-| Native agents and parallel work | Use harness-native features | Use harness-native features |
+| Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
 | Independent review provider | Claude or Codex CLI, different from author | Claude or Codex CLI, different from author |
@@ -31,6 +31,11 @@ detection.
 Repository instructions, existing code, and configured project tools are
 authoritative. megapowers supplies workflow defaults only where the repository
 is silent.
+
+Orchestration is a portable decision contract, not a scheduler. The lead
+preflights tools, authentication, ownership, permissions, and write authority
+before each dispatch. Native agent, team/task, and wait semantics remain
+harness-owned. Verify current support against the exact CLI and plugin revision.
 
 ## Communication style
 

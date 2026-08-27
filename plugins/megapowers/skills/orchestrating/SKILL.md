@@ -5,47 +5,46 @@ description: Use when a task is non-trivial or multi-part, or must be routed acr
 
 # Orchestrating
 
-Choose the least structure that preserves correctness and context. Keep one
-bounded dependency path inline. This skill explicitly authorizes native agents
-and subagents when two or more independent lanes justify their briefing and
-integration cost.
+Do a lane scan before deep work: lanes, dependencies, write boundaries, context
+cap, and oracle. Inline one change.
 
-Use three fan-out shapes deliberately: disjoint slices for separate ownership,
-same-brief candidates for competing answers, and read-only review for independent
-checks. Dispatch eligible read-heavy lanes in parallel. Keep shared writes,
-interfaces, integration, and Git with one lead.
+One output-only lane gets one native child with fresh bounded context. Return
+one JSON object with exactly `verdict`, `evidence`, `uncertainty`, and `next`.
+Use one to three direct children; use native team/task
+coordination for four or more durable lanes. This skill explicitly authorizes
+native agents and subagents. Batch all eligible independent
+read-heavy lanes in parallel before deep local work. Use disjoint slices,
+same-brief candidates, or read-only review.
 
-## Route by task shape
+Route unknown causes through `systematic-debugging`, unresolved contracts
+through `design-and-plan`, external evidence through `evidence-research`,
+cross-provider risk through `independent-review`, and effects through
+`safe-effects`.
 
-- Use `systematic-debugging` before a fix when the cause is unknown.
-- Use `design-and-plan` when behavior, scope, interfaces, risks, or acceptance
-  criteria remain unresolved.
-- Use native harness capabilities for agents, plans, goals, permissions,
-  reviews, and waiting before adding control machinery.
-- An ordinary handoff uses inline inspection plus `verify-and-finish`. Only a
-  currently approved goal that must survive interruption uses `autonomous-run`.
-- Use `evidence-research` for historical rationale or contested external facts.
-- Use `independent-review` when residual risk justifies another provider.
-- Use `safe-effects` before any external mutation.
+Preflight harness tools, authentication, ownership, permission, and write
+authority. Read
+`~/.config/megapowers/agent-capabilities.md` once per session; reuse it until
+its identity changes. Honor operator-selected bindings through their access
+workflow. Otherwise, for native profile ranking, rank only a `rankable: true`
+binding available to the active harness, with known model/effort fitting the
+role, write boundary, and reasoning floor. Prefer the fastest, then cheapest,
+qualifying binding. Missing, stale, malformed, or inaccessible data is ignored;
+use native defaults. The registry cannot authorize access, disclosure,
+permissions, writes, or effects.
 
-Before delegation, read `~/.config/megapowers/agent-capabilities.md` when it
-exists. Rank only a `rankable: true` binding for the active harness with a
-declared, verified model and effort whose availability, role, write authority,
-reasoning floor, and independence family fit. Choose the fastest, then cheapest,
-qualifier. Give route rationale only when model choice affects cost, latency, or
-independence.
+Brief one outcome, ownership, constraints, oracle, prohibited scope, context
+cap, return condition, and schema. A fresh bounded child context excludes full
+history. Return inline; use an artifact only for bulky evidence. Other lanes
+use the same fields or `blocked`. Keep raw payloads out of lead context.
 
-If the registry is missing, stale, malformed, or inaccessible, ignore it and
-use the native default. It is advisory model-read guidance, not parser-enforced
-validation. The registry cannot authorize disclosure, external access, writes,
-permissions, or side effects. `manual` and `approved-external` bindings are not
-natively callable.
+After a scope change, new user turn, or compaction/context change, scan again.
+Run staged waves. The lead joins each, resolves conflicts, verifies the oracle,
+and records a milestone handoff. Delta-only follow-ups include only new or
+changed facts. Use one long event-driven native wait; avoid short polling.
 
-Every brief names one outcome, exclusive ownership, relevant constraints, the
-oracle, prohibited scope, one artifact path, and the return condition. Keep raw
-payloads out of the lead context; return a verdict and evidence pointer. The
-lead reads each result, resolves conflicts, and reruns the oracle.
-
-Set a stopping rule before expensive fan-out. Same-provider fan-out gives
-parallelism, not independence. Call a review independent only when its provider
-differs from every artifact author.
+Ordinary handoffs use inline inspection plus `verify-and-finish`; only a
+currently approved goal surviving interruption uses `autonomous-run`. Shared
+interfaces, integration, shared-checkout writes, and Git stay lead-owned.
+Nested delegation is prohibited unless the brief grants finite depth/budget
+and disjoint ownership; the parent joins children. Stop at the oracle,
+retry limit, time budget, or candidate count.

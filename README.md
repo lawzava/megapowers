@@ -57,7 +57,8 @@ the full body loads only when selected.
 
 Repository instructions, existing code, and configured project tools remain
 authoritative. See [docs/orchestration.md](./docs/orchestration.md) for the
-native-first task shapes.
+native-first task shapes and execution map. It adds no scheduler or agent
+runtime.
 
 For non-trivial delegation, `orchestrating` can read one optional personal
 capability registry from `~/.config/megapowers/agent-capabilities.md`. The file
