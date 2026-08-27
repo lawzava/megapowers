@@ -32,7 +32,19 @@ for claim in \
   "orchestration accepts three completed agents before wait" \
   "orchestration rejects two agents" \
   "orchestration rejects an early wait" \
+  "orchestration rejects serial interleaving before the spawn batch" \
   "orchestration rejects a missing completion" \
+  "orchestration distinguishes output-only and inline work" \
+  "orchestration rejects missing output-only agent" \
+  "orchestration rejects excess output-only agents" \
+  "orchestration rejects raw output-only payload" \
+  "orchestration rejects failed output-only spawn attempt" \
+  "orchestration rejects an invalid bounded return" \
+  "orchestration rejects an oversized bounded return" \
+  "orchestration rejects an inline agent" \
+  "orchestration rejects failed inline spawn attempt" \
+  "orchestration applies the effective fanout gate to ordering" \
+  "orchestration rejects a non-single output-only configuration" \
   "safe effects accepts a complete write-free trace" \
   "safe effects rejects every comment attempt" \
   "safe effects rejects missing trace_complete" \

@@ -8,16 +8,20 @@ second scheduler or agent runtime.
 | Task shape | Route |
 |---|---|
 | One clear, bounded change | Work inline. Load the task skill that supplies the missing discipline. |
+| One bounded output-only investigation | Use one fresh-context agent. Return one JSON object with `verdict`, `evidence`, `uncertainty`, and `next`, not the raw payload. |
 | Unclear behavior, interface, risk, or acceptance oracle | Use `design-and-plan`. |
 | Several disjoint deliverables | Use native agents with explicit, non-overlapping ownership. |
+| Four or more durable lanes, dependencies, or repeated follow-ups | Use native team or task coordination when the harness provides it. Otherwise use staged waves. |
 | Ordinary handoff, takeover, or harness switch | Inspect current state inline and use `verify-and-finish`; prior authority does not transfer. |
 | An approved goal that must survive interruption | Use a native goal plus `autonomous-run` checkpoints. |
 | Historical rationale or contested evidence | Use `evidence-research`; research does not authorize a change or publication. |
 | Residual high-stakes uncertainty after executable checks | Use `independent-review`. |
 | Deploy, message, migration, charge, destructive query, or external write | Use `safe-effects` before execution. |
 
-`orchestrating` applies this routing to non-trivial work. Inline work remains the
-default because every dispatch has briefing, integration, and review cost.
+`orchestrating` starts non-trivial work with a short lane scan. Dispatch
+independent read-heavy lanes and bounded output-only work before deep local work.
+Keep one bounded dependency path inline. Repeat the scan after scope changes or
+context compaction.
 
 ## Choose from one personal registry
 
@@ -78,6 +82,18 @@ account identifiers, command lines, or private source paths in it.
 
 ## Delegate safely
 
+Use direct agents for one to three independent lanes. For larger or durable
+work, prefer native team or task state that records ownership, dependencies, and
+completion. If the harness lacks it, dispatch staged waves and synthesize before
+the next wave. Use milestone checkpoints or a fresh-lead handoff before the
+lead context becomes a program log.
+
+Before dispatch, confirm the child has the required tools, MCP access,
+authentication, network, permissions, and write authority. Read the personal
+registry once per session, then reuse it until its identity changes. Use fresh
+or bounded child context for self-contained work. Use full history only when a
+brief cannot carry the required context.
+
 A useful task brief names:
 
 - one outcome;
@@ -85,11 +101,21 @@ A useful task brief names:
 - relevant interfaces and constraints;
 - the acceptance oracle;
 - what the worker must not change;
-- one return artifact and the condition for returning it.
+- the return condition and whether nested delegation is allowed.
+
+The default return contains a verdict, evidence references, uncertainty, and
+the next decision. An output-only task returns those fields as one JSON object.
+Keep raw payloads outside the lead context. Require an
+artifact path only when bulky evidence cannot fit this bounded return. Send
+delta-only follow-ups with only new or changed facts.
 
 Parallel ownership must be disjoint. Keep shared interfaces and dependent tasks
 sequential. The lead remains the single writer for integration and Git, reads
 the returned artifacts, resolves conflicts, and reruns the real oracle.
+
+Continue lead work while agents run. Then use one longest supported wait and
+avoid short polling. Batch eligible agents before waiting. Do not accept serial
+spawn-complete interleaving as parallel fan-out.
 
 Same-provider agents provide parallelism and context separation. They do not
 provide vendor independence. Use the trusted review path only when another
