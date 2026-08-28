@@ -49,7 +49,7 @@ the full body loads only when selected.
 | Preserve honest state across long or interrupted work | `autonomous-run` |
 | Send an explicit artifact to a different provider for adversarial review | `independent-review` |
 | Audit memory and automatically apply one approved evidence-based cleanup | `memory-hygiene` |
-| Write direct human-facing prose without dropping or inventing facts | `humanizing-prose` |
+| Draft, rewrite, edit, or preserve prose without dropping or inventing facts | `humanizing-prose` |
 | Make code-quality judgments from repository context and stable language guidance | `code-quality` |
 | Upgrade Megapowers without changing its source, scope, pins, or local edits | `upgrading-megapowers` |
 | Research current facts, historical rationale, or contested evidence | `evidence-research` |

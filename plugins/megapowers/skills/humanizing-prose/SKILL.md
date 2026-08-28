@@ -1,6 +1,6 @@
 ---
 name: humanizing-prose
-description: Use when drafting or editing plans, task briefs, commits, responses, reviews, PRs, docs, release notes, errors, or any other human-facing prose.
+description: Use when the task itself is to draft, rewrite, edit, or preserve human-facing prose for clarity, attribution, or proportion; do not select merely because other work ends with a response.
 ---
 
 # Humanizing Prose

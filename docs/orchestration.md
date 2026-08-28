@@ -18,10 +18,12 @@ second scheduler or agent runtime.
 | Residual high-stakes uncertainty after executable checks | Use `independent-review`. |
 | Deploy, message, migration, charge, destructive query, or external write | Use `safe-effects` before execution. |
 
-`orchestrating` starts non-trivial work with a short lane scan. Dispatch
-independent read-heavy lanes and bounded output-only work before deep local work.
-Keep one bounded dependency path inline. Repeat the scan after scope changes or
-context compaction.
+`orchestrating` starts work that matches the table with a short lane scan. It
+dispatches independent read-heavy lanes before the lead reads them and sends
+bounded output-only work to one fresh-context agent. A qualifying lane left
+inline is a workflow failure unless native agents are unavailable. Keep one
+bounded or sequential dependency path inline. Repeat the scan after scope or
+context changes.
 
 ## Choose from one personal registry
 

@@ -157,6 +157,7 @@ eval_tests=(
   evals/tests/score-failclosed.test.sh
   evals/studies/tests/installed-ab-contract.test.sh
   evals/studies/tests/pr-replay-contract.test.sh
+  evals/studies/tests/sandbox-broker-contract.test.sh
   evals/studies/tests/session-observability-contract.test.sh
 )
 
