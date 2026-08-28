@@ -231,6 +231,16 @@ func validateRow(row resultRow) error {
 			return fmt.Errorf("metric %q is not finite", name)
 		}
 	}
+	if row.Study == installedABStudy && row.EvidenceClass == "behavioral" {
+		outcome, hasOutcome := row.Metrics["outcome_success"]
+		if !hasOutcome || (outcome != 0 && outcome != 1) {
+			return errors.New("installed-plugin rows require binary outcome_success")
+		}
+		taskSuccess, hasTaskSuccess := row.Metrics["task_success"]
+		if !hasTaskSuccess || taskSuccess != boolFloat(row.Verdict == "pass") {
+			return errors.New("installed-plugin task_success must match the verdict")
+		}
+	}
 	if row.Artifacts == nil {
 		return errors.New("artifacts must be an object")
 	}
@@ -574,6 +584,23 @@ func discordantOutcomes(pairs map[string]map[string]string) (int, int) {
 	return treatmentOnly, controlOnly
 }
 
+func comparisonVerdict(row resultRow) string {
+	if row.Study == installedABStudy && row.EvidenceClass == "behavioral" {
+		if row.Metrics["outcome_success"] == 1 {
+			return "pass"
+		}
+		return "fail"
+	}
+	return row.Verdict
+}
+
+func boolFloat(value bool) float64 {
+	if value {
+		return 1
+	}
+	return 0
+}
+
 func passHatK(pass, n, k int) float64 {
 	if k <= 0 || n < k || pass < 0 || pass > n {
 		return math.NaN()
@@ -649,11 +676,12 @@ func printScorecard(rows []resultRow) {
 			}
 		}
 		cell := behavioral[key]
-		cell.arms[row.Arm].add(row.Verdict)
+		verdict := comparisonVerdict(row)
+		cell.arms[row.Arm].add(verdict)
 		if cell.pairs[row.BlockID] == nil {
 			cell.pairs[row.BlockID] = map[string]string{}
 		}
-		cell.pairs[row.BlockID][row.Arm] = row.Verdict
+		cell.pairs[row.BlockID][row.Arm] = verdict
 		for name, value := range row.Metrics {
 			if cell.metrics[row.Arm][name] == nil {
 				cell.metrics[row.Arm][name] = &metricAggregate{}
@@ -689,6 +717,8 @@ func printScorecard(rows []resultRow) {
 		}
 		sort.Strings(keys)
 		fmt.Println("## Behavioral treatment/control evidence")
+		fmt.Println()
+		fmt.Println("Installed-plugin comparisons use outcome_success; treatment activation remains visible in task_success and the row verdict.")
 		fmt.Println()
 		fmt.Println("| study | case | harness | treatment | control | delta | mcnemar_p | treatment pass^3 | control pass^3 |")
 		fmt.Println("|---|---|---|---:|---:|---:|---:|---:|---:|")

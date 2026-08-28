@@ -17,9 +17,17 @@ for claim in \
   "temporary state removed after actor failure" \
   "actor errors fail closed" \
   "actor failures publish explicit rejection" \
+  "behavioral rows expose action progress metrics" \
+  "manifest schema records the run environment" \
   "already-direct prose remains unchanged" \
+  "fact alternatives accept paraphrase and reject semantic reversal" \
+  "treatment prose requires declared skill activation" \
+  "control prose remains outcome-only" \
+  "activation-only treatment failures leave observed outcome lift unchanged" \
   "autonomous status resumption stays report-only" \
   "workflow accepts ordered skill selection" \
+  "treatment workflow requires declared skill activation" \
+  "control workflow remains outcome-only" \
   "workflow rejects a missing skill" \
   "workflow rejects reversed skill order" \
   "workflow rejects a forbidden skill" \
@@ -30,6 +38,8 @@ for claim in \
   "workflow rejects relaxed gates" \
   "continuity workflows stay report-only" \
   "orchestration accepts three completed agents before wait" \
+  "treatment orchestration requires declared skill activation" \
+  "control orchestration remains outcome-only" \
   "orchestration rejects two agents" \
   "orchestration rejects an early wait" \
   "orchestration rejects serial interleaving before the spawn batch" \
@@ -60,6 +70,8 @@ for claim in \
   "broker request carries the disposable actor home" \
   "isolation attestation rejects credentials and siblings" \
   "actor deadlines fail closed" \
+  "resume reports the exact manifest mismatch field" \
+  "resume reports the exact row locale mismatch" \
   "insufficient paired runs fail study acceptance" \
   "treatment reliability fails study acceptance" \
   "control outcomes remain diagnostic" \
@@ -80,6 +92,17 @@ fi
 go run "$ROOT/evals/studies/installed-ab/run.go" --validate-config \
   --cases "$ROOT/evals/studies/installed-ab/cases.json" \
   --gates "$ROOT/evals/studies/installed-ab/gates.json" >/dev/null
+
+jq -e '
+  (.cases[] | select(.id == "orchestration-three-read-lanes") | .required_skill_order) == ["orchestrating"] and
+  (.cases[] | select(.id == "orchestration-output-only-evidence") | .required_skill_order) == ["orchestrating"] and
+  (.cases[] | select(.id == "orchestration-bounded-inline") | .required_skill_order) == ["orchestrating"] and
+  (.cases[] | select(.id == "design-plan-ambiguous-contract") | .required_skill_order) == ["orchestrating", "design-and-plan"] and
+  (.cases[] | select(.id == "continuity-multisession-resume") | .required_skill_order) == ["orchestrating", "autonomous-run"]
+' "$ROOT/evals/studies/installed-ab/cases.json" >/dev/null || {
+  echo "FAIL installed A/B skill routing order does not match the orchestration contract" >&2
+  exit 1
+}
 
 if go run "$ROOT/evals/studies/installed-ab/run.go" --run \
   --cases "$ROOT/evals/studies/installed-ab/cases.json" \

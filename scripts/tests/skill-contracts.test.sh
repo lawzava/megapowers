@@ -107,9 +107,14 @@ contains_document 'grill-me treats rounds as requested depth' "$GRILL" 'rounds? 
 contains 'orchestration prefers native capabilities' "$SKILLS/orchestrating/SKILL.md" 'native (harness )?(capabilities|agents|subagents|goals|planning|permissions|review)'
 not_contains 'orchestrating description avoids the review trigger noun' 'high-stakes' "$SKILLS/orchestrating/SKILL.md"
 contains_document 'orchestration explicitly authorizes native delegation' "$SKILLS/orchestrating/SKILL.md" 'explicitly authorizes? native (agents?|subagents?)|native (agent|subagent) delegation is explicitly authorized'
+contains_document 'orchestration trigger names independent lanes' "$SKILLS/orchestrating/SKILL.md" 'description: Use when .*(two|2).*(independent|disjoint).*(lanes|workstreams)'
+contains_document 'orchestration trigger names output-only context isolation' "$SKILLS/orchestrating/SKILL.md" 'description: Use when .*output-only.*(context|raw|payload)'
+contains_document 'orchestration trigger excludes single sequential work' "$SKILLS/orchestrating/SKILL.md" 'single.*(bounded|sequential).*(stay|remains?|is) inline|do not use.*single.*(bounded|sequential)'
 contains_document 'orchestration routes independent read-heavy lanes' "$SKILLS/orchestrating/SKILL.md" '(two|2) or more (independent |disjoint )?(read-heavy )?(lanes|workstreams)|read-heavy (lanes|workstreams).*(independent|parallel)'
 contains_document 'orchestration dispatches eligible lanes in parallel' "$SKILLS/orchestrating/SKILL.md" '(dispatch|run|delegate).*(lanes|workstreams).*(parallel|concurrent)|(parallel|concurrent).*(dispatch|run|delegate)'
 contains_document 'orchestration scans lanes before deep work' "$SKILLS/orchestrating/SKILL.md" 'lane scan.*before.*deep (inspection|work)'
+contains_document 'orchestration dispatches before lead reads' "$SKILLS/orchestrating/SKILL.md" '(spawn|dispatch).*(before).*(lead|main).*(read|inspect|search)|(before).*(lead|main).*(read|inspect|search).*(spawn|dispatch)'
+contains_document 'orchestration treats missing eligible dispatch as a violation' "$SKILLS/orchestrating/SKILL.md" '(eligible|qualifying).*(lane|work).*(without|no).*(spawn|dispatch).*(violation|failure)|(no|without).*(spawn|dispatch).*(eligible|qualifying).*(violation|failure)'
 contains_document 'orchestration authorizes one output-only lane' "$SKILLS/orchestrating/SKILL.md" '(one|single).*output-only lane.*(verdict|artifact)'
 contains_document 'orchestration reassesses after scope or context changes' "$SKILLS/orchestrating/SKILL.md" '(scope change|new user turn).*(compaction|context).*(reassess|scan again)|(reassess|scan again).*(scope change|new user turn).*(compaction|context)'
 contains_document 'orchestration batches eligible dispatch' "$SKILLS/orchestrating/SKILL.md" '(batch|dispatch all eligible).*(before|prior to).*(deep|local) work'
@@ -173,6 +178,8 @@ contains 'memory hygiene invokes its packaged validator' "$MEMORY" 'scripts/memo
 for artifact in plans 'task briefs' commits responses reviews PRs docs 'release notes' errors; do
   contains "prose covers $artifact" "$PROSE" "$artifact"
 done
+contains_document 'prose description scopes activation to prose tasks' "$PROSE" 'description: Use when the task itself is to (draft|rewrite|edit|preserve)'
+contains_document 'prose description excludes routine task responses' "$PROSE" 'description: Use when .*do not select merely because.*(task|work).*(response|answer)'
 for invariant in identifiers numbers commands caveats uncertainty decisions outcome padding invent 'already-direct'; do
   contains "prose preserves $invariant invariant" "$PROSE" "$invariant"
 done

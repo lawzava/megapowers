@@ -42,7 +42,7 @@ valid_row() {
 installed_row() {
   local run_id="$1" block_id="$2" arm="$3" plugin_hash="$4"
   valid_row "$run_id" "$block_id" "$arm" |
-    jq -c --arg plugin_hash "$plugin_hash" '.study = "installed-plugin-ab" | .plugin_hash = $plugin_hash'
+    jq -c --arg plugin_hash "$plugin_hash" '.study = "installed-plugin-ab" | .plugin_hash = $plugin_hash | .metrics.outcome_success = .metrics.task_success'
 }
 
 write_publish_rows() {
@@ -61,7 +61,7 @@ write_publish_rows() {
       installed_row "$arm-$pair" "block-$pair" "$arm" \
         "$([[ $arm == treatment ]] && printf '%s' "$treatment_plugin_hash" || printf '%s' "$empty_plugin_hash")" |
         jq -c --arg verdict "$verdict" --argjson rc "$rc" \
-          '.environment.sandbox = "bwrap" | .verdict = $verdict | .rc = $rc | .metrics.task_success = (if $verdict == "pass" then 1 else 0 end)' \
+          '.environment.sandbox = "bwrap" | .verdict = $verdict | .rc = $rc | .metrics.task_success = (if $verdict == "pass" then 1 else 0 end) | .metrics.outcome_success = .metrics.task_success' \
           >> "$file"
     done
   done
@@ -175,6 +175,25 @@ grep -q 'mcnemar_p' "$tmp/valid.out"
 } >"$tmp/valid-installed-ab.jsonl"
 go run "$ROOT/evals/score.go" --strict "$tmp/valid-installed-ab.jsonl" >"$tmp/valid-installed-ab.out"
 grep -q 'installed-plugin-ab' "$tmp/valid-installed-ab.out"
+
+{
+  installed_row treatment-1 block-1 treatment "$treatment_plugin_hash"
+  installed_row control-1 block-1 control "$empty_plugin_hash" | jq -c 'del(.metrics.outcome_success)'
+} >"$tmp/missing-outcome-metric.jsonl"
+expect_reject missing-outcome-metric "$tmp/missing-outcome-metric.jsonl"
+grep -q 'outcome_success' "$tmp/missing-outcome-metric.err"
+
+{
+  installed_row treatment-activation-miss block-activation treatment "$treatment_plugin_hash" |
+    jq -c '.verdict = "fail" | .metrics.task_success = 0 | .metrics.outcome_success = 1'
+  installed_row control-outcome-pass block-activation control "$empty_plugin_hash"
+} >"$tmp/activation-only-verdict.jsonl"
+go run "$ROOT/evals/score.go" --strict "$tmp/activation-only-verdict.jsonl" >"$tmp/activation-only-verdict.out"
+grep -q '| 1/1 | 1/1 | +0% |' "$tmp/activation-only-verdict.out" || {
+  echo 'FAIL scorecard compared treatment activation verdict with control outcome verdict' >&2
+  cat "$tmp/activation-only-verdict.out" >&2
+  exit 1
+}
 
 {
   installed_row treatment-1 block-1 treatment "$treatment_plugin_hash"

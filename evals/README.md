@@ -137,8 +137,13 @@ Both runners require a reviewed, hash-pinned broker whose attestation proves
 credentials, sibling state, and hidden oracle material are outside the actor's
 OS boundary. The broker path must be canonical, contain no symlinks, remain
 outside actor-visible and output trees, and identify a self-contained executable;
-the runner executes a private read-only copy of the pinned bytes. The
-credentialed runners publish only:
+the runner executes a private read-only copy of the pinned bytes.
+
+The repository's [`sandbox-broker`](tools/sandbox-broker/README.md) implements
+the installed-plugin A/B runner's schema `2` on Linux. PR replay still uses its
+older schema `1` and requires a separately compatible reviewed broker.
+
+The credentialed runners publish only:
 
 ```text
 publish/manifest.json

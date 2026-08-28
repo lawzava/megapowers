@@ -28,6 +28,7 @@ import (
 )
 
 var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
+var sha256Pattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 var selftestOracleCache string
 
 type casesFile struct {
@@ -125,6 +126,7 @@ type runOptions struct {
 	TempRoot     string
 	Timestamp    time.Time
 	Selftest     bool
+	Resume       bool
 	Broker       string
 	BrokerHash   string
 	PairedRuns   int
@@ -185,6 +187,12 @@ type environment struct {
 	Locale  string `json:"locale"`
 }
 
+type runEnvironment struct {
+	OS     string `json:"os"`
+	Arch   string `json:"arch"`
+	Locale string `json:"locale"`
+}
+
 type resultRow struct {
 	SchemaVersion string             `json:"schema_version"`
 	Study         string             `json:"study"`
@@ -220,15 +228,43 @@ type armManifest struct {
 	EvidenceOnly  string   `json:"evidence"`
 }
 
+type scheduledArm struct {
+	Case        studyCase
+	BlockID     string
+	Arm         string
+	PromptHash  string
+	FixtureHash string
+	PluginHash  string
+}
+
+type resumeCheckpoint struct {
+	Rows               []resultRow
+	Arms               []armManifest
+	Completed          map[string]bool
+	Timestamp          time.Time
+	ExpectedCLIVersion string
+}
+
+type checkpointEnvelope struct {
+	SchemaVersion string          `json:"schema_version"`
+	Digest        string          `json:"digest"`
+	Manifest      publishManifest `json:"manifest"`
+	Rows          []resultRow     `json:"rows"`
+}
+
 type caseAssessment struct {
-	CaseID            string  `json:"case_id"`
-	PairedRuns        int     `json:"paired_runs"`
-	TreatmentPasses   int     `json:"treatment_passes"`
-	ControlPasses     int     `json:"control_passes"`
-	TreatmentPassRate float64 `json:"treatment_pass_rate"`
-	ControlPassRate   float64 `json:"control_pass_rate"`
-	ObservedLift      float64 `json:"observed_lift"`
-	Accepted          bool    `json:"accepted"`
+	CaseID                 string  `json:"case_id"`
+	PairedRuns             int     `json:"paired_runs"`
+	TreatmentPasses        int     `json:"treatment_passes"`
+	ControlPasses          int     `json:"control_passes"`
+	TreatmentPassRate      float64 `json:"treatment_pass_rate"`
+	ControlPassRate        float64 `json:"control_pass_rate"`
+	TreatmentOutcomePasses int     `json:"treatment_outcome_passes"`
+	ControlOutcomePasses   int     `json:"control_outcome_passes"`
+	TreatmentOutcomeRate   float64 `json:"treatment_outcome_rate"`
+	ControlOutcomeRate     float64 `json:"control_outcome_rate"`
+	ObservedLift           float64 `json:"observed_lift"`
+	Accepted               bool    `json:"accepted"`
 }
 
 type studyAcceptance struct {
@@ -246,6 +282,9 @@ type publishManifest struct {
 	Harness                string          `json:"harness"`
 	Model                  string          `json:"model"`
 	Effort                 string          `json:"effort"`
+	Environment            runEnvironment  `json:"environment"`
+	PairedRuns             int             `json:"paired_runs"`
+	ScheduleHash           string          `json:"schedule_hash"`
 	BrokerHash             string          `json:"broker_hash"`
 	CaseCatalogHash        string          `json:"case_catalog_hash"`
 	GatesHash              string          `json:"gates_hash"`
@@ -256,7 +295,7 @@ type publishManifest struct {
 }
 
 func main() {
-	var selftest, validate, run, hashPlugin, credentialed bool
+	var selftest, validate, run, hashPlugin, credentialed, resume bool
 	var casesPath, gatesPath, harness, model, effort, out, repo, broker, brokerPin string
 	var pairedRuns int
 	var actorTimeout time.Duration
@@ -265,6 +304,7 @@ func main() {
 	flag.BoolVar(&run, "run", false, "run a real installed-plugin study")
 	flag.BoolVar(&hashPlugin, "hash-plugin", false, "print the verified current plugin tree hash")
 	flag.BoolVar(&credentialed, "credentialed", false, "acknowledge use of real harness credentials")
+	flag.BoolVar(&resume, "resume", false, "resume an interrupted run from its validated publish checkpoint")
 	flag.StringVar(&casesPath, "cases", "", "case catalog")
 	flag.StringVar(&gatesPath, "gates", "", "gate catalog")
 	flag.StringVar(&harness, "harness", "", "claude or codex")
@@ -346,7 +386,7 @@ func main() {
 	if pairedRuns < 1 {
 		fatal(errors.New("--paired-runs must be positive"))
 	}
-	opts := runOptions{Harness: harness, Model: model, Effort: effort, Repo: root, Out: out, Timestamp: time.Now().UTC(), Broker: broker, BrokerHash: brokerHash, PairedRuns: pairedRuns, ActorTimeout: actorTimeout}
+	opts := runOptions{Harness: harness, Model: model, Effort: effort, Repo: root, Out: out, Timestamp: time.Now().UTC(), Resume: resume, Broker: broker, BrokerHash: brokerHash, PairedRuns: pairedRuns, ActorTimeout: actorTimeout}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if _, _, err := executeStudy(ctx, cases, gates, opts, brokerActor{Path: broker, ExpectedHash: brokerHash}); err != nil {
@@ -639,6 +679,288 @@ func pathsOverlap(a, b string) bool {
 	return a == b || strings.HasPrefix(a, b+string(filepath.Separator)) || strings.HasPrefix(b, a+string(filepath.Separator))
 }
 
+func scheduledArms(cases casesFile, pairedRuns int, treatmentHash, controlHash string) []scheduledArm {
+	schedule := make([]scheduledArm, 0, len(cases.Cases)*pairedRuns*2)
+	for i, c := range cases.Cases {
+		promptHash := hashBytes([]byte(c.Task))
+		fixtureHash := hashFixture(c.Files)
+		for repetition := 1; repetition <= pairedRuns; repetition++ {
+			blockID := fmt.Sprintf("%s-%03d-%03d", c.ID, i+1, repetition)
+			arms := []string{"treatment", "control"}
+			if (i+repetition)%2 == 1 {
+				arms = []string{"control", "treatment"}
+			}
+			for _, arm := range arms {
+				pluginHash := controlHash
+				if arm == "treatment" {
+					pluginHash = treatmentHash
+				}
+				schedule = append(schedule, scheduledArm{Case: c, BlockID: blockID, Arm: arm, PromptHash: promptHash, FixtureHash: fixtureHash, PluginHash: pluginHash})
+			}
+		}
+	}
+	return schedule
+}
+
+func hashSchedule(schedule []scheduledArm) string {
+	content, _ := json.Marshal(schedule)
+	return hashBytes(append(content, '\n'))
+}
+
+func resumeArmKey(blockID, arm string) string { return blockID + "\x00" + arm }
+
+func manifestIdentityMismatch(got, want publishManifest) error {
+	fields := []struct {
+		name      string
+		got, want any
+	}{
+		{"schema_version", got.SchemaVersion, want.SchemaVersion},
+		{"study", got.Study, want.Study},
+		{"evidence", got.Evidence, want.Evidence},
+		{"harness", got.Harness, want.Harness},
+		{"model", got.Model, want.Model},
+		{"effort", got.Effort, want.Effort},
+		{"environment.os", got.Environment.OS, want.Environment.OS},
+		{"environment.arch", got.Environment.Arch, want.Environment.Arch},
+		{"environment.locale", got.Environment.Locale, want.Environment.Locale},
+		{"paired_runs", got.PairedRuns, want.PairedRuns},
+		{"schedule_hash", got.ScheduleHash, want.ScheduleHash},
+		{"broker_hash", got.BrokerHash, want.BrokerHash},
+		{"case_catalog_hash", got.CaseCatalogHash, want.CaseCatalogHash},
+		{"gates_hash", got.GatesHash, want.GatesHash},
+		{"treatment_plugin_hash", got.TreatmentPluginHash, want.TreatmentPluginHash},
+		{"empty_control_plugin_hash", got.EmptyControlPluginHash, want.EmptyControlPluginHash},
+	}
+	for _, field := range fields {
+		if fmt.Sprint(field.got) != fmt.Sprint(field.want) {
+			return fmt.Errorf("resume manifest identity mismatch at %s: got %q, want %q", field.name, fmt.Sprint(field.got), fmt.Sprint(field.want))
+		}
+	}
+	return nil
+}
+
+func expectedInventory(arm string) []string {
+	if arm == "treatment" {
+		return []string{"megapowers"}
+	}
+	return []string{}
+}
+
+func armManifestMatches(got armManifest, want scheduledArm, selftest bool) bool {
+	inventory := expectedInventory(want.Arm)
+	return got.CaseID == want.Case.ID && got.BlockID == want.BlockID && got.Arm == want.Arm &&
+		got.PromptHash == want.PromptHash && got.FixtureHash == want.FixtureHash && got.PluginHash == want.PluginHash &&
+		sameStringSet(got.PluginNames, inventory) && got.InventoryHash == hashInventory(inventory) &&
+		got.EvidenceOnly == evidenceLabel(selftest)
+}
+
+func manifestForScheduledArm(want scheduledArm, selftest bool) armManifest {
+	inventory := expectedInventory(want.Arm)
+	return armManifest{CaseID: want.Case.ID, BlockID: want.BlockID, Arm: want.Arm, PromptHash: want.PromptHash, FixtureHash: want.FixtureHash, PluginHash: want.PluginHash, PluginNames: inventory, InventoryHash: hashInventory(inventory), EvidenceOnly: evidenceLabel(selftest)}
+}
+
+func checkpointDigest(manifest publishManifest, rows []resultRow) string {
+	payload := struct {
+		Manifest publishManifest `json:"manifest"`
+		Rows     []resultRow     `json:"rows"`
+	}{Manifest: manifest, Rows: rows}
+	content, _ := json.Marshal(payload)
+	return hashBytes(append(content, '\n'))
+}
+
+func writeResumeCheckpoint(out string, rows []resultRow, manifest publishManifest) error {
+	if out == "" {
+		return nil
+	}
+	if err := os.MkdirAll(out, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(out, 0o700); err != nil {
+		return err
+	}
+	envelope := checkpointEnvelope{SchemaVersion: "1", Manifest: manifest, Rows: rows}
+	envelope.Digest = checkpointDigest(manifest, rows)
+	content, err := json.MarshalIndent(envelope, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWrite(filepath.Join(out, ".resume-checkpoint.json"), append(content, '\n'), 0o600)
+}
+
+func persistStudyCheckpoint(out string, rows []resultRow, manifest publishManifest) error {
+	if err := writeResumeCheckpoint(out, rows, manifest); err != nil {
+		return err
+	}
+	return writePublish(out, rows, manifest)
+}
+
+func removeResumeCheckpoint(out string) error {
+	if out == "" {
+		return nil
+	}
+	path := filepath.Join(out, ".resume-checkpoint.json")
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func encodeResultRows(rows []resultRow) ([]byte, error) {
+	var data bytes.Buffer
+	encoder := json.NewEncoder(&data)
+	encoder.SetEscapeHTML(false)
+	for _, row := range rows {
+		if err := encoder.Encode(row); err != nil {
+			return nil, err
+		}
+	}
+	return data.Bytes(), nil
+}
+
+func balancedResumeRows(rows []resultRow) []resultRow {
+	counts := make(map[string]int)
+	for _, row := range rows {
+		counts[row.BlockID]++
+	}
+	balanced := make([]resultRow, 0, len(rows))
+	for _, row := range rows {
+		if counts[row.BlockID] == 2 {
+			balanced = append(balanced, row)
+		}
+	}
+	return balanced
+}
+
+func loadResumeCheckpoint(out string, schedule []scheduledArm, expected publishManifest, revision, privateRoot string, opts runOptions) (resumeCheckpoint, error) {
+	checkpoint := resumeCheckpoint{Completed: make(map[string]bool)}
+	checkpointPath := filepath.Join(out, ".resume-checkpoint.json")
+	info, err := os.Lstat(checkpointPath)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return checkpoint, errors.New("resume checkpoint must be a private regular file")
+	}
+	var envelope checkpointEnvelope
+	if err := decodeStrict(checkpointPath, &envelope); err != nil {
+		return checkpoint, fmt.Errorf("resume checkpoint: %w", err)
+	}
+	if envelope.SchemaVersion != "1" || envelope.Digest != checkpointDigest(envelope.Manifest, envelope.Rows) {
+		return checkpoint, errors.New("resume checkpoint integrity check failed")
+	}
+	priorManifest := envelope.Manifest
+	priorRows := envelope.Rows
+	if err := manifestIdentityMismatch(priorManifest, expected); err != nil {
+		return checkpoint, err
+	}
+	if len(priorRows) == 0 || len(priorRows) > len(schedule) {
+		return checkpoint, errors.New("resume results are empty or exceed the requested schedule")
+	}
+	if len(priorManifest.Arms) != len(priorRows) {
+		return checkpoint, errors.New("resume checkpoint row and inventory counts differ")
+	}
+	seenRunIDs := make(map[string]bool, len(priorRows))
+	var timestamp time.Time
+	cliVersion := ""
+	for index, row := range priorRows {
+		want := schedule[index]
+		key := resumeArmKey(row.BlockID, row.Arm)
+		if key != resumeArmKey(want.BlockID, want.Arm) || row.CaseID != want.Case.ID {
+			return checkpoint, errors.New("resume results are not an exact prefix of the requested schedule")
+		}
+		rowFields := []struct {
+			name      string
+			got, want string
+		}{
+			{"schema_version", row.SchemaVersion, "1"},
+			{"study", row.Study, "installed-plugin-ab"},
+			{"evidence_class", row.EvidenceClass, "behavioral"},
+			{"harness.name", row.Harness.Name, opts.Harness},
+			{"harness.model", row.Harness.Model, portableIdentifier(opts.Model)},
+			{"harness.effort", row.Harness.Effort, portableIdentifier(opts.Effort)},
+			{"source.repository", row.Source.Repository, "megapowers"},
+			{"source.revision", row.Source.Revision, portableIdentifier(revision)},
+			{"prompt_hash", row.PromptHash, want.PromptHash},
+			{"fixture_hash", row.FixtureHash, want.FixtureHash},
+			{"plugin_hash", row.PluginHash, want.PluginHash},
+			{"environment.os", row.Environment.OS, runtime.GOOS},
+			{"environment.arch", row.Environment.Arch, runtime.GOARCH},
+			{"environment.locale", row.Environment.Locale, portableIdentifier(locale())},
+		}
+		for _, field := range rowFields {
+			if field.got != field.want {
+				return checkpoint, fmt.Errorf("resume row %d mismatch at %s: got %q, want %q", index+1, field.name, field.got, field.want)
+			}
+		}
+		sandboxOK := row.Environment.Sandbox == "bwrap"
+		if opts.Selftest {
+			sandboxOK = row.Environment.Sandbox == "in-process-selftest"
+		} else if row.Status != "completed" {
+			sandboxOK = sandboxOK || row.Environment.Sandbox == "broker-isolated"
+		}
+		if !sandboxOK || row.Harness.CLIVersion == "" {
+			return checkpoint, errors.New("resume row harness identity is incomplete")
+		}
+		if row.DurationMS < 0 || len(row.Artifacts) != 2 || !sha256Pattern.MatchString(row.Artifacts["response"]) || !sha256Pattern.MatchString(row.Artifacts["trace"]) {
+			return checkpoint, errors.New("resume row artifacts or duration are invalid")
+		}
+		parsedTimestamp, err := time.Parse(time.RFC3339, row.Timestamp)
+		if err != nil {
+			return checkpoint, errors.New("resume row timestamp is invalid")
+		}
+		if index == 0 {
+			timestamp = parsedTimestamp
+		} else if !parsedTimestamp.Equal(timestamp) {
+			return checkpoint, errors.New("resume rows do not share one run identity")
+		}
+		expectedRunID := fmt.Sprintf("%s-%s-%s", want.BlockID, want.Arm, timestamp.Format("20060102T150405Z"))
+		if row.RunID != expectedRunID || seenRunIDs[row.RunID] {
+			return checkpoint, errors.New("resume row run identity is invalid or duplicated")
+		}
+		seenRunIDs[row.RunID] = true
+		arm := priorManifest.Arms[index]
+		if !armManifestMatches(arm, want, opts.Selftest) || resumeArmKey(arm.BlockID, arm.Arm) != key {
+			return checkpoint, errors.New("resume row is missing its matching inventory evidence")
+		}
+		switch row.Status {
+		case "completed":
+			outcome, hasOutcome := row.Metrics["outcome_success"]
+			if row.RC != 0 || (row.Verdict != "pass" && row.Verdict != "fail") || row.Metrics["task_success"] != boolMetric(row.Verdict == "pass") || !hasOutcome || (outcome != 0 && outcome != 1) {
+				return checkpoint, errors.New("resume completed row has an invalid result")
+			}
+			if cliVersion == "" {
+				cliVersion = row.Harness.CLIVersion
+			} else if row.Harness.CLIVersion != cliVersion {
+				return checkpoint, errors.New("resume completed rows use different harness versions")
+			}
+			checkpoint.Rows = append(checkpoint.Rows, row)
+			checkpoint.Arms = append(checkpoint.Arms, arm)
+			checkpoint.Completed[key] = true
+		case "harness_error", "timeout":
+			if index != len(priorRows)-1 || row.Verdict != "harness_error" {
+				return checkpoint, errors.New("resume contains a non-terminal infrastructure failure")
+			}
+		default:
+			return checkpoint, errors.New("resume contains an unsupported row status")
+		}
+	}
+	strictCandidates := balancedResumeRows(checkpoint.Rows)
+	if len(strictCandidates) > 0 {
+		strictRows, err := encodeResultRows(strictCandidates)
+		if err != nil {
+			return checkpoint, err
+		}
+		strictPath := filepath.Join(privateRoot, "resume-results.jsonl")
+		if err := atomicWrite(strictPath, strictRows, 0o600); err != nil {
+			return checkpoint, err
+		}
+		defer os.Remove(strictPath)
+		if err := strictScore(opts.Repo, strictPath); err != nil {
+			return checkpoint, fmt.Errorf("resume rows failed strict scoring: %w", err)
+		}
+	}
+	checkpoint.Timestamp = timestamp
+	checkpoint.ExpectedCLIVersion = cliVersion
+	return checkpoint, nil
+}
+
 func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts runOptions, subject actor) ([]resultRow, publishManifest, error) {
 	parent := opts.TempRoot
 	if parent == "" {
@@ -690,98 +1012,120 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 	if err != nil {
 		return nil, publishManifest{}, err
 	}
-	manifest := publishManifest{SchemaVersion: "1", Study: "installed-plugin-ab", Evidence: evidenceLabel(opts.Selftest), Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, BrokerHash: brokerHash, CaseCatalogHash: caseCatalogHash, GatesHash: gatesHash, TreatmentPluginHash: pluginHash, EmptyControlPluginHash: controlHash}
-	rows := make([]resultRow, 0, len(cases.Cases)*pairedRuns*2)
-	for i, c := range cases.Cases {
-		promptHash := hashBytes([]byte(c.Task))
-		fixtureHash := hashFixture(c.Files)
-		for repetition := 1; repetition <= pairedRuns; repetition++ {
-			blockID := fmt.Sprintf("%s-%03d-%03d", c.ID, i+1, repetition)
-			arms := []string{"treatment", "control"}
-			if (i+repetition)%2 == 1 {
-				arms = []string{"control", "treatment"}
+	schedule := scheduledArms(cases, pairedRuns, pluginHash, controlHash)
+	manifest := publishManifest{SchemaVersion: "2", Study: "installed-plugin-ab", Evidence: evidenceLabel(opts.Selftest), Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, Environment: runEnvironment{OS: runtime.GOOS, Arch: runtime.GOARCH, Locale: portableIdentifier(locale())}, PairedRuns: pairedRuns, ScheduleHash: hashSchedule(schedule), BrokerHash: brokerHash, CaseCatalogHash: caseCatalogHash, GatesHash: gatesHash, TreatmentPluginHash: pluginHash, EmptyControlPluginHash: controlHash}
+	rows := make([]resultRow, 0, len(schedule))
+	completed := make(map[string]bool)
+	expectedCLIVersion := ""
+	if opts.Resume {
+		checkpoint, err := loadResumeCheckpoint(opts.Out, schedule, manifest, revision, root, opts)
+		if err != nil {
+			return rows, manifest, err
+		}
+		rows = append(rows, checkpoint.Rows...)
+		manifest.Arms = append(manifest.Arms, checkpoint.Arms...)
+		completed = checkpoint.Completed
+		opts.Timestamp = checkpoint.Timestamp
+		expectedCLIVersion = checkpoint.ExpectedCLIVersion
+		cliVersion = expectedCLIVersion
+		manifest.Acceptance = assessStudyAcceptance(rows, gates)
+		if err := persistStudyCheckpoint(opts.Out, rows, manifest); err != nil {
+			return rows, manifest, fmt.Errorf("persist validated resume checkpoint: %w", err)
+		}
+	}
+	for _, scheduled := range schedule {
+		key := resumeArmKey(scheduled.BlockID, scheduled.Arm)
+		if completed[key] {
+			continue
+		}
+		c := scheduled.Case
+		armRoot := filepath.Join(root, scheduled.BlockID, scheduled.Arm)
+		home := filepath.Join(armRoot, "home")
+		project := filepath.Join(armRoot, "project")
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			return rows, manifest, err
+		}
+		if err := os.MkdirAll(project, 0o700); err != nil {
+			return rows, manifest, err
+		}
+		if err := materializeFixture(project, c.Files); err != nil {
+			return rows, manifest, err
+		}
+		beforeDefects, err := countMarkers(project, c.SeededDefects)
+		if err != nil {
+			return rows, manifest, err
+		}
+		pluginRoot := ""
+		if scheduled.Arm == "treatment" {
+			pluginRoot = actorPluginRoot
+		}
+		actorTimeout := opts.ActorTimeout
+		if actorTimeout == 0 {
+			actorTimeout = 20 * time.Minute
+		}
+		request := actorRequest{Case: c, Arm: scheduled.Arm, Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, Home: home, Project: project, PluginRoot: pluginRoot, Timeout: actorTimeout}
+		actorCtx, cancelActor := context.WithTimeout(ctx, actorTimeout)
+		result, actorErr := subject.Run(actorCtx, request)
+		timedOut := errors.Is(actorCtx.Err(), context.DeadlineExceeded)
+		cancelActor()
+		if result.CLIVersion != "" {
+			cliVersion = result.CLIVersion
+		}
+		if expectedCLIVersion != "" && portableIdentifier(cliVersion) != expectedCLIVersion {
+			actorErr = errors.New("resumed actor harness version differs from the checkpoint")
+		}
+		row := baseRow(c, scheduled.Arm, scheduled.BlockID, opts, revision, cliVersion, scheduled.PromptHash, scheduled.FixtureHash, scheduled.PluginHash)
+		if result.Sandbox != "" {
+			row.Environment.Sandbox = portableIdentifier(result.Sandbox)
+		}
+		row.DurationMS = max(result.Duration.Milliseconds(), 0)
+		row.RC = result.RC
+		row.Artifacts = map[string]string{"response": hashBytes([]byte(result.Response)), "trace": hashBytes(result.Trace)}
+		inventory := cleanInventory(result.Inventory)
+		armEvidence := armManifest{CaseID: c.ID, BlockID: scheduled.BlockID, Arm: scheduled.Arm, PromptHash: scheduled.PromptHash, FixtureHash: scheduled.FixtureHash, PluginHash: scheduled.PluginHash, PluginNames: inventory, InventoryHash: hashInventory(inventory), EvidenceOnly: evidenceLabel(opts.Selftest)}
+		if actorErr != nil || result.RC != 0 || timedOut {
+			row.Status = "harness_error"
+			if timedOut {
+				row.Status = "timeout"
+				row.RC = 124
 			}
-			for _, arm := range arms {
-				armRoot := filepath.Join(root, blockID, arm)
-				home := filepath.Join(armRoot, "home")
-				project := filepath.Join(armRoot, "project")
-				if err := os.MkdirAll(home, 0o700); err != nil {
-					return rows, manifest, err
-				}
-				if err := os.MkdirAll(project, 0o700); err != nil {
-					return rows, manifest, err
-				}
-				if err := materializeFixture(project, c.Files); err != nil {
-					return rows, manifest, err
-				}
-				beforeDefects, err := countMarkers(project, c.SeededDefects)
-				if err != nil {
-					return rows, manifest, err
-				}
-				pluginRoot := ""
-				armPluginHash := controlHash
-				if arm == "treatment" {
-					pluginRoot = actorPluginRoot
-					armPluginHash = pluginHash
-				}
-				actorTimeout := opts.ActorTimeout
-				if actorTimeout == 0 {
-					actorTimeout = 20 * time.Minute
-				}
-				request := actorRequest{Case: c, Arm: arm, Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, Home: home, Project: project, PluginRoot: pluginRoot, Timeout: actorTimeout}
-				actorCtx, cancelActor := context.WithTimeout(ctx, actorTimeout)
-				result, actorErr := subject.Run(actorCtx, request)
-				timedOut := errors.Is(actorCtx.Err(), context.DeadlineExceeded)
-				cancelActor()
-				if result.CLIVersion != "" {
-					cliVersion = result.CLIVersion
-				}
-				row := baseRow(c, arm, blockID, opts, revision, cliVersion, promptHash, fixtureHash, armPluginHash)
-				if result.Sandbox != "" {
-					row.Environment.Sandbox = portableIdentifier(result.Sandbox)
-				}
-				row.DurationMS = max(result.Duration.Milliseconds(), 0)
-				row.RC = result.RC
-				row.Artifacts = map[string]string{"response": hashBytes([]byte(result.Response)), "trace": hashBytes(result.Trace)}
-				if actorErr != nil || result.RC != 0 || timedOut {
-					row.Status = "harness_error"
-					if timedOut {
-						row.Status = "timeout"
-						row.RC = 124
-					}
-					row.Verdict = "harness_error"
-					row.Metrics = map[string]float64{"task_success": 0}
-					rows = append(rows, row)
-					inventory := cleanInventory(result.Inventory)
-					manifest.Arms = append(manifest.Arms, armManifest{CaseID: c.ID, BlockID: blockID, Arm: arm, PromptHash: promptHash, FixtureHash: fixtureHash, PluginHash: armPluginHash, PluginNames: inventory, InventoryHash: hashInventory(inventory), EvidenceOnly: evidenceLabel(opts.Selftest)})
-					manifest.Acceptance = assessStudyAcceptance(rows, gates)
-					if err := writePublish(opts.Out, rows, manifest); err != nil {
-						return rows, manifest, fmt.Errorf("persist failed actor result: %w", err)
-					}
-					if timedOut {
-						return rows, manifest, fmt.Errorf("%s/%s actor timed out after %s", c.ID, arm, actorTimeout)
-					}
-					if actorErr != nil {
-						return rows, manifest, fmt.Errorf("%s/%s actor error: %w", c.ID, arm, actorErr)
-					}
-					return rows, manifest, fmt.Errorf("%s/%s actor exited %d", c.ID, arm, result.RC)
-				}
-				metrics, verdict, err := evaluateCase(ctx, c, gates, project, beforeDefects, result, opts.Selftest)
-				if err != nil {
-					return rows, manifest, fmt.Errorf("%s/%s oracle: %w", c.ID, arm, err)
-				}
-				row.Metrics = metrics
-				row.Status = "completed"
-				row.Verdict = verdict
-				rows = append(rows, row)
-				inventory := cleanInventory(result.Inventory)
-				manifest.Arms = append(manifest.Arms, armManifest{CaseID: c.ID, BlockID: blockID, Arm: arm, PromptHash: promptHash, FixtureHash: fixtureHash, PluginHash: armPluginHash, PluginNames: inventory, InventoryHash: hashInventory(inventory), EvidenceOnly: evidenceLabel(opts.Selftest)})
+			row.Verdict = "harness_error"
+			row.Metrics = map[string]float64{"outcome_success": 0, "task_success": 0}
+			rows = append(rows, row)
+			manifest.Arms = append(manifest.Arms, armEvidence)
+			manifest.Acceptance = assessStudyAcceptance(rows, gates)
+			if err := persistStudyCheckpoint(opts.Out, rows, manifest); err != nil {
+				return rows, manifest, fmt.Errorf("persist failed actor result: %w", err)
 			}
+			if timedOut {
+				return rows, manifest, fmt.Errorf("%s/%s actor timed out after %s", c.ID, scheduled.Arm, actorTimeout)
+			}
+			if actorErr != nil {
+				return rows, manifest, fmt.Errorf("%s/%s actor error: %w", c.ID, scheduled.Arm, actorErr)
+			}
+			return rows, manifest, fmt.Errorf("%s/%s actor exited %d", c.ID, scheduled.Arm, result.RC)
+		}
+		metrics, verdict, err := evaluateCase(ctx, c, gates, scheduled.Arm, project, beforeDefects, result, opts.Selftest)
+		if err != nil {
+			return rows, manifest, fmt.Errorf("%s/%s oracle: %w", c.ID, scheduled.Arm, err)
+		}
+		row.Metrics = metrics
+		row.Status = "completed"
+		row.Verdict = verdict
+		rows = append(rows, row)
+		manifest.Arms = append(manifest.Arms, armEvidence)
+		completed[key] = true
+		manifest.Acceptance = assessStudyAcceptance(rows, gates)
+		if err := persistStudyCheckpoint(opts.Out, rows, manifest); err != nil {
+			return rows, manifest, fmt.Errorf("persist completed actor checkpoint: %w", err)
 		}
 	}
 	manifest.Acceptance = assessStudyAcceptance(rows, gates)
 	if err := writePublish(opts.Out, rows, manifest); err != nil {
 		return rows, manifest, err
+	}
+	if err := removeResumeCheckpoint(opts.Out); err != nil {
+		return rows, manifest, fmt.Errorf("remove completed resume checkpoint: %w", err)
 	}
 	return rows, manifest, nil
 }
@@ -801,7 +1145,10 @@ func assessStudyAcceptance(rows []resultRow, gates gatesFile) studyAcceptance {
 		MinimumPairedRuns:         gates.Acceptance.MinimumPairedRuns,
 		RequireAllTreatmentPasses: gates.Acceptance.RequireAllTreatmentPasses,
 	}
-	type counts struct{ treatmentPass, treatmentTotal, controlPass, controlTotal int }
+	type counts struct {
+		treatmentPass, treatmentOutcomePass, treatmentTotal int
+		controlPass, controlOutcomePass, controlTotal       int
+	}
 	byCase := map[string]*counts{}
 	for _, row := range rows {
 		if row.Status != "completed" || (row.Arm != "treatment" && row.Arm != "control") {
@@ -819,10 +1166,16 @@ func assessStudyAcceptance(rows []resultRow, gates gatesFile) studyAcceptance {
 			if row.Verdict == "pass" {
 				cell.treatmentPass++
 			}
+			if row.Metrics["outcome_success"] == 1 {
+				cell.treatmentOutcomePass++
+			}
 		} else {
 			cell.controlTotal++
 			if row.Verdict == "pass" {
 				cell.controlPass++
+			}
+			if row.Metrics["outcome_success"] == 1 {
+				cell.controlOutcomePass++
 			}
 		}
 	}
@@ -836,9 +1189,11 @@ func assessStudyAcceptance(rows []resultRow, gates gatesFile) studyAcceptance {
 		paired := minInt(cell.treatmentTotal, cell.controlTotal)
 		treatmentRate := rate(cell.treatmentPass, cell.treatmentTotal)
 		controlRate := rate(cell.controlPass, cell.controlTotal)
-		observed := treatmentRate - controlRate
+		treatmentOutcomeRate := rate(cell.treatmentOutcomePass, cell.treatmentTotal)
+		controlOutcomeRate := rate(cell.controlOutcomePass, cell.controlTotal)
+		observed := treatmentOutcomeRate - controlOutcomeRate
 		accepted := paired >= gates.Acceptance.MinimumPairedRuns && cell.treatmentTotal == cell.controlTotal && cell.treatmentPass == cell.treatmentTotal
-		assessment.Cases = append(assessment.Cases, caseAssessment{CaseID: caseID, PairedRuns: paired, TreatmentPasses: cell.treatmentPass, ControlPasses: cell.controlPass, TreatmentPassRate: treatmentRate, ControlPassRate: controlRate, ObservedLift: observed, Accepted: accepted})
+		assessment.Cases = append(assessment.Cases, caseAssessment{CaseID: caseID, PairedRuns: paired, TreatmentPasses: cell.treatmentPass, ControlPasses: cell.controlPass, TreatmentPassRate: treatmentRate, ControlPassRate: controlRate, TreatmentOutcomePasses: cell.treatmentOutcomePass, ControlOutcomePasses: cell.controlOutcomePass, TreatmentOutcomeRate: treatmentOutcomeRate, ControlOutcomeRate: controlOutcomeRate, ObservedLift: observed, Accepted: accepted})
 		if paired < gates.Acceptance.MinimumPairedRuns || cell.treatmentTotal != cell.controlTotal {
 			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s has %d balanced pairs, require %d", caseID, paired, gates.Acceptance.MinimumPairedRuns))
 		}
@@ -902,15 +1257,23 @@ func baseRow(c studyCase, arm, block string, opts runOptions, revision, cliVersi
 	}
 }
 
-func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, project string, beforeDefects int, result actorResult, allowLocalOracle bool) (map[string]float64, string, error) {
+func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, project string, beforeDefects int, result actorResult, allowLocalOracle bool) (map[string]float64, string, error) {
 	metrics := map[string]float64{}
 	pass := false
+	requiresSkillContract := false
+	skillContract := true
 	switch c.Kind {
 	case "prose":
 		retained, invented := factCounts(result.Response, c.RequiredFacts, c.ForbiddenFacts)
 		retention := float64(retained) / float64(len(c.RequiredFacts))
 		metrics["fact_retention"] = retention
 		metrics["invented_facts"] = float64(invented)
+		ordered, unexpected := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
+		skillContract = ordered && unexpected == 0
+		requiresSkillContract = true
+		metrics["skill_order"] = boolMetric(ordered)
+		metrics["forbidden_skill_selections"] = float64(unexpected)
+		metrics["skill_contract_success"] = boolMetric(skillContract)
 		pass = retention >= gates.Prose.MinimumFactRetention && invented <= gates.Prose.MaximumInventedFacts
 		if c.RequireNoop {
 			unchanged := strings.TrimRight(result.Response, " \t\r\n") == strings.TrimRight(c.ExpectedOutput, " \t\r\n")
@@ -976,6 +1339,13 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, project str
 		metrics["complete_trace"] = boolMetric(complete)
 		metrics["fact_retention"] = retention
 		metrics["invented_facts"] = float64(invented)
+		ordered, unexpected := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
+		skillContract = ordered && unexpected == 0
+		requiresSkillContract = true
+		metrics["orchestrating_selected"] = boolMetric(successfulSkillSelection(result.Events, "orchestrating"))
+		metrics["skill_order"] = boolMetric(ordered)
+		metrics["forbidden_skill_selections"] = float64(unexpected)
+		metrics["skill_contract_success"] = boolMetric(skillContract)
 		spawnCountPass := spawns >= minimumSpawns && (maximumSpawnAttempts < 0 || spawnAttempts <= maximumSpawnAttempts)
 		pass = spawnCountPass && retention >= gates.Orchestration.MinimumFactRetention && invented <= gates.Orchestration.MaximumInventedFacts
 		pass = pass && (!gates.Orchestration.RequireSpawnsBeforeFirstWait || beforeWait) && (!gates.Orchestration.RequireSpawnBatchBeforeCompletion || batchBeforeCompletion) && (!gates.Orchestration.RequireMatchingCompletions || matching) && (!gates.Orchestration.RequireBoundedOutputOnlyReturn || boundedReturn) && (!gates.Orchestration.RequireCompleteTrace || complete)
@@ -1003,6 +1373,8 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, project str
 		retained, invented := factCounts(result.Response, c.RequiredFacts, c.ForbiddenFacts)
 		retention := float64(retained) / float64(len(c.RequiredFacts))
 		ordered, forbiddenSkills := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
+		skillContract = ordered && forbiddenSkills <= gates.Workflow.MaximumForbiddenSkillSelections
+		requiresSkillContract = true
 		requiredEvents := requiredEventsPresent(result.Events, c.RequiredEventKinds)
 		forbiddenAttempts := forbiddenEventAttempts(result.Events, c.ForbiddenEventKinds)
 		complete := traceComplete(result.Trace, result.Events)
@@ -1026,6 +1398,7 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, project str
 		metrics["invented_facts"] = float64(invented)
 		metrics["skill_order"] = boolMetric(ordered)
 		metrics["forbidden_skill_selections"] = float64(forbiddenSkills)
+		metrics["skill_contract_success"] = boolMetric(skillContract)
 		metrics["required_events"] = boolMetric(requiredEvents)
 		metrics["forbidden_event_attempts"] = float64(forbiddenAttempts)
 		metrics["complete_trace"] = boolMetric(complete)
@@ -1033,15 +1406,59 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, project str
 		metrics["oracle_pass"] = boolMetric(oraclePass)
 		metrics["report_only"] = boolMetric(c.ReportOnly)
 		pass = retention >= gates.Workflow.MinimumFactRetention && invented <= gates.Workflow.MaximumInventedFacts
-		pass = pass && forbiddenSkills <= gates.Workflow.MaximumForbiddenSkillSelections && forbiddenAttempts <= gates.Workflow.MaximumForbiddenEventAttempts
-		pass = pass && (!gates.Workflow.RequireSkillOrder || ordered) && (!gates.Workflow.RequireRequiredEvents || requiredEvents) && (!gates.Workflow.RequireCompleteTrace || complete)
+		pass = pass && forbiddenAttempts <= gates.Workflow.MaximumForbiddenEventAttempts
+		pass = pass && (!gates.Workflow.RequireRequiredEvents || requiredEvents) && (!gates.Workflow.RequireCompleteTrace || complete)
 		pass = pass && (!gates.Workflow.RequireProtectedFixturesIntactWhenPresent || protectedIntact) && (!gates.Workflow.RequirePassingOracleWhenPresent || oraclePass)
 	}
+	outcomePass := pass
+	if arm == "treatment" && requiresSkillContract {
+		pass = pass && skillContract
+	}
+	attempts, successful, writes, tests, selections := actionProgress(result.Events)
+	metrics["action_attempts"] = float64(attempts)
+	metrics["successful_actions"] = float64(successful)
+	metrics["write_attempts"] = float64(writes)
+	metrics["test_attempts"] = float64(tests)
+	metrics["skill_selection_attempts"] = float64(selections)
+	metrics["outcome_success"] = boolMetric(outcomePass)
 	metrics["task_success"] = boolMetric(pass)
 	if pass {
 		return metrics, "pass", nil
 	}
 	return metrics, "fail", nil
+}
+
+func successfulSkillSelection(events []actorEvent, skill string) bool {
+	for _, event := range events {
+		if event.Kind == "skill_selected" && event.Path == skill && event.RC == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func actionProgress(events []actorEvent) (attempts, successful, writes, tests, selections int) {
+	for _, event := range events {
+		if event.Kind == "trace_complete" {
+			continue
+		}
+		switch event.Kind {
+		case "skill_selected", "agent_spawn", "agent_wait", "agent_complete", "write", "test", "tracker_comment", "pr_comment":
+			attempts++
+			if event.RC == 0 {
+				successful++
+			}
+		}
+		switch event.Kind {
+		case "write":
+			writes++
+		case "test":
+			tests++
+		case "skill_selected":
+			selections++
+		}
+	}
+	return attempts, successful, writes, tests, selections
 }
 
 func caseOracle(ctx context.Context, project string, command []string, result actorResult, allowLocal bool) (int, error) {
@@ -1261,17 +1678,27 @@ func factCounts(response string, required, forbidden []string) (int, int) {
 	lower := strings.ToLower(response)
 	retained := 0
 	for _, fact := range required {
-		if containsDelimitedFact(lower, strings.ToLower(fact)) {
+		if containsFactAlternative(lower, fact) {
 			retained++
 		}
 	}
 	invented := 0
 	for _, fact := range forbidden {
-		if containsDelimitedFact(lower, strings.ToLower(fact)) {
+		if containsFactAlternative(lower, fact) {
 			invented++
 		}
 	}
 	return retained, invented
+}
+
+func containsFactAlternative(response, expression string) bool {
+	for _, alternative := range strings.Split(expression, "||") {
+		fact := strings.ToLower(strings.TrimSpace(alternative))
+		if containsDelimitedFact(response, fact) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsDelimitedFact(response, fact string) bool {
@@ -1341,6 +1768,9 @@ func tddEvidence(events []actorEvent) (bool, bool) {
 		}
 		switch event.Kind {
 		case "write":
+			if event.RC != 0 {
+				continue
+			}
 			if isTestPath(event.Path) && firstTest < 0 {
 				firstTest = step
 			}
@@ -1854,10 +2284,26 @@ func atomicWrite(path string, content []byte, mode fs.FileMode) error {
 		tmp.Close()
 		return err
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(name, path)
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	directory, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	syncErr := directory.Sync()
+	closeErr := directory.Close()
+	if syncErr != nil {
+		return syncErr
+	}
+	return closeErr
 }
 
 func removePrivateTree(root string) {
@@ -1987,6 +2433,9 @@ func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult
 	if err := command.Run(); err != nil {
 		return actorResult{RC: 125}, fmt.Errorf("sandbox broker failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
+	if err := validateBrokerResponsePresence(stdout.Bytes()); err != nil {
+		return actorResult{RC: 125}, err
+	}
 	var response brokerResponse
 	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
 	decoder.DisallowUnknownFields()
@@ -2008,6 +2457,20 @@ func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult
 	return actorResult{Response: response.Response, Trace: []byte(response.Trace), Events: response.Events, OracleRC: response.OracleRC, Inventory: response.PluginInventory, CLIVersion: response.CLIVersion, Sandbox: response.Isolation.Boundary, RC: response.RC, Duration: time.Duration(response.DurationMS) * time.Millisecond}, nil
 }
 
+func validateBrokerResponsePresence(content []byte) error {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(content, &object); err != nil {
+		return fmt.Errorf("sandbox broker response: %w", err)
+	}
+	for _, field := range []string{"schema_version", "cli_version", "response", "trace", "events", "plugin_inventory", "rc", "duration_ms", "isolation"} {
+		value, present := object[field]
+		if !present || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return fmt.Errorf("sandbox broker response omitted required field %q", field)
+		}
+	}
+	return nil
+}
+
 func makeBrokerRequest(request actorRequest) (brokerRequest, []string) {
 	pluginRepo := ""
 	roots := []string{request.Project}
@@ -2017,7 +2480,7 @@ func makeBrokerRequest(request actorRequest) (brokerRequest, []string) {
 	}
 	brokerTimeout := request.Timeout - 5*time.Second
 	if brokerTimeout <= 0 {
-		brokerTimeout = request.Timeout
+		brokerTimeout = request.Timeout / 2
 	}
 	return brokerRequest{SchemaVersion: "2", Harness: request.Harness, Model: request.Model, Effort: request.Effort, Arm: request.Arm, Task: request.Case.Task, Project: request.Project, ActorHome: request.Home, PluginRepo: pluginRepo, TaskReadRoots: roots, TaskWriteRoots: []string{request.Project}, OracleCommand: request.Case.OracleCommand, TimeoutMS: brokerTimeout.Milliseconds()}, roots
 }
@@ -2170,6 +2633,10 @@ func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, e
 	}
 	switch request.Case.Kind {
 	case "prose":
+		if request.Arm == "treatment" {
+			result.Events = append(result.Events, actorEvent{Kind: "skill_selected", Path: "humanizing-prose", RC: 0, Step: 1})
+		}
+		result.Events = append(result.Events, actorEvent{Kind: "trace_complete", RC: 0, Step: 2})
 		if request.Case.RequireNoop {
 			result.Response = request.Case.ExpectedOutput + "\n"
 		} else {
@@ -2180,6 +2647,7 @@ func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, e
 		if err := os.WriteFile(filepath.Join(request.Project, "store.go"), []byte(content), 0o600); err != nil {
 			return actorResult{RC: 125}, err
 		}
+		result.Events = []actorEvent{{Kind: "write", Path: "store.go", RC: 0, Step: 1}, {Kind: "test", Path: "go test ./...", RC: 0, Step: 2}, {Kind: "trace_complete", RC: 0, Step: 3}}
 	case "tdd":
 		test := "package calculator\n\nimport \"testing\"\n\nfunc TestMultiply(t *testing.T) { if Multiply(3, 4) != 12 { t.Fatal(\"bad product\") } }\n"
 		impl := "package calculator\n\nfunc Add(a, b int) int { return a + b }\nfunc Multiply(a, b int) int { return a * b }\n"
@@ -2193,6 +2661,9 @@ func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, e
 	case "autonomy_status":
 		result.Response = strings.Join(request.Case.RequiredFacts, ". ") + "."
 	case "orchestration":
+		if request.Arm == "treatment" {
+			result.Events = append(result.Events, actorEvent{Kind: "skill_selected", Path: "orchestrating", RC: 0, Step: 1})
+		}
 		if request.Case.OrchestrationMode == "output_only" {
 			payload := map[string]any{
 				"verdict":     strings.Join(request.Case.RequiredFacts, ". "),
@@ -2208,7 +2679,7 @@ func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, e
 		} else {
 			result.Response = strings.Join(request.Case.RequiredFacts, ". ") + "."
 		}
-		step := 1
+		step := 2
 		for lane := 0; lane < request.Case.RequiredAgentSpawns; lane++ {
 			result.Events = append(result.Events, actorEvent{Kind: "agent_spawn", Path: fmt.Sprintf("lane-%d", lane+1), RC: 0, Step: step})
 			step++
@@ -2235,9 +2706,11 @@ func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, e
 	case "workflow":
 		result.Response = strings.Join(request.Case.RequiredFacts, ". ") + "."
 		step := 1
-		for _, skill := range request.Case.RequiredSkillOrder {
-			result.Events = append(result.Events, actorEvent{Kind: "skill_selected", Path: skill, RC: 0, Step: step})
-			step++
+		if request.Arm == "treatment" {
+			for _, skill := range request.Case.RequiredSkillOrder {
+				result.Events = append(result.Events, actorEvent{Kind: "skill_selected", Path: skill, RC: 0, Step: step})
+				step++
+			}
 		}
 		for _, kind := range request.Case.RequiredEventKinds {
 			result.Events = append(result.Events, actorEvent{Kind: kind, RC: 0, Step: step})
@@ -2263,6 +2736,12 @@ func runSelftest() error {
 	cases, gates, err := loadConfiguration(filepath.Join(root, "evals", "studies", "installed-ab", "cases.json"), filepath.Join(root, "evals", "studies", "installed-ab", "gates.json"))
 	if err != nil {
 		return err
+	}
+	fullSchedule := scheduledArms(cases, gates.Acceptance.MinimumPairedRuns, hashBytes([]byte("treatment")), emptyControlPluginHash())
+	scheduleBound := len(fullSchedule) == 360 && hashSchedule(fullSchedule) != hashSchedule(scheduledArms(cases, gates.Acceptance.MinimumPairedRuns-1, hashBytes([]byte("treatment")), emptyControlPluginHash()))
+	printCheck("schedule binds all 360 arms and paired-run count", scheduleBound)
+	if !scheduleBound {
+		return errors.New("study schedule does not bind the configured paired-run count")
 	}
 	parent, err := os.MkdirTemp("", "installed-ab-selftest-*")
 	if err != nil {
@@ -2292,6 +2771,18 @@ func runSelftest() error {
 	if !identical {
 		return errors.New("paired input hashes differ")
 	}
+	progressMetrics := true
+	for _, row := range rows {
+		for _, name := range []string{"action_attempts", "successful_actions", "write_attempts", "test_attempts", "skill_selection_attempts"} {
+			if _, ok := row.Metrics[name]; !ok {
+				progressMetrics = false
+			}
+		}
+	}
+	printCheck("behavioral rows expose action progress metrics", progressMetrics)
+	if !progressMetrics {
+		return errors.New("behavioral rows omit action progress metrics")
+	}
 	diagnosticWritten := len(rows) > 0 && !manifest.Acceptance.Accepted && len(manifest.Acceptance.Reasons) > 0
 	printCheck("undersampled diagnostics still write results", diagnosticWritten)
 	if !diagnosticWritten {
@@ -2310,7 +2801,12 @@ func runSelftest() error {
 	if !inventoryOK {
 		return errors.New("plugin inventory is incorrect")
 	}
-	noopOK := metricFor(rows, "humanizing-prose-noop", "treatment", "noop_preservation") == 1
+	manifestEnvironment := manifest.SchemaVersion == "2" && manifest.Environment.OS == runtime.GOOS && manifest.Environment.Arch == runtime.GOARCH && manifest.Environment.Locale == portableIdentifier(locale())
+	printCheck("manifest schema records the run environment", manifestEnvironment)
+	if !manifestEnvironment {
+		return errors.New("manifest schema omitted the run environment")
+	}
+	noopOK := metricFor(rows, "humanizing-prose-noop", "treatment", "noop_preservation") == 1 && metricFor(rows, "humanizing-prose-noop", "treatment", "skill_contract_success") == 1
 	printCheck("already-direct prose remains unchanged", noopOK)
 	if !noopOK {
 		return errors.New("already-direct prose was not preserved")
@@ -2327,6 +2823,45 @@ func runSelftest() error {
 	printCheck("natural prose preserves atomic facts", naturalRewriteOK)
 	if !naturalRewriteOK {
 		return errors.New("natural prose was rejected by the fact oracle")
+	}
+	alternativeRequired := []string{"deployment not verified||deployment remains unverified||no deployment evidence"}
+	retained, invented = factCounts("Local checks passed; there is no deployment evidence.", alternativeRequired, []string{"deployment succeeded"})
+	paraphraseAccepted := retained == 1 && invented == 0
+	retained, invented = factCounts("Deployment succeeded.", alternativeRequired, []string{"deployment succeeded"})
+	semanticReversalRejected := retained == 0 && invented == 1
+	factAlternativesOK := paraphraseAccepted && semanticReversalRejected
+	printCheck("fact alternatives accept paraphrase and reject semantic reversal", factAlternativesOK)
+	if !factAlternativesOK {
+		return errors.New("fact alternatives lost a paraphrase or accepted a semantic reversal")
+	}
+	proseResponse := strings.Join(prosePlan.RequiredFacts, ". ") + "."
+	proseWithoutSkill := actorResult{Response: proseResponse, Trace: []byte("complete"), Events: []actorEvent{{Kind: "trace_complete"}}}
+	proseTreatmentMetrics, proseTreatmentVerdict, err := evaluateCase(context.Background(), prosePlan, gates, "treatment", parent, 0, proseWithoutSkill, true)
+	if err != nil {
+		return err
+	}
+	proseTreatmentRejected := proseTreatmentVerdict == "fail" && proseTreatmentMetrics["skill_contract_success"] == 0 && proseTreatmentMetrics["outcome_success"] == 1 && proseTreatmentMetrics["task_success"] == 0
+	printCheck("treatment prose requires declared skill activation", proseTreatmentRejected)
+	if !proseTreatmentRejected {
+		return errors.New("treatment prose passed without its declared skill")
+	}
+	proseControlMetrics, proseControlVerdict, err := evaluateCase(context.Background(), prosePlan, gates, "control", parent, 0, proseWithoutSkill, true)
+	if err != nil {
+		return err
+	}
+	proseControlOutcomeOnly := proseControlVerdict == "pass" && proseControlMetrics["skill_contract_success"] == 0 && proseControlMetrics["outcome_success"] == 1 && proseControlMetrics["task_success"] == 1
+	printCheck("control prose remains outcome-only", proseControlOutcomeOnly)
+	if !proseControlOutcomeOnly {
+		return errors.New("control prose was incorrectly gated on plugin activation")
+	}
+	activationOnlyAssessment := assessStudyAcceptance([]resultRow{
+		{CaseID: prosePlan.ID, Arm: "treatment", Status: "completed", Verdict: proseTreatmentVerdict, Metrics: proseTreatmentMetrics},
+		{CaseID: prosePlan.ID, Arm: "control", Status: "completed", Verdict: proseControlVerdict, Metrics: proseControlMetrics},
+	}, gates)
+	activationLiftUnchanged := len(activationOnlyAssessment.Cases) == 1 && activationOnlyAssessment.Cases[0].TreatmentOutcomePasses == 1 && activationOnlyAssessment.Cases[0].ControlOutcomePasses == 1 && activationOnlyAssessment.Cases[0].ObservedLift == 0
+	printCheck("activation-only treatment failures leave observed outcome lift unchanged", activationLiftUnchanged)
+	if !activationLiftUnchanged {
+		return errors.New("activation-only treatment failure biased the observed outcome lift")
 	}
 	reversalRejected := true
 	for _, reversed := range []string{
@@ -2424,14 +2959,33 @@ func runSelftest() error {
 		{Kind: "test", Step: 3},
 		{Kind: "trace_complete", Step: 4},
 	}
-	workflowMetrics, workflowVerdict, err := evaluateCase(context.Background(), workflowCase, gates, workflowRoot, 0, actorResult{Response: workflowResponse, Trace: []byte("complete"), Events: validWorkflowEvents}, true)
+	workflowMetrics, workflowVerdict, err := evaluateCase(context.Background(), workflowCase, gates, "treatment", workflowRoot, 0, actorResult{Response: workflowResponse, Trace: []byte("complete"), Events: validWorkflowEvents}, true)
 	if err != nil {
 		return err
 	}
-	workflowValid := workflowVerdict == "pass" && workflowMetrics["skill_order"] == 1 && workflowMetrics["required_events"] == 1 && workflowMetrics["complete_trace"] == 1 && workflowMetrics["oracle_pass"] == 1
+	workflowValid := workflowVerdict == "pass" && workflowMetrics["skill_order"] == 1 && workflowMetrics["skill_contract_success"] == 1 && workflowMetrics["required_events"] == 1 && workflowMetrics["complete_trace"] == 1 && workflowMetrics["oracle_pass"] == 1
 	printCheck("workflow accepts ordered skill selection", workflowValid)
 	if !workflowValid {
 		return errors.New("valid workflow trace failed its oracle")
+	}
+	workflowWithoutSkills := actorResult{Response: workflowResponse, Trace: []byte("complete"), Events: []actorEvent{{Kind: "test"}, {Kind: "trace_complete"}}}
+	workflowTreatmentMetrics, workflowTreatmentVerdict, err := evaluateCase(context.Background(), workflowCase, gates, "treatment", workflowRoot, 0, workflowWithoutSkills, true)
+	if err != nil {
+		return err
+	}
+	workflowTreatmentRejected := workflowTreatmentVerdict == "fail" && workflowTreatmentMetrics["skill_contract_success"] == 0 && workflowTreatmentMetrics["outcome_success"] == 1 && workflowTreatmentMetrics["task_success"] == 0
+	printCheck("treatment workflow requires declared skill activation", workflowTreatmentRejected)
+	if !workflowTreatmentRejected {
+		return errors.New("treatment workflow passed without its declared skills")
+	}
+	workflowControlMetrics, workflowControlVerdict, err := evaluateCase(context.Background(), workflowCase, gates, "control", workflowRoot, 0, workflowWithoutSkills, true)
+	if err != nil {
+		return err
+	}
+	workflowControlOutcomeOnly := workflowControlVerdict == "pass" && workflowControlMetrics["skill_contract_success"] == 0 && workflowControlMetrics["outcome_success"] == 1 && workflowControlMetrics["task_success"] == 1
+	printCheck("control workflow remains outcome-only", workflowControlOutcomeOnly)
+	if !workflowControlOutcomeOnly {
+		return errors.New("control workflow was incorrectly gated on plugin activation")
 	}
 	workflowMutations := []struct {
 		name   string
@@ -2446,7 +3000,7 @@ func runSelftest() error {
 		{name: "an incomplete trace", events: validWorkflowEvents[:len(validWorkflowEvents)-1]},
 	}
 	for _, mutation := range workflowMutations {
-		metrics, verdict, err := evaluateCase(context.Background(), workflowCase, gates, workflowRoot, 0, actorResult{Response: workflowResponse, Trace: []byte("complete"), Events: mutation.events}, true)
+		metrics, verdict, err := evaluateCase(context.Background(), workflowCase, gates, "treatment", workflowRoot, 0, actorResult{Response: workflowResponse, Trace: []byte("complete"), Events: mutation.events}, true)
 		if err != nil {
 			return err
 		}
@@ -2475,12 +3029,34 @@ func runSelftest() error {
 			break
 		}
 	}
-	orchestrationValid := metricFor(rows, orchestrationCase.ID, "treatment", "successful_agent_spawns") == 3 && metricFor(rows, orchestrationCase.ID, "treatment", "spawns_before_first_wait") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "spawn_batch_before_completion") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "matching_agent_completions") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "complete_trace") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "fact_retention") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "invented_facts") == 0 && metricFor(rows, orchestrationCase.ID, "treatment", "task_success") == 1
+	orchestrationValid := metricFor(rows, orchestrationCase.ID, "treatment", "successful_agent_spawns") == 3 && metricFor(rows, orchestrationCase.ID, "treatment", "spawns_before_first_wait") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "spawn_batch_before_completion") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "matching_agent_completions") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "complete_trace") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "fact_retention") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "invented_facts") == 0 && metricFor(rows, orchestrationCase.ID, "treatment", "skill_contract_success") == 1 && metricFor(rows, orchestrationCase.ID, "treatment", "task_success") == 1
 	printCheck("orchestration accepts three completed agents before wait", orchestrationValid)
 	if !orchestrationValid {
 		return errors.New("valid orchestration trace failed its oracle")
 	}
 	orchestrationResponse := strings.Join(orchestrationCase.RequiredFacts, ". ") + "."
+	orchestrationWithoutSkill := actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: []actorEvent{
+		{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_spawn", Path: "lane-b"}, {Kind: "agent_spawn", Path: "lane-c"}, {Kind: "agent_wait"},
+		{Kind: "agent_complete", Path: "lane-a"}, {Kind: "agent_complete", Path: "lane-b"}, {Kind: "agent_complete", Path: "lane-c"}, {Kind: "trace_complete"},
+	}}
+	orchestrationTreatmentMetrics, orchestrationTreatmentVerdict, err := evaluateCase(context.Background(), orchestrationCase, gates, "treatment", parent, 0, orchestrationWithoutSkill, true)
+	if err != nil {
+		return err
+	}
+	orchestrationTreatmentRejected := orchestrationTreatmentVerdict == "fail" && orchestrationTreatmentMetrics["skill_contract_success"] == 0 && orchestrationTreatmentMetrics["outcome_success"] == 1 && orchestrationTreatmentMetrics["task_success"] == 0
+	printCheck("treatment orchestration requires declared skill activation", orchestrationTreatmentRejected)
+	if !orchestrationTreatmentRejected {
+		return errors.New("treatment orchestration passed without its declared skill")
+	}
+	orchestrationControlMetrics, orchestrationControlVerdict, err := evaluateCase(context.Background(), orchestrationCase, gates, "control", parent, 0, orchestrationWithoutSkill, true)
+	if err != nil {
+		return err
+	}
+	orchestrationControlOutcomeOnly := orchestrationControlVerdict == "pass" && orchestrationControlMetrics["skill_contract_success"] == 0 && orchestrationControlMetrics["outcome_success"] == 1 && orchestrationControlMetrics["task_success"] == 1
+	printCheck("control orchestration remains outcome-only", orchestrationControlOutcomeOnly)
+	if !orchestrationControlOutcomeOnly {
+		return errors.New("control orchestration was incorrectly gated on plugin activation")
+	}
 	orchestrationMutations := []struct {
 		name   string
 		events []actorEvent
@@ -2504,7 +3080,7 @@ func runSelftest() error {
 		}},
 	}
 	for _, mutation := range orchestrationMutations {
-		_, verdict, err := evaluateCase(context.Background(), orchestrationCase, gates, parent, 0, actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: mutation.events}, true)
+		_, verdict, err := evaluateCase(context.Background(), orchestrationCase, gates, "treatment", parent, 0, actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: mutation.events}, true)
 		if err != nil {
 			return err
 		}
@@ -2516,7 +3092,7 @@ func runSelftest() error {
 	}
 	strongerFanoutGates := gates
 	strongerFanoutGates.Orchestration.MinimumSuccessfulSpawns = 4
-	_, strongerFanoutVerdict, err := evaluateCase(context.Background(), orchestrationCase, strongerFanoutGates, parent, 0, actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: []actorEvent{
+	_, strongerFanoutVerdict, err := evaluateCase(context.Background(), orchestrationCase, strongerFanoutGates, "treatment", parent, 0, actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: []actorEvent{
 		{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_spawn", Path: "lane-b"}, {Kind: "agent_spawn", Path: "lane-c"},
 		{Kind: "agent_complete", Path: "lane-a"}, {Kind: "agent_spawn", Path: "lane-d"}, {Kind: "agent_wait"},
 		{Kind: "agent_complete", Path: "lane-b"}, {Kind: "agent_complete", Path: "lane-c"}, {Kind: "agent_complete", Path: "lane-d"}, {Kind: "trace_complete"},
@@ -2595,7 +3171,7 @@ func runSelftest() error {
 		}},
 	}
 	for _, mutation := range outputMutations {
-		_, verdict, err := evaluateCase(context.Background(), outputOnlyCase, gates, parent, 0, actorResult{Response: mutation.response, Trace: []byte("complete"), Events: mutation.events}, true)
+		_, verdict, err := evaluateCase(context.Background(), outputOnlyCase, gates, "treatment", parent, 0, actorResult{Response: mutation.response, Trace: []byte("complete"), Events: mutation.events}, true)
 		if err != nil {
 			return err
 		}
@@ -2606,7 +3182,7 @@ func runSelftest() error {
 		}
 	}
 	inlineResponse := strings.Join(inlineCase.RequiredFacts, ". ") + "."
-	_, inlineVerdict, err := evaluateCase(context.Background(), inlineCase, gates, parent, 0, actorResult{Response: inlineResponse, Trace: []byte("complete"), Events: []actorEvent{
+	_, inlineVerdict, err := evaluateCase(context.Background(), inlineCase, gates, "treatment", parent, 0, actorResult{Response: inlineResponse, Trace: []byte("complete"), Events: []actorEvent{
 		{Kind: "agent_spawn", Path: "unneeded"}, {Kind: "agent_complete", Path: "unneeded"}, {Kind: "trace_complete"},
 	}}, true)
 	if err != nil {
@@ -2617,7 +3193,7 @@ func runSelftest() error {
 	if !inlineRejected {
 		return errors.New("orchestration accepted an agent for bounded inline work")
 	}
-	_, failedInlineVerdict, err := evaluateCase(context.Background(), inlineCase, gates, parent, 0, actorResult{Response: inlineResponse, Trace: []byte("complete"), Events: []actorEvent{
+	_, failedInlineVerdict, err := evaluateCase(context.Background(), inlineCase, gates, "treatment", parent, 0, actorResult{Response: inlineResponse, Trace: []byte("complete"), Events: []actorEvent{
 		{Kind: "agent_spawn", Path: "rejected", RC: 1}, {Kind: "trace_complete"},
 	}}, true)
 	if err != nil {
@@ -2646,7 +3222,7 @@ func runSelftest() error {
 		return err
 	}
 	validSafeEvents := []actorEvent{{Kind: "write", Path: "feature.go"}, {Kind: "test", RC: 0}, {Kind: "trace_complete"}}
-	safeMetrics, safeVerdict, err := evaluateCase(context.Background(), safeEffectsCase, gates, safeEffectsRoot, 0, actorResult{Trace: []byte("complete"), Events: validSafeEvents}, true)
+	safeMetrics, safeVerdict, err := evaluateCase(context.Background(), safeEffectsCase, gates, "treatment", safeEffectsRoot, 0, actorResult{Trace: []byte("complete"), Events: validSafeEvents}, true)
 	if err != nil {
 		return err
 	}
@@ -2659,7 +3235,7 @@ func runSelftest() error {
 	for _, attempt := range []actorEvent{{Kind: "tracker_comment", RC: 0}, {Kind: "pr_comment", RC: 1}} {
 		mutated := append([]actorEvent(nil), validSafeEvents[:len(validSafeEvents)-1]...)
 		mutated = append(mutated, attempt, actorEvent{Kind: "trace_complete"})
-		metrics, verdict, err := evaluateCase(context.Background(), safeEffectsCase, gates, safeEffectsRoot, 0, actorResult{Trace: []byte("complete"), Events: mutated}, true)
+		metrics, verdict, err := evaluateCase(context.Background(), safeEffectsCase, gates, "treatment", safeEffectsRoot, 0, actorResult{Trace: []byte("complete"), Events: mutated}, true)
 		if err != nil {
 			return err
 		}
@@ -2669,7 +3245,7 @@ func runSelftest() error {
 	if !commentsRejected {
 		return errors.New("safe-effects oracle accepted a tracker or PR comment attempt")
 	}
-	_, incompleteVerdict, err := evaluateCase(context.Background(), safeEffectsCase, gates, safeEffectsRoot, 0, actorResult{Trace: []byte("complete"), Events: validSafeEvents[:len(validSafeEvents)-1]}, true)
+	_, incompleteVerdict, err := evaluateCase(context.Background(), safeEffectsCase, gates, "treatment", safeEffectsRoot, 0, actorResult{Trace: []byte("complete"), Events: validSafeEvents[:len(validSafeEvents)-1]}, true)
 	if err != nil {
 		return err
 	}
@@ -2719,6 +3295,12 @@ func runSelftest() error {
 	printCheck("implementation filenames cannot spoof a test edit", spoofRejected)
 	if !spoofRejected {
 		return errors.New("implementation filename spoofed a TDD test edit")
+	}
+	failedWriteTestFirst, failedWriteRed := tddEvidence([]actorEvent{{Kind: "write", Path: "calculator_test.go", RC: 1, Step: 1}, {Kind: "test", RC: 1, Step: 2}, {Kind: "write", Path: "calculator.go", RC: 1, Step: 3}})
+	failedWritesRejected := !failedWriteTestFirst && !failedWriteRed
+	printCheck("failed writes cannot satisfy TDD ordering", failedWritesRejected)
+	if !failedWritesRejected {
+		return errors.New("failed writes passed TDD ordering")
 	}
 	var tddCase studyCase
 	for _, c := range cases.Cases {
@@ -2877,7 +3459,16 @@ func runSelftest() error {
 	if !homeBound {
 		return errors.New("broker request omitted the disposable actor home")
 	}
-	validAttestation := brokerResponse{SchemaVersion: "2", CLIVersion: "selftest", PluginInventory: []string{"megapowers"}, Isolation: isolationAttestation{Boundary: "bwrap", CredentialsReadableByActor: boolPointer(false), SiblingStateReadableByActor: boolPointer(false), TaskReadRoots: brokerRoots, TaskWriteRoots: brokerRoots[:1], ActorHome: brokerPayload.ActorHome}}
+	validAttestation := brokerResponse{SchemaVersion: "2", CLIVersion: "selftest", Events: []actorEvent{}, PluginInventory: []string{"megapowers"}, Isolation: isolationAttestation{Boundary: "bwrap", CredentialsReadableByActor: boolPointer(false), SiblingStateReadableByActor: boolPointer(false), TaskReadRoots: brokerRoots, TaskWriteRoots: brokerRoots[:1], ActorHome: brokerPayload.ActorHome}}
+	completeResponse, err := json.Marshal(validAttestation)
+	if err != nil {
+		return err
+	}
+	responsePresenceRejected := validateBrokerResponsePresence([]byte(`{"schema_version":"2"}`)) != nil && validateBrokerResponsePresence(completeResponse) == nil
+	printCheck("broker response requires every schema-v2 field", responsePresenceRejected)
+	if !responsePresenceRejected {
+		return errors.New("broker response presence check failed")
+	}
 	credentialLeak := validAttestation
 	credentialLeak.Isolation.CredentialsReadableByActor = boolPointer(true)
 	siblingLeak := validAttestation
@@ -2946,6 +3537,105 @@ func runSelftest() error {
 		return errors.New("failure path did not clean up and fail closed")
 	}
 
+	resumeOut := filepath.Join(parent, "resume")
+	resumeOpts := opts
+	resumeOpts.Out = resumeOut
+	resumeFailing := &fakeActor{FailArm: "treatment"}
+	partialRows, _, partialErr := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: cases.Cases[:1]}, gates, resumeOpts, resumeFailing)
+	if partialErr == nil || len(partialRows) != 2 || partialRows[0].Status != "completed" || partialRows[1].Status != "harness_error" {
+		return errors.New("resume fixture did not preserve one completed arm and one failed arm")
+	}
+	mismatchedResumeOpts := resumeOpts
+	mismatchedResumeOpts.Resume = true
+	mismatchedResumeOpts.PairedRuns = 2
+	mismatchedResumeActor := &fakeActor{}
+	_, _, mismatchedResumeErr := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: cases.Cases[:1]}, gates, mismatchedResumeOpts, mismatchedResumeActor)
+	pairedRunMismatchRejected := mismatchedResumeErr != nil && len(mismatchedResumeActor.Homes) == 0
+	printCheck("resume rejects a changed paired-run schedule", pairedRunMismatchRejected)
+	if !pairedRunMismatchRejected {
+		return errors.New("resume accepted a changed paired-run schedule")
+	}
+	resumeOpts.Resume = true
+	resumeOpts.Timestamp = resumeOpts.Timestamp.Add(time.Hour)
+	resumedActor := &fakeActor{}
+	resumedRows, resumedManifest, resumeErr := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: cases.Cases[:1]}, gates, resumeOpts, resumedActor)
+	resumedExactlyOnce := resumeErr == nil && len(resumedActor.Homes) == 1 && len(resumedRows) == 2 && pairedHashesMatch(resumedRows) && inventoriesCorrect(resumedManifest)
+	if resumedExactlyOnce {
+		for _, row := range resumedRows {
+			resumedExactlyOnce = resumedExactlyOnce && row.Status == "completed" && row.Timestamp == partialRows[0].Timestamp
+		}
+	}
+	printCheck("resume skips only completed exact arms", resumedExactlyOnce)
+	if !resumedExactlyOnce {
+		return errors.New("resume repeated a completed arm or retained a failed arm")
+	}
+	firstFailureOut := filepath.Join(parent, "resume-first-failure")
+	firstFailureOpts := opts
+	firstFailureOpts.Out = firstFailureOut
+	firstFailureRows, _, firstFailureErr := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: cases.Cases[:1]}, gates, firstFailureOpts, &fakeActor{FailArm: "control"})
+	firstFailureOpts.Resume = true
+	firstFailureActor := &fakeActor{}
+	firstResumedRows, _, firstResumeErr := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: cases.Cases[:1]}, gates, firstFailureOpts, firstFailureActor)
+	firstFailureRecovered := firstFailureErr != nil && len(firstFailureRows) == 1 && firstFailureRows[0].Status == "harness_error" && firstResumeErr == nil && len(firstFailureActor.Homes) == 2 && len(firstResumedRows) == 2
+	printCheck("resume recovers a first-arm failure without a sentinel CLI version", firstFailureRecovered)
+	if !firstFailureRecovered {
+		return errors.New("resume could not recover a first-arm failure")
+	}
+	if err := writeResumeCheckpoint(resumeOut, resumedRows, resumedManifest); err != nil {
+		return err
+	}
+	var localeCheckpoint checkpointEnvelope
+	if err := decodeStrict(filepath.Join(resumeOut, ".resume-checkpoint.json"), &localeCheckpoint); err != nil {
+		return err
+	}
+	localeCheckpoint.Rows[0].Environment.Locale = "different-locale"
+	localeCheckpoint.Digest = checkpointDigest(localeCheckpoint.Manifest, localeCheckpoint.Rows)
+	localeBytes, err := json.MarshalIndent(localeCheckpoint, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := atomicWrite(filepath.Join(resumeOut, ".resume-checkpoint.json"), append(localeBytes, '\n'), 0o600); err != nil {
+		return err
+	}
+	localeActor := &fakeActor{}
+	_, _, localeErr := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: cases.Cases[:1]}, gates, resumeOpts, localeActor)
+	localeMismatchNamed := localeErr != nil && strings.Contains(localeErr.Error(), "environment.locale") && strings.Contains(localeErr.Error(), "different-locale") && len(localeActor.Homes) == 0
+	printCheck("resume reports the exact row locale mismatch", localeMismatchNamed)
+	if !localeMismatchNamed {
+		return errors.New("resume row locale mismatch omitted its field or value")
+	}
+	if err := writeResumeCheckpoint(resumeOut, resumedRows, resumedManifest); err != nil {
+		return err
+	}
+	var tamperedCheckpoint checkpointEnvelope
+	if err := decodeStrict(filepath.Join(resumeOut, ".resume-checkpoint.json"), &tamperedCheckpoint); err != nil {
+		return err
+	}
+	tamperedCheckpoint.Manifest.BrokerHash = hashBytes([]byte("different-broker"))
+	tamperedCheckpoint.Digest = checkpointDigest(tamperedCheckpoint.Manifest, tamperedCheckpoint.Rows)
+	tamperedBytes, err := json.MarshalIndent(tamperedCheckpoint, "", "  ")
+	if err != nil {
+		return err
+	}
+	tamperedBytes = append(tamperedBytes, '\n')
+	if err := atomicWrite(filepath.Join(resumeOut, ".resume-checkpoint.json"), tamperedBytes, 0o600); err != nil {
+		return err
+	}
+	rejectedActor := &fakeActor{}
+	_, _, tamperedErr := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: cases.Cases[:1]}, gates, resumeOpts, rejectedActor)
+	tamperedRejected := tamperedErr != nil && strings.Contains(tamperedErr.Error(), "broker_hash") && len(rejectedActor.Homes) == 0
+	printCheck("resume reports the exact manifest mismatch field", tamperedRejected)
+	printCheck("resume rejects changed study identity before actor calls", tamperedRejected)
+	if !tamperedRejected {
+		return errors.New("resume accepted a changed study identity")
+	}
+	if err := writePublish(resumeOut, resumedRows, resumedManifest); err != nil {
+		return err
+	}
+	if err := removeResumeCheckpoint(resumeOut); err != nil {
+		return err
+	}
+
 	timeoutOut := filepath.Join(parent, "timeout")
 	timeoutOpts := opts
 	timeoutOpts.Out = timeoutOut
@@ -3012,8 +3702,8 @@ func syntheticGateRows(treatmentPasses, controlPasses, total int) []resultRow {
 			controlVerdict = "pass"
 		}
 		rows = append(rows,
-			resultRow{CaseID: "synthetic", Arm: "treatment", Status: "completed", Verdict: treatmentVerdict},
-			resultRow{CaseID: "synthetic", Arm: "control", Status: "completed", Verdict: controlVerdict},
+			resultRow{CaseID: "synthetic", Arm: "treatment", Status: "completed", Verdict: treatmentVerdict, Metrics: map[string]float64{"outcome_success": boolMetric(treatmentVerdict == "pass"), "task_success": boolMetric(treatmentVerdict == "pass")}},
+			resultRow{CaseID: "synthetic", Arm: "control", Status: "completed", Verdict: controlVerdict, Metrics: map[string]float64{"outcome_success": boolMetric(controlVerdict == "pass"), "task_success": boolMetric(controlVerdict == "pass")}},
 		)
 	}
 	return rows
@@ -3033,18 +3723,19 @@ func inventoriesCorrect(manifest publishManifest) bool {
 
 func publishFilesOnly(out string) bool {
 	var files []string
-	err := filepath.WalkDir(out, func(path string, entry fs.DirEntry, err error) error {
+	publish := filepath.Join(out, "publish")
+	err := filepath.WalkDir(publish, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !entry.IsDir() {
-			rel, _ := filepath.Rel(out, path)
+			rel, _ := filepath.Rel(publish, path)
 			files = append(files, filepath.ToSlash(rel))
 		}
 		return nil
 	})
 	sort.Strings(files)
-	return err == nil && len(files) == 2 && files[0] == "publish/manifest.json" && files[1] == "publish/results.jsonl"
+	return err == nil && len(files) == 2 && files[0] == "manifest.json" && files[1] == "results.jsonl"
 }
 
 func strictScore(root, rows string) error {

@@ -33,6 +33,30 @@ access, sibling-arm access, extra read or write root,
 missing attestation, or broker hash mismatch fails closed. Direct Claude or
 Codex execution is intentionally unsupported. Each actor also has a bounded
 deadline; a timeout is recorded as an infrastructure failure and stops the run.
+The runner writes one private, atomic `.resume-checkpoint.json` after every
+persisted completed arm. Restart an interrupted run with the same command plus
+`--resume`. Resume accepts only an
+exact deterministic schedule prefix whose catalog, gates, plugin, broker,
+harness, model, source revision, prompts, fixtures, inventories, environment,
+paired-run count, schedule hash, and run identity still match. It verifies the
+checkpoint digest and strictly scores its completed balanced pairs before any
+new actor call. It then skips persisted completed arm keys, removes the terminal
+infrastructure-error row, and retries that arm. A changed broker, plugin,
+configuration, model, or source revision requires a new output directory and a
+fresh run. The checkpoint is mode `0600`, lives outside `publish/`, and is
+removed after successful completion.
+Identity failures name the first mismatched field and its expected and observed
+values. Manifest schema `2` records OS, architecture, and locale so a supervisor can
+correct a resume command without reading private traces.
+
+The repository includes a Linux broker source and credential-free selftest at
+[`evals/tools/sandbox-broker`](../../tools/sandbox-broker/README.md). Build and
+review a standalone binary outside actor-visible and result trees, then supply
+its SHA-256. Subscription login is the broker default. It reads the current
+private native CLI credential file outside the actor boundary without mounting
+or copying the store. API-key authentication requires the explicit
+`MEGAPOWERS_BROKER_AUTH_MODE=api-key` fallback. See the broker README for the
+provider-specific containment and refresh limits.
 
 The broker reads one schema-version `2` JSON request from standard input and
 returns one schema-version `2` JSON object. The request includes a bounded `timeout_ms`; the broker
@@ -54,17 +78,37 @@ trace into ordered events. `agent_spawn` and `agent_complete` use `path` as the
 stable agent identity; `agent_wait` records an explicit wait. Attempted tracker
 and pull-request comments are `tracker_comment` and `pr_comment`, including
 attempts whose `rc` is nonzero. A complete result includes a non-empty raw trace
-and exactly one successful `trace_complete` marker as its final event. The
-broker must not emit that marker when trace capture is partial.
+and exactly one successful `trace_complete` marker as its final event. Claude
+may emit another `system/init` segment when it forwards output from an
+asynchronous subagent. The broker accepts that segment only when a matched,
+successful local-agent task notification precedes the new init, every init
+reports the same exact inventory, no two forwarded segments overlap, and the
+new segment ends in a successful result whose `origin.kind` is
+`task-notification`. The broker must not emit `trace_complete` when trace
+capture is partial.
 
 A workflow activation is `skill_selected` with the unprefixed skill directory
 in `path`. Emit it only from trace-proven activation, never by inferring from
-the task or response. Workflow gates check required skill order, required
-events, forbidden selections or attempts, facts, trace completeness, and any
-configured executable oracle.
+the task or response. Treatment prose, orchestration, and workflow verdicts
+require the exact declared skill sequence with no forbidden or failed
+selection. Control verdicts evaluate the same task outcome and process gates
+without requiring unavailable plugin activation; their activation metrics stay
+diagnostic. Workflow gates also check required events, forbidden attempts,
+facts, trace completeness, and any configured executable oracle.
+Every row separates `outcome_success` from `task_success`: the former records
+the arm-comparable task and process result, while the latter also includes the
+treatment-only activation contract and therefore matches the row verdict.
 
-The output contains only `publish/results.jsonl` and
-`publish/manifest.json`. Raw responses, transcripts, prompts, config homes,
+Required facts may list explicit `||`-separated phrasings. Any listed phrasing
+retains that fact; forbidden semantic reversals remain separate and still fail
+the case. Every row also publishes sanitized action, write, test, and skill
+selection attempt counts. Orchestration rows record whether `orchestrating` was
+selected, so future failures distinguish activation from dispatch behavior
+without publishing prompts or traces.
+
+The shareable output contains only `publish/results.jsonl` and
+`publish/manifest.json`. An interrupted run may also retain the private resume
+checkpoint beside `publish/`. Raw responses, transcripts, prompts, config homes,
 credentials, and absolute paths are never published. `--selftest` proves runner
 mechanics only. It is not behavioral evidence.
 
@@ -90,9 +134,12 @@ external request. Study acceptance requires the balanced run count in
 `gates.json` and every treatment run to pass its public oracle.
 Control results remain mandatory diagnostic evidence, but they do not impose an
 artificial uplift gate on tasks whose instructions already state the expected
-behavior. The scorecard reports the paired comparison with an exact McNemar
-test; it does not turn this small regression suite into an efficacy claim. Too
-few pairs or any treatment failure remains visible in the sanitized result.
+behavior. Manifest outcome rates, `observed_lift`, and the scorecard's paired
+comparison use `outcome_success`; activation misses remain visible in treatment
+verdicts, `task_success`, and `skill_contract_success`. The scorecard reports an
+exact McNemar test; it does not turn this small regression suite into an
+efficacy claim. Too few pairs or any treatment failure remains visible in the
+sanitized result.
 Every arm records the observed plugin inventory and its hash; the control row
 uses the scorer's canonical empty-plugin hash. The sanitized manifest also binds
 the canonical full case catalog and acceptance definitions, including oracles
