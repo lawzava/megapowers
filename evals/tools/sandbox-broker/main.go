@@ -1185,6 +1185,11 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 	var stderr limitedBuffer
 	stderr.limit = 1 << 20
 	cmd.Stderr = &stderr
+	defer func() {
+		if runErr != nil {
+			runErr = fmt.Errorf("%w: Codex app-server stderr: %s", runErr, redact(strings.TrimSpace(string(stderr.Bytes())), []string{auth.credential}))
+		}
+	}()
 	if err := cmd.Start(); err != nil {
 		return processResult{rc: 125, duration: time.Since(started)}, err
 	}
@@ -3158,6 +3163,16 @@ sleep 2
 	leakingResult, leakingErr := runCodexAppServer(ctx, req, leakingFake, filepath.Join(req.ActorHome, ".codex"), auth)
 	if leakingErr == nil || bytes.Contains(leakingResult.stderr, []byte(accessToken)) || strings.Contains(leakingErr.Error(), accessToken) || !bytes.Contains(leakingResult.stderr, []byte("[REDACTED]")) {
 		return errors.New("Codex app-server failure exposed or omitted redaction of the subscription token")
+	}
+
+	diagnosticFake := filepath.Join(paths.root, "fake-codex-diagnostic")
+	diagnosticScript := "#!/bin/sh\nread -r initialize\ncase \"$initialize\" in *'\"method\":\"initialize\"'*) ;; *) exit 41;; esac\nprintf '%s\\n' '{\"id\":1,\"result\":{}}'\necho APP_SERVER_DIAGNOSTIC_MARKER >&2\nexit 47\n"
+	if err := os.WriteFile(diagnosticFake, []byte(diagnosticScript), 0o700); err != nil {
+		return err
+	}
+	_, diagnosticErr := runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth)
+	if diagnosticErr == nil || !strings.Contains(diagnosticErr.Error(), "APP_SERVER_DIAGNOSTIC_MARKER") {
+		return errors.New("app-server failure did not surface the app-server stderr tail")
 	}
 
 	unexpectedScript := strings.Replace(script,
