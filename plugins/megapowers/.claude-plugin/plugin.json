@@ -5,6 +5,8 @@
   "author": {
     "name": "lawzava"
   },
+  "homepage": "https://github.com/lawzava/megapowers",
+  "repository": "https://github.com/lawzava/megapowers",
   "license": "MIT",
   "keywords": [
     "agentic-workflow",

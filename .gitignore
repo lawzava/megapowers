@@ -23,6 +23,10 @@ docs/specs/
 .mcp.json
 .firecrawl/
 
+# Local env files carry secrets — never part of the published repo.
+.env
+.env.*
+
 # Sandbox/agent workspace artifacts that materialize inside study dirs — never real content.
 evals/studies/**/.claude/
 evals/studies/**/.mcp.json
