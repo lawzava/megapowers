@@ -104,6 +104,8 @@ if command -v shellcheck >/dev/null 2>&1; then
       \( -name "*.sh" -o -name "*.bash" \) -print0)
     shellcheck --severity=warning "${files[@]}"
   '
+else
+  printf 'SKIPPED: shell lint (shellcheck not installed)\n' >&2
 fi
 
 run_check "Go formatting" 30s bash -c '
@@ -139,6 +141,7 @@ script_tests=(
   scripts/tests/release-preflight.test.sh
   scripts/tests/security-lint.test.sh
   scripts/tests/skill-contracts.test.sh
+  scripts/tests/test-inventory.test.sh
   scripts/tests/validation-contract.test.sh
   scripts/tests/verification-map-contract.test.sh
 )
@@ -155,6 +158,7 @@ eval_tests=(
   evals/tests/portability-boundary.test.sh
   evals/tests/run-all-reporting.test.sh
   evals/tests/score-failclosed.test.sh
+  evals/tests/subprocess-bounds.test.sh
   evals/studies/tests/installed-ab-contract.test.sh
   evals/studies/tests/pr-replay-contract.test.sh
   evals/studies/tests/sandbox-broker-contract.test.sh
@@ -185,6 +189,9 @@ if command -v claude >/dev/null 2>&1; then
     claude plugin validate --strict .claude-plugin/marketplace.json
   run_check "Claude plugin strict validation" 90s \
     claude plugin validate --strict plugins/megapowers
+else
+  printf 'SKIPPED: Claude marketplace strict validation (claude not installed)\n' >&2
+  printf 'SKIPPED: Claude plugin strict validation (claude not installed)\n' >&2
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

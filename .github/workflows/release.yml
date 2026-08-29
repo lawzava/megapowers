@@ -1,0 +1,178 @@
+name: release-attestation
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to attest (required for manual re-runs)'
+        required: true
+        type: string
+      expected_sha:
+        description: 'Commit SHA the tag must point to (derived from the tag when empty)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  attest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify signatures and assert tag target
+        id: resolve
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            v*) ;;
+            *) printf 'release-attestation: tag %s does not match v*\n' "$TAG" >&2; exit 1 ;;
+          esac
+          if [ -n "$EXPECTED_SHA" ] && ! [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            printf 'release-attestation: expected_sha must be a 40-hex commit SHA\n' >&2
+            exit 1
+          fi
+          sha="$(git rev-parse "$TAG^{commit}")"
+          expected="${EXPECTED_SHA:-$sha}"
+          if [ "$sha" != "$expected" ]; then
+            printf 'release-attestation: tag %s points at %s, expected %s\n' "$TAG" "$sha" "$expected" >&2
+            exit 1
+          fi
+          git verify-tag "$TAG"
+          git verify-commit "$sha"
+          printf 'tag=%s\nsha=%s\n' "$TAG" "$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Extract manifest versions
+        id: versions
+        run: |
+          set -euo pipefail
+          claude="$(jq -er .version plugins/megapowers/.claude-plugin/plugin.json)"
+          codex="$(jq -er .version plugins/megapowers/.codex-plugin/plugin.json)"
+          if [ "$claude" != "$codex" ]; then
+            printf 'release-attestation: manifest versions differ (claude %s, codex %s)\n' "$claude" "$codex" >&2
+            exit 1
+          fi
+          printf 'claude=%s\ncodex=%s\n' "$claude" "$codex" >> "$GITHUB_OUTPUT"
+
+      - name: Install deterministic test dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq ripgrep shellcheck
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.25.x'
+          cache: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+
+      - name: Install pinned harness CLIs
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.233
+          npm install -g @openai/codex@0.149.0
+
+      - name: Validate repository
+        run: scripts/validate.sh
+
+      - name: Claude install smoke on the exact published tag
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          VERSION: ${{ steps.versions.outputs.claude }}
+        run: |
+          set -euo pipefail
+          out="${TMPDIR:-/tmp}/megapowers-release-smoke-claude"
+          mkdir -p "$out"
+          bash evals/studies/install-smoke/run-smoke.sh \
+            --harnesses claude --out "$out" \
+            --source "${{ github.repository }}" --ref "$TAG" --version "$VERSION"
+          smoke="$(awk -F '\t' '$1 == "claude" { result = $2 } END { print tolower(result) }' "$out/results.tsv")"
+          [ "$smoke" = pass ] || { printf 'unexpected claude smoke result: %s\n' "$smoke" >&2; exit 1; }
+          printf 'SMOKE_CLAUDE=%s\n' "$smoke" >> "$GITHUB_ENV"
+
+      - name: Codex install smoke
+        run: |
+          set -euo pipefail
+          scripts/codex-install-smoke.sh
+          printf 'SMOKE_CODEX=pass\n' >> "$GITHUB_ENV"
+
+      - name: Hash plugin tree and reject symlinks
+        id: tree
+        run: |
+          set -euo pipefail
+          symlinks="$(find plugins/megapowers -type l)"
+          if [ -n "$symlinks" ]; then
+            printf 'release-attestation: symlinks exist under plugins/megapowers:\n%s\n' "$symlinks" >&2
+            exit 1
+          fi
+          scratch="$(mktemp -d "${TMPDIR:-/tmp}/megapowers-release-attest.XXXXXX")"
+          find plugins/megapowers -type f -print0 \
+            | LC_ALL=C sort -z \
+            | xargs -0 sha256sum > "$scratch/plugin-tree-sha256sums.txt"
+          find plugins/megapowers -type f -print0 \
+            | LC_ALL=C sort -z \
+            | xargs -0 stat -c '%a %n' > "$scratch/plugin-modes.txt"
+          printf 'plugin tree sha256sum manifest:\n'
+          cat "$scratch/plugin-tree-sha256sums.txt"
+          printf 'plugin modes manifest:\n'
+          cat "$scratch/plugin-modes.txt"
+          printf 'tree=%s\nmodes=%s\n' \
+            "$(sha256sum "$scratch/plugin-tree-sha256sums.txt" | awk '{print $1}')" \
+            "$(sha256sum "$scratch/plugin-modes.txt" | awk '{print $1}')" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Emit attestation
+        env:
+          RUN_ID: ${{ github.run_id }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+          CLAUDE_VERSION: ${{ steps.versions.outputs.claude }}
+          CODEX_VERSION: ${{ steps.versions.outputs.codex }}
+          PLUGIN_TREE_SHA256: ${{ steps.tree.outputs.tree }}
+          MODES_MANIFEST_SHA256: ${{ steps.tree.outputs.modes }}
+          SMOKE_CLAUDE: ${{ env.SMOKE_CLAUDE }}
+          SMOKE_CODEX: ${{ env.SMOKE_CODEX }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg version "$CLAUDE_VERSION" \
+            --arg tag "$TAG" \
+            --arg sha "$SHA" \
+            --arg run_id "$RUN_ID" \
+            --arg claude_version "$CLAUDE_VERSION" \
+            --arg codex_version "$CODEX_VERSION" \
+            --arg plugin_tree_sha256 "$PLUGIN_TREE_SHA256" \
+            --arg modes_manifest_sha256 "$MODES_MANIFEST_SHA256" \
+            --arg smoke_claude "$SMOKE_CLAUDE" \
+            --arg smoke_codex "$SMOKE_CODEX" \
+            '{
+              version: $version,
+              tag: $tag,
+              sha: $sha,
+              tag_signature: "verified",
+              run_id: ($run_id | tonumber),
+              manifest_versions: {claude: $claude_version, codex: $codex_version},
+              plugin_tree_sha256: $plugin_tree_sha256,
+              modes_manifest_sha256: $modes_manifest_sha256,
+              smoke: {claude: $smoke_claude, codex: $smoke_codex}
+            }' > attestation.json
+          cat attestation.json
+
+      - name: Upload release attestation
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: release-attestation
+          path: attestation.json
+          if-no-files-found: error
+          retention-days: 14

@@ -1,11 +1,13 @@
 name: freshness
 
 # Current Claude Code and Codex support plus pinned validation tooling can drift
-# without a repository change. Recheck those dated surfaces every week.
+# without a repository change. Recheck those dated surfaces every week, and run
+# the same validation checks against current stable CLIs every night.
 
 on:
   schedule:
     - cron: '17 6 * * 1' # weekly, Monday at 06:17 UTC
+    - cron: '23 3 * * *' # nightly, 03:23 UTC
   workflow_dispatch:
 
 permissions:
@@ -13,6 +15,7 @@ permissions:
 
 jobs:
   freshness:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 6 * * 1'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -20,3 +23,24 @@ jobs:
           persist-credentials: false
       - name: Harness support reviewed within 30 days
         run: scripts/check-freshness.sh
+
+  latest-install-smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '23 3 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+      - name: Install current stable CLIs
+        run: |
+          npm install -g @anthropic-ai/claude-code@latest
+          npm install -g @openai/codex@latest
+      - name: Validate sole Claude plugin
+        run: |
+          claude plugin validate --strict .claude-plugin/marketplace.json
+          claude plugin validate --strict plugins/megapowers
+      - name: Codex install smoke on current stable
+        run: scripts/codex-install-smoke.sh
