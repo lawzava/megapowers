@@ -180,6 +180,72 @@ check DENY 'find ../../.. -delete'
 check ALLOW 'rm -rf ../sibling/dist'
 check ALLOW 'find ../sibling -name "*.tmp" -delete'
 
+# ---- wrappers, raw-device writers, path twins, foreign and parent homes ------
+# Eight shapes behavioral probes confirmed the guard answered in silence while
+# `rm -rf /` denied. Each is a plausible accident, not obfuscation: pipelining
+# into xargs, wrapping in timeout, zeroing a disk with cp or truncate, walking
+# out of $HOME, writing the macOS twin of /etc, naming another user's home,
+# defining the fork bomb under a name, and the PowerShell spelling of a
+# recursive delete riding the same matcher and tool_input.command field.
+# (a) xargs and timeout resolve their wrapped command like the other wrappers
+check DENY 'ls | xargs rm -rf /home'
+check DENY 'find . -name "*.log" | xargs rm -rf /home'
+check DENY 'ls | xargs timeout 10 rm -rf /home'
+check ALLOW 'echo unused | xargs rm -rf ./dist'
+check DENY 'timeout 10 rm -rf /'
+check DENY 'sudo timeout 10 rm -rf /etc'
+check ALLOW 'timeout 10 rm -rf ./dist'
+check ALLOW 'timeout 30 git reset --hard'
+# (b) raw-device tier: truncate and cp join dd against raw block devices
+check DENY 'truncate -s 0 /dev/sda'
+check DENY 'truncate -s 0 /dev/nvme0n1'
+check ALLOW 'truncate -s 0 disk.img'
+check DENY 'cp /dev/zero /dev/sda'
+check DENY 'cp /dev/zero /dev/vdb'
+check ALLOW 'cp /dev/sda ./disk-backup.img'
+check ALLOW 'cp app ./disk.img'
+# (c) macOS path twins: /etc and /var are symlinks to /private/etc and /private/var
+check DENY 'rm -rf /private/etc'
+check DENY 'rm -rf /private/etc/'
+check DENY 'rm -rf /private/etc/*'
+check DENY 'rm -rf /private/var'
+check DENY 'rm -rf /private/var/*'
+check DENY 'chmod -R 777 /private/etc'
+check DENY 'find /private/etc -delete'
+check ALLOW 'rm -rf /private/etc/nginx/conf.d/*'
+check ALLOW 'rm -rf /private/tmp/myapp'
+# (d) a tilde-user home names ANOTHER user's home directory
+check DENY 'rm -rf ~alice'
+check DENY 'rm -rf ~alice/'
+check DENY 'rm -rf ~alice/*'
+check DENY 'chmod -R 777 ~alice'
+check DENY 'find ~alice -delete'
+check ALLOW 'rm -rf ~alice/Code/build'
+# (e) the parent of a home, spelled with the .. the normalizer keeps literal
+check DENY 'rm -rf $HOME/..'
+check DENY 'rm -rf ${HOME}/..'
+check DENY 'rm -rf ${HOME:?}/..'
+check DENY 'rm -rf ~/..'
+check DENY 'rm -rf ~alice/..'
+check DENY 'rm -rf $HOME/../*'
+check ALLOW 'rm -rf $HOME/../shared'
+# (f) the fork bomb under a NAME, not only the colon
+check DENY 'bomb(){ bomb|bomb& };bomb'
+check DENY 'boom() { boom | boom & }; boom'
+check DENY ':(){ :|:& };:'
+check ALLOW 'f(){ ls | wc; }'
+check ALLOW 'gen(){ seq 5 | head -1; }; gen'
+# (g) PowerShell and cmd.exe recursive deletes reach the same command field
+check DENY 'Remove-Item -Recurse /'
+check DENY 'Remove-Item -Recurse -Force C:\'
+check DENY 'remove-item -recurse ~'
+check DENY 'rd /s /q C:\'
+check DENY 'rd /s /q /home'
+check ALLOW 'Remove-Item -Recurse ./dist'
+check ALLOW 'Remove-Item ./dist'
+check ALLOW 'rd /s ./build'
+check ALLOW 'rd ./build'
+
 # ---- find primaries that ACT, beyond -delete and a literal -exec rm ----
 # Every case below is a conjunction with a catastrophic start path, so none of it can
 # reach `find . ...`. The old rule recognized only -delete and -exec/-execdir whose next

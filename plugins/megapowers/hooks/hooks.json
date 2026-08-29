@@ -4,7 +4,7 @@
       { "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd codex-output-style.sh" } ] }
     ],
     "PreToolUse": [
-      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh deny-destructive.sh codex-deny-destructive.sh" } ] }
+      { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd dispatch.sh deny-destructive.sh codex-deny-destructive.sh" } ] }
     ]
   }
 }
