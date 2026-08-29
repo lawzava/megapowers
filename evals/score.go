@@ -128,6 +128,7 @@ var (
 	identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$`)
 	hashPattern       = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	metricPattern     = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.-]{0,127}$`)
+	revisionPattern   = regexp.MustCompile(`^[0-9a-f]{40}$|^[0-9a-f]{64}$`)
 	brokerBoundaries  = map[string]bool{"bwrap": true, "container": true, "seatbelt": true, "sandbox-exec": true, "appcontainer": true}
 )
 
@@ -193,6 +194,9 @@ func validateRow(row resultRow) error {
 	if row.EvidenceClass == "regression" && row.Arm != "regression" {
 		return fmt.Errorf("regression row must use arm %q", "regression")
 	}
+	if row.EvidenceClass == "behavioral" && !revisionPattern.MatchString(row.Source.Revision) {
+		return fmt.Errorf("behavioral source.revision %q must be a full git commit hash", row.Source.Revision)
+	}
 	if row.Status == "timeout" {
 		return errors.New("timed-out run is an infrastructure failure")
 	}
@@ -243,6 +247,9 @@ func validateRow(row resultRow) error {
 	}
 	if row.Artifacts == nil {
 		return errors.New("artifacts must be an object")
+	}
+	if len(row.Artifacts) == 0 {
+		return errors.New("artifacts must not be empty")
 	}
 	for name, value := range row.Artifacts {
 		if !metricPattern.MatchString(name) {
@@ -474,12 +481,13 @@ func loadAcceptanceCriteria(path string) (acceptanceFile, error) {
 
 func validateStudyAcceptance(rows []resultRow, criteria acceptanceFile) error {
 	type counts struct {
+		caseID         string
 		treatmentPass  int
 		treatmentTotal int
 		controlPass    int
 		controlTotal   int
 	}
-	byCase := make(map[string]*counts)
+	byComparison := make(map[string]*counts)
 	for _, row := range rows {
 		if row.EvidenceClass != "behavioral" || row.Study != installedABStudy {
 			return errors.New("study acceptance accepts installed-plugin-ab behavioral rows only")
@@ -487,13 +495,19 @@ func validateStudyAcceptance(rows []resultRow, criteria acceptanceFile) error {
 		if !brokerBoundaries[row.Environment.Sandbox] {
 			return fmt.Errorf("case %q does not record a broker-attested OS boundary", row.CaseID)
 		}
+		for _, artifact := range []string{"manifest", "rows"} {
+			if _, exists := row.Artifacts[artifact]; !exists {
+				return fmt.Errorf("case %q behavioral evidence requires a %q artifact", row.CaseID, artifact)
+			}
+		}
 		if row.Metrics["report_only"] == 1 {
 			continue
 		}
-		cell := byCase[row.CaseID]
+		key := comparisonIdentity(row)
+		cell := byComparison[key]
 		if cell == nil {
-			cell = &counts{}
-			byCase[row.CaseID] = cell
+			cell = &counts{caseID: row.CaseID}
+			byComparison[key] = cell
 		}
 		if row.Arm == "treatment" {
 			cell.treatmentTotal++
@@ -507,21 +521,21 @@ func validateStudyAcceptance(rows []resultRow, criteria acceptanceFile) error {
 			}
 		}
 	}
-	if len(byCase) == 0 {
+	if len(byComparison) == 0 {
 		return errors.New("study acceptance found no non-report-only cases")
 	}
-	caseIDs := make([]string, 0, len(byCase))
-	for caseID := range byCase {
-		caseIDs = append(caseIDs, caseID)
+	comparisonKeys := make([]string, 0, len(byComparison))
+	for key := range byComparison {
+		comparisonKeys = append(comparisonKeys, key)
 	}
-	sort.Strings(caseIDs)
-	for _, caseID := range caseIDs {
-		cell := byCase[caseID]
+	sort.Strings(comparisonKeys)
+	for _, key := range comparisonKeys {
+		cell := byComparison[key]
 		if cell.treatmentTotal != cell.controlTotal || cell.treatmentTotal < criteria.Acceptance.MinimumPairedRuns {
-			return fmt.Errorf("case %q has %d balanced pairs; require %d", caseID, minInt(cell.treatmentTotal, cell.controlTotal), criteria.Acceptance.MinimumPairedRuns)
+			return fmt.Errorf("case %q has %d balanced pairs; require %d", cell.caseID, minInt(cell.treatmentTotal, cell.controlTotal), criteria.Acceptance.MinimumPairedRuns)
 		}
 		if cell.treatmentPass != cell.treatmentTotal {
-			return fmt.Errorf("case %q treatment passed %d/%d; require every treatment run to pass", caseID, cell.treatmentPass, cell.treatmentTotal)
+			return fmt.Errorf("case %q treatment passed %d/%d; require every treatment run to pass", cell.caseID, cell.treatmentPass, cell.treatmentTotal)
 		}
 	}
 	return nil

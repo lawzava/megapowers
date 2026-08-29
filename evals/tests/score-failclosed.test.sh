@@ -33,7 +33,7 @@ valid_row() {
       duration_ms:1234,
       verdict:"pass",
       metrics:{task_success:1,fact_retention:1},
-      artifacts:{response:"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+      artifacts:{response:"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",manifest:"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",rows:"sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
       environment:{os:"linux",arch:"amd64",sandbox:"workspace-write",locale:"C.UTF-8"},
       timestamp:"2026-08-16T12:00:00Z"
     }'
@@ -43,6 +43,32 @@ installed_row() {
   local run_id="$1" block_id="$2" arm="$3" plugin_hash="$4"
   valid_row "$run_id" "$block_id" "$arm" |
     jq -c --arg plugin_hash "$plugin_hash" '.study = "installed-plugin-ab" | .plugin_hash = $plugin_hash | .metrics.outcome_success = .metrics.task_success'
+}
+
+regression_row() {
+  local run_id="$1"
+  jq -cn --arg run_id "$run_id" '{
+    schema_version:"1",
+    study:"deterministic-regression/selftest",
+    evidence_class:"regression",
+    case_id:"case_1",
+    run_id:$run_id,
+    block_id:"case_1",
+    arm:"regression",
+    harness:{name:"local",cli_version:"local",model:"none",effort:"none"},
+    source:{repository:"megapowers",revision:"main"},
+    prompt_hash:"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    fixture_hash:"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    plugin_hash:"sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    status:"completed",
+    rc:0,
+    duration_ms:10,
+    verdict:"pass",
+    metrics:{task_success:1},
+    artifacts:{trace:"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+    environment:{os:"linux",arch:"amd64",sandbox:"none",locale:"C.UTF-8"},
+    timestamp:"2026-08-16T12:00:00Z"
+  }'
 }
 
 write_publish_rows() {
@@ -245,5 +271,64 @@ if go run "$ROOT/evals/score.go" --strict \
   exit 1
 fi
 grep -q 'balanced pairs; require 10' "$tmp/too-few-pairs.err"
+
+cat >"$tmp/min-two-gates.json" <<'EOF'
+{"schema_version":"1","acceptance":{"minimum_paired_runs":2,"require_all_treatment_passes":true}}
+EOF
+cat >"$tmp/min-one-gates.json" <<'EOF'
+{"schema_version":"1","acceptance":{"minimum_paired_runs":1,"require_all_treatment_passes":true}}
+EOF
+
+{
+  installed_row treatment-a block-a treatment "$treatment_plugin_hash" |
+    jq -c '.environment.sandbox = "bwrap" | .harness.model = "model-a"'
+  installed_row control-a block-a control "$empty_plugin_hash" |
+    jq -c '.environment.sandbox = "bwrap" | .harness.model = "model-a"'
+  installed_row treatment-b block-b treatment "$treatment_plugin_hash" |
+    jq -c '.environment.sandbox = "bwrap" | .harness.model = "model-b"'
+  installed_row control-b block-b control "$empty_plugin_hash" |
+    jq -c '.environment.sandbox = "bwrap" | .harness.model = "model-b"'
+} >"$tmp/split-identity.jsonl"
+if go run "$ROOT/evals/score.go" --strict \
+  --acceptance-criteria "$tmp/min-two-gates.json" \
+  "$tmp/split-identity.jsonl" >"$tmp/split-identity.out" 2>"$tmp/split-identity.err"; then
+  echo 'FAIL study acceptance merged paired runs across differing harness model identity' >&2
+  exit 1
+fi
+grep -q 'balanced pairs; require 2' "$tmp/split-identity.err"
+
+{
+  installed_row treatment-1 block-1 treatment "$treatment_plugin_hash"
+  installed_row control-1 block-1 control "$empty_plugin_hash"
+} >"$tmp/revision-pair.jsonl"
+jq -c '.source.revision = "main"' "$tmp/revision-pair.jsonl" >"$tmp/sentinel-revision.jsonl"
+expect_reject sentinel-revision "$tmp/sentinel-revision.jsonl"
+grep -q 'behavioral source.revision "main" must be a full git commit hash' "$tmp/sentinel-revision.err"
+
+{
+  installed_row treatment-1 block-1 treatment "$treatment_plugin_hash"
+  installed_row control-1 block-1 control "$empty_plugin_hash"
+} >"$tmp/artifact-pair.jsonl"
+jq -c '.artifacts = {}' "$tmp/artifact-pair.jsonl" >"$tmp/empty-artifacts.jsonl"
+expect_reject empty-artifacts "$tmp/empty-artifacts.jsonl"
+grep -q 'artifacts must not be empty' "$tmp/empty-artifacts.err"
+
+{
+  installed_row treatment-1 block-1 treatment "$treatment_plugin_hash" |
+    jq -c '.environment.sandbox = "bwrap" | del(.artifacts.manifest, .artifacts.rows)'
+  installed_row control-1 block-1 control "$empty_plugin_hash" |
+    jq -c '.environment.sandbox = "bwrap" | del(.artifacts.manifest, .artifacts.rows)'
+} >"$tmp/unnamed-behavioral-artifacts.jsonl"
+if go run "$ROOT/evals/score.go" --strict \
+  --acceptance-criteria "$tmp/min-one-gates.json" \
+  "$tmp/unnamed-behavioral-artifacts.jsonl" >"$tmp/unnamed-behavioral-artifacts.out" 2>"$tmp/unnamed-behavioral-artifacts.err"; then
+  echo 'FAIL study acceptance accepted behavioral evidence without named artifacts' >&2
+  exit 1
+fi
+grep -q 'behavioral evidence requires' "$tmp/unnamed-behavioral-artifacts.err"
+
+regression_row regression-1 >"$tmp/sentinel-regression.jsonl"
+go run "$ROOT/evals/score.go" --strict "$tmp/sentinel-regression.jsonl" >"$tmp/sentinel-regression.out"
+grep -q 'Deterministic regressions' "$tmp/sentinel-regression.out"
 
 echo 'strict score fail-closed contract: ok'
