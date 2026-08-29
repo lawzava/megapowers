@@ -5,6 +5,35 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.23.0 - 2026-08-29
+
+### Fixed
+
+- The Windows hook wrapper (`run-hook.cmd`) now propagates child hook exit
+  codes instead of reporting stale success.
+- The destructive-command guard denies piped and wrapped destruction
+  (`xargs`, `timeout`), raw-device writes (`truncate`, `dd`, `cp` against block
+  devices), the `/private/etc` and `/private/var` twins, other users' tilde
+  homes, `$HOME/..` escapes, and named fork bombs, with new allow-by-design
+  guards against false positives.
+
+### Added
+
+- A PowerShell-tool leg: `hooks.json` matches `Bash|PowerShell`, routing
+  PowerShell calls through the same shared guard and patterns
+  (`Remove-Item -Recurse`, `rd /s`).
+- Evals: acceptance binds paired runs to the full comparison identity;
+  behavioral rows require 40/64-character revisions and named `manifest`/`rows`
+  artifacts; subprocess execution is bounded with process-group teardown; the
+  sandbox broker fails closed on socket paths beyond the 100-byte bound and
+  passes its contract under long `TMPDIR`; credentialed PR replay refuses to
+  run until its oracle executes through the broker.
+- CI: a Windows hook-test leg, a Codex install-smoke lane, a scheduled
+  latest-version lane, a test-inventory parity gate, loud `SKIPPED` warnings,
+  UTC-explicit freshness, a pinned Go 1.25 minimum with advisory staticcheck,
+  Dependabot for SHA-pinned actions, and a tag-triggered release-attestation
+  workflow.
+
 ## 0.22.0 - 2026-08-27
 
 ### Changed
