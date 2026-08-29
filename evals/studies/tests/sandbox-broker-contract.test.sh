@@ -32,6 +32,7 @@ for claim in \
   "subscription auth wins before explicit API-key fallback" \
   "Claude subscription credentials stay outside actor tools" \
   "Codex external auth stays memory-only" \
+  "codex home accepts app-server state writes" \
   "app-server rejects unsafe client authority" \
   "Codex subscription egress reaches only approved provider hosts" \
   "child environment excludes inherited credentials" \
