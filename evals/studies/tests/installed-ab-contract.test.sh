@@ -18,6 +18,7 @@ for claim in \
   "actor errors fail closed" \
   "actor failures publish explicit rejection" \
   "behavioral rows expose action progress metrics" \
+  "behavioral rows carry manifest and rows artifacts" \
   "manifest schema records the run environment" \
   "already-direct prose remains unchanged" \
   "fact alternatives accept paraphrase and reject semantic reversal" \
@@ -71,6 +72,9 @@ for claim in \
   "isolation attestation rejects credentials and siblings" \
   "actor deadlines fail closed" \
   "resume reports the exact manifest mismatch field" \
+  "resume accepts manifest and rows artifacts" \
+  "resume still accepts response and trace checkpoints" \
+  "resume rejects rows lacking manifest and rows artifacts" \
   "resume reports the exact row locale mismatch" \
   "insufficient paired runs fail study acceptance" \
   "treatment reliability fails study acceptance" \
