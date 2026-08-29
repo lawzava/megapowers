@@ -3189,8 +3189,8 @@ sleep 2
 		return errors.New("failed app-server traces were not persisted for diagnostics")
 	}
 	dumpedTrace, dumpTraceErr := os.ReadFile(filepath.Join(dumpDir, dumpEntries[0].Name()))
-	if dumpTraceErr != nil || !bytes.Contains(dumpedTrace, []byte(`"method":"initialize"`)) {
-		return errors.New("persisted app-server trace dump is missing the request stream")
+	if dumpTraceErr != nil || !bytes.Contains(dumpedTrace, []byte(`"method":"item/completed"`)) {
+		return errors.New("persisted app-server trace dump is missing the event stream")
 	}
 
 	unexpectedScript := strings.Replace(script,
