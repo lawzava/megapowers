@@ -1,5 +1,6 @@
 : << 'CMDBLOCK'
 @echo off
+setlocal enabledelayedexpansion
 rem Cross-platform wrapper for the destructive-command hook.
 rem Usage: run-hook.cmd <script-name> [args...]
 
@@ -14,28 +15,20 @@ if not exist "%HOOK_DIR%%~1" (
     exit /b 1
 )
 
-rem Try Git for Windows bash in standard locations
-if exist "C:\Program Files\Git\bin\bash.exe" (
-    "C:\Program Files\Git\bin\bash.exe" "%HOOK_DIR%%~1" %2 %3 %4 %5 %6 %7 %8 %9
-    if errorlevel 1 exit /b 1
-    exit /b 0
-)
-if exist "C:\Program Files (x86)\Git\bin\bash.exe" (
-    "C:\Program Files (x86)\Git\bin\bash.exe" "%HOOK_DIR%%~1" %2 %3 %4 %5 %6 %7 %8 %9
-    if errorlevel 1 exit /b 1
-    exit /b 0
+rem Resolve bash: Git for Windows install locations, then PATH.
+set "BASH_EXE="
+if exist "C:\Program Files\Git\bin\bash.exe" set "BASH_EXE=C:\Program Files\Git\bin\bash.exe"
+if not defined BASH_EXE if exist "C:\Program Files (x86)\Git\bin\bash.exe" set "BASH_EXE=C:\Program Files (x86)\Git\bin\bash.exe"
+if not defined BASH_EXE where bash >nul 2>nul && set "BASH_EXE=bash"
+if not defined BASH_EXE (
+    echo run-hook.cmd: cannot run hook: bash is unavailable 1>&2
+    exit /b 1
 )
 
-rem Try bash on PATH (e.g. user-installed Git Bash, MSYS2, Cygwin)
-where bash >nul 2>nul
-if %ERRORLEVEL% equ 0 (
-    bash "%HOOK_DIR%%~1" %2 %3 %4 %5 %6 %7 %8 %9
-    if errorlevel 1 exit /b 1
-    exit /b 0
-)
-
-echo run-hook.cmd: cannot run hook: bash is unavailable 1>&2
-exit /b 1
+"!BASH_EXE!" "%HOOK_DIR%%~1" %2 %3 %4 %5 %6 %7 %8 %9
+set RC=!errorlevel!
+if not "!RC!"=="0" exit /b !RC!
+exit /b 0
 CMDBLOCK
 
 # Unix: run the named script directly
