@@ -117,7 +117,9 @@ go run evals/studies/pr-replay/replay.go --selftest
 bash evals/studies/tests/pr-replay-contract.test.sh
 ```
 
-Explicit real run:
+Credentialed runs are disabled until the sandbox broker schema-2 upgrade:
+`--run --credentialed` refuses before spawning any actor or oracle process.
+When the upgrade lands, an explicit real run is:
 
 ```bash
 go run evals/studies/pr-replay/replay.go --run --credentialed \
@@ -141,7 +143,8 @@ the runner executes a private read-only copy of the pinned bytes.
 
 The repository's [`sandbox-broker`](tools/sandbox-broker/README.md) implements
 the installed-plugin A/B runner's schema `2` on Linux. PR replay still uses its
-older schema `1` and requires a separately compatible reviewed broker.
+older schema `1`, so its credentialed runner stays disabled until that
+schema-2 upgrade.
 
 The credentialed runners publish only:
 
@@ -165,4 +168,4 @@ credentials, or absolute paths. Inspect the publish bundle before sharing it.
 
 Detailed release sequencing is in
 [docs/advanced/evals.md](../docs/advanced/evals.md). Historical measurements and
-their limitations remain in [RESULTS.md](./RESULTS.md).
+their limitations remain in [RESULTS-archive.md](./RESULTS-archive.md).

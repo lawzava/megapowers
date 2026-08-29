@@ -177,6 +177,9 @@ func main() {
 	if modes != 1 {
 		fatal(errors.New("choose exactly one of --selftest, --validate-config, or --run"))
 	}
+	if run && credentialed {
+		fatal(errors.New("credentialed PR replay is disabled: the sandbox broker schema-2 upgrade is required before credentialed runs"))
+	}
 	if selftest {
 		if err := runSelftest(); err != nil {
 			fatal(err)
@@ -553,11 +556,13 @@ func prepareSource(ctx context.Context, caseRoot, repository string) (string, er
 		return "", err
 	}
 	command := exec.CommandContext(ctx, "git", "clone", "--mirror", "--", repository, source)
-	var output bytes.Buffer
+	isolateChild(command)
+	var output boundedOutput
+	output.limit = oracleCaptureLimit
 	command.Stdout = &output
 	command.Stderr = &output
 	if err := command.Run(); err != nil {
-		return "", fmt.Errorf("git clone failed: %w: %s", err, strings.TrimSpace(output.String()))
+		return "", fmt.Errorf("git clone failed: %w: %s", err, strings.TrimSpace(string(output.Bytes())))
 	}
 	return source, nil
 }
@@ -674,6 +679,47 @@ func actorChanges(repo string) ([]string, []byte, error) {
 	return paths, patch.Bytes(), nil
 }
 
+const (
+	oracleCaptureLimit     = 10 << 20
+	oracleTruncationNotice = "\n[megapowers: oracle output truncated at the 10485760-byte capture limit]\n"
+	subprocessWaitDelay    = 5 * time.Second
+)
+
+type boundedOutput struct {
+	buffer    bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func (b *boundedOutput) Write(content []byte) (int, error) {
+	original := len(content)
+	if room := b.limit - b.buffer.Len(); room > 0 {
+		if original > room {
+			content = content[:room]
+			b.truncated = true
+		}
+		_, _ = b.buffer.Write(content)
+	} else if original > 0 {
+		b.truncated = true
+	}
+	return original, nil
+}
+
+func (b *boundedOutput) Bytes() []byte {
+	if !b.truncated {
+		return b.buffer.Bytes()
+	}
+	return append(b.buffer.Bytes(), oracleTruncationNotice...)
+}
+
+func isolateChild(command *exec.Cmd) {
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Cancel = func() error {
+		return syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+	}
+	command.WaitDelay = subprocessWaitDelay
+}
+
 func runOracle(ctx context.Context, dir string, argv []string) (int, []byte, error) {
 	if len(argv) == 0 {
 		return 0, nil, errors.New("oracle command is empty")
@@ -681,7 +727,9 @@ func runOracle(ctx context.Context, dir string, argv []string) (int, []byte, err
 	command := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	command.Dir = dir
 	command.Env = append(os.Environ(), "GOWORK=off")
-	var output bytes.Buffer
+	isolateChild(command)
+	var output boundedOutput
+	output.limit = oracleCaptureLimit
 	command.Stdout = &output
 	command.Stderr = &output
 	err := command.Run()
@@ -919,6 +967,7 @@ func stageVerifiedBroker(sourcePath, expectedHash string) (string, func(), error
 func brokerCommand(ctx context.Context, stagedPath string) *exec.Cmd {
 	command := exec.CommandContext(ctx, stagedPath)
 	command.Dir = filepath.Dir(stagedPath)
+	isolateChild(command)
 	return command
 }
 

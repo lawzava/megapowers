@@ -108,6 +108,8 @@ go run evals/studies/pr-replay/replay.go --run --credentialed \
 
 The broker must expose only the exported base project and installed plugin, not
 the source mirror, head commit, oracle overlay, sibling state, or credentials.
+Credentialed PR replay is disabled until the sandbox broker schema-2 upgrade;
+`--run --credentialed` refuses before spawning any actor or oracle process.
 The untouched base must fail the oracle. Actor work passes only when the hidden
 correctness oracle passes. Historical file overlap is diagnostic and never
 changes the verdict. PR replay is report-only.
