@@ -52,6 +52,7 @@ do
   grep -qF "ok   $claim" "$tmp/selftest.out"
 done
 grep -qF "sandbox broker selftest: PASS" "$tmp/selftest.out"
+fi
 
 long_tmpdir="$tmp/long"
 while (( ${#long_tmpdir} < 48 )); do
