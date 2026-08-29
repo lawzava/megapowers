@@ -65,6 +65,7 @@ while IFS= read -r skill; do
   fields="$(awk 'NR == 1 { next } /^---$/ { exit } /^[A-Za-z0-9_-]+:/ { sub(/:.*/, ""); print }' "$file")"
   if [ "$name" = "$skill" ]; then ok "$skill name matches directory"; else bad "$skill name matches directory"; fi
   if printf '%s' "$description" | grep -Eq '^Use when .+'; then ok "$skill description is task-triggering"; else bad "$skill description is task-triggering"; fi
+  if [ "${#description}" -le 250 ]; then ok "$skill description fits 250 characters"; else bad "$skill description fits 250 characters"; fi
   if [ "$fields" = "name
 description" ]; then ok "$skill frontmatter is portable"; else bad "$skill frontmatter is portable"; fi
 done <<EOF
