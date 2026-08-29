@@ -1419,7 +1419,7 @@ func codexAppServerSandboxArgs(req brokerRequest, binary, proxyDirectory string)
 	args = appendMount(args, req.ActorHome, false)
 	args = appendMount(args, req.Project, false)
 	args = append(args, "--dir", actorBrokerPath, "--ro-bind", proxyDirectory, actorBrokerPath)
-	args = append(args, "--ro-bind", filepath.Join(req.ActorHome, ".codex"), filepath.Join(req.ActorHome, ".codex"))
+	args = append(args, "--bind", filepath.Join(req.ActorHome, ".codex"), filepath.Join(req.ActorHome, ".codex"))
 	if req.Arm == "treatment" {
 		marketplace := filepath.Join(req.ActorHome, "codex-marketplace")
 		args = append(args, "--ro-bind", marketplace, marketplace)
@@ -2786,6 +2786,7 @@ func selftest() error {
 		{"subscription auth wins before explicit API-key fallback", selftestSubscriptionPreference},
 		{"Claude subscription credentials stay outside actor tools", selftestClaudeSubscriptionIsolation},
 		{"Codex external auth stays memory-only", selftestCodexExternalAuth},
+		{"codex home accepts app-server state writes", selftestCodexHomeWritable},
 		{"app-server rejects unsafe client authority", selftestAppServerAuthority},
 		{"Codex subscription egress reaches only approved provider hosts", selftestRestrictedConnectProxy},
 		{"child environment excludes inherited credentials", selftestEnvironment},
@@ -3214,6 +3215,35 @@ func selftestJWT(expires time.Time) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
 	payload, _ := json.Marshal(map[string]any{"exp": expires.Unix()})
 	return header + "." + base64.RawURLEncoding.EncodeToString(payload) + ".signature-selftest"
+}
+
+func selftestCodexHomeWritable() error {
+	paths, cleanup, err := newSelftestPaths()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	req := validSelftestRequest(paths)
+	req.Harness = "codex"
+	if err := os.Mkdir(filepath.Join(req.ActorHome, ".codex"), 0o700); err != nil {
+		return err
+	}
+	if err := os.Mkdir(filepath.Join(req.ActorHome, "codex-marketplace"), 0o700); err != nil {
+		return err
+	}
+	args, err := codexAppServerSandboxArgs(req, "/usr/bin/true", filepath.Dir(selftestProxySocket(req.ActorHome)))
+	if err != nil {
+		return err
+	}
+	joined := strings.Join(args, " ")
+	codexHome := filepath.Join(req.ActorHome, ".codex")
+	if strings.Contains(joined, "--ro-bind "+codexHome+" "+codexHome) {
+		return errors.New("codex home is mounted read-only; the app-server cannot initialize its state runtime")
+	}
+	if !strings.Contains(joined, "--bind "+codexHome+" "+codexHome) {
+		return errors.New("codex home is not mounted for app-server state writes")
+	}
+	return nil
 }
 
 func selftestAppServerAuthority() error {
