@@ -72,6 +72,7 @@
     },
     "artifacts": {
       "type": "object",
+      "minProperties": 1,
       "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,127}$" },
       "additionalProperties": { "$ref": "#/$defs/hash" }
     },
@@ -141,6 +142,26 @@
               "const": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
             }
           }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "evidence_class": { "const": "behavioral" } } },
+      "then": {
+        "properties": {
+          "source": {
+            "properties": {
+              "revision": { "pattern": "^[0-9a-f]{40}$|^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "evidence_class": { "const": "behavioral" } } },
+      "then": {
+        "properties": {
+          "artifacts": { "required": ["manifest", "rows"] }
         }
       }
     }
