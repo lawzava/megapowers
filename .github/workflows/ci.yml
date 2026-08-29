@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
-          go-version: stable
+          go-version: '1.25.x'
           cache: false
 
       - name: Install deterministic test dependencies
@@ -26,6 +26,15 @@ jobs:
 
       - name: Validate repository
         run: scripts/validate.sh
+
+      - name: Staticcheck (advisory)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mapfile -d "" files < <(find scripts evals plugins/megapowers -type f -name "*.go" -print0)
+          for file in "${files[@]}"; do
+            go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 "$file"
+          done
 
       - name: Run deterministic evals
         id: eval
@@ -83,3 +92,40 @@ jobs:
         run: |
           claude plugin validate --strict .claude-plugin/marketplace.json
           claude plugin validate --strict plugins/megapowers
+
+  codex-install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned minimum Codex CLI
+        run: npm install -g @openai/codex@0.149.0
+      - name: Codex install smoke
+        run: scripts/codex-install-smoke.sh
+
+  windows-hook-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Run hook test suite
+        shell: bash
+        run: |
+          bash plugins/megapowers/hooks/tests/codex-output-style.test.sh
+          bash plugins/megapowers/hooks/tests/codex-deny-destructive.test.sh
+          bash plugins/megapowers/hooks/tests/deny-destructive.test.sh
+          bash plugins/megapowers/hooks/tests/dispatch.test.sh
+      - name: Assert run-hook.cmd exit codes through cmd.exe
+        shell: pwsh
+        run: |
+          $hook = 'plugins\megapowers\hooks\run-hook.cmd'
+          cmd /c "$hook" codex-output-style.sh 2>$null
+          if ($LASTEXITCODE -ne 0) { throw "run-hook.cmd returned $LASTEXITCODE for a passing hook (expected 0)" }
+          cmd /c "$hook" 2>$null
+          if ($LASTEXITCODE -ne 1) { throw "missing script name must exit 1 (got $LASTEXITCODE)" }
+          cmd /c "$hook" missing-target.sh 2>$null
+          if ($LASTEXITCODE -ne 1) { throw "missing hook target must exit 1 (got $LASTEXITCODE)" }
+          cmd /c "$hook" dispatch.sh missing-hook.sh 2>$null
+          if ($LASTEXITCODE -ne 1) { throw "run-hook.cmd returned $LASTEXITCODE when its child exited 1; child exit codes are not propagating" }

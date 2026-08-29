@@ -75,7 +75,9 @@ func runCheckFreshness(args []string) int {
 		fmt.Printf("  \033[31mFAIL\033[0m %s\n", msg)
 		fail++
 	}
-	now := time.Now()
+	// All comparisons are UTC-explicit: a host timezone must not flip a
+	// freshness verdict near midnight.
+	now := time.Now().UTC()
 	fmt.Printf("== freshness (max age: %d days) ==\n", maxAge)
 	for _, e := range freshnessFiles {
 		path := e.file
@@ -100,7 +102,7 @@ func runCheckFreshness(args []string) int {
 			bad(fmt.Sprintf("%s: no '%s YYYY-MM-DD' line found", e.file, e.marker))
 			continue
 		}
-		then, err := time.ParseInLocation("2006-01-02", d, time.Local)
+		then, err := time.ParseInLocation("2006-01-02", d, time.UTC)
 		if err != nil {
 			bad(fmt.Sprintf("%s: unparseable date '%s'", e.file, d))
 			continue
