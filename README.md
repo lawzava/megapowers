@@ -102,7 +102,7 @@ Three evidence classes are kept separate:
 
 No current fifteen-skill behavioral result is claimed from selftests. Historical
 measurements, including null results and their limitations, remain in
-[evals/RESULTS.md](./evals/RESULTS.md). Current protocols and gates are in
+[evals/RESULTS-archive.md](./evals/RESULTS-archive.md). Current protocols and gates are in
 [evals/README.md](./evals/README.md) and
 [docs/advanced/evals.md](./docs/advanced/evals.md).
 

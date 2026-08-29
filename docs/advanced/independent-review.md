@@ -7,7 +7,7 @@ work. It supplements tests and measurements. It does not replace them.
 ## Requirements
 
 - Run inside the Git repository that owns the artifact.
-- Go 1.24 or newer available for `go run` and rooted receipt writes.
+- Go 1.25 or newer available for `go run` and rooted receipt writes.
 - Claude Code or Codex installed and authenticated as the reviewer provider.
 - A reviewer provider different from the artifact author.
 - Human approval for the disclosed package.
