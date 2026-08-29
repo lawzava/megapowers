@@ -44,6 +44,30 @@ if go run "$ROOT/evals/studies/pr-replay/replay.go" --run --credentialed \
   echo "FAIL live PR replay accepted no isolation broker" >&2
   exit 1
 fi
+
+# A fully specified credentialed invocation must still be refused before any
+# actor or oracle process runs while the broker schema-2 upgrade is pending.
+stub="$tmp/reviewed-broker"
+printf '#!/bin/sh\n' >"$stub"
+chmod +x "$stub"
+stub_hash="$(sha256sum "$stub" | cut -d' ' -f1)"
+if go run "$ROOT/evals/studies/pr-replay/replay.go" --run --credentialed \
+  --cases "$ROOT/evals/studies/pr-replay/cases.json" \
+  --harness codex --model fake --out "$tmp/cred-refused" \
+  --sandbox-broker "$stub" --broker-sha256 "sha256:$stub_hash" \
+  >"$tmp/cred.out" 2>"$tmp/cred.err"; then
+  echo "FAIL credentialed PR replay ran while the broker schema-2 upgrade is pending" >&2
+  exit 1
+fi
+if ! grep -qF "sandbox broker schema-2 upgrade is required before credentialed runs" "$tmp/cred.err"; then
+  echo "FAIL credentialed PR replay refusal does not name the broker schema-2 upgrade" >&2
+  cat "$tmp/cred.err" >&2
+  exit 1
+fi
+if [ -e "$tmp/cred-refused" ]; then
+  echo "FAIL refused credentialed PR replay produced run artifacts" >&2
+  exit 1
+fi
 if grep -qE '\.credentials\.json|auth\.json|copyCredential' "$ROOT/evals/studies/pr-replay/replay.go"; then
   echo "FAIL PR replay runner contains credential-copy logic" >&2
   exit 1
