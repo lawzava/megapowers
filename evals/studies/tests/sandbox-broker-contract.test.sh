@@ -12,7 +12,17 @@ test -f "$SOURCE" || {
 }
 
 go build -o "$tmp/megapowers-eval-broker" "$SOURCE"
-"$tmp/megapowers-eval-broker" --selftest >"$tmp/selftest.out"
+
+bwrap_ok=1
+if ! command -v bwrap >/dev/null 2>&1; then
+  bwrap_ok=0
+elif ! bwrap --unshare-net --ro-bind / / --dev /dev --proc /proc true >/dev/null 2>&1; then
+  bwrap_ok=0
+fi
+if [ "$bwrap_ok" -eq 0 ]; then
+  echo "SKIPPED: broker sandbox selftest cases (bwrap cannot set up unprivileged namespaces on this host)" >&2
+else
+  "$tmp/megapowers-eval-broker" --selftest >"$tmp/selftest.out"
 
 for claim in \
   "strict JSON rejects unknown fields and trailing data" \
@@ -49,9 +59,13 @@ while (( ${#long_tmpdir} < 48 )); do
 done
 long_tmpdir="${long_tmpdir:0:48}"
 mkdir -p "$long_tmpdir"
-TMPDIR="$long_tmpdir" "$tmp/megapowers-eval-broker" --selftest \
-  >"$tmp/selftest-long-tmpdir.out" 2>"$tmp/selftest-long-tmpdir.err"
-grep -qF "sandbox broker selftest: PASS" "$tmp/selftest-long-tmpdir.out"
+if [ "$bwrap_ok" -eq 0 ]; then
+  :
+else
+  TMPDIR="$long_tmpdir" "$tmp/megapowers-eval-broker" --selftest \
+    >"$tmp/selftest-long-tmpdir.out" 2>"$tmp/selftest-long-tmpdir.err"
+  grep -qF "sandbox broker selftest: PASS" "$tmp/selftest-long-tmpdir.out"
+fi
 
 guard_tmpdir="$long_tmpdir$long_tmpdir$long_tmpdir"
 mkdir -p "$guard_tmpdir"

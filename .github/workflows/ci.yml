@@ -129,3 +129,4 @@ jobs:
           if ($LASTEXITCODE -ne 1) { throw "missing hook target must exit 1 (got $LASTEXITCODE)" }
           cmd /c "$hook" tests\fixtures\exit-one.sh
           if ($LASTEXITCODE -ne 1) { throw "run-hook.cmd returned $LASTEXITCODE for a child that exited 1; child exit codes are not propagating" }
+          exit 0
