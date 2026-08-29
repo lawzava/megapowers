@@ -1071,6 +1071,9 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 				result.rc = 125
 			}
 			response, events, complete := normalizeTrace(req.Harness, trace, result.rc)
+			if !complete {
+				dumpDiagnosticTrace(os.Getenv("MEGAPOWERS_BROKER_TRACE_DUMP"), "codex-incomplete-trace", trace)
+			}
 			events = appendObservedEffects(events, effectMonitor.events(), complete)
 			if !complete {
 				events = removeTraceComplete(events)
@@ -1147,6 +1150,7 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 		result.stderr = []byte(redact(string(result.stderr), secrets))
 		if runErr != nil {
 			runErr = errors.New(redact(runErr.Error(), secrets))
+			dumpDiagnosticTrace(os.Getenv("MEGAPOWERS_BROKER_TRACE_DUMP"), "codex-app-server-error", result.stdout)
 		}
 	}()
 	started := time.Now()
@@ -3167,13 +3171,26 @@ sleep 2
 	}
 
 	diagnosticFake := filepath.Join(paths.root, "fake-codex-diagnostic")
-	diagnosticScript := "#!/bin/sh\nread -r initialize\ncase \"$initialize\" in *'\"method\":\"initialize\"'*) ;; *) exit 41;; esac\nprintf '%s\\n' '{\"id\":1,\"result\":{}}'\necho APP_SERVER_DIAGNOSTIC_MARKER >&2\nexit 47\n"
+	diagnosticScript := "#!/bin/sh\nread -r initialize\ncase \"$initialize\" in *'\"method\":\"initialize\"'*) ;; *) exit 41;; esac\nprintf '%s\\n' '{\"id\":1,\"result\":{}}'\nprintf '%s\\n' '{\"method\":\"item/completed\",\"params\":{\"threadId\":\"thread-diag\",\"turnId\":\"turn-diag\",\"item\":{\"id\":\"message-diag\",\"type\":\"agentMessage\",\"text\":\"diagnostic\"}}}'\necho APP_SERVER_DIAGNOSTIC_MARKER >&2\nexit 47\n"
 	if err := os.WriteFile(diagnosticFake, []byte(diagnosticScript), 0o700); err != nil {
 		return err
 	}
 	_, diagnosticErr := runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth)
 	if diagnosticErr == nil || !strings.Contains(diagnosticErr.Error(), "APP_SERVER_DIAGNOSTIC_MARKER") {
 		return errors.New("app-server failure did not surface the app-server stderr tail")
+	}
+
+	dumpDir := filepath.Join(paths.root, "trace-dumps")
+	restoreDump := setTestEnvironment("MEGAPOWERS_BROKER_TRACE_DUMP", dumpDir)
+	_, diagnosticErr = runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth)
+	restoreDump()
+	dumpEntries, dumpReadErr := os.ReadDir(dumpDir)
+	if dumpReadErr != nil || len(dumpEntries) == 0 {
+		return errors.New("failed app-server traces were not persisted for diagnostics")
+	}
+	dumpedTrace, dumpTraceErr := os.ReadFile(filepath.Join(dumpDir, dumpEntries[0].Name()))
+	if dumpTraceErr != nil || !bytes.Contains(dumpedTrace, []byte(`"method":"initialize"`)) {
+		return errors.New("persisted app-server trace dump is missing the request stream")
 	}
 
 	unexpectedScript := strings.Replace(script,
@@ -3215,6 +3232,17 @@ func selftestJWT(expires time.Time) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
 	payload, _ := json.Marshal(map[string]any{"exp": expires.Unix()})
 	return header + "." + base64.RawURLEncoding.EncodeToString(payload) + ".signature-selftest"
+}
+
+func dumpDiagnosticTrace(dir string, name string, trace []byte) {
+	if dir == "" || len(trace) == 0 {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return
+	}
+	payload := append([]byte(nil), trace...)
+	_ = os.WriteFile(filepath.Join(dir, fmt.Sprintf("%s-%d.jsonl", name, time.Now().UnixNano())), payload, 0o600)
 }
 
 func selftestCodexHomeWritable() error {
