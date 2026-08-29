@@ -8,7 +8,7 @@ harness so each skill registers once.
 - A current Claude Code or Codex CLI, already authenticated.
 - Git, for marketplace snapshots.
 - `jq`, for the destructive-command hook.
-- Go 1.24 or newer, only when using the independent-review tool or repository
+- Go 1.25 or newer, only when using the independent-review tool or repository
   validation.
 
 ## Claude Code
