@@ -43,6 +43,25 @@ do
 done
 grep -qF "sandbox broker selftest: PASS" "$tmp/selftest.out"
 
+long_tmpdir="$tmp/long"
+while (( ${#long_tmpdir} < 48 )); do
+  long_tmpdir="${long_tmpdir}0123456789"
+done
+long_tmpdir="${long_tmpdir:0:48}"
+mkdir -p "$long_tmpdir"
+TMPDIR="$long_tmpdir" "$tmp/megapowers-eval-broker" --selftest \
+  >"$tmp/selftest-long-tmpdir.out" 2>"$tmp/selftest-long-tmpdir.err"
+grep -qF "sandbox broker selftest: PASS" "$tmp/selftest-long-tmpdir.out"
+
+guard_tmpdir="$long_tmpdir$long_tmpdir$long_tmpdir"
+mkdir -p "$guard_tmpdir"
+if TMPDIR="$guard_tmpdir" "$tmp/megapowers-eval-broker" --selftest \
+  >"$tmp/selftest-guard-tmpdir.out" 2>"$tmp/selftest-guard-tmpdir.err"; then
+  echo "FAIL sandbox broker selftest did not reject a socket path beyond the Unix-socket safety bound" >&2
+  exit 1
+fi
+grep -qF "exceeds the 100-byte Linux Unix-socket safety bound" "$tmp/selftest-guard-tmpdir.err"
+
 if printf '%s\n' '{"schema_version":"2","unexpected":true}' | \
   "$tmp/megapowers-eval-broker" >"$tmp/reject.out" 2>"$tmp/reject.err"; then
   echo "FAIL sandbox broker accepted an unknown request field" >&2

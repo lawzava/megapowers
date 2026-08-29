@@ -38,6 +38,7 @@ const (
 	maximumRun         = 24 * time.Hour
 	actorBridgeAddress = "127.0.0.1:43191"
 	actorBrokerPath    = "/run/megapowers-broker"
+	maximumSocketPath  = 100
 )
 
 type brokerRequest struct {
@@ -669,19 +670,31 @@ func rejectVisibleHardlink(root string, credentialInfo fs.FileInfo) error {
 	})
 }
 
+func validateSocketPath(path string) error {
+	if len(path) > maximumSocketPath {
+		return fmt.Errorf("socket path %q exceeds the %d-byte Linux Unix-socket safety bound; shorten TMPDIR or flatten the socket directory layout", path, maximumSocketPath)
+	}
+	return nil
+}
+
 func newPrivateSocketDirectory() (string, error) {
 	directory, err := os.MkdirTemp("/tmp", "mpb-")
 	if err != nil {
 		return "", err
 	}
-	if len(filepath.Join(directory, "codex-egress.sock")) > 100 {
+	if err := validateSocketPath(filepath.Join(directory, "codex-egress.sock")); err != nil {
 		_ = os.Remove(directory)
-		return "", errors.New("private socket path exceeds the Linux Unix-socket safety bound")
+		return "", err
 	}
 	return directory, nil
 }
 
 func startCredentialProxy(harness, authMode, providerCredential, upstreamOverride, socketPath string) (*credentialProxy, error) {
+	if socketPath != "" {
+		if err := validateSocketPath(socketPath); err != nil {
+			return nil, err
+		}
+	}
 	upstream := upstreamOverride
 	if upstream == "" {
 		if harness == "claude" {
@@ -836,6 +849,9 @@ func (p *credentialProxy) close() {
 }
 
 func startRestrictedConnectProxy(socketPath string, allowedHosts map[string]bool) (*restrictedConnectProxy, error) {
+	if err := validateSocketPath(socketPath); err != nil {
+		return nil, err
+	}
 	ln, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return nil, err
@@ -946,6 +962,7 @@ func runActorBridge(socketPath, binary string, args []string) int {
 	command.Stdin = os.Stdin
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := command.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -1076,7 +1093,7 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 		input = []byte(req.Task)
 	}
 
-	sandboxArgs, err := actorSandboxArgs(req, binary, insideBinary, args, filepath.Dir(proxy.socket))
+	sandboxArgs, err := actorSandboxArgs(req, binary, insideBinary, args, proxy.socket)
 	if err != nil {
 		return harnessRun{}, err
 	}
@@ -1950,7 +1967,7 @@ func environmentList(values map[string]string) []string {
 	return result
 }
 
-func actorSandboxArgs(req brokerRequest, binary, insideBinary string, commandArgs []string, proxyDirectory string) ([]string, error) {
+func actorSandboxArgs(req brokerRequest, binary, insideBinary string, commandArgs []string, proxySocket string) ([]string, error) {
 	brokerBinary, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -1964,7 +1981,7 @@ func actorSandboxArgs(req brokerRequest, binary, insideBinary string, commandArg
 	args = append(args, "--dir", "/opt", "--dir", "/opt/megapowers", "--ro-bind", binary, insideBinary, "--ro-bind", brokerBinary, insideBroker)
 	args = appendMount(args, req.ActorHome, false)
 	args = appendMount(args, req.Project, false)
-	args = append(args, "--dir", actorBrokerPath, "--ro-bind", proxyDirectory, actorBrokerPath)
+	args = append(args, "--dir", actorBrokerPath, "--ro-bind", filepath.Dir(proxySocket), actorBrokerPath)
 	if req.Harness == "codex" {
 		args = append(args, "--ro-bind", filepath.Join(req.ActorHome, ".codex"), filepath.Join(req.ActorHome, ".codex"))
 		if req.Arm == "treatment" {
@@ -1975,7 +1992,7 @@ func actorSandboxArgs(req brokerRequest, binary, insideBinary string, commandArg
 	if req.PluginRepo != "" {
 		args = appendMount(args, req.PluginRepo, true)
 	}
-	args = append(args, "--chdir", req.Project, "--", insideBroker, "--actor-bridge", filepath.Join(actorBrokerPath, "provider.sock"), insideBinary)
+	args = append(args, "--chdir", req.Project, "--", insideBroker, "--actor-bridge", filepath.Join(actorBrokerPath, filepath.Base(proxySocket)), insideBinary)
 	args = append(args, commandArgs...)
 	return args, nil
 }
@@ -2795,8 +2812,12 @@ type selftestPaths struct {
 	root, project, home, plugin, sibling, credential string
 }
 
+func selftestProxySocket(home string) string {
+	return filepath.Join(home, "b", "p.sock")
+}
+
 func newSelftestPaths() (selftestPaths, func(), error) {
-	root, err := os.MkdirTemp("", "megapowers-broker-selftest-")
+	root, err := os.MkdirTemp("", "mpb-selftest-")
 	if err != nil {
 		return selftestPaths{}, nil, err
 	}
@@ -2964,7 +2985,8 @@ func selftestClaudeSubscriptionIsolation() error {
 	if err != nil {
 		return err
 	}
-	proxyDirectory := filepath.Join(req.ActorHome, ".broker")
+	proxySocket := selftestProxySocket(req.ActorHome)
+	proxyDirectory := filepath.Dir(proxySocket)
 	if err := os.Mkdir(proxyDirectory, 0o700); err != nil {
 		return err
 	}
@@ -2978,7 +3000,7 @@ func selftestClaudeSubscriptionIsolation() error {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
-	proxy, err := startCredentialProxy("claude", authSubscription, auth.credential, upstream.URL, filepath.Join(proxyDirectory, "provider.sock"))
+	proxy, err := startCredentialProxy("claude", authSubscription, auth.credential, upstream.URL, proxySocket)
 	if err != nil {
 		return err
 	}
@@ -3068,7 +3090,7 @@ func selftestCodexExternalAuth() error {
 	if err := os.Mkdir(filepath.Join(req.ActorHome, "codex-marketplace"), 0o700); err != nil {
 		return err
 	}
-	args, err := codexAppServerSandboxArgs(req, "/usr/bin/true", filepath.Join(req.ActorHome, ".broker"))
+	args, err := codexAppServerSandboxArgs(req, "/usr/bin/true", filepath.Dir(selftestProxySocket(req.ActorHome)))
 	if err != nil {
 		return err
 	}
@@ -3213,7 +3235,7 @@ func selftestRestrictedConnectProxy() error {
 		_, writeErr := connection.Write(buffer)
 		echoDone <- writeErr
 	}()
-	directory, err := os.MkdirTemp("", "megapowers-connect-proxy-selftest-")
+	directory, err := os.MkdirTemp("", "mpb-egress-")
 	if err != nil {
 		return err
 	}
@@ -3296,7 +3318,7 @@ func selftestEnvironment() error {
 
 func selftestCredentialProxy() error {
 	providerKey := "provider-key-selftest"
-	socketDirectory, err := os.MkdirTemp("", "megapowers-proxy-selftest-")
+	socketDirectory, err := os.MkdirTemp("", "mpb-proxy-")
 	if err != nil {
 		return err
 	}
@@ -3387,7 +3409,7 @@ func selftestEndToEnd() error {
 	if err := os.Mkdir(paths.home, 0o700); err != nil {
 		return err
 	}
-	if len(filepath.Join(paths.home, ".broker", "provider.sock")) <= 108 {
+	if len(selftestProxySocket(paths.home)) <= 108 {
 		return errors.New("long actor-home fixture does not exceed Linux Unix-socket path capacity")
 	}
 	fake := filepath.Join(paths.root, "fake-claude")
@@ -3529,7 +3551,9 @@ func selftestMountModes() error {
 	defer cleanup()
 	req := validSelftestRequest(paths)
 	req.Harness = "codex"
-	if err := os.Mkdir(filepath.Join(req.ActorHome, ".broker"), 0o700); err != nil {
+	proxySocket := selftestProxySocket(req.ActorHome)
+	proxyDirectory := filepath.Dir(proxySocket)
+	if err := os.Mkdir(proxyDirectory, 0o700); err != nil {
 		return err
 	}
 	codexHome := filepath.Join(req.ActorHome, ".codex")
@@ -3545,7 +3569,7 @@ func selftestMountModes() error {
 		return err
 	}
 	command := fmt.Sprintf("touch %q && ! touch %q && ! touch %q && ! chmod 700 %q && ! touch %q", filepath.Join(req.Project, "written"), filepath.Join(req.PluginRepo, "forbidden"), filepath.Join(codexHome, "forbidden"), registry, filepath.Join(marketplace, "forbidden"))
-	args, err := actorSandboxArgs(req, "/usr/bin/bash", "/opt/megapowers/codex", []string{"-c", command}, filepath.Join(req.ActorHome, ".broker"))
+	args, err := actorSandboxArgs(req, "/usr/bin/bash", "/opt/megapowers/codex", []string{"-c", command}, proxySocket)
 	if err != nil {
 		return err
 	}
@@ -3572,7 +3596,8 @@ func selftestActorNetwork() error {
 	defer listener.Close()
 	port := listener.Addr().(*net.TCPAddr).Port
 	req := validSelftestRequest(paths)
-	proxyDirectory := filepath.Join(req.ActorHome, ".broker")
+	proxySocket := selftestProxySocket(req.ActorHome)
+	proxyDirectory := filepath.Dir(proxySocket)
 	if err := os.Mkdir(proxyDirectory, 0o700); err != nil {
 		return err
 	}
@@ -3582,13 +3607,13 @@ func selftestActorNetwork() error {
 		_, _ = io.WriteString(w, `{"ok":true}`)
 	}))
 	defer upstream.Close()
-	proxy, err := startCredentialProxy("claude", authAPIKey, "provider-key-selftest", upstream.URL, filepath.Join(proxyDirectory, "provider.sock"))
+	proxy, err := startCredentialProxy("claude", authAPIKey, "provider-key-selftest", upstream.URL, proxySocket)
 	if err != nil {
 		return err
 	}
 	defer proxy.close()
-	command := fmt.Sprintf("! timeout 1 bash -c 'echo test >/dev/tcp/127.0.0.1/%d' && ! unlink %q && curl --fail --silent --show-error -X POST -H \"X-Api-Key: ${ANTHROPIC_API_KEY}\" -d '{}' \"${ANTHROPIC_BASE_URL}/v1/messages\" >/dev/null", port, filepath.Join(actorBrokerPath, "provider.sock"))
-	args, err := actorSandboxArgs(req, "/usr/bin/bash", "/opt/megapowers/claude", []string{"-c", command}, proxyDirectory)
+	command := fmt.Sprintf("! timeout 1 bash -c 'echo test >/dev/tcp/127.0.0.1/%d' && ! unlink %q && curl --fail --silent --show-error -X POST -H \"X-Api-Key: ${ANTHROPIC_API_KEY}\" -d '{}' \"${ANTHROPIC_BASE_URL}/v1/messages\" >/dev/null", port, filepath.Join(actorBrokerPath, filepath.Base(proxySocket)))
+	args, err := actorSandboxArgs(req, "/usr/bin/bash", "/opt/megapowers/claude", []string{"-c", command}, proxySocket)
 	if err != nil {
 		return err
 	}
