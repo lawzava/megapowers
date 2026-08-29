@@ -22,7 +22,7 @@ jobs:
           cache: false
 
       - name: Install deterministic test dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq ripgrep shellcheck
+        run: sudo apt-get update && sudo apt-get install -y jq ripgrep shellcheck bubblewrap
 
       - name: Validate repository
         run: scripts/validate.sh
@@ -121,11 +121,11 @@ jobs:
         shell: pwsh
         run: |
           $hook = 'plugins\megapowers\hooks\run-hook.cmd'
-          cmd /c "$hook" codex-output-style.sh 2>$null
+          cmd /c "$hook" codex-output-style.sh
           if ($LASTEXITCODE -ne 0) { throw "run-hook.cmd returned $LASTEXITCODE for a passing hook (expected 0)" }
-          cmd /c "$hook" 2>$null
+          cmd /c "$hook"
           if ($LASTEXITCODE -ne 1) { throw "missing script name must exit 1 (got $LASTEXITCODE)" }
-          cmd /c "$hook" missing-target.sh 2>$null
+          cmd /c "$hook" missing-target.sh
           if ($LASTEXITCODE -ne 1) { throw "missing hook target must exit 1 (got $LASTEXITCODE)" }
-          cmd /c "$hook" dispatch.sh missing-hook.sh 2>$null
-          if ($LASTEXITCODE -ne 1) { throw "run-hook.cmd returned $LASTEXITCODE when its child exited 1; child exit codes are not propagating" }
+          cmd /c "$hook" tests\fixtures\exit-one.sh
+          if ($LASTEXITCODE -ne 1) { throw "run-hook.cmd returned $LASTEXITCODE for a child that exited 1; child exit codes are not propagating" }
