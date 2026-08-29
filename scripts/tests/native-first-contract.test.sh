@@ -73,7 +73,7 @@ hooks="$ROOT/plugins/megapowers/hooks/hooks.json"
 jq -e '
   (.hooks | keys) == ["PreToolUse", "SessionStart"] and
   (.hooks.PreToolUse | length) == 1 and
-  .hooks.PreToolUse[0].matcher == "Bash" and
+  .hooks.PreToolUse[0].matcher == "Bash|PowerShell" and
   (.hooks.PreToolUse[0].hooks | length) == 1 and
   (.hooks.PreToolUse[0].hooks[0].command | contains("deny-destructive.sh")) and
   (.hooks.PreToolUse[0].hooks[0].command | contains("codex-deny-destructive.sh"))

@@ -29,10 +29,60 @@ boundary and verifies every target by readback.
 The hook catches a narrow set of obvious catastrophic commands. It uses
 command-string parsing for precision, not evasion resistance.
 
+One matcher covers the Bash and PowerShell tools, and both receive the same
+high-confidence denials: the PowerShell tool hands over the same
+`tool_input.command` field, so `Remove-Item -Recurse /` and the cmd.exe
+`rd /s /q C:\` classify under the same rules as `rm -rf /`.
+
+Matching PreToolUse `deny` decisions are applied by Claude Code's decision
+control before the call runs, so they survive `bypassPermissions` and
+`--dangerously-skip-permissions`: bypass mode removes permission prompts, not
+hook evaluation. PreToolUse fires on every tool call and a `deny` cancels the
+call, including in modes that skip other prompts.
+
 - Claude Code and Codex receive the same high-confidence denials.
 - Reversible risk stays with each harness's native permission system.
 - A hook evaluation error is visible and nonzero. Do not treat a broken hook as
   protection.
+
+### What stays allow by design
+
+The guard is a tripwire for plausible accidents, not an obfuscation filter.
+Everything below is deliberate.
+
+Allowed by design (reversible, scoped, or owned by the harness permission
+system):
+
+- Scoped deletes and cleanup: `rm -rf ./dist`, `/tmp/app/*`,
+  `/etc/nginx/conf.d/*`, `~/.cache/foo`, `~alice/Code/build`.
+- Reversible version-control operations (`git reset --hard`, `git clean -fdx`,
+  `git push --force`), cloud and cluster deletions (`terraform destroy`,
+  `kubectl delete pods --all`, `aws s3 rb`), and container cleanup
+  (`docker system prune`).
+- Device-gated uses against plain files (`mkfs.ext4 disk.img`,
+  `shred secret.txt`, `truncate -s 0 disk.img`), reads from devices, and
+  writes to character devices (`dd of=/dev/null`, `cp /dev/sda ./backup.img`).
+- Account and access-control changes (`userdel`, `useradd -G sudo`,
+  `setfacl`, `visudo`), locally or over ssh, and other remote effects.
+
+Known bypasses (deliberately left uncovered; chasing them with more regex is a
+losing game the project does not run):
+
+- Obfuscated spellings: encoded, aliased, or escaped commands, command
+  substitution, heredoc-fed shells, double-nested `bash -c` with escaped
+  inner quotes.
+- Variable indirection: the guard never expands variables, so
+  `DEV=/dev/sda; dd of=$DEV` is invisible to it.
+- Wrapper option-values it does not model, such as long-form options with a
+  separate value (`xargs --replace X rm -rf /home`), and payloads assembled at
+  runtime.
+- Windows paths below a drive root: `Remove-Item -Recurse C:\Users` and named
+  Windows system directories stay unclassified. Only a recursive flag plus a
+  POSIX root, home, or system target, or a bare drive root (`C:\`), denies.
+- The brace-default spelling of a home parent (`rm -rf "${HOME:-/}/.."`) and
+  a named path under a home parent (`rm -rf $HOME/../foo`).
+- Payloads handed to non-shell interpreters (`find . -exec python3 -c ...`)
+  and destroyers the find tier does not name.
 
 The guard can miss obfuscated, aliased, encoded, generated, or indirect
 commands. It can also reject harmless text that resembles a destructive

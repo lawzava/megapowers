@@ -34,5 +34,21 @@ else
   fail=$((fail + 1)); echo "  FAIL invalid hook input must report a visible evaluation error"
 fi
 
+# One matcher, one command, two harness adapters: Bash and PowerShell tool calls
+# hand the same tool_input.command field to the same dispatch, which routes to
+# the native guard on Claude Code and through the Codex adapter on Codex.
+hooks_json="$here/hooks.json"
+matcher="$(jq -r '.hooks.PreToolUse[0].matcher' "$hooks_json")"
+if [ "$matcher" = "Bash|PowerShell" ]; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1)); echo "  FAIL hooks.json matcher must cover Bash and PowerShell, got: $matcher"
+fi
+command_line="$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$hooks_json")"
+case "$command_line" in
+  *"dispatch.sh deny-destructive.sh codex-deny-destructive.sh"*) pass=$((pass + 1)) ;;
+  *) fail=$((fail + 1)); echo "  FAIL hooks.json must keep one shared command routing both adapters" ;;
+esac
+
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

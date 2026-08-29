@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# PreToolUse(Bash) guard — a SMALL, HIGH-CONFIDENCE accident tripwire.
+# PreToolUse(Bash|PowerShell) guard — a SMALL, HIGH-CONFIDENCE accident tripwire.
 #
 # It denies only a short list of catastrophic commands: recursive wipes of a
-# root, home, or system directory; disk formatting or raw block-device writes;
-# fork bombs; and broad write permissions on a root or system path. Everything
-# else emits no hook decision and stays with the harness permission system.
+# root, home, or system directory (rm, find, Remove-Item, rd); disk formatting
+# or raw block-device writes (dd, cp, truncate, mkfs, shred); fork bombs; and
+# broad write permissions on a root or system path. Everything else emits no
+# hook decision and stays with the harness permission system. The PowerShell
+# tool hands over the same tool_input.command field, so one matcher and one
+# handler classify both tools' commands.
 #
 # What it is NOT: a sandbox or a security boundary, and NOT the irreversibility layer.
 # It matches a handful of high-signal patterns. It DOES segment the command string
@@ -22,10 +25,13 @@
 # only an accident tripwire. Evaluation failures are visible and nonzero so a
 # broken safety hook cannot silently look healthy.
 #
-# Commands wrapped in bash -c / sh -c / eval, and the argv of a find -exec/-ok primary,
-# are re-scanned recursively (bounded depth) by the same rules a bare command gets. The
-# reason is accident coverage, not evasion resistance: agents genuinely write
-# `bash -c "cd $d && rm -rf $x"` and `find . -exec rm -rf $x \;`, and an unset variable
+# Commands wrapped in bash -c / sh -c / eval, the argv of a find -exec/-ok primary,
+# and a command riding behind xargs or timeout are re-scanned recursively (bounded
+# depth) or resolved through the same wrapper preamble, by the same rules a bare
+# command gets. The reason is accident coverage, not evasion resistance: agents
+# genuinely write
+# `bash -c "cd $d && rm -rf $x"`, `find . -exec rm -rf $x \;`, and
+# `ls | xargs rm -rf /home`, and an unset variable
 # there is as catastrophic nested as it is at the top level. Anyone deliberately hiding a
 # command has easier routes (see the bypasses above); the depth cap exists to bound work,
 # not to win that race. Each payload is strictly shorter than the command it came out of,
@@ -71,7 +77,9 @@ emit() {
 # without paying for the parser. PREFILTER_TOKENS is the
 # union of every catastrophic command anchor plus shell and SSH wrappers whose
 # nested payloads are recursively scanned. Keep this in lockstep with scan_level.
-PREFILTER_TOKENS='\b(rm|find|chmod|dd|mkfs|wipefs|blkdiscard|shred|bash|sh|zsh|dash|ash|ksh|eval|ssh)\b|/dev/|:\(\)'
+# xargs and timeout carry no token of their own: every deny they can launder names
+# a destroyer command or /dev/, which is what this prefilter keys on.
+PREFILTER_TOKENS='\b(rm|find|chmod|dd|mkfs|wipefs|blkdiscard|shred|bash|sh|zsh|dash|ash|ksh|eval|ssh|rd)\b|/dev/|:\(\)|\(\)[[:space:]]*\{|[Rr]emove-[Ii]tem'
 rc=0
 printf '%s' "$cmd" | grep -Eq "$PREFILTER_TOKENS" || rc=$?
 if [ "$rc" -eq 1 ]; then
@@ -152,8 +160,10 @@ shell_words() {
 
 is_var_assignment() { [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; }
 
-# Resolve a segment's leading command past sudo/doas/env/nice/VAR=/redirect preamble.
-# Sets RC_NAME (basename) and RC_TAIL (words after it, as a string). Returns 1 if none.
+# Resolve a segment's leading command past sudo/doas/env/nice/VAR=/redirect preamble,
+# and past an xargs or timeout wrapper: `ls | xargs rm -rf /home` and
+# `timeout 10 rm -rf /` must classify the same as the bare rm. Sets RC_NAME (basename)
+# and RC_TAIL (words after it, as a string). Returns 1 if none.
 RC_NAME=""; RC_TAIL=""
 resolve_command() {
   local text word wrapper
@@ -170,7 +180,7 @@ resolve_command() {
     if is_var_assignment "$word"; then
       text="${text:${#word}}"; text="${text#"${text%%[![:space:]]*}"}"; continue
     fi
-    if [[ "$word" =~ ^(sudo|doas|command|env|nice|ionice|time|exec|nohup|setsid|stdbuf)$ ]]; then
+    if [[ "$word" =~ ^(sudo|doas|command|env|nice|ionice|time|exec|nohup|setsid|stdbuf|xargs|timeout)$ ]]; then
       wrapper="$word"; text="${text:${#word}}"; text="${text#"${text%%[![:space:]]*}"}"
       # skip this wrapper's flags and VAR= assignments; conservatively skip one arg for
       # the common option-takes-value flags so we still reach the real command.
@@ -179,13 +189,19 @@ resolve_command() {
         if [[ "$word" = -* ]] || is_var_assignment "$word"; then
           text="${text:${#word}}"; text="${text#"${text%%[![:space:]]*}"}"
           case "$wrapper:$word" in
-            sudo:-u|sudo:-g|sudo:-U|sudo:-C|sudo:-p|sudo:-r|sudo:-t|sudo:-h|env:-u|env:-C|env:--unset|env:--chdir|nice:-n|ionice:-n|ionice:-c|ionice:-p|doas:-u|exec:-a|stdbuf:-i|stdbuf:-o|stdbuf:-e)
+            sudo:-u|sudo:-g|sudo:-U|sudo:-C|sudo:-p|sudo:-r|sudo:-t|sudo:-h|env:-u|env:-C|env:--unset|env:--chdir|nice:-n|ionice:-n|ionice:-c|ionice:-p|doas:-u|exec:-a|stdbuf:-i|stdbuf:-o|stdbuf:-e|xargs:-I|xargs:-n|xargs:-P|xargs:-L|xargs:-E|xargs:-s|xargs:-a|xargs:-d|timeout:-k|timeout:-s|timeout:--signal|timeout:--kill-after)
               [[ "$text" =~ ^([^[:space:]]+) ]] && { text="${text:${#BASH_REMATCH[1]}}"; text="${text#"${text%%[![:space:]]*}"}"; } ;;
           esac
           continue
         fi
         break
       done
+      # timeout takes its DURATION as a required positional before the command, so
+      # `timeout 10 rm -rf /` resolves to rm. xargs takes its command as plain
+      # arguments and needs nothing extra here.
+      if [ "$wrapper" = timeout ] && [[ "$text" =~ ^([^[:space:]]+) ]]; then
+        text="${text:${#BASH_REMATCH[1]}}"; text="${text#"${text%%[![:space:]]*}"}"
+      fi
       continue
     fi
     break
@@ -225,10 +241,12 @@ normalize_path() {
       "..")
         prev=""; [ "$n" -gt 0 ] && prev="${parts[$((n - 1))]}"
         case "$prev" in
-          "" | ".." | *'$'* | *'*'* | "~")
+          "" | ".." | *'$'* | *'*'* | "~"*)
             # Nothing to fold into, or a component whose value the command string does
-            # not state. Folding there would invent a path ($HOME/.. is not "."), so the
-            # ".." stays literal and the classifier sees the same shape it sees today.
+            # not state ($HOME, a glob, a tilde home — the tilde-user table lives in
+            # the password database, not the command). Folding there would invent a
+            # path ($HOME/.. is not "."), so the ".." stays literal and the
+            # classifier sees the same shape it sees today.
             [ "$abs" -eq 1 ] && [ "$n" -eq 0 ] && continue   # "/.." is "/"
             parts[$n]=".."; n=$((n + 1)) ;;
           *) unset "parts[$((n - 1))]"; n=$((n - 1)) ;;
@@ -268,6 +286,10 @@ is_catastrophic_target() {
     # optionally with a /* suffix (whole-home wipe). A specific subdir like $HOME/x is safe.
     '$HOME' | '${HOME}' | '$HOME/*' | '${HOME}/*') return 0 ;;
     '${HOME:'*'}' | '${HOME:'*'}/*') return 0 ;;
+    # macOS path twins: /etc and /var are symlinks to /private/etc and /private/var,
+    # and the expanded spelling reaches the same system files. Deeper scoped paths
+    # (/private/etc/nginx/conf.d/*) stay allowed for the same reason /etc's do.
+    "/private/etc" | "/private/etc/*" | "/private/var" | "/private/var/*") return 0 ;;
   esac
   # A top-level system/root dir — either the dir ITSELF or a wildcard of all its
   # immediate contents (/etc, /etc/*). A deeper path (/var/lib/app, /opt/app/*) is
@@ -288,6 +310,22 @@ is_catastrophic_target() {
     /home/?* | /Users/?*) [ "${base#/*/}" = "${base##*/}" ] && return 0 ;;
   esac
   [ -n "${HOME:-}" ] && [ "$HOME" != "/" ] && [ "$base" = "${HOME%/}" ] && return 0
+  # A tilde-user home: ~alice expands to ANOTHER user's home directory. The "~" and
+  # "~/*" patterns above only cover the agent's own home, so `rm -rf ~alice` wiped
+  # a foreign home in silence. One level only, like the literal /home/alice tier:
+  # ~alice/Code stays scoped.
+  [[ "$w" =~ ^~[^/]+(/\*)?$ ]] && return 0
+  # A parent of a tilde or $HOME component ($HOME/.., ${HOME:?}/.., ~/.., ~alice/..,
+  # any depth, optionally with /*). The normalizer refuses to fold ".." onto a
+  # component whose value the command string does not state, so this shape reaches
+  # the classifier literally; the parent of a home is always a system-level
+  # directory (/home, /Users, /srv, /), which makes the recursive delete the same
+  # loss as the home itself. A named target under the parent ($HOME/../shared) is
+  # scoped and passes.
+  case "$w" in
+    '$HOME'/* | '${HOME}'/* | '${HOME:'*'}'/* | '~'*)
+      [[ "${w#*/}" =~ ^\.\.(/\.\.)*(/\*)?$ ]] && return 0 ;;
+  esac
   # A parent-relative escape ('..', '../..', deeper, and their '/*' contents form).
   # Where it lands depends on a cwd the command string does not state, so a recursive
   # delete rooted there is not a scoped delete. '.' and '../sibling' stay scoped.
@@ -470,6 +508,44 @@ format_is_catastrophic() {
   return 1
 }
 
+# cp's LAST positional argument is the destination. Copying ONTO a raw block device
+# overwrites the disk with the source's bytes, so `cp /dev/zero /dev/sda` is a disk
+# wipe spelled with cp; copying FROM a device (cp /dev/sda backup.img) stays allowed.
+cp_is_catastrophic() {
+  shell_words "$1" || return 1
+  local w dest=""
+  for w in "${WORDS[@]}"; do
+    [[ "$w" = -* ]] && continue
+    dest="$w"
+  done
+  _is_block_device "$dest"
+}
+
+# --- PowerShell / cmd.exe recursive deletes (the Bash|PowerShell matcher feeds both)
+# The PowerShell tool hands its command over in tool_input.command, the same field
+# the Bash leg reads, so this one classifier serves both. Remove-Item -Recurse is
+# the PowerShell spelling of rm -rf and rd /s is the cmd.exe one; names and flags
+# are matched case-insensitively because both tools are. Targets run through the
+# same catastrophic test plus a bare drive root (C:\, C:/), whose recursive delete
+# is the Windows twin of rm -rf /. A named path below a drive root stays scoped.
+ps_recursive_is_catastrophic() {
+  shell_words "$1" || return 1
+  local w rec=0
+  for w in "${WORDS[@]}"; do
+    [[ "$w" =~ ^(-[Rr][Ee][Cc][Uu][Rr][Ss][Ee]|-[Rr]|/[Ss])$ ]] && rec=1
+  done
+  [ "$rec" -eq 1 ] || return 1
+  for w in "${WORDS[@]}"; do
+    case "$w" in
+      -*) continue ;;
+      /[sSqQ]) continue ;;            # cmd.exe flag words, not targets
+    esac
+    is_catastrophic_target "$w" && return 0
+    [[ "$w" =~ ^[A-Za-z]:[\\/]?(/\*)?$ ]] && return 0
+  done
+  return 1
+}
+
 # --- raw-string tier: only catastrophic, quote-stripped so quoted data can't trip it -
 # Rebuild the command with quoted regions removed, then match block-device redirect and
 # fork bomb. (echo ':(){ :|:& };:' keeps the payload inside quotes -> stripped -> safe.)
@@ -480,7 +556,7 @@ raw_catastrophic() {
   if printf '%s' "$dequoted" | grep -Eq '(^|[^<])>[[:space:]]*/dev/(sd|nvme|vd|xvd|mmcblk|disk|rdisk|mapper/|dm-|md[0-9]|md/|loop[0-9]|mtdblock|hd|sr|vblk|rbd|nbd|drbd|pmem|zvol/)'; then
     REASON="redirect to a raw block device (would overwrite a disk)"; DECISION="deny"; return 0
   fi
-  if printf '%s' "$dequoted" | grep -Eq ':\(\)[[:space:]]*\{[[:space:]]*:[[:space:]]*\|[[:space:]]*:'; then
+  if printf '%s' "$dequoted" | grep -Eq '[A-Za-z_:][A-Za-z0-9_:]*[[:space:]]*\(\)[[:space:]]*\{[[:space:]]*[^|;&{}]+\|[^|;&{}]*&[[:space:]]*\}'; then
     REASON="fork bomb"; DECISION="deny"; return 0
   fi
   return 1
@@ -517,10 +593,15 @@ scan_level() {
         find_is_catastrophic "$tail" && { REASON="find deleting or shredding from a root, home, or system start path. Use a specific relative start path."; DECISION="deny"; return 0; } ;;
       chmod)  chmod_is_catastrophic "$tail"  && { REASON="chmod 777 on a root/system path."; DECISION="deny"; return 0; } ;;
       dd)     dd_is_catastrophic "$tail"     && { REASON="dd writing to a raw block device (would overwrite a disk)."; DECISION="deny"; return 0; } ;;
-      mkfs|mkfs.*|wipefs|blkdiscard|shred)
-        # device-gated: shred/wipefs/mkfs of a block DEVICE wipes a disk; against a
-        # plain file (shred secret.txt, mkfs.ext4 disk.img) it is a normal operation.
+      mkfs|mkfs.*|wipefs|blkdiscard|shred|truncate)
+        # device-gated: shred/wipefs/mkfs/truncate of a block DEVICE wipes a disk;
+        # against a plain file (shred secret.txt, truncate -s 0 disk.img) it is a
+        # normal operation.
         format_is_catastrophic "$tail" && { REASON="$name targeting a block device (would wipe a disk). Against a plain file this is allowed."; DECISION="deny"; return 0; } ;;
+      cp)
+        cp_is_catastrophic "$tail" && { REASON="cp overwriting a raw block device (would clobber a disk)."; DECISION="deny"; return 0; } ;;
+      [Rr]emove-[Ii]tem|[Rr][Dd])
+        ps_recursive_is_catastrophic "$tail" && { REASON="recursive Remove-Item/rd of a root, home, or system path. Delete a specific subdirectory instead."; DECISION="deny"; return 0; } ;;
       bash|sh|zsh|dash|ash|ksh)
         shell_words "$tail" || WORDS=()
         take=0
