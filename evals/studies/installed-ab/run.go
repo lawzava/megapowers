@@ -709,6 +709,13 @@ func hashSchedule(schedule []scheduledArm) string {
 
 func resumeArmKey(blockID, arm string) string { return blockID + "\x00" + arm }
 
+func resumeArtifactsValid(artifacts map[string]string) bool {
+	if sha256Pattern.MatchString(artifacts["manifest"]) && sha256Pattern.MatchString(artifacts["rows"]) {
+		return true
+	}
+	return len(artifacts) == 2 && sha256Pattern.MatchString(artifacts["response"]) && sha256Pattern.MatchString(artifacts["trace"])
+}
+
 func manifestIdentityMismatch(got, want publishManifest) error {
 	fields := []struct {
 		name      string
@@ -898,7 +905,7 @@ func loadResumeCheckpoint(out string, schedule []scheduledArm, expected publishM
 		if !sandboxOK || row.Harness.CLIVersion == "" {
 			return checkpoint, errors.New("resume row harness identity is incomplete")
 		}
-		if row.DurationMS < 0 || len(row.Artifacts) != 2 || !sha256Pattern.MatchString(row.Artifacts["response"]) || !sha256Pattern.MatchString(row.Artifacts["trace"]) {
+		if row.DurationMS < 0 || !resumeArtifactsValid(row.Artifacts) {
 			return checkpoint, errors.New("resume row artifacts or duration are invalid")
 		}
 		parsedTimestamp, err := time.Parse(time.RFC3339, row.Timestamp)
@@ -1091,6 +1098,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 			}
 			row.Verdict = "harness_error"
 			row.Metrics = map[string]float64{"outcome_success": 0, "task_success": 0}
+			attachEvidenceArtifacts(&row)
 			rows = append(rows, row)
 			manifest.Arms = append(manifest.Arms, armEvidence)
 			manifest.Acceptance = assessStudyAcceptance(rows, gates)
@@ -1112,6 +1120,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 		row.Metrics = metrics
 		row.Status = "completed"
 		row.Verdict = verdict
+		attachEvidenceArtifacts(&row)
 		rows = append(rows, row)
 		manifest.Arms = append(manifest.Arms, armEvidence)
 		completed[key] = true
@@ -1255,6 +1264,40 @@ func baseRow(c studyCase, arm, block string, opts runOptions, revision, cliVersi
 		Environment: environment{OS: runtime.GOOS, Arch: runtime.GOARCH, Sandbox: sandbox, Locale: portableIdentifier(locale())},
 		Timestamp:   timestamp.Format(time.RFC3339), Artifacts: map[string]string{}, Metrics: map[string]float64{},
 	}
+}
+
+type evidenceManifest struct {
+	SchemaVersion string          `json:"schema_version"`
+	Study         string          `json:"study"`
+	EvidenceClass string          `json:"evidence_class"`
+	Harness       harnessIdentity `json:"harness"`
+	Source        sourceIdentity  `json:"source"`
+	CaseID        string          `json:"case_id"`
+	BlockID       string          `json:"block_id"`
+	Arm           string          `json:"arm"`
+	PromptHash    string          `json:"prompt_hash"`
+	FixtureHash   string          `json:"fixture_hash"`
+	PluginHash    string          `json:"plugin_hash"`
+	Environment   environment     `json:"environment"`
+	Timestamp     string          `json:"timestamp"`
+}
+
+func evidenceManifestFor(row resultRow) evidenceManifest {
+	return evidenceManifest{
+		SchemaVersion: row.SchemaVersion, Study: row.Study, EvidenceClass: row.EvidenceClass,
+		Harness: row.Harness, Source: row.Source, CaseID: row.CaseID, BlockID: row.BlockID, Arm: row.Arm,
+		PromptHash: row.PromptHash, FixtureHash: row.FixtureHash, PluginHash: row.PluginHash,
+		Environment: row.Environment, Timestamp: row.Timestamp,
+	}
+}
+
+func attachEvidenceArtifacts(row *resultRow) {
+	manifestPayload, _ := json.Marshal(evidenceManifestFor(*row))
+	row.Artifacts["manifest"] = hashBytes(manifestPayload)
+	sanitized := *row
+	sanitized.Artifacts = nil
+	rowsPayload, _ := json.Marshal(sanitized)
+	row.Artifacts["rows"] = hashBytes(rowsPayload)
 }
 
 func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, project string, beforeDefects int, result actorResult, allowLocalOracle bool) (map[string]float64, string, error) {
@@ -1726,6 +1769,47 @@ func isASCIIWord(value byte) bool {
 	return value >= 'a' && value <= 'z' || value >= '0' && value <= '9' || value == '_'
 }
 
+const (
+	captureLimit            = 10 << 20
+	captureTruncationNotice = "\n[megapowers: subprocess output truncated at the 10485760-byte capture limit]\n"
+	subprocessWaitDelay     = 5 * time.Second
+)
+
+type boundedOutput struct {
+	buffer    bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func (b *boundedOutput) Write(content []byte) (int, error) {
+	original := len(content)
+	if room := b.limit - b.buffer.Len(); room > 0 {
+		if original > room {
+			content = content[:room]
+			b.truncated = true
+		}
+		_, _ = b.buffer.Write(content)
+	} else if original > 0 {
+		b.truncated = true
+	}
+	return original, nil
+}
+
+func (b *boundedOutput) Bytes() []byte {
+	if !b.truncated {
+		return b.buffer.Bytes()
+	}
+	return append(b.buffer.Bytes(), captureTruncationNotice...)
+}
+
+func isolateChild(command *exec.Cmd) {
+	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	command.Cancel = func() error {
+		return syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+	}
+	command.WaitDelay = subprocessWaitDelay
+}
+
 func runOracle(ctx context.Context, dir string, argv []string) (int, error) {
 	rc, _, err := runOracleDetailed(ctx, dir, argv)
 	return rc, err
@@ -1745,18 +1829,20 @@ func runOracleDetailed(ctx context.Context, dir string, argv []string) (int, str
 		return 0, "", fmt.Errorf("create private oracle cache: %w", err)
 	}
 	command.Env = append(os.Environ(), "GOWORK=off", "GOCACHE="+goCache)
-	var output bytes.Buffer
+	isolateChild(command)
+	var output boundedOutput
+	output.limit = captureLimit
 	command.Stdout = &output
 	command.Stderr = &output
 	err := command.Run()
 	if err == nil {
-		return 0, output.String(), nil
+		return 0, string(output.Bytes()), nil
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
-		return exitErr.ExitCode(), output.String(), nil
+		return exitErr.ExitCode(), string(output.Bytes()), nil
 	}
-	return 0, output.String(), fmt.Errorf("could not execute oracle: %w", err)
+	return 0, string(output.Bytes()), fmt.Errorf("could not execute oracle: %w", err)
 }
 
 func tddEvidence(events []actorEvent) (bool, bool) {
@@ -2373,6 +2459,7 @@ func stageVerifiedBroker(sourcePath, expectedHash string) (string, func(), error
 func brokerCommand(ctx context.Context, stagedPath string) *exec.Cmd {
 	command := exec.CommandContext(ctx, stagedPath)
 	command.Dir = filepath.Dir(stagedPath)
+	isolateChild(command)
 	return command
 }
 
@@ -2427,11 +2514,13 @@ func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult
 	}
 	command := brokerCommand(ctx, stagedBroker)
 	command.Stdin = bytes.NewReader(input)
-	var stdout, stderr bytes.Buffer
+	var stdout, stderr boundedOutput
+	stdout.limit = captureLimit
+	stderr.limit = captureLimit
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
-		return actorResult{RC: 125}, fmt.Errorf("sandbox broker failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+		return actorResult{RC: 125}, fmt.Errorf("sandbox broker failed: %w: %s", err, strings.TrimSpace(string(stderr.Bytes())))
 	}
 	if err := validateBrokerResponsePresence(stdout.Bytes()); err != nil {
 		return actorResult{RC: 125}, err
@@ -2782,6 +2871,14 @@ func runSelftest() error {
 	printCheck("behavioral rows expose action progress metrics", progressMetrics)
 	if !progressMetrics {
 		return errors.New("behavioral rows omit action progress metrics")
+	}
+	behavioralArtifacts := len(rows) > 0
+	for _, row := range rows {
+		behavioralArtifacts = behavioralArtifacts && rowEvidenceArtifactsValid(row)
+	}
+	printCheck("behavioral rows carry manifest and rows artifacts", behavioralArtifacts)
+	if !behavioralArtifacts {
+		return errors.New("behavioral rows omitted or mismapped evidence artifacts")
 	}
 	diagnosticWritten := len(rows) > 0 && !manifest.Acceptance.Accepted && len(manifest.Acceptance.Reasons) > 0
 	printCheck("undersampled diagnostics still write results", diagnosticWritten)
@@ -3629,6 +3726,55 @@ func runSelftest() error {
 	if !tamperedRejected {
 		return errors.New("resume accepted a changed study identity")
 	}
+	acceptanceResumeCases := casesFile{SchemaVersion: "1", Cases: cases.Cases[:1]}
+	if err := writeResumeCheckpoint(resumeOut, resumedRows, resumedManifest); err != nil {
+		return err
+	}
+	acceptanceActor := &fakeActor{}
+	if _, _, err := executeStudy(context.Background(), acceptanceResumeCases, gates, resumeOpts, acceptanceActor); err != nil {
+		return err
+	}
+	acceptanceResumeOK := len(acceptanceActor.Homes) == 0
+	printCheck("resume accepts manifest and rows artifacts", acceptanceResumeOK)
+	if !acceptanceResumeOK {
+		return errors.New("resume rejected rows carrying manifest and rows artifacts")
+	}
+	legacyResumeRows := append([]resultRow(nil), resumedRows...)
+	for i := range legacyResumeRows {
+		legacyResumeRows[i].Artifacts = map[string]string{"response": resumedRows[i].Artifacts["response"], "trace": resumedRows[i].Artifacts["trace"]}
+	}
+	if err := writeResumeCheckpoint(resumeOut, legacyResumeRows, resumedManifest); err != nil {
+		return err
+	}
+	legacyActor := &fakeActor{}
+	if _, _, err := executeStudy(context.Background(), acceptanceResumeCases, gates, resumeOpts, legacyActor); err != nil {
+		return err
+	}
+	legacyResumeOK := len(legacyActor.Homes) == 0
+	printCheck("resume still accepts response and trace checkpoints", legacyResumeOK)
+	if !legacyResumeOK {
+		return errors.New("resume rejected a response and trace checkpoint")
+	}
+	lackingResumeArtifacts := true
+	for _, artifacts := range []map[string]string{
+		{"response": resumedRows[0].Artifacts["response"]},
+		{"response": resumedRows[0].Artifacts["response"], "trace": resumedRows[0].Artifacts["trace"], "manifest": resumedRows[0].Artifacts["manifest"]},
+	} {
+		lackingRows := append([]resultRow(nil), resumedRows...)
+		for i := range lackingRows {
+			lackingRows[i].Artifacts = artifacts
+		}
+		if err := writeResumeCheckpoint(resumeOut, lackingRows, resumedManifest); err != nil {
+			return err
+		}
+		lackingActor := &fakeActor{}
+		_, _, lackingErr := executeStudy(context.Background(), acceptanceResumeCases, gates, resumeOpts, lackingActor)
+		lackingResumeArtifacts = lackingResumeArtifacts && lackingErr != nil && strings.Contains(lackingErr.Error(), "artifacts") && len(lackingActor.Homes) == 0
+	}
+	printCheck("resume rejects rows lacking manifest and rows artifacts", lackingResumeArtifacts)
+	if !lackingResumeArtifacts {
+		return errors.New("resume accepted rows lacking manifest and rows artifacts")
+	}
 	if err := writePublish(resumeOut, resumedRows, resumedManifest); err != nil {
 		return err
 	}
@@ -3688,6 +3834,49 @@ func metricFor(rows []resultRow, caseID, arm, metric string) float64 {
 		}
 	}
 	return -1
+}
+
+func rowEvidenceArtifactsValid(row resultRow) bool {
+	for _, name := range []string{"response", "trace", "manifest", "rows"} {
+		if !sha256Pattern.MatchString(row.Artifacts[name]) {
+			return false
+		}
+	}
+	sanitized := row
+	sanitized.Artifacts = nil
+	sanitizedPayload, err := json.Marshal(sanitized)
+	if err != nil || hashBytes(sanitizedPayload) != row.Artifacts["rows"] {
+		return false
+	}
+	tampered := sanitized
+	tampered.Metrics = make(map[string]float64, len(row.Metrics)+1)
+	for name, value := range row.Metrics {
+		tampered.Metrics[name] = value
+	}
+	tampered.Metrics["tampered-probe"] = 1
+	tamperedPayload, err := json.Marshal(tampered)
+	if err != nil || hashBytes(tamperedPayload) == row.Artifacts["rows"] {
+		return false
+	}
+	for _, mutate := range []func(*resultRow){
+		func(r *resultRow) { r.Harness.Name = "tampered" },
+		func(r *resultRow) { r.Harness.CLIVersion = "tampered" },
+		func(r *resultRow) { r.Harness.Model = "tampered" },
+		func(r *resultRow) { r.Harness.Effort = "tampered" },
+		func(r *resultRow) { r.Source.Revision = "tampered" },
+		func(r *resultRow) { r.FixtureHash = "tampered" },
+		func(r *resultRow) { r.PluginHash = "tampered" },
+		func(r *resultRow) { r.Environment.Sandbox = "tampered" },
+		func(r *resultRow) { r.Timestamp = "tampered" },
+	} {
+		mutated := row
+		mutate(&mutated)
+		manifestPayload, err := json.Marshal(evidenceManifestFor(mutated))
+		if err != nil || hashBytes(manifestPayload) == row.Artifacts["manifest"] {
+			return false
+		}
+	}
+	return true
 }
 
 func syntheticGateRows(treatmentPasses, controlPasses, total int) []resultRow {
