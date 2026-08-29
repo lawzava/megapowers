@@ -1124,6 +1124,9 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 		}
 	}
 	response, events, complete := normalizeTrace(req.Harness, trace, result.rc)
+	if !complete {
+		dumpDiagnosticTrace(os.Getenv("MEGAPOWERS_BROKER_TRACE_DUMP"), "claude-incomplete-trace", trace)
+	}
 	events = appendObservedEffects(events, effectMonitor.events(), complete)
 	if !complete {
 		events = removeTraceComplete(events)
@@ -3542,6 +3545,26 @@ func selftestIncompleteEndToEnd() error {
 	}
 	if response.RC != 125 {
 		return fmt.Errorf("incomplete trace returned rc=%d", response.RC)
+	}
+
+	dumpDir := filepath.Join(paths.root, "claude-trace-dumps")
+	restoreDump := setTestEnvironment("MEGAPOWERS_BROKER_TRACE_DUMP", dumpDir)
+	if err := os.RemoveAll(filepath.Join(paths.home, ".claude")); err != nil {
+		restoreDump()
+		return err
+	}
+	_, dumpErr := execute(ctx, validSelftestRequest(paths))
+	restoreDump()
+	if dumpErr != nil {
+		return fmt.Errorf("dumped claude trace run failed: %w", dumpErr)
+	}
+	dumpEntries, dumpReadErr := os.ReadDir(dumpDir)
+	if dumpReadErr != nil || len(dumpEntries) == 0 {
+		return errors.New("failed claude traces were not persisted for diagnostics")
+	}
+	dumpedTrace, dumpTraceErr := os.ReadFile(filepath.Join(dumpDir, dumpEntries[0].Name()))
+	if dumpTraceErr != nil || !bytes.Contains(dumpedTrace, initEvent) {
+		return errors.New("persisted claude trace dump is missing the event stream")
 	}
 	for _, event := range response.Events {
 		if event.Kind == "trace_complete" {
