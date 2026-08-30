@@ -923,8 +923,11 @@ func loadResumeCheckpoint(out string, schedule []scheduledArm, expected publishM
 		}
 		seenRunIDs[row.RunID] = true
 		arm := priorManifest.Arms[index]
-		if !armManifestMatches(arm, want, opts.Selftest) || resumeArmKey(arm.BlockID, arm.Arm) != key {
-			return checkpoint, errors.New("resume row is missing its matching inventory evidence")
+		terminalHarnessError := row.Status != "completed" && index == len(priorRows)-1
+		if !terminalHarnessError {
+			if !armManifestMatches(arm, want, opts.Selftest) || resumeArmKey(arm.BlockID, arm.Arm) != key {
+				return checkpoint, fmt.Errorf("resume row %d is missing its matching inventory evidence: got case=%q block=%q arm=%q inventory=%v evidence=%q", index+1, arm.CaseID, arm.BlockID, arm.Arm, arm.PluginNames, arm.EvidenceOnly)
+			}
 		}
 		switch row.Status {
 		case "completed":
@@ -3738,6 +3741,26 @@ func runSelftest() error {
 	printCheck("resume accepts manifest and rows artifacts", acceptanceResumeOK)
 	if !acceptanceResumeOK {
 		return errors.New("resume rejected rows carrying manifest and rows artifacts")
+	}
+	harnessErrorRows := append([]resultRow(nil), resumedRows...)
+	last := &harnessErrorRows[len(harnessErrorRows)-1]
+	last.Status = "harness_error"
+	last.Verdict = "harness_error"
+	last.RC = 1
+	last.Metrics = map[string]float64{"outcome_success": 0, "task_success": 0}
+	harnessErrorManifest := resumedManifest
+	harnessErrorManifest.Arms = append([]armManifest(nil), resumedManifest.Arms...)
+	harnessErrorManifest.Arms[len(harnessErrorManifest.Arms)-1].PluginNames = nil
+	harnessErrorManifest.Arms[len(harnessErrorManifest.Arms)-1].InventoryHash = ""
+	if err := writeResumeCheckpoint(resumeOut, harnessErrorRows, harnessErrorManifest); err != nil {
+		return err
+	}
+	harnessErrorActor := &fakeActor{}
+	_, _, harnessErrorResumeErr := executeStudy(context.Background(), acceptanceResumeCases, gates, resumeOpts, harnessErrorActor)
+	harnessErrorOK := harnessErrorResumeErr == nil && len(harnessErrorActor.Homes) == 1
+	printCheck("resume accepts a terminal harness-error arm with expected inventory", harnessErrorOK)
+	if !harnessErrorOK {
+		return errors.New("resume rejected a terminal harness-error arm with expected inventory")
 	}
 	legacyResumeRows := append([]resultRow(nil), resumedRows...)
 	for i := range legacyResumeRows {
