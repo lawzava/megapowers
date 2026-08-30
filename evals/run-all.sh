@@ -218,6 +218,9 @@ run_selftest pr-replay-runner-selftest \
 run_selftest session-observability-selftest \
   "$EVALS/studies/session-observability/run.go" \
   go run "$EVALS/studies/session-observability/run.go" --selftest
+run_selftest trigger-recall-runner-selftest \
+  "$EVALS/studies/trigger-recall/run.go" \
+  go run "$EVALS/studies/trigger-recall/run.go" --selftest
 
 strict_failed=0
 if command -v go >/dev/null 2>&1; then

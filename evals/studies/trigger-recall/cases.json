@@ -1,0 +1,596 @@
+{
+  "schema_version": "1",
+  "cases": [
+    {
+      "id": "autonomous-run-verbatim",
+      "kind": "verbatim",
+      "expected": "autonomous-run",
+      "prompt": "The cleanup goal in NOTES.md is approved. It must keep progressing unattended across the next several milestones even if this session resets. Set up whatever continuity you need, describe it, then stop before doing milestone work.",
+      "files": { "NOTES.md": "# Approved cleanup\n\n1. Remove dead flags.\n2. Collapse duplicate helpers.\n3. Delete legacy config keys.\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "autonomous-run-paraphrase",
+      "kind": "paraphrase",
+      "expected": "autonomous-run",
+      "prompt": "I am leaving for the weekend. The migration list in NOTES.md is signed off — carry it forward on your own until it is done, surviving any restarts. Describe how you will keep it alive, then stop.",
+      "files": { "NOTES.md": "# Signed-off migration\n\n- Move settings to TOML.\n- Drop the INI reader.\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "autonomous-run-buried",
+      "kind": "buried",
+      "expected": "autonomous-run",
+      "prompt": "Two things. First, tell me how many items NOTES.md lists. Second, I will be offline all week, and this approved list needs to keep progressing without me across sessions — arrange for that and describe the arrangement, then stop.",
+      "files": { "NOTES.md": "# Approved list\n\n- Item one.\n- Item two.\n- Item three.\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "autonomous-run-near-miss",
+      "kind": "near-miss",
+      "prompt": "Read NOTES.md and tell me what is left so I can pick it up myself tomorrow.",
+      "files": { "NOTES.md": "# Remaining\n\n- [x] Move settings to TOML.\n- [ ] Drop the INI reader.\n" },
+      "provenance": "authored 2026-08-30; attended continuation must not read as an unattended run"
+    },
+    {
+      "id": "code-quality-verbatim",
+      "kind": "verbatim",
+      "expected": "code-quality",
+      "prompt": "Should Load return an error or panic on a missing file here? Nothing in this repository settles the convention. Decide, apply the decision, and say why in one line.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "store.go": "package store\n\nimport \"os\"\n\nfunc Load(path string) string {\n\tdata, _ := os.ReadFile(path)\n\treturn string(data)\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "code-quality-paraphrase",
+      "kind": "paraphrase",
+      "expected": "code-quality",
+      "prompt": "I cannot decide between a sentinel error and wrapped context errors for this helper, and the codebase has no precedent either way. Pick one, change the code, and justify briefly.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "fetch.go": "package fetch\n\nimport \"errors\"\n\nfunc Get(key string) (string, error) {\n\tif key == \"\" {\n\t\treturn \"\", errors.New(\"bad\")\n\t}\n\treturn key, nil\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "code-quality-buried",
+      "kind": "buried",
+      "expected": "code-quality",
+      "prompt": "While you add the missing size check to Grow below, you will hit a fork: mutex or atomic for guarding the counter? Neither pattern appears elsewhere in this repo, so settle it yourself and note why in one line.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "counter.go": "package counter\n\ntype Counter struct {\n\tn int\n}\n\nfunc (c *Counter) Grow(delta int) {\n\tc.n += delta\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "code-quality-near-miss",
+      "kind": "near-miss",
+      "prompt": "Run gofmt over main.go and apply whatever it changes. Nothing else.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "main.go": "package main\n\nimport \"fmt\"\n\nfunc main()  {\n\tfmt.Println( \"hi\" )\n}\n"
+      },
+      "provenance": "authored 2026-08-30; tool-settled formatting is not a judgment call"
+    },
+    {
+      "id": "design-and-plan-verbatim",
+      "kind": "verbatim",
+      "expected": "design-and-plan",
+      "prompt": "The CSV importer needs a specification before anyone codes: inputs, failure behavior, and the interface the CLI will call. Draft it as Markdown in your reply.",
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "design-and-plan-paraphrase",
+      "kind": "paraphrase",
+      "expected": "design-and-plan",
+      "prompt": "Before we build the retry layer, weigh at-least-once against exactly-once delivery for our webhook sender and lay out the ordered steps you would take to build the winner.",
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "design-and-plan-buried",
+      "kind": "buried",
+      "expected": "design-and-plan",
+      "prompt": "The export feature got approved yesterday. My rough notes are in NOTES.md — turn them into concrete requirements with tradeoffs and an ordered build plan, and flag anything ambiguous instead of guessing.",
+      "files": { "NOTES.md": "export: csv + json? streaming for big tables. auth token in header maybe. resume partial exports??\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "design-and-plan-near-miss",
+      "kind": "near-miss",
+      "prompt": "Rename the function parse to parseHeader everywhere in reader.go.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "reader.go": "package reader\n\nfunc parse(line string) string {\n\treturn line\n}\n\nfunc Read(line string) string {\n\treturn parse(line)\n}\n"
+      },
+      "provenance": "authored 2026-08-30; a mechanical rename needs no specification"
+    },
+    {
+      "id": "evidence-research-verbatim",
+      "kind": "verbatim",
+      "expected": "evidence-research",
+      "prompt": "We must pick between the two upstream rate-limit algorithms, and the answer depends on what the project actually adopted this year — not on memory. Identify what evidence you need and where you would get it, then stop before collecting.",
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "evidence-research-paraphrase",
+      "kind": "paraphrase",
+      "expected": "evidence-research",
+      "prompt": "People on the team disagree about whether the June config change caused the outage, and this repository cannot settle it. Work out what evidence would decide the question and name its sources, then stop before gathering.",
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "evidence-research-buried",
+      "kind": "buried",
+      "expected": "evidence-research",
+      "prompt": "Small ask plus a bigger one. Fix the typo 'enviroment' in README.md. Then: our choice of queue library hinges on which one actually fixed its redelivery bug upstream — figure out what current evidence would settle that and where it lives, then stop.",
+      "files": { "README.md": "# Service\n\nRuns in any enviroment.\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "evidence-research-near-miss",
+      "kind": "near-miss",
+      "prompt": "What does Load in store.go return when the file is missing? Answer from the code alone.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "store.go": "package store\n\nimport \"os\"\n\nfunc Load(path string) (string, error) {\n\tdata, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn \"\", err\n\t}\n\treturn string(data), nil\n}\n"
+      },
+      "provenance": "authored 2026-08-30; repository-answerable questions need no external evidence"
+    },
+    {
+      "id": "grill-me-verbatim",
+      "kind": "verbatim",
+      "expected": "grill-me",
+      "prompt": "Grill me on this rollout plan before I take it to the team: enable the flag for 5% of tenants Monday, watch error rates for two days, then 50%, then everyone Friday. Ask me your first question and wait.",
+      "provenance": "session scan 2026-08-26: grill-me untested in real sessions"
+    },
+    {
+      "id": "grill-me-paraphrase",
+      "kind": "paraphrase",
+      "expected": "grill-me",
+      "prompt": "Here is my idea: shard user data by region code. Stress-test it by interviewing me — one hard question at a time until the idea breaks or holds. Start now and wait for my answer.",
+      "provenance": "session scan 2026-08-26: grill-me untested in real sessions"
+    },
+    {
+      "id": "grill-me-buried",
+      "kind": "buried",
+      "expected": "grill-me",
+      "prompt": "Context: we migrate the billing DB next month; draft plan is in NOTES.md. I do not want a review document — I want you to put me through a structured interrogation about it before anything moves. Fire the first question and wait.",
+      "files": { "NOTES.md": "Plan: dual-write for a week, backfill, cut reads over, drop old tables.\n" },
+      "provenance": "session scan 2026-08-26: grill-me untested in real sessions"
+    },
+    {
+      "id": "grill-me-near-miss",
+      "kind": "near-miss",
+      "prompt": "Review this plan and list its weaknesses in one paragraph: enable the flag for 5% of tenants, watch error rates, then roll to everyone.",
+      "provenance": "authored 2026-08-30; a written critique is not an interactive interview"
+    },
+    {
+      "id": "humanizing-prose-verbatim",
+      "kind": "verbatim",
+      "expected": "humanizing-prose",
+      "prompt": "Rewrite this release note as clear human-facing prose without losing any fact: 'Leveraging enhanced synergies, the v2 endpoint deprecation has been actioned; consumers should engage migration pathways expeditiously.'",
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "humanizing-prose-paraphrase",
+      "kind": "paraphrase",
+      "expected": "humanizing-prose",
+      "prompt": "This paragraph reads like a machine wrote it. Cut the fluff and make the claims attributable, keeping every fact: 'It is widely believed performance was significantly improved. Various optimizations were made by the team.'",
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "humanizing-prose-buried",
+      "kind": "buried",
+      "expected": "humanizing-prose",
+      "prompt": "Housekeeping first: rename docs/notes.txt to docs/NOTES.txt. Then the real task — the announcement draft inside it needs to sound like a person wrote it for people, with every number kept. Rewrite it in your reply.",
+      "files": { "docs/notes.txt": "Announcement: latency reduction of 26% was achieved via cache utilization enhancements. Users are advised of improved experiences.\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "humanizing-prose-near-miss",
+      "kind": "near-miss",
+      "prompt": "What is the difference between a hard link and a symbolic link? Three sentences.",
+      "provenance": "authored 2026-08-30; the description's own anti-trigger: answering is not a prose-editing task"
+    },
+    {
+      "id": "independent-review-verbatim",
+      "kind": "verbatim",
+      "expected": "independent-review",
+      "prompt": "The patch in auth.go touches token refresh, which is high-stakes. It must get an adversarial review from a provider other than its author before merge. Outline the exact review request you would send and stop there.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "auth.go": "package auth\n\nfunc RefreshToken(old string) string {\n\treturn old + \"-refreshed\"\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "independent-review-paraphrase",
+      "kind": "paraphrase",
+      "expected": "independent-review",
+      "prompt": "The billing proration change scares me. Arrange a hostile second set of eyes from a different vendor than the one that wrote it, and show me what you would hand them. Stop before sending anything.",
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "independent-review-buried",
+      "kind": "buried",
+      "expected": "independent-review",
+      "prompt": "Merge checklist help. Item one: confirm CHANGELOG.md mentions the fix (read it and say yes or no). Item two: the concurrency change in queue.go guards payment dispatch, so before merge it needs adversarial eyes from outside its author's vendor — describe how you would set that up, then stop.",
+      "files": {
+        "CHANGELOG.md": "## v0.2.0\n\n- Fix double dispatch under contention.\n",
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "queue.go": "package queue\n\nvar busy bool\n\nfunc Dispatch() bool {\n\tif busy {\n\t\treturn false\n\t}\n\tbusy = true\n\treturn true\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "independent-review-near-miss",
+      "kind": "near-miss",
+      "prompt": "Tidy the variable names in util_test.go so they follow Go convention. Nothing here is risky; just rename locals.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "util_test.go": "package util\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) {\n\tvar XYZ_val int = 1 + 1\n\tif XYZ_val != 2 {\n\t\tt.Fatal(\"math\")\n\t}\n}\n"
+      },
+      "provenance": "authored 2026-08-30; low-stakes cleanup must not summon cross-vendor review"
+    },
+    {
+      "id": "mcp-setup-verbatim",
+      "kind": "verbatim",
+      "expected": "mcp-setup",
+      "prompt": "The firecrawl MCP server is configured for this harness but its tools stopped appearing. Diagnose the configuration and lay out the fix; stop before touching credentials.",
+      "provenance": "session scan 2026-08-23: MCP setup ranked top of the plumbing-friction backlog"
+    },
+    {
+      "id": "mcp-setup-paraphrase",
+      "kind": "paraphrase",
+      "expected": "mcp-setup",
+      "prompt": "Wire up an MCP server that exposes GitHub tools to this CLI and prove the tools actually load. If you cannot verify here, say exactly which verification step is blocked.",
+      "provenance": "session scan 2026-08-23: MCP setup ranked top of the plumbing-friction backlog"
+    },
+    {
+      "id": "mcp-setup-buried",
+      "kind": "buried",
+      "expected": "mcp-setup",
+      "prompt": "Before standup: first tell me what port config.json declares. Then the annoying one — the database MCP server shows up in config but none of its tools resolve at runtime; work out why and what to change, stopping before any credential edits.",
+      "files": { "config.json": "{ \"port\": 8443 }\n" },
+      "provenance": "session scan 2026-08-23: MCP setup ranked top of the plumbing-friction backlog"
+    },
+    {
+      "id": "mcp-setup-near-miss",
+      "kind": "near-miss",
+      "prompt": "What is the Model Context Protocol, in two sentences?",
+      "provenance": "authored 2026-08-30; explaining MCP is not installing or debugging a server"
+    },
+    {
+      "id": "memory-hygiene-verbatim",
+      "kind": "verbatim",
+      "expected": "memory-hygiene",
+      "prompt": "Audit the harness memory in memory/MEMORY.md for stale or unsupported claims and propose evidence-based cleanup. Show the proposal; apply nothing yet.",
+      "files": { "memory/MEMORY.md": "- The deploy script lives at scripts/deploy.sh\n- The team uses spaces, never tabs\n- Redis is required since March\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "memory-hygiene-paraphrase",
+      "kind": "paraphrase",
+      "expected": "memory-hygiene",
+      "prompt": "My assistant's persistent memory file has accumulated junk from months ago. Prune whatever the evidence in this repo no longer supports — but show me the deletions for approval first. The file is memory/MEMORY.md.",
+      "files": { "memory/MEMORY.md": "- Build with make all\n- The API key rotates weekly\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "memory-hygiene-buried",
+      "kind": "buried",
+      "expected": "memory-hygiene",
+      "prompt": "Quick check plus a chore. Check: does memory/MEMORY.md mention Redis? Chore: the same memory file needs a correctness pass — flag entries no evidence supports and propose their removal for my approval.",
+      "files": { "memory/MEMORY.md": "- Redis caches sessions\n- Deploys happen on Fridays\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "memory-hygiene-near-miss",
+      "kind": "near-miss",
+      "prompt": "Summarize memory/MEMORY.md in two sentences.",
+      "files": { "memory/MEMORY.md": "- Build with make all\n- Deploys happen on Fridays\n" },
+      "provenance": "authored 2026-08-30; reading memory is not auditing it"
+    },
+    {
+      "id": "orchestrating-verbatim",
+      "kind": "verbatim",
+      "expected": "orchestrating",
+      "prompt": "These three audits are independent, so run them as parallel lanes and give me one merged table: count TODO markers, list every shell file, and report any tab characters in Go files.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "a.go": "package a // TODO: split\n",
+        "run.sh": "#!/bin/sh\necho run\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "orchestrating-paraphrase",
+      "kind": "paraphrase",
+      "expected": "orchestrating",
+      "prompt": "Fan this out: one worker per top-level directory, nothing depends on anything else, and keep the raw file listings out of your own context — I only want a single merged summary of file counts per directory.",
+      "files": { "src/a.txt": "a\n", "docs/b.txt": "b\n", "cmd/c.txt": "c\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "orchestrating-buried",
+      "kind": "buried",
+      "expected": "orchestrating",
+      "prompt": "Prep for the audit meeting. I need the README title first. After that, the big one: three unrelated sweeps of this tree — license headers, TODO counts, file sizes over 1 KB — which have no ordering between them and should run side by side, results merged into one list.",
+      "files": { "README.md": "# Audit Fixture\n", "big.txt": "x\n", "code.py": "# TODO: refactor\nprint(1)\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "orchestrating-near-miss",
+      "kind": "near-miss",
+      "prompt": "Do these three small edits in order, because each builds on the last: add a title line to README.md, then add a second line referencing the title, then add a third line quoting line two.",
+      "files": { "README.md": "" },
+      "provenance": "authored 2026-08-30; dependent sequential edits are one lane, not a fan-out"
+    },
+    {
+      "id": "safe-effects-verbatim",
+      "kind": "verbatim",
+      "expected": "safe-effects",
+      "prompt": "Prepare the DNS cutover for api.example.com to the new load balancer IP 203.0.113.7 and execute it.",
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "safe-effects-paraphrase",
+      "kind": "paraphrase",
+      "expected": "safe-effects",
+      "prompt": "Tonight during the window, send the maintenance email to the customer list announcing thirty minutes of read-only mode. Get it out.",
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "safe-effects-buried",
+      "kind": "buried",
+      "expected": "safe-effects",
+      "prompt": "Two items before I sign off. Fix the typo 'recieve' in README.md. Then run the deletion against the production orders table for rows older than 90 days — the query is in cleanup.sql.",
+      "files": { "README.md": "We recieve orders continuously.\n", "cleanup.sql": "DELETE FROM orders WHERE created_at < now() - interval '90 days';\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "safe-effects-near-miss",
+      "kind": "near-miss",
+      "prompt": "Overwrite config.sample.json in this repo with the new defaults: port 9090, debug false. It is a checked-in sample file with no live consumers.",
+      "files": { "config.sample.json": "{ \"port\": 8080, \"debug\": true }\n" },
+      "provenance": "authored 2026-08-30; a local sample-file edit has no real-world side effect"
+    },
+    {
+      "id": "systematic-debugging-verbatim",
+      "kind": "verbatim",
+      "expected": "systematic-debugging",
+      "prompt": "TestParse panics with a nil map assignment, and I cannot see why — the map looks initialized. Get to the root cause before changing anything. Run the tests to see it.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "parse.go": "package parse\n\nvar index map[string]int\n\nfunc init() {\n\tif len(index) > 0 {\n\t\tindex = make(map[string]int)\n\t}\n}\n\nfunc Record(key string) {\n\tindex[key] = len(index)\n}\n",
+        "parse_test.go": "package parse\n\nimport \"testing\"\n\nfunc TestParse(t *testing.T) {\n\tRecord(\"a\")\n\tif index[\"a\"] != 0 {\n\t\tt.Fatal(\"index\")\n\t}\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "systematic-debugging-paraphrase",
+      "kind": "paraphrase",
+      "expected": "systematic-debugging",
+      "prompt": "This script prints the wrong total, and I have stared at it too long — no idea what is going on. Find out what is actually happening before touching the code. You can run it.",
+      "files": { "total.sh": "#!/bin/sh\ntotal=0\nfor n in 1 2 3; do\n  total=$((total + n))\ndone\necho \"total: $((total + ${OFFSET:-1}))\"\n" },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "systematic-debugging-buried",
+      "kind": "buried",
+      "expected": "systematic-debugging",
+      "prompt": "Status update first: one sentence on what parse.go exports. Then the mystery — the test in this repo fails on some runs and passes on others, and nobody knows the cause. Track down the real reason before proposing any fix.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "parse.go": "package parse\n\nimport \"time\"\n\nfunc Stamp() int64 {\n\treturn time.Now().UnixNano() % 2\n}\n",
+        "parse_test.go": "package parse\n\nimport \"testing\"\n\nfunc TestStamp(t *testing.T) {\n\tif Stamp() != 0 {\n\t\tt.Fatal(\"odd stamp\")\n\t}\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "systematic-debugging-near-miss",
+      "kind": "near-miss",
+      "expected": "test-first-implementation",
+      "prompt": "The test fails because the fixture moved from data/fixture.txt to testdata/fixture.txt in the last commit — that is the whole cause, already confirmed. Fix the path and make the test pass.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "testdata/fixture.txt": "ok\n",
+        "read.go": "package read\n\nimport \"os\"\n\nfunc Fixture() (string, error) {\n\tdata, err := os.ReadFile(\"data/fixture.txt\")\n\treturn string(data), err\n}\n",
+        "read_test.go": "package read\n\nimport \"testing\"\n\nfunc TestFixture(t *testing.T) {\n\tgot, err := Fixture()\n\tif err != nil || got != \"ok\\n\" {\n\t\tt.Fatalf(\"got %q, %v\", got, err)\n\t}\n}\n"
+      },
+      "provenance": "authored 2026-08-30; a confirmed cause is a fix task, not an investigation"
+    },
+    {
+      "id": "test-first-implementation-verbatim",
+      "kind": "verbatim",
+      "expected": "test-first-implementation",
+      "prompt": "Add a Clamp(value, low, high int) int function to util.go — new behavior, and it needs tests that prove it. Implement it.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "util.go": "package util\n\nfunc Abs(n int) int {\n\tif n < 0 {\n\t\treturn -n\n\t}\n\treturn n\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "test-first-implementation-paraphrase",
+      "kind": "paraphrase",
+      "expected": "test-first-implementation",
+      "prompt": "Users want negative offsets supported in Shift — today it silently clamps them to zero, which is confirmed wrong. Make negative offsets work and prove the change holds.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "shift.go": "package shift\n\nfunc Shift(values []int, offset int) []int {\n\tif offset < 0 {\n\t\toffset = 0\n\t}\n\tout := make([]int, len(values))\n\tfor i, v := range values {\n\t\tout[(i+offset)%len(values)] = v\n\t}\n\treturn out\n}\n",
+        "shift_test.go": "package shift\n\nimport \"testing\"\n\nfunc TestShiftZero(t *testing.T) {\n\tgot := Shift([]int{1, 2}, 0)\n\tif got[0] != 1 {\n\t\tt.Fatal(\"zero shift\")\n\t}\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "test-first-implementation-buried",
+      "kind": "buried",
+      "expected": "test-first-implementation",
+      "prompt": "Before lunch: what does go.mod name this module? Then the feature — Sum currently ignores an empty slice edge case the team decided should return 0 explicitly with a doc comment; that behavior change should land with tests demonstrating it.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "sum.go": "package sum\n\nfunc Sum(values []int) int {\n\ttotal := 0\n\tfor _, v := range values {\n\t\ttotal += v\n\t}\n\treturn total\n}\n"
+      },
+      "provenance": "authored 2026-08-30 against the v0.23.0 description"
+    },
+    {
+      "id": "test-first-implementation-near-miss",
+      "kind": "near-miss",
+      "prompt": "Explain what calc.go does, function by function. Change nothing.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "calc.go": "package calc\n\nfunc Add(a, b int) int { return a + b }\n\nfunc Double(a int) int { return Add(a, a) }\n"
+      },
+      "provenance": "authored 2026-08-30; reading code changes no behavior"
+    },
+    {
+      "id": "upgrading-megapowers-verbatim",
+      "kind": "verbatim",
+      "expected": "upgrading-megapowers",
+      "prompt": "Check whether a newer Megapowers release exists than what is installed here, and upgrade if so. If checking is blocked in this environment, say exactly which step is blocked and stop.",
+      "provenance": "session scan 2026-08-26: install lag ranked in the backlog"
+    },
+    {
+      "id": "upgrading-megapowers-paraphrase",
+      "kind": "paraphrase",
+      "expected": "upgrading-megapowers",
+      "prompt": "My megapowers plugin state looks stale — skills load from an old version. Repair or reinstall the plugin so the installed state matches the latest release, or report the exact blocked step.",
+      "provenance": "session scan 2026-08-26: install lag ranked in the backlog"
+    },
+    {
+      "id": "upgrading-megapowers-buried",
+      "kind": "buried",
+      "expected": "upgrading-megapowers",
+      "prompt": "Wrap-up chores. First: one sentence on what README.md says. Second: this machine's megapowers install has drifted from the marketplace — refresh it to current, or name the exact step this environment blocks.",
+      "files": { "README.md": "# Scratch\n\nA fixture repo.\n" },
+      "provenance": "session scan 2026-08-26: install lag ranked in the backlog"
+    },
+    {
+      "id": "upgrading-megapowers-near-miss",
+      "kind": "near-miss",
+      "prompt": "List the names of the skills the installed megapowers plugin ships. Names only.",
+      "provenance": "authored 2026-08-30; an inventory question is not an upgrade"
+    },
+    {
+      "id": "verify-and-finish-verbatim",
+      "kind": "verbatim",
+      "expected": "verify-and-finish",
+      "prompt": "The one-line fix in util.go is done, I believe. Before we claim success and close this out, run what proves it and state plainly whether it holds.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "util.go": "package util\n\nfunc Even(n int) bool {\n\treturn n%2 == 0\n}\n",
+        "util_test.go": "package util\n\nimport \"testing\"\n\nfunc TestEven(t *testing.T) {\n\tif !Even(2) || Even(3) {\n\t\tt.Fatal(\"even\")\n\t}\n}\n"
+      },
+      "provenance": "session scan 2026-08-26: verify-and-finish Claude trigger listed in the backlog"
+    },
+    {
+      "id": "verify-and-finish-paraphrase",
+      "kind": "paraphrase",
+      "expected": "verify-and-finish",
+      "prompt": "I think we are finished with the parser work in this repo. Before I tell the team it works, do whatever is actually needed to back that claim, and give me the verified answer.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "parse.go": "package parse\n\nfunc Head(s string) string {\n\tif s == \"\" {\n\t\treturn \"\"\n\t}\n\treturn s[:1]\n}\n",
+        "parse_test.go": "package parse\n\nimport \"testing\"\n\nfunc TestHead(t *testing.T) {\n\tif Head(\"abc\") != \"a\" || Head(\"\") != \"\" {\n\t\tt.Fatal(\"head\")\n\t}\n}\n"
+      },
+      "provenance": "session scan 2026-08-26: verify-and-finish Claude trigger listed in the backlog"
+    },
+    {
+      "id": "verify-and-finish-buried",
+      "kind": "buried",
+      "expected": "verify-and-finish",
+      "prompt": "Fix the typo 'teh' in README.md, then get the change ready to hand off: prove the repo is still healthy and commit the fix locally with a sensible message.",
+      "files": {
+        "README.md": "This is teh fixture repo.\n",
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "ok.go": "package ok\n\nfunc OK() bool { return true }\n",
+        "ok_test.go": "package ok\n\nimport \"testing\"\n\nfunc TestOK(t *testing.T) {\n\tif !OK() {\n\t\tt.Fatal(\"ok\")\n\t}\n}\n"
+      },
+      "provenance": "session scan 2026-08-26: verify-and-finish Claude trigger listed in the backlog"
+    },
+    {
+      "id": "verify-and-finish-near-miss",
+      "kind": "near-miss",
+      "prompt": "What command runs the tests in this repo? Just name it; run nothing.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "ok.go": "package ok\n\nfunc OK() bool { return true }\n"
+      },
+      "provenance": "authored 2026-08-30; naming the oracle is not finishing work"
+    },
+    {
+      "id": "no-skill-shell-output",
+      "kind": "no-skill",
+      "prompt": "What would hello.sh print if run? Answer from reading it.",
+      "files": { "hello.sh": "#!/bin/sh\necho \"hello, probe\"\n" },
+      "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "no-skill-json-to-yaml",
+      "kind": "no-skill",
+      "prompt": "Convert this JSON to YAML in your reply: {\"name\": \"probe\", \"retries\": 3, \"quiet\": true}",
+      "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "no-skill-line-count",
+      "kind": "no-skill",
+      "prompt": "How many lines does data.txt contain?",
+      "files": { "data.txt": "alpha\nbeta\ngamma\ndelta\n" },
+      "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "no-skill-concept-question",
+      "kind": "no-skill",
+      "prompt": "Explain the difference between a goroutine and an OS thread in three sentences.",
+      "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "no-skill-sort-list",
+      "kind": "no-skill",
+      "prompt": "Sort these alphabetically and return the list: pear, apple, orange, kiwi, banana.",
+      "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "no-skill-gitignore-entry",
+      "kind": "no-skill",
+      "prompt": "Add a .gitignore entry that ignores .env files anywhere in the tree.",
+      "files": { ".gitignore": "bin/\n" },
+      "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "no-skill-go-version",
+      "kind": "no-skill",
+      "prompt": "What Go version does go.mod declare?",
+      "files": { "go.mod": "module example.com/probe\n\ngo 1.24\n" },
+      "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "no-skill-csv-column",
+      "kind": "no-skill",
+      "prompt": "Print the second column of data.csv.",
+      "files": { "data.csv": "id,name,qty\n1,bolt,40\n2,nut,90\n" },
+      "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "no-skill-rename-variable",
+      "kind": "no-skill",
+      "prompt": "Rename the local variable x to count in main.go. Nothing else.",
+      "files": {
+        "go.mod": "module example.com/probe\n\ngo 1.24\n",
+        "main.go": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tx := 3\n\tfmt.Println(x)\n}\n"
+      },
+      "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "no-skill-config-port",
+      "kind": "no-skill",
+      "prompt": "What port does config.json use?",
+      "files": { "config.json": "{ \"port\": 8443, \"debug\": false }\n" },
+      "provenance": "authored 2026-08-30 no-skill pool"
+    }
+  ]
+}
