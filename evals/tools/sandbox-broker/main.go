@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -2294,6 +2295,7 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 	if scanner.Err() != nil {
 		valid = false
 	}
+	events = promoteSkillReads(events)
 	events = deduplicateEvents(events)
 	complete := valid && terminal && processRC == 0
 	if harness == "claude" {
@@ -2354,6 +2356,9 @@ func normalizeObject(harness string, object map[string]any) []actorEvent {
 	case "command_execution", "commandexecution":
 		if commandRC, ok := explicitCommandRC(target); ok {
 			events = append(events, classifyCommand(firstString(target, "command"), commandRC)...)
+			if harness == "codex" {
+				events = append(events, skillReadEvents(firstString(target, "command"), commandRC)...)
+			}
 		}
 	case "collabagenttoolcall":
 		tool := lowerString(target["tool"])
@@ -2751,6 +2756,54 @@ func changedPaths(object map[string]any) string {
 	return strings.Join(paths, " ")
 }
 
+var skillBodyPattern = regexp.MustCompile(`(?i)(?:^|/)skills/([a-z0-9][a-z0-9._-]{0,127})/SKILL\.md$`)
+
+// skillReadEvents records a shell read of a shipped skill body as a
+// provisional "skill_read" event. Codex loads skill bodies by reading
+// SKILL.md, so the mechanical read is the activation evidence; a text claim
+// in a message never is. The trace-level pass in normalizeTrace promotes
+// these to skill_selected and keeps only the first successful read per
+// skill, because re-reading an already loaded body is ordinary behavior,
+// not a second activation.
+func skillReadEvents(command string, rc int) []actorEvent {
+	segments, _ := normalizedCommandSegments(command)
+	events := make([]actorEvent, 0, 1)
+	seen := make(map[string]bool)
+	for _, fields := range segments {
+		for _, field := range fields {
+			match := skillBodyPattern.FindStringSubmatch(filepath.ToSlash(field))
+			if match == nil {
+				continue
+			}
+			name := strings.ToLower(match[1])
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			events = append(events, actorEvent{Kind: "skill_read", Path: name, RC: rc})
+		}
+	}
+	return events
+}
+
+func promoteSkillReads(events []actorEvent) []actorEvent {
+	seenSuccessful := make(map[string]bool)
+	result := events[:0]
+	for _, event := range events {
+		if event.Kind == "skill_read" {
+			if event.RC == 0 {
+				if seenSuccessful[event.Path] {
+					continue
+				}
+				seenSuccessful[event.Path] = true
+			}
+			event.Kind = "skill_selected"
+		}
+		result = append(result, event)
+	}
+	return result
+}
+
 func deduplicateEvents(events []actorEvent) []actorEvent {
 	result := make([]actorEvent, 0, len(events))
 	for _, event := range events {
@@ -2807,6 +2860,7 @@ func selftest() error {
 		{"timeout terminates the isolated process tree", selftestTimeout},
 		{"trace normalization requires a complete result", selftestTrace},
 		{"Codex skills.read activation is normalized", selftestCodexSkillActivation},
+		{"Codex shell reads of a skill body are normalized once", selftestCodexSkillShellReads},
 		{"repeated Claude init inventories stay consistent", selftestRepeatedClaudeInit},
 		{"oracle phase excludes credentials and network", selftestOracle},
 		{"response redaction removes credential values", selftestRedaction},
@@ -4036,6 +4090,37 @@ func selftestCodexSkillActivation() error {
 		_, events, complete := normalizeTrace("codex", trace, 0)
 		if !complete || len(events) != 2 || events[0].Kind != "skill_selected" || events[0].Path != "orchestrating" || events[0].RC != 0 || events[1].Kind != "trace_complete" {
 			return fmt.Errorf("Codex skills.read trace returned %+v", events)
+		}
+	}
+	return nil
+}
+
+func selftestCodexSkillShellReads() error {
+	terminalLine := `{"method":"turn/completed","params":{"turn":{"status":"completed"}}}` + "\n"
+	command := func(id, command string, exitCode int) string {
+		return fmt.Sprintf(`{"method":"item/completed","params":{"item":{"id":%q,"type":"commandExecution","status":"completed","command":%q,"exitCode":%d}}}`, id, command, exitCode) + "\n"
+	}
+	single := []byte(command("cmd-1", "cat /opt/plugin/skills/humanizing-prose/SKILL.md", 0) + terminalLine)
+	_, events, complete := normalizeTrace("codex", single, 0)
+	if !complete || len(events) != 2 || events[0].Kind != "skill_selected" || events[0].Path != "humanizing-prose" || events[0].RC != 0 || events[1].Kind != "trace_complete" {
+		return fmt.Errorf("codex shell skill read returned %+v", events)
+	}
+	repeated := []byte(command("cmd-1", "head -20 /opt/plugin/skills/humanizing-prose/SKILL.md", 0) + command("cmd-2", "cat /opt/plugin/skills/humanizing-prose/SKILL.md", 0) + terminalLine)
+	if _, events, _ = normalizeTrace("codex", repeated, 0); len(events) != 2 || events[0].Kind != "skill_selected" {
+		return errors.New("repeated successful skill reads were not collapsed to one activation")
+	}
+	failedThenSuccess := []byte(command("cmd-1", "cat /opt/plugin/skills/humanizing-prose/SKILL.md", 1) + command("cmd-2", "cat /opt/plugin/skills/humanizing-prose/SKILL.md", 0) + terminalLine)
+	_, events, _ = normalizeTrace("codex", failedThenSuccess, 0)
+	if len(events) != 3 || events[0].Kind != "skill_selected" || events[0].RC != 1 || events[1].Kind != "skill_selected" || events[1].RC != 0 {
+		return errors.New("failed skill read attempt was not preserved before the successful read")
+	}
+	claudeShell := []byte(command("cmd-1", "cat /opt/plugin/skills/humanizing-prose/SKILL.md", 0) + terminalLine)
+	if _, events, _ = normalizeTrace("claude", claudeShell, 0); len(events) != 0 {
+		return errors.New("claude trace produced shell skill-read evidence")
+	}
+	for _, benign := range []string{"cat README.md", "cat skills/humanizing-prose/notes.md", "ls skills", "printf skills/humanizing-prose/SKILL.md-shaped"} {
+		if _, events, _ := normalizeTrace("codex", []byte(command("cmd-1", benign, 0)+terminalLine), 0); len(events) != 1 {
+			return fmt.Errorf("benign command %q produced skill evidence", benign)
 		}
 	}
 	return nil

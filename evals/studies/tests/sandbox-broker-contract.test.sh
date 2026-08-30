@@ -46,6 +46,7 @@ for claim in \
   "timeout terminates the isolated process tree" \
   "trace normalization requires a complete result" \
   "Codex skills.read activation is normalized" \
+  "Codex shell reads of a skill body are normalized once" \
   "oracle phase excludes credentials and network" \
   "response redaction removes credential values" \
   "arm inventory is exact"
