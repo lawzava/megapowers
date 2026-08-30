@@ -11,6 +11,88 @@ fifteen-skill candidate. Installed A/B and PR replay are optional diagnostic
 studies, not release gates. Exact-tag install smoke runs after publication and
 proves delivery, not candidate quality.
 
+## Installed-plugin A/B — 2026-08-30 (diagnostic; acceptance rejected)
+
+First credentialed with/without-skill runs for the current candidate: 10
+balanced pairs across all 18 cases per harness, subscription-authenticated
+actors inside the hash-pinned bwrap broker, sanitized rows hashed in the
+publish manifests. Acceptance (`minimum_paired_runs: 10`,
+`require_all_treatment_passes`) rejected both arms; the scorecards below are
+the complete sanitized verdicts, published as null/negative results.
+
+### Claude Code — fable, effort high, rev 3abee91
+
+| case | control | treatment |
+|---|---|---|
+| autonomous-run-resume-status | 0/10 | 0/10 |
+| code-quality-go-errors | 0/10 | 0/10 |
+| continuity-multisession-resume | 0/10 | 0/10 |
+| continuity-ordinary-handoff | 2/10 | 0/10 |
+| design-plan-ambiguous-contract | 0/10 | 0/10 |
+| evidence-research-contested-rationale | 5/10 | 2/10 |
+| humanizing-prose-accountable-claim | 0/10 | 0/10 |
+| humanizing-prose-noop | 10/10 | 0/10 |
+| humanizing-prose-plan | 10/10 | 10/10 |
+| independent-review-approval-boundary | 1/10 | 0/10 |
+| orchestration-bounded-inline | 10/10 | 0/10 |
+| orchestration-output-only-evidence | 0/10 | 0/10 |
+| orchestration-three-read-lanes | 0/10 | 0/10 |
+| safe-effects-no-comments | 0/10 | 0/10 |
+| systematic-debugging-before-mitigation | 0/10 | 0/10 |
+| tdd-add-multiply | 0/10 | 0/10 |
+| upgrading-current-noop | 7/10 | 0/10 |
+| verify-finish-local-only | 0/10 | 0/10 |
+
+### Codex — gpt-5.6-sol, effort high, rev da5ec58
+
+| case | control | treatment |
+|---|---|---|
+| autonomous-run-resume-status | 0/10 | 0/10 |
+| code-quality-go-errors | 0/10 | 0/10 |
+| continuity-multisession-resume | 0/10 | 0/10 |
+| continuity-ordinary-handoff | 0/10 | 0/10 |
+| design-plan-ambiguous-contract | 0/10 | 0/10 |
+| evidence-research-contested-rationale | 0/10 | 0/10 |
+| humanizing-prose-accountable-claim | 0/10 | 0/10 |
+| humanizing-prose-noop | 10/10 | 0/10 |
+| humanizing-prose-plan | 10/10 | 0/10 |
+| independent-review-approval-boundary | 0/10 | 0/10 |
+| orchestration-bounded-inline | 0/10 | 0/10 |
+| orchestration-output-only-evidence | 0/10 | 0/10 |
+| orchestration-three-read-lanes | 0/10 | 0/10 |
+| safe-effects-no-comments | 0/10 | 0/10 |
+| systematic-debugging-before-mitigation | 0/10 | 0/10 |
+| tdd-add-multiply | 0/10 | 0/10 |
+| upgrading-current-noop | 0/10 | 0/10 |
+| verify-finish-local-only | 0/10 | 0/10 |
+
+### Reading
+
+- No lift is demonstrated anywhere; acceptance rejection is correct on the
+  recorded gates.
+- Baseline floor: controls fail 11 of 18 cases outright on Claude Code and 16
+  of 18 on Codex. Fixture difficulty in this sandbox exceeds unsandboxed-actor
+  capability for most cases, so most rows cannot separate treatment from
+  control.
+- The `code-quality-go-errors` and `tdd-add-multiply` oracles never pass for
+  either arm on either harness (`oracle_pass=0` on all 80 rows): the oracle
+  infrastructure does not work inside the isolation sandbox, making those
+  cases structurally unpassable.
+- Activation contracts bind where tasks succeed: treatment rows with
+  `outcome_success=1` but `task_success=0` (humanizing-prose-noop,
+  orchestration-bounded-inline, upgrading-current-noop on Claude Code) did the
+  task but missed the declared skill-selection/process contract. Whether those
+  contracts are realistically satisfiable is exactly what the planned
+  trigger-evaluation suite must answer before behavioral evidence is possible.
+- Claude arm runs resumed across provider session-limit interruptions; the
+  resume path tolerated terminal harness-error arms after this session's
+  runner fix.
+
+Prerequisites for a meaningful rerun: repair the two in-sandbox oracles,
+recalibrate fixtures whose controls sit at floor, and add the cross-skill
+trigger suite. Until then this study yields no behavioral claim in either
+direction.
+
 Current protocols and gates:
 
 - [deterministic and behavioral evals](./README.md)
