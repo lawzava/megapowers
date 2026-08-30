@@ -1,0 +1,13 @@
+# Gitleaks config: extend the default rules with allowlists for public
+# release-signing key material, which is not a secret but trips the
+# generic-api-key rule (40-hex GPG fingerprint, armored key blocks).
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Checked-in release signing public key"
+paths = ['''\.github/release-signing-key\.asc$''']
+
+[[allowlists]]
+description = "Release signing key fingerprint pinned in workflows and docs"
+regexes = ['''C91B6252A576AEA45DE467D1D75C64FBF43F6479''']
