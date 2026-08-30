@@ -52,7 +52,9 @@ go run evals/studies/trigger-recall/run.go --run --credentialed \
 
 Each probe absorbs one automatic retry for a transient actor failure (fresh
 disposable directories per attempt; retry counts appear in the manifest). A
-second failure fails the run closed.
+second failure fails the run closed and writes the attempt's trace and error
+to `<out>/failures/` — private maintainer diagnostics, never part of the
+publish bundle.
 
 Run Claude Code and Codex separately. `--filter <substring>` restricts a run
 to matching case ids; use it for the pre-merge slice of one edited skill plus

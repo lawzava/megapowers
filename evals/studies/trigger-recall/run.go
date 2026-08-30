@@ -645,6 +645,11 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 					retries++
 				}
 			}
+			if timedOut || actorErr != nil || result.RC != 0 {
+				if err := writeFailureEvidence(opts.Out, c.ID, blockID, result, actorErr); err != nil {
+					return rows, publishManifest{}, err
+				}
+			}
 			if timedOut {
 				return rows, publishManifest{}, fmt.Errorf("%s/%s actor timed out after %s", c.ID, blockID, opts.ActorTimeout)
 			}
@@ -713,6 +718,36 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 		return rows, manifest, err
 	}
 	return rows, manifest, nil
+}
+
+// writeFailureEvidence keeps the failed attempt's trace and error privately
+// under <out>/failures/, outside publish/. It exists for maintainer
+// diagnosis of systematic actor failures; failure evidence is never part of
+// the sanitized publish bundle.
+func writeFailureEvidence(out, caseID, blockID string, result actorResult, actorErr error) error {
+	if out == "" {
+		return nil
+	}
+	failures := filepath.Join(out, "failures")
+	if err := os.MkdirAll(failures, 0o700); err != nil {
+		return err
+	}
+	message := ""
+	if actorErr != nil {
+		message = actorErr.Error()
+	}
+	evidence, err := json.MarshalIndent(map[string]any{
+		"case":     caseID,
+		"block":    blockID,
+		"rc":       result.RC,
+		"error":    message,
+		"response": result.Response,
+		"trace":    string(result.Trace),
+	}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWrite(filepath.Join(failures, fmt.Sprintf("%s-%s.json", caseID, blockID)), append(evidence, '\n'), 0o600)
 }
 
 func configurationHashes(cases casesFile, gates gatesFile) (string, string, error) {
@@ -1383,6 +1418,8 @@ func runSelftest() error {
 	_, _, err = executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: corpus.Cases[:1]}, gates, catalog, failOptions, failing)
 	check("actor errors fail closed", err != nil && strings.Contains(err.Error(), "actor error"))
 	check("repeated actor failures still fail closed", err != nil && failing.calls["recall-hit"] == 2)
+	evidence, evidenceErr := os.ReadFile(filepath.Join(failOptions.Out, "failures", "recall-hit-rep-1.json"))
+	check("actor failures persist private diagnostics", evidenceErr == nil && strings.Contains(string(evidence), "scripted actor failure"))
 
 	transient := scriptedActor{
 		events:   map[string][]actorEvent{"recall-hit": {{Kind: "skill_selected", Path: "systematic-debugging", RC: 0, Step: 1}}},

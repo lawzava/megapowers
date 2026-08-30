@@ -22,6 +22,7 @@ for claim in \
   "reps emit unique blocks" \
   "temporary state removed after success" \
   "actor errors fail closed" \
+  "actor failures persist private diagnostics" \
   "transient actor failures retry once" \
   "repeated actor failures still fail closed" \
   "actor deadlines fail closed" \
