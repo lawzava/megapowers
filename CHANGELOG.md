@@ -5,6 +5,27 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.25.0 - 2026-08-30
+
+The shipped plugin tree is unchanged apart from the version stamp; this release
+carries CI attestation fixes and a new evals study.
+
+### Fixed
+
+- Release attestation verifies tag and commit signatures against the pinned
+  release signing key, embedded in the workflow so manual dispatch also attests
+  tags cut before the key file existed. The lane had failed on every tag since
+  it shipped; v0.24.0 was attested green via dispatch.
+
+### Added
+
+- Evals: a trigger-recall activation study — a fixed probe corpus (verbatim,
+  paraphrase, buried, near-miss, no-skill) whose verdicts come only from
+  trace-proven `skill_selected` events, with strict activation scoring kept
+  separate from behavioral treatment/control evidence.
+- `.github/release-signing-key.asc` publishes the release signing public key;
+  `.gitleaks.toml` allowlists this public key material for the secret scan.
+
 ## 0.24.0 - 2026-08-30
 
 The shipped plugin tree is identical to 0.23.0; this release stamps evals
