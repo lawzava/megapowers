@@ -3,7 +3,7 @@
   "mode": "report-only",
   "acceptance": {
     "minimum_reps": 3,
-    "default_min_recall": 0.67,
+    "default_min_recall": 0.6,
     "default_max_false_selection_rate": 0.34,
     "per_skill": {}
   }

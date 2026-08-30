@@ -202,6 +202,7 @@ type publishManifest struct {
 	PluginHash      string         `json:"plugin_hash"`
 	CaseCatalogHash string         `json:"case_catalog_hash"`
 	GatesHash       string         `json:"gates_hash"`
+	Retries         int            `json:"retries"`
 	Assessment      gateAssessment `json:"assessment"`
 }
 
@@ -604,30 +605,45 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 		return nil, publishManifest{}, err
 	}
 	cliVersion := "selftest"
+	retries := 0
 	rows := make([]resultRow, 0, len(cases.Cases)*opts.Reps)
 	tallies := make([]caseTally, 0, len(cases.Cases))
 	for _, c := range cases.Cases {
 		tally := caseTally{CaseID: c.ID, Expected: c.Expected}
 		for rep := 1; rep <= opts.Reps; rep++ {
 			blockID := fmt.Sprintf("rep-%d", rep)
-			armRoot := filepath.Join(root, c.ID, blockID)
-			home := filepath.Join(armRoot, "home")
-			project := filepath.Join(armRoot, "project")
-			for _, directory := range []string{home, project} {
-				if err := os.MkdirAll(directory, 0o700); err != nil {
+			var result actorResult
+			var actorErr error
+			var timedOut bool
+			// One automatic retry absorbs a transient actor failure; the
+			// broker requires an empty disposable home, so every attempt
+			// gets fresh directories. A second failure still fails closed.
+			for attempt := 1; attempt <= 2; attempt++ {
+				armRoot := filepath.Join(root, c.ID, fmt.Sprintf("%s-attempt-%d", blockID, attempt))
+				home := filepath.Join(armRoot, "home")
+				project := filepath.Join(armRoot, "project")
+				for _, directory := range []string{home, project} {
+					if err := os.MkdirAll(directory, 0o700); err != nil {
+						return rows, publishManifest{}, err
+					}
+				}
+				if err := materializeFixture(project, c.Files); err != nil {
 					return rows, publishManifest{}, err
 				}
-			}
-			if err := materializeFixture(project, c.Files); err != nil {
-				return rows, publishManifest{}, err
-			}
-			request := actorRequest{Case: c, Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, Home: home, Project: project, PluginRoot: actorPluginRoot, Timeout: opts.ActorTimeout}
-			actorCtx, cancelActor := context.WithTimeout(ctx, opts.ActorTimeout)
-			result, actorErr := subject.Run(actorCtx, request)
-			timedOut := errors.Is(actorCtx.Err(), context.DeadlineExceeded)
-			cancelActor()
-			if result.CLIVersion != "" {
-				cliVersion = result.CLIVersion
+				request := actorRequest{Case: c, Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, Home: home, Project: project, PluginRoot: actorPluginRoot, Timeout: opts.ActorTimeout}
+				actorCtx, cancelActor := context.WithTimeout(ctx, opts.ActorTimeout)
+				result, actorErr = subject.Run(actorCtx, request)
+				timedOut = errors.Is(actorCtx.Err(), context.DeadlineExceeded)
+				cancelActor()
+				if result.CLIVersion != "" {
+					cliVersion = result.CLIVersion
+				}
+				if actorErr == nil && !timedOut && result.RC == 0 {
+					break
+				}
+				if attempt == 1 {
+					retries++
+				}
 			}
 			if timedOut {
 				return rows, publishManifest{}, fmt.Errorf("%s/%s actor timed out after %s", c.ID, blockID, opts.ActorTimeout)
@@ -690,6 +706,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 		PluginHash:      pluginHash,
 		CaseCatalogHash: caseCatalogHash,
 		GatesHash:       gatesHash,
+		Retries:         retries,
 		Assessment:      assessGates(tallies, gates, opts.Reps),
 	}
 	if err := writePublish(opts.Out, rows, manifest); err != nil {
@@ -1227,12 +1244,21 @@ func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult
 // --- selftest ---
 
 type scriptedActor struct {
-	events map[string][]actorEvent
-	fail   map[string]error
-	rc     map[string]int
+	events   map[string][]actorEvent
+	fail     map[string]error
+	failOnce map[string]error
+	rc       map[string]int
+	calls    map[string]int
 }
 
 func (s scriptedActor) Run(_ context.Context, request actorRequest) (actorResult, error) {
+	if s.calls != nil {
+		s.calls[request.Case.ID]++
+	}
+	if err := s.failOnce[request.Case.ID]; err != nil {
+		delete(s.failOnce, request.Case.ID)
+		return actorResult{RC: 125}, err
+	}
 	if err := s.fail[request.Case.ID]; err != nil {
 		return actorResult{RC: 125}, err
 	}
@@ -1351,11 +1377,24 @@ func runSelftest() error {
 	leftover, err := filepath.Glob(filepath.Join(tempParent, "megapowers-trigger-recall-*"))
 	check("temporary state removed after success", err == nil && len(leftover) == 0)
 
-	failing := scriptedActor{events: map[string][]actorEvent{}, fail: map[string]error{"recall-hit": errors.New("scripted actor failure")}, rc: map[string]int{}}
+	failing := scriptedActor{events: map[string][]actorEvent{}, fail: map[string]error{"recall-hit": errors.New("scripted actor failure")}, rc: map[string]int{}, calls: map[string]int{}}
 	failOptions := options
 	failOptions.Out = filepath.Join(tempParent, "failure")
 	_, _, err = executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: corpus.Cases[:1]}, gates, catalog, failOptions, failing)
 	check("actor errors fail closed", err != nil && strings.Contains(err.Error(), "actor error"))
+	check("repeated actor failures still fail closed", err != nil && failing.calls["recall-hit"] == 2)
+
+	transient := scriptedActor{
+		events:   map[string][]actorEvent{"recall-hit": {{Kind: "skill_selected", Path: "systematic-debugging", RC: 0, Step: 1}}},
+		fail:     map[string]error{},
+		failOnce: map[string]error{"recall-hit": errors.New("transient scripted failure")},
+		rc:       map[string]int{},
+		calls:    map[string]int{},
+	}
+	transientOptions := options
+	transientOptions.Out = filepath.Join(tempParent, "transient")
+	transientRows, transientManifest, err := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: corpus.Cases[:1]}, gates, catalog, transientOptions, transient)
+	check("transient actor failures retry once", err == nil && len(transientRows) == 1 && transientRows[0].Verdict == "pass" && transientManifest.Retries == 1 && transient.calls["recall-hit"] == 2)
 
 	deadlineOptions := options
 	deadlineOptions.Out = filepath.Join(tempParent, "deadline")
