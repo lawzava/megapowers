@@ -185,7 +185,7 @@ func validateRow(row resultRow) error {
 			return err
 		}
 	}
-	if row.EvidenceClass != "behavioral" && row.EvidenceClass != "regression" {
+	if row.EvidenceClass != "behavioral" && row.EvidenceClass != "regression" && row.EvidenceClass != "activation" {
 		return fmt.Errorf("evidence_class %q is unknown", row.EvidenceClass)
 	}
 	if row.EvidenceClass == "behavioral" && row.Arm != "treatment" && row.Arm != "control" {
@@ -194,8 +194,23 @@ func validateRow(row resultRow) error {
 	if row.EvidenceClass == "regression" && row.Arm != "regression" {
 		return fmt.Errorf("regression row must use arm %q", "regression")
 	}
-	if row.EvidenceClass == "behavioral" && !revisionPattern.MatchString(row.Source.Revision) {
-		return fmt.Errorf("behavioral source.revision %q must be a full git commit hash", row.Source.Revision)
+	if row.EvidenceClass == "activation" {
+		if row.Arm != "treatment" {
+			return fmt.Errorf("activation rows must use arm %q", "treatment")
+		}
+		if row.PluginHash == emptyPluginHash {
+			return errors.New("activation plugin hash must not identify the empty plugin set")
+		}
+		success, hasSuccess := row.Metrics["activation_success"]
+		if !hasSuccess || (success != 0 && success != 1) {
+			return errors.New("activation rows require binary activation_success")
+		}
+		if success != boolFloat(row.Verdict == "pass") {
+			return errors.New("activation_success must match the verdict")
+		}
+	}
+	if row.EvidenceClass != "regression" && !revisionPattern.MatchString(row.Source.Revision) {
+		return fmt.Errorf("%s source.revision %q must be a full git commit hash", row.EvidenceClass, row.Source.Revision)
 	}
 	if row.Status == "timeout" {
 		return errors.New("timed-out run is an infrastructure failure")
@@ -365,6 +380,9 @@ func comparisonIdentity(row resultRow) string {
 }
 
 func validateComparisons(rows []resultRow) error {
+	if err := validateActivationRows(rows); err != nil {
+		return err
+	}
 	blocks := make(map[string][]resultRow)
 	type cell struct {
 		arms         map[string]*tally
@@ -453,6 +471,77 @@ func validateComparisons(rows []resultRow) error {
 		}
 		if treatmentMetrics != controlMetrics {
 			return fmt.Errorf("comparison cell %q has incomparable treatment/control metrics", printableKey(key))
+		}
+	}
+	return nil
+}
+
+// activationGroupIdentity omits case, prompt, and fixture so rep counts can be
+// balanced across the cases of one study run.
+func activationGroupIdentity(row resultRow) string {
+	return strings.Join([]string{
+		row.Study,
+		row.Harness.Name,
+		row.Harness.CLIVersion,
+		row.Harness.Model,
+		row.Harness.Effort,
+		row.Source.Repository,
+		row.Source.Revision,
+		row.Environment.OS,
+		row.Environment.Arch,
+		row.Environment.Sandbox,
+		row.Environment.Locale,
+	}, "\x00")
+}
+
+func validateActivationRows(rows []resultRow) error {
+	type cell struct {
+		caseID       string
+		pluginHashes map[string]struct{}
+		metricSets   map[string]struct{}
+		blocks       map[string]bool
+	}
+	cells := make(map[string]*cell)
+	groups := make(map[string]map[string]int)
+	for _, row := range rows {
+		if row.EvidenceClass != "activation" {
+			continue
+		}
+		cellKey := comparisonIdentity(row)
+		if cells[cellKey] == nil {
+			cells[cellKey] = &cell{caseID: row.CaseID, pluginHashes: map[string]struct{}{}, metricSets: map[string]struct{}{}, blocks: map[string]bool{}}
+		}
+		c := cells[cellKey]
+		if c.blocks[row.BlockID] {
+			return fmt.Errorf("activation case %q repeats rep block %q", row.CaseID, row.BlockID)
+		}
+		c.blocks[row.BlockID] = true
+		c.pluginHashes[row.PluginHash] = struct{}{}
+		c.metricSets[metricSignature(row.Metrics)] = struct{}{}
+		groupKey := activationGroupIdentity(row)
+		if groups[groupKey] == nil {
+			groups[groupKey] = map[string]int{}
+		}
+		groups[groupKey][row.CaseID]++
+	}
+	for _, c := range cells {
+		if len(c.pluginHashes) != 1 {
+			return fmt.Errorf("activation case %q mixes plugin hashes", c.caseID)
+		}
+		if len(c.metricSets) != 1 {
+			return fmt.Errorf("activation case %q mixes metric sets", c.caseID)
+		}
+	}
+	for _, caseCounts := range groups {
+		expected := -1
+		for _, count := range caseCounts {
+			if expected == -1 {
+				expected = count
+				continue
+			}
+			if count != expected {
+				return errors.New("unbalanced activation rep counts across cases; a partial run cannot be scored")
+			}
 		}
 	}
 	return nil
@@ -671,10 +760,25 @@ func printScorecard(rows []resultRow) {
 		durations map[string]*metricAggregate
 		pairs     map[string]map[string]string
 	}
+	type activationCell struct {
+		study   string
+		caseID  string
+		harness harnessIdentity
+		results tally
+	}
+	activation := make(map[string]*activationCell)
 	behavioral := make(map[string]*behavioralCell)
 	for _, row := range rows {
 		if row.EvidenceClass == "regression" {
 			regressions = append(regressions, row)
+			continue
+		}
+		if row.EvidenceClass == "activation" {
+			key := comparisonIdentity(row)
+			if activation[key] == nil {
+				activation[key] = &activationCell{study: row.Study, caseID: row.CaseID, harness: row.Harness}
+			}
+			activation[key].results.add(row.Verdict)
 			continue
 		}
 		key := comparisonIdentity(row)
@@ -720,6 +824,27 @@ func printScorecard(rows []resultRow) {
 		fmt.Println("|---|---|---|---:|")
 		for _, row := range regressions {
 			fmt.Printf("| %s | %s | %s | %d |\n", row.Study, row.CaseID, row.Verdict, row.DurationMS)
+		}
+		fmt.Println()
+	}
+
+	if len(activation) > 0 {
+		keys := make([]string, 0, len(activation))
+		for key := range activation {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		fmt.Println("## Activation evidence")
+		fmt.Println()
+		fmt.Println("Single-arm trigger recall/precision with the plugin installed. Never compared against a control arm.")
+		fmt.Println()
+		fmt.Println("| study | case | harness | pass | rate |")
+		fmt.Println("|---|---|---|---:|---:|")
+		for _, key := range keys {
+			cell := activation[key]
+			fmt.Printf("| %s | %s | %s/%s | %d/%d | %s |\n",
+				cell.study, cell.caseID, cell.harness.Name, cell.harness.Model,
+				cell.results.pass, cell.results.pass+cell.results.fail, formatRate(cell.results.rate()))
 		}
 		fmt.Println()
 	}

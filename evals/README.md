@@ -6,6 +6,7 @@ one layer into another.
 | Layer | Question | Credentials | Release role |
 |---|---|---|---|
 | Deterministic regressions | Do manifests, hooks, tools, schemas, and runners work? | No | Required PR gate |
+| Trigger recall | Does the shipped trigger surface activate the right skill, and only it? | Yes | Skill-text pre-merge gate (report-only until calibrated) |
 | Installed-plugin A/B | Does this exact plugin revision change target behavior? | Yes | Optional diagnostic evidence |
 | PR replay | Can the installed plugin improve hidden-test correctness on pinned real changes? | Yes | Report-only |
 
@@ -42,6 +43,13 @@ Strict scoring fails closed on:
 
 Regression rows never contribute to behavioral effect estimates.
 
+Activation rows (`evidence_class: "activation"`) are single-arm skill-trigger
+measurements from the trigger-recall study. Strict scoring additionally
+requires the `treatment` arm, an installed-plugin hash, a binary
+`activation_success` metric matching the verdict, unique rep blocks, and
+balanced rep counts across the cases of one run. Activation evidence never
+enters treatment/control comparisons or effect estimates.
+
 ## Result row contract
 
 Every row records:
@@ -53,6 +61,26 @@ Every row records:
 
 Use immutable source identities and exact model and effort values. A convenient
 alias is not an exact identity. Publish sanitized rows only.
+
+## Trigger recall
+
+Trigger recall measures whether each shipped skill activates on prompts that
+should select it and stays quiet on prompts that should not. It is the
+regression oracle for skill-text edits: run the affected slice before merging
+a `SKILL.md` description change. Protocol, corpus rules, gates, and the oracle
+mutation check live in [`studies/trigger-recall/`](./studies/trigger-recall/).
+
+Credential-free mechanics:
+
+```bash
+go run evals/studies/trigger-recall/run.go --selftest
+go run evals/studies/trigger-recall/run.go --validate-config \
+  --cases evals/studies/trigger-recall/cases.json \
+  --gates evals/studies/trigger-recall/gates.json
+```
+
+Real runs use the same hash-pinned isolation broker as installed A/B and
+publish only sanitized rows and a manifest.
 
 ## Installed-plugin A/B
 

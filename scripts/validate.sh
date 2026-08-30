@@ -157,12 +157,14 @@ eval_tests=(
   evals/tests/coverage-inventory.test.sh
   evals/tests/portability-boundary.test.sh
   evals/tests/run-all-reporting.test.sh
+  evals/tests/score-activation.test.sh
   evals/tests/score-failclosed.test.sh
   evals/tests/subprocess-bounds.test.sh
   evals/studies/tests/installed-ab-contract.test.sh
   evals/studies/tests/pr-replay-contract.test.sh
   evals/studies/tests/sandbox-broker-contract.test.sh
   evals/studies/tests/session-observability-contract.test.sh
+  evals/studies/tests/trigger-recall-contract.test.sh
 )
 
 run_check "test entrypoints executable" 10s bash -c '
