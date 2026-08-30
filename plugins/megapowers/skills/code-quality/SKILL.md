@@ -1,6 +1,6 @@
 ---
 name: code-quality
-description: Use when a code structure, API, error, concurrency, or idiom decision is not settled by the repository or its configured tools.
+description: Use when writing or changing code raises a choice not settled by the repository or its tools - error-handling style, API shape, naming, concurrency primitives, or idiom - or when asked to decide or settle such a choice.
 ---
 
 # Code Quality
@@ -34,6 +34,3 @@ judgment that local code does not settle:
 - Go: [references/go.md](references/go.md)
 - Python: [references/python.md](references/python.md)
 - TypeScript: [references/typescript.md](references/typescript.md)
-
-Do not load a language reference for mechanical edits or when repository code
-already answers the decision.
