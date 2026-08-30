@@ -1651,8 +1651,11 @@ func writeClaudeSettings(req brokerRequest) (string, error) {
 	}
 	settings := map[string]any{
 		"permissions": map[string]any{
+			// Explicit allows prevent non-interactive permission asks from
+			// masquerading as actor behavior; Bubblewrap remains the
+			// authoritative filesystem boundary for every write.
 			"defaultMode": "acceptEdits",
-			"allow":       []string{"Agent", "Task", "Skill"},
+			"allow":       []string{"Agent", "Task", "Skill", "Edit", "Write", "MultiEdit", "NotebookEdit"},
 			"deny":        []string{"WebFetch", "WebSearch", "Read(~/.claude/.credentials.json)"},
 		},
 		"sandbox": map[string]any{
@@ -2467,12 +2470,18 @@ func normalizeClaudeToolResults(object map[string]any, pending map[string]pendin
 				valid = false
 				continue
 			}
+			// Current CLIs omit is_error on some successful results and
+			// attach the result payload instead; a matched statusless
+			// result with a payload object is proven execution. A matched
+			// statusless result without any payload stays unconfirmed.
 			isError, statusPresent := block["is_error"].(bool)
-			if !statusPresent && (strings.EqualFold(tool.name, "skill") || strings.EqualFold(tool.name, "select_skill")) {
+			if !statusPresent {
 				if result, ok := object["tool_use_result"].(map[string]any); ok {
-					if success, ok := result["success"].(bool); ok {
-						statusPresent = true
+					statusPresent = true
+					if success, hasSuccess := result["success"].(bool); hasSuccess {
 						isError = !success
+					} else {
+						isError = false
 					}
 				}
 			}
@@ -3120,7 +3129,7 @@ func selftestClaudeSubscriptionIsolation() error {
 	for _, tool := range settingsDocument.Permissions.Allow {
 		allowed[tool] = true
 	}
-	if settingsDocument.Permissions.DefaultMode != "acceptEdits" || len(allowed) != 3 || !allowed["Agent"] || !allowed["Task"] || !allowed["Skill"] {
+	if settingsDocument.Permissions.DefaultMode != "acceptEdits" || len(allowed) != 7 || !allowed["Agent"] || !allowed["Task"] || !allowed["Skill"] || !allowed["Edit"] || !allowed["Write"] || !allowed["MultiEdit"] || !allowed["NotebookEdit"] {
 		return errors.New("Claude settings do not allow isolated edits, skills, and native delegation")
 	}
 	return nil
@@ -3969,6 +3978,18 @@ func selftestTrace() error {
 		if event.Kind == "skill_selected" {
 			return errors.New("unconfirmed Claude tool request counted as executed")
 		}
+	}
+	writeToolUse := "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"tool-w\",\"name\":\"Write\",\"input\":{\"file_path\":\"store.go\"}}]}}\n"
+	payloadToolResult := "{\"type\":\"user\",\"tool_use_result\":{\"type\":\"update\",\"filePath\":\"store.go\"},\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tool-w\"}]}}\n"
+	_, payloadEvents, payloadComplete := normalizeTrace("claude", []byte(initEvent+writeToolUse+payloadToolResult+terminalResult), 0)
+	payloadWriteCounted := false
+	for _, event := range payloadEvents {
+		if event.Kind == "write" && event.RC == 0 {
+			payloadWriteCounted = true
+		}
+	}
+	if !payloadComplete || !payloadWriteCounted {
+		return errors.New("statusless Claude tool result with a payload was not counted as executed")
 	}
 	statuslessToolResult := "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"tool-1\"}]}}\n"
 	_, statuslessEvents, statuslessComplete := normalizeTrace("claude", []byte(initEvent+toolUse+statuslessToolResult+terminalResult), 0)
