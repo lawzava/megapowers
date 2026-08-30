@@ -50,6 +50,10 @@ go run evals/studies/trigger-recall/run.go --run --credentialed \
   --out results/trigger-recall-claude
 ```
 
+Each probe absorbs one automatic retry for a transient actor failure (fresh
+disposable directories per attempt; retry counts appear in the manifest). A
+second failure fails the run closed.
+
 Run Claude Code and Codex separately. `--filter <substring>` restricts a run
 to matching case ids; use it for the pre-merge slice of one edited skill plus
 the `no-skill` pool. The publish bundle contains only sanitized
