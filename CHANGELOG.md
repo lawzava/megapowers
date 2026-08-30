@@ -5,6 +5,25 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.24.0 - 2026-08-30
+
+The shipped plugin tree is identical to 0.23.0; this release stamps evals
+tooling and documentation changes so the marketplace head matches a stable tag.
+
+### Fixed
+
+- Evals: the installed-plugin A/B runner accepts terminal harness-error arms on
+  resume, mounts the staged Codex home writable for app-server state, resets
+  the staged Claude home before the dump selftest re-run, asserts the dump on
+  the event stream the broker actually traces, and surfaces the Codex
+  app-server stderr tail in failures.
+
+### Added
+
+- Evals: failed and incomplete app-server traces persist for diagnostics, and
+  `evals/RESULTS.md` publishes the first installed-plugin A/B results (null;
+  acceptance rejected).
+
 ## 0.23.0 - 2026-08-29
 
 ### Fixed
