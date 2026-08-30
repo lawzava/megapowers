@@ -11,6 +11,70 @@ fifteen-skill candidate. Installed A/B and PR replay are optional diagnostic
 studies, not release gates. Exact-tag install smoke runs after publication and
 proves delivery, not candidate quality.
 
+## Trigger recall — 2026-08-30 baseline (report-only)
+
+First credentialed activation baseline: 3 reps per probe through the
+hash-pinned bwrap broker. Claude Code arm: CLI 2.1.251, `claude-fable-5`,
+effort high, rev `61fec19`, 198 sanitized rows. Codex arm: CLI 0.151.0,
+`gpt-5.6-sol`, effort high, rev `fa74633`, 198 rows. Skill text and corpus
+are byte-identical across the two revisions (only plugin version bumps
+differ). Gates ran in `report-only` mode; nothing gated.
+
+### Claude Code — per-skill recall (pass/total across verbatim, paraphrase, buried)
+
+| skill | recall | detail |
+|---|---:|---|
+| code-quality | 1/9 | verbatim 0/3, paraphrase 0/3, buried 1/3 — worst skill |
+| autonomous-run | 7/9 | verbatim 2/3, buried 2/3 |
+| independent-review | 8/9 | buried 2/3 |
+| verify-and-finish | 8/9 | verbatim 2/3 |
+| design-and-plan, evidence-research, grill-me, humanizing-prose, mcp-setup, memory-hygiene, safe-effects, systematic-debugging, test-first-implementation, upgrading-megapowers | 9/9 | perfect |
+
+Claude aggregate recall: 114/126. Precision: 71/72 pure precision runs clean;
+the one miss fired `safe-effects` on a local sample-file edit
+(`safe-effects-near-miss`, 1/3 reps). Every recall failure was silence — zero
+selection attempts — never a wrong skill. The boundary probe
+`systematic-debugging-near-miss` (confirmed-cause fix expecting
+`test-first-implementation`) failed 3/3 by silence: trivial confirmed fixes
+select nothing.
+
+### Codex — zero observed activations
+
+All 42 recall probes 0/3; all pure precision probes pass because no skill
+ever fires. Every one of the 198 rows records zero `skill_selected` events.
+This cannot yet be read as "skills never activate on Codex": the broker's
+Codex trace normalization only recognizes skill-shaped tool calls, and if
+Codex invokes skills by reading `SKILL.md` through shell, no event is
+emitted. Session evidence (2026-08-23 scan) found real Codex skill uptake, so
+instrumentation is the leading hypothesis. Until the broker's Codex
+normalization is extended (or refuted by a manual trace read), Codex
+activation is **unmeasured**, and yesterday's Codex A/B activation contracts
+share that shadow.
+
+### Unmeasured: orchestrating
+
+The `orchestrating` slice failed on both harnesses with broker rc 125 across
+three distinct reps (fail-closed, systematic). Its probes make actors spawn
+subagents, and the broker's forwarded-segment trace rules reject the
+resulting traces. Orchestrating activation is unmeasured until the broker
+accepts those trace shapes.
+
+### Calibration proposal
+
+- Keep `report-only` until the `code-quality` description is reworked and the
+  Codex instrumentation question is resolved.
+- `default_min_recall`: lower 0.67 → 0.60. Observed 2/3 (= 0.667) currently
+  trips the 0.67 threshold through rounding, flagging cases that match the
+  intended two-of-three floor.
+- After the code-quality fix and a rerun of its slice plus the no-skill pool,
+  switch `mode` to `enforce` for the Claude harness with per-skill overrides
+  left at default.
+
+Actionable defects this baseline yields, in order: rework the
+`code-quality` trigger description (hard evidence: 1/9), extend broker Codex
+skill-event normalization, fix broker rejection of orchestrating subagent
+traces, then re-baseline.
+
 ## Installed-plugin A/B — 2026-08-30 (diagnostic; acceptance rejected)
 
 First credentialed with/without-skill runs for the current candidate: 10
