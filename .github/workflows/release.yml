@@ -53,7 +53,25 @@ jobs:
             printf 'release-attestation: tag %s points at %s, expected %s\n' "$TAG" "$sha" "$expected" >&2
             exit 1
           fi
-          gpg --batch --import .github/release-signing-key.asc
+          # The key is embedded (not read from the checkout) so manual
+          # dispatch works on tags cut before the key file existed. The same
+          # key ships at .github/release-signing-key.asc for humans; rotation
+          # must update both plus KEY_FPR.
+          gpg --batch --import <<'PUBKEY'
+          -----BEGIN PGP PUBLIC KEY BLOCK-----
+
+          mDMEZ1qpuBYJKwYBBAHaRw8BAQdAB8zu8ZgEjudX3ozrHdu6Zbd5scjhWZ14Pkrt
+          Eb2ia020ITlhMGZmZWRjNWIzMTgyM2IgPGdpdEB3ZWxsaWNrLmRlPoiTBBMWCgA7
+          FiEEyRtiUqV2rqRd5GfR11xk+/Q/ZHkFAmdaqbgCGwMFCwkIBwICIgIGFQoJCAsC
+          BBYCAwECHgcCF4AACgkQ11xk+/Q/ZHm7eQD/VJ0FfOHUWlYxcTpEHY4ubO1eoj2D
+          DTXenaVOUWZckfIBAKsdqnskxlEEXv3k/ZmkXN0AynNPbmIHcLySB3hw9X0KuDgE
+          Z1qpuBIKKwYBBAGXVQEFAQEHQKR9aiaS9sgMS+D2EmBi2Fo0v01L6uEnKuLBwfzp
+          H8FzAwEIB4h4BBgWCgAgFiEEyRtiUqV2rqRd5GfR11xk+/Q/ZHkFAmdaqbgCGwwA
+          CgkQ11xk+/Q/ZHmZzwEA+/Ur0I6wHLzakcbB0yhuXVSkFSmga7pMUsBxjqlbvV8A
+          /2gD7zlbPFD31THDdnoDD1yzK2AeblDnnb9BngSp+QML
+          =cSOL
+          -----END PGP PUBLIC KEY BLOCK-----
+          PUBKEY
           verify_signed_by_release_key() {
             local out
             out="$(git "$1" --raw "$2" 2>&1)" || {
