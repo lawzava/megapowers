@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_MARKET="$ROOT/.claude-plugin/marketplace.json"
 CODEX_MARKET="$ROOT/.agents/plugins/marketplace.json"
+SKILL_CATALOG="$ROOT/plugins/megapowers/skills/catalog.json"
 
 fail() {
   printf 'native-first contract: %s\n' "$*" >&2
@@ -12,22 +13,7 @@ fail() {
 
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 
-expected_skills=$(printf '%s\n' \
-  autonomous-run \
-  code-quality \
-  design-and-plan \
-  evidence-research \
-  grill-me \
-  humanizing-prose \
-  independent-review \
-  mcp-setup \
-  memory-hygiene \
-  orchestrating \
-  safe-effects \
-  systematic-debugging \
-  test-first-implementation \
-  upgrading-megapowers \
-  verify-and-finish)
+expected_skills="$(jq -r '.skills[].name' "$SKILL_CATALOG" | LC_ALL=C sort)"
 
 assert_single_marketplace_plugin() {
   local manifest=$1 source_query=$2

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Parity gate: every test script under the three test roots must be referenced
+# Parity gate: every shell test under the repository test roots must be referenced
 # by scripts/validate.sh, so the validation inventory cannot drift from the tree.
 set -euo pipefail
 
@@ -11,10 +11,10 @@ fail() {
   exit 1
 }
 
-wired="$(grep -hoE '(scripts/tests|evals/tests|evals/studies/tests)/[A-Za-z0-9._-]+\.test\.sh' "$validator" | LC_ALL=C sort -u)"
+wired="$(grep -hoE '(scripts/tests|evals/tests|evals/studies/tests|plugins/megapowers/hooks/tests)/[A-Za-z0-9._-]+\.test\.sh' "$validator" | LC_ALL=C sort -u)"
 [ -n "$wired" ] || fail 'validate.sh references no test scripts'
 
-found="$(cd "$ROOT" && find scripts/tests evals/tests evals/studies/tests \
+found="$(cd "$ROOT" && find scripts/tests evals/tests evals/studies/tests plugins/megapowers/hooks/tests \
   -type f -name '*.test.sh' | LC_ALL=C sort)"
 
 missing="$(comm -23 <(printf '%s\n' "$found") <(printf '%s\n' "$wired"))"

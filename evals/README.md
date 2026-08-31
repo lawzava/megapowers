@@ -1,12 +1,12 @@
 # megapowers evals
 
-The eval stack answers three different questions. Do not promote evidence from
+The eval stack answers four different questions. Do not promote evidence from
 one layer into another.
 
 | Layer | Question | Credentials | Release role |
 |---|---|---|---|
 | Deterministic regressions | Do manifests, hooks, tools, schemas, and runners work? | No | Required PR gate |
-| Trigger recall | Does the shipped trigger surface activate the right skill, and only it? | Yes | Skill-text pre-merge gate (report-only until calibrated) |
+| Trigger recall | Does the shipped trigger surface activate the right skill, and only it? | Yes | Enforced for Claude; report-only for Codex |
 | Installed-plugin A/B | Does this exact plugin revision change target behavior? | Yes | Optional diagnostic evidence |
 | PR replay | Can the installed plugin improve hidden-test correctness on pinned real changes? | Yes | Report-only |
 
@@ -67,114 +67,37 @@ alias is not an exact identity. Publish sanitized rows only.
 Trigger recall measures whether each shipped skill activates on prompts that
 should select it and stays quiet on prompts that should not. It is the
 regression oracle for skill-text edits: run the affected slice before merging
-a `SKILL.md` description change. Protocol, corpus rules, gates, and the oracle
-mutation check live in [`studies/trigger-recall/`](./studies/trigger-recall/).
-
-Credential-free mechanics:
-
-```bash
-go run evals/studies/trigger-recall/run.go --selftest
-go run evals/studies/trigger-recall/run.go --validate-config \
-  --cases evals/studies/trigger-recall/cases.json \
-  --gates evals/studies/trigger-recall/gates.json
-```
-
-Real runs use the same hash-pinned isolation broker as installed A/B and
-publish only sanitized rows and a manifest.
+a `SKILL.md` description change. The current gate applies to Claude. Codex
+remains report-only. The
+[`trigger-recall` study](./studies/trigger-recall/README.md) owns its commands,
+corpus rules, gates, publish boundary, and oracle mutation check.
 
 ## Installed-plugin A/B
 
 The treatment and control receive identical tasks and fixture bytes in separate
-private homes. The treatment installs the current checkout. The control has no
-megapowers plugin. User configuration and unrelated plugins enter neither arm.
-
-Credential-free mechanics:
-
-```bash
-go run evals/studies/installed-ab/run.go --selftest
-bash evals/studies/tests/installed-ab-contract.test.sh
-```
-
-Explicit real run:
-
-```bash
-go run evals/studies/installed-ab/run.go --run --credentialed \
-  --harness codex --model <exact-model> --effort <exact-effort> \
-  --sandbox-broker /absolute/path/to/reviewed-broker \
-  --broker-sha256 "$BROKER_SHA256" --paired-runs 10 \
-  --actor-timeout 20m \
-  --out results/installed-ab-codex
-```
-
-Run Claude Code and Codex separately when the comparison is useful. Score the
-combined sanitized rows with `score.go --strict`.
-
-Cases and thresholds live in
-[`studies/installed-ab/`](./studies/installed-ab/). Current gates cover prose
-fact retention and no-op behavior, code-quality defect reduction without
-convention regression, test-first ordering with an observed red run, native
-fan-out across three inferred lanes, one bounded output-only lane, zero-spawn
-inline work, and suppression of unauthorized tracker or pull-request comments.
-The fan-out oracle applies its effective spawn minimum before the first wait and
-before any completion. The output-only oracle requires exactly one spawn
-attempt, a four-field JSON object no larger than 256 bytes, and no seeded raw
-payload samples. The inline oracle rejects every spawn attempt, including failed ones. The
-external-effects oracle counts every forbidden comment attempt
-regardless of return code and also requires an intact protected fixture, green
-oracle, and complete trace. The autonomous resume case is report-only. Study
-acceptance requires every treatment run to pass after the configured number of
-balanced pairs. Control outcomes remain paired diagnostics; they are not an
-uplift gate for these explicit regression tasks, and the study does not gate
-releases.
-
-`--selftest` proves isolation-contract handling, cleanup, fail-closed execution,
-result shape, and artifact sanitization with an in-process fake actor. Broker
-selftests and the Claude preflight provide the actual OS-boundary evidence. No
-selftest produces behavioral evidence.
+private homes. The treatment installs the current checkout. The control remains
+empty. This optional study measures treatment reliability and paired control
+outcomes; it does not gate releases or establish general model improvement. The
+[`installed-plugin A/B` study](./studies/installed-ab/README.md) owns its
+commands, cases, thresholds, resume rules, broker contract, and publish boundary.
 
 ## PR replay
 
 PR replay starts an actor from a pinned base commit, withholds the historical
-patch and hidden oracle files, then scores the actor using the declared
-correctness command. The untouched base must fail that oracle.
-
-Credential-free mechanics:
-
-```bash
-go run evals/studies/pr-replay/replay.go --selftest
-bash evals/studies/tests/pr-replay-contract.test.sh
-```
-
-Credentialed runs are disabled until the sandbox broker schema-2 upgrade:
-`--run --credentialed` refuses before spawning any actor or oracle process.
-When the upgrade lands, an explicit real run is:
-
-```bash
-go run evals/studies/pr-replay/replay.go --run --credentialed \
-  --harness claude --model <exact-model> --effort <exact-effort> \
-  --sandbox-broker /absolute/path/to/reviewed-broker \
-  --broker-sha256 "$BROKER_SHA256" \
-  --cases private-replays.json --out results/pr-replay
-```
-
-The case manifest must use full immutable commit IDs. File overlap with the
-historical patch is diagnostic only. Correctness comes from the hidden oracle.
-PR replay remains report-only until repeated real runs justify a threshold.
+patch and hidden oracle files, then uses the declared correctness command.
+Credentialed execution stays disabled until the runner adopts broker schema
+`2`. PR replay remains report-only. The
+[`PR replay` study](./studies/pr-replay/README.md) owns its command, case schema,
+isolation contract, and verdict rules.
 
 ## Artifact policy
 
-Both runners require a reviewed, hash-pinned broker whose attestation proves
-credentials, sibling state, and hidden oracle material are outside the actor's
-OS boundary. The broker path must be canonical, contain no symlinks, remain
-outside actor-visible and output trees, and identify a self-contained executable;
-the runner executes a private read-only copy of the pinned bytes.
+Credentialed studies require a reviewed, hash-pinned broker. The repository's
+[`sandbox broker`](tools/sandbox-broker/README.md) implements schema `2` for
+installed A/B and trigger recall on Linux. PR replay still requires migration
+from schema `1`.
 
-The repository's [`sandbox-broker`](tools/sandbox-broker/README.md) implements
-the installed-plugin A/B runner's schema `2` on Linux. PR replay still uses its
-older schema `1`, so its credentialed runner stays disabled until that
-schema-2 upgrade.
-
-The credentialed runners publish only:
+Share only each study's sanitized bundle:
 
 ```text
 publish/manifest.json

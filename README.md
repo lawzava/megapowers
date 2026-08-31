@@ -88,17 +88,20 @@ tripwire, not a sandbox. Read
 
 ## Evidence
 
-Three evidence classes are kept separate:
+Four evidence classes are kept separate:
 
 1. `scripts/validate.sh` and `evals/run-all.sh` run bounded deterministic
    regressions and runner selftests. They prove repository mechanics, not agent
    quality.
-2. The optional installed-plugin A/B study compares this checkout with an empty
+2. Trigger recall measures trace-proven skill selection. It gates skill-text
+   changes on Claude and remains report-only on Codex.
+3. The optional installed-plugin A/B study compares this checkout with an empty
    control under Claude Code and Codex through a hash-pinned isolation broker.
    It reports treatment reliability and paired control outcomes; it does not
    gate releases or claim that the plugin improves general model capability.
-3. PR replay uses hidden correctness tests against pinned historical changes.
-   It is report-only until repeated real runs support a release threshold.
+4. PR replay uses hidden correctness tests against pinned historical changes.
+   Credentialed execution is disabled pending broker schema `2`; the study is
+   report-only.
 
 No current fifteen-skill behavioral result is claimed from selftests. Historical
 measurements, including null results and their limitations, remain in

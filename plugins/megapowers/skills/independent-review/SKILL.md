@@ -33,10 +33,10 @@ go run "$review_tool" review --base <base-revision> --head <head-revision> \
   --provider codex --author claude --approve-external "$approval_token"
 ```
 
-The tool refuses an author and provider that do not differ. Other
-rejections are deterministic: dirty worktrees, untracked files, routing
-overrides, project-selected binaries, symlinks, submodules, binary data,
-oversized packages, and secret-like paths or patterns.
+Author and provider must differ. The tool also rejects project-selected
+binaries, symlinks, submodules, binary data, oversized packages, and secret-like
+paths or patterns. Commit ranges use immutable revisions, so unrelated
+worktree changes are excluded.
 
 External dispatch sends artifact bytes to another vendor. Confirm the user
 authorized that egress for this artifact; a review mandate alone does not

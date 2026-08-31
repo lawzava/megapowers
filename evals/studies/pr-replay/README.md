@@ -36,7 +36,8 @@ go run evals/studies/pr-replay/replay.go --selftest
 bash evals/studies/tests/pr-replay-contract.test.sh
 ```
 
-Explicit credentialed run:
+Credentialed execution is disabled until PR replay adopts broker schema `2`.
+The runner rejects the following future command before starting an actor:
 
 ```bash
 go run evals/studies/pr-replay/replay.go --run --credentialed \

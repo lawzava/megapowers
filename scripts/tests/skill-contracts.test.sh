@@ -3,21 +3,8 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SKILLS="$ROOT/plugins/megapowers/skills"
-EXPECTED="autonomous-run
-code-quality
-design-and-plan
-evidence-research
-grill-me
-humanizing-prose
-independent-review
-mcp-setup
-memory-hygiene
-orchestrating
-safe-effects
-systematic-debugging
-test-first-implementation
-upgrading-megapowers
-verify-and-finish"
+CATALOG="$SKILLS/catalog.json"
+EXPECTED="$(jq -r '.skills[].name' "$CATALOG" 2>/dev/null | LC_ALL=C sort)"
 
 pass=0
 fail=0
@@ -279,7 +266,6 @@ contains_document 'review explains dismissed findings' "$REVIEW" 'explain.*dismi
 contains_document 'review requires explicit egress authorization' "$REVIEW" 'authorized (that|this) egress|egress.*explicit(ly)? authoriz'
 contains_document 'review surfaces stalled dispatches instead of waiting' "$REVIEW" '(permission prompt|provider stall).*surface|do not wait silently'
 
-CATALOG="$SKILLS/catalog.json"
 catalog_names="$(jq -r '.skills[].name' "$CATALOG" 2>/dev/null | sort)"
 if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count 15 '
   .schema_version == "1" and

@@ -1180,8 +1180,8 @@ Elsewhere:
   already cover: `disableWorkflows`, `includeGitInstructions`, `disableArtifact`,
   `disableClaudeAiConnectors`, per-skill `skillOverrides` for the bundled skills,
   and the `Explore`/`Plan` agent types. Worth 7,818 tokens of system prompt on
-  every turn, measured, with the feature each one costs written down in
-  [docs/setup.md](docs/setup.md#optional-templates).
+  every turn, measured, with each feature's cost documented in the then-current
+  setup guide.
 - `upgrading-megapowers` covers the instruction files and settings baselines, not
   just plugin versions. No plugin ships `templates/`, so the skill had nothing to
   compare against and reported the only observable it had. It now fetches the

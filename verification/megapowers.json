@@ -18,7 +18,7 @@
       "surface": "published Claude Code plugin registration and cached bytes",
       "harness": "claude",
       "doctor": ["claude", "plugin", "validate", "--strict", "plugins/megapowers"],
-      "runner": ["bash", "evals/studies/install-smoke/run-smoke.sh", "--harness", "claude", "--version", "<version>"],
+      "runner": ["bash", "evals/studies/install-smoke/run-smoke.sh", "--out", "<output-directory>", "--harnesses", "claude", "--source", "lawzava/megapowers", "--ref", "v<version>", "--version", "<version>"],
       "isolated_state": "fresh runner-owned Claude configuration directory",
       "cleanup": "remove only the runner-owned temporary directory",
       "evidence": ["exact tag", "plugin registration", "cached skill bytes", "guard behavior"]
@@ -28,7 +28,7 @@
       "surface": "published Codex plugin registration and cached bytes",
       "harness": "codex",
       "doctor": ["codex", "doctor", "--json"],
-      "runner": ["bash", "evals/studies/install-smoke/run-smoke.sh", "--harness", "codex", "--version", "<version>"],
+      "runner": ["bash", "evals/studies/install-smoke/run-smoke.sh", "--out", "<output-directory>", "--harnesses", "codex", "--source", "lawzava/megapowers", "--ref", "v<version>", "--version", "<version>"],
       "isolated_state": "fresh runner-owned Codex configuration directory",
       "cleanup": "remove only the runner-owned temporary directory",
       "evidence": ["exact tag", "plugin registration", "cached skill bytes", "guard behavior"]

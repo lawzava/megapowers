@@ -29,17 +29,19 @@ subagents do not inherit them.
 
 Add the repository marketplace, then install `megapowers@megapowers`. The
 complete commands and fresh-session checks are in
-[docs/install.md](../../docs/install.md).
+[the installation guide](https://github.com/lawzava/megapowers/blob/main/docs/install.md).
 
 ## Security
 
 The hook catches a narrow set of obvious catastrophic shell commands. It is not
 a sandbox. The independent-review skill sends only an explicit file or immutable
-commit range after a disclosure and approval step. Read
-[SECURITY.md](../../SECURITY.md) before enabling either path.
+commit range after a disclosure and approval step. Read the
+[security policy](https://github.com/lawzava/megapowers/blob/main/SECURITY.md)
+before enabling either path.
 
 ## Attribution
 
 The workflow descends from
 [Superpowers](https://github.com/obra/superpowers) by Jesse Vincent, used under
-the MIT License. Full notices are in [ATTRIBUTION.md](../../ATTRIBUTION.md).
+the MIT License. See the
+[full attribution](https://github.com/lawzava/megapowers/blob/main/ATTRIBUTION.md).

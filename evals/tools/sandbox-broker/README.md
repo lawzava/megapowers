@@ -1,6 +1,7 @@
 # Megapowers evaluation broker
 
-This standalone Linux broker implements request schema `2` for the installed-plugin A/B study.
+This standalone Linux broker implements request schema `2` for the
+installed-plugin A/B and trigger-recall studies.
 It validates one JSON request on standard input and returns one JSON response on standard output.
 
 The broker uses Bubblewrap as the outer filesystem and process boundary.
@@ -98,11 +99,10 @@ Before Claude's first `system/init`, only `system/hook_started` and
 cannot produce normalized actor evidence.
 Claude inventory comes from every `system/init` event. Repeated init segments
 must report the same exact inventory and each must be authorized by a preceding
-matched, successful local-agent task notification. Only one forwarded segment
-may be open at a time. A forwarded segment may contain its inner result, but
-trace completion requires the subsequent result whose
-`origin.kind` is `task-notification`; a new init resets trace completion until
-that result arrives. The terminal result must be the final trace object.
+matched, successful local-agent task notification. Parallel fan-out may keep
+several forwarded segments open. Trace completion requires the main result and
+one successful `origin.kind: task-notification` result for each open segment.
+The terminal result must be the final trace object.
 Duplicate Claude local-agent task IDs and tool-use IDs fail closed. Generic
 Claude objects cannot directly manufacture normalized write, command, or agent
 evidence.

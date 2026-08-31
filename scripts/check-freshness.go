@@ -15,13 +15,11 @@ const defaultMaxAge = 30
 type freshnessEntry struct {
 	file   string
 	marker string
-	maxAge int
-	hasAge bool
 }
 
 var freshnessFiles = []freshnessEntry{
-	{file: "docs/harness-support.md", marker: "Last reviewed:", maxAge: 30, hasAge: true},
-	{file: "scripts/check-freshness.sh", marker: "Harness tooling reviewed:", maxAge: 30, hasAge: true},
+	{file: "docs/harness-support.md", marker: "Last reviewed:"},
+	{file: "scripts/check-freshness.sh", marker: "Harness tooling reviewed:"},
 }
 
 var dateRE = regexp.MustCompile(`[0-9]{4}-[0-9]{2}-[0-9]{2}`)
@@ -114,8 +112,6 @@ func runCheckFreshness(args []string) int {
 		limit := defaultMaxAge
 		if flagSet {
 			limit = maxAge
-		} else if e.hasAge {
-			limit = e.maxAge
 		}
 		age := int(now.Sub(then).Hours() / 24)
 		if age <= limit {

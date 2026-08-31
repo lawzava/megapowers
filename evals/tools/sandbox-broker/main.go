@@ -3301,7 +3301,7 @@ sleep 2
 
 	dumpDir := filepath.Join(paths.root, "trace-dumps")
 	restoreDump := setTestEnvironment("MEGAPOWERS_BROKER_TRACE_DUMP", dumpDir)
-	_, diagnosticErr = runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth)
+	_, _ = runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth)
 	restoreDump()
 	dumpEntries, dumpReadErr := os.ReadDir(dumpDir)
 	if dumpReadErr != nil || len(dumpEntries) == 0 {

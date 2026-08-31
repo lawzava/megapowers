@@ -44,6 +44,40 @@ if rg -ni 'OpenCode|Grok|model(s|)[.]toml|delegates[.]toml|model catalog|model r
   fail 'active docs retain removed runtime or plugin claims'
 fi
 
+if rg -ni 'dirty worktrees?|implicit dirty tree|untracked files|routing overrides' \
+  "$ROOT/plugins/megapowers/skills/independent-review/SKILL.md" \
+  "$ROOT/docs/advanced/independent-review.md"; then
+  fail 'independent-review docs claim rejections the tool does not implement'
+fi
+
+if rg -n '\]\(\.\./\.\./' "$ROOT/plugins/megapowers/README.md"; then
+  fail 'installed plugin README contains repository-relative links'
+fi
+
+grep -qF 'four different questions' "$ROOT/evals/README.md" ||
+  fail 'eval README does not identify all four evidence layers'
+grep -Eqi 'Claude.*enforce|enforce.*Claude' "$ROOT/evals/README.md" ||
+  fail 'eval README does not state the Claude trigger-recall gate'
+grep -Eqi 'Codex.*report-only|report-only.*Codex' "$ROOT/evals/README.md" ||
+  fail 'eval README does not state Codex trigger-recall policy'
+grep -qF 'Aggregate recall 122/135.' "$ROOT/evals/RESULTS.md" ||
+  fail 'current trigger-recall aggregate does not match its table'
+if grep -qF 'Only one forwarded segment may be open at a time.' \
+  "$ROOT/evals/tools/sandbox-broker/README.md"; then
+  fail 'sandbox broker docs retain the obsolete sequential-segment contract'
+fi
+
+while IFS= read -r markdown; do
+  while IFS= read -r link; do
+    target="${link#']('}"
+    target="${target%')'}"
+    target="${target%%#*}"
+    case "$target" in *://*) continue ;; esac
+    [[ -e "$(dirname "$markdown")/$target" ]] ||
+      fail "$markdown links to missing $target"
+  done < <(grep -oE '\]\([^ )]+[.]md(#[^)]*)?\)' "$markdown" || true)
+done < <(git -C "$ROOT" ls-files '*.md' | sed "s#^#$ROOT/#")
+
 grep -q 'exactly one plugin' "$ROOT/README.md" || fail 'README does not state the one-plugin boundary'
 grep -q 'Claude Code and Codex' "$ROOT/README.md" || fail 'README does not state the two supported harnesses'
 grep -q 'installed-plugin A/B' "$ROOT/README.md" || fail 'README does not identify optional behavioral evidence'

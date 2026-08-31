@@ -1,8 +1,8 @@
 name: freshness
 
-# Current Claude Code and Codex support plus pinned validation tooling can drift
-# without a repository change. Recheck those dated surfaces every week, and run
-# the same validation checks against current stable CLIs every night.
+# Current Claude Code and Codex support can drift without a repository change.
+# Recheck dated support metadata weekly. Validate Claude packaging and the Codex
+# install path against current stable CLIs nightly.
 
 on:
   schedule:
