@@ -60,10 +60,11 @@ go run "$review_tool" review --base <base-revision> --head <head-revision> \
   --approve-external "$approval_token"
 ```
 
-The tool refuses matching author and reviewer providers. It also refuses an
-implicit dirty tree, untracked files, project-selected binaries, symlinks,
-submodules, binary data, oversized packages, secret-like paths, and common
-secret patterns. Provider processes receive a small environment allowlist.
+The tool refuses matching author and reviewer providers. It also refuses
+project-selected binaries, symlinks, submodules, binary data, oversized
+packages, secret-like paths, and common secret patterns. Commit ranges use
+immutable revisions and exclude unrelated worktree changes. Provider processes
+receive a small environment allowlist.
 Review recaptures the source and resolves the provider again before dispatch.
 Any package or provider-binary change invalidates the token and requires a new
 inspection. The approved provider bytes are then copied into a private read-only

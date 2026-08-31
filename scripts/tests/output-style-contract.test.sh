@@ -44,7 +44,7 @@ jq -e '
   | length == 1 and
     .[0].hooks == [{
       "type": "command",
-      "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd codex-output-style.sh"
+      "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd codex-output-style.sh"
     }]
 ' "$HOOKS" >/dev/null || fail 'Codex startup hook does not load the shared style'
 

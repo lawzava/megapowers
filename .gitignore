@@ -6,12 +6,13 @@
 .DS_Store
 Thumbs.db
 
-# Agent planning artifacts — not part of the published repo.
-# The skills write specs/plans under docs/megapowers/{specs,plans}; the bare
-# docs/{plans,specs} paths are kept for older layouts.
+# Generated agent workspaces and planning artifacts — not published.
 docs/megapowers/
 docs/plans/
 docs/specs/
+.omc/
+.claude-flow/
+.swarm/
 
 # Runtime state written by skills (autonomous-run dirs, evidence) — never part
 # of the published repo.
@@ -30,7 +31,6 @@ docs/specs/
 # Sandbox/agent workspace artifacts that materialize inside study dirs — never real content.
 evals/studies/**/.claude/
 evals/studies/**/.mcp.json
-evals/.runs/
 
 # Linked git worktrees created for isolated feature work.
 .worktrees/

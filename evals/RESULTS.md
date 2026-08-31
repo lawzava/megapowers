@@ -53,7 +53,7 @@ description change (`0cedde9`).
 | verify-and-finish | 7/9 | verbatim 1/3; echoes the standing backlog item |
 | remaining 11 skills | 9/9 | perfect |
 
-Aggregate recall 113/126. Precision 74/75; the one recurring miss is
+Aggregate recall 122/135. Precision 74/75; the one recurring miss is
 `safe-effects-near-miss` (fires on a local sample-file edit in about one rep
 in three across arms — the description's "any action with a real-world side
 effect" reads broadly). The corrected `systematic-debugging-near-miss` probe

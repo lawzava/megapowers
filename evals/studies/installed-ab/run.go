@@ -761,11 +761,6 @@ func armManifestMatches(got armManifest, want scheduledArm, selftest bool) bool 
 		got.EvidenceOnly == evidenceLabel(selftest)
 }
 
-func manifestForScheduledArm(want scheduledArm, selftest bool) armManifest {
-	inventory := expectedInventory(want.Arm)
-	return armManifest{CaseID: want.Case.ID, BlockID: want.BlockID, Arm: want.Arm, PromptHash: want.PromptHash, FixtureHash: want.FixtureHash, PluginHash: want.PluginHash, PluginNames: inventory, InventoryHash: hashInventory(inventory), EvidenceOnly: evidenceLabel(selftest)}
-}
-
 func checkpointDigest(manifest publishManifest, rows []resultRow) string {
 	payload := struct {
 		Manifest publishManifest `json:"manifest"`

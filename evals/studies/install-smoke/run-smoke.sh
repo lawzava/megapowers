@@ -15,6 +15,22 @@ installed_skill_ok() { # <source-skill> <cached-skill>
   cmp -s "$1" "$2" && quote_ok "$2"
 }
 
+tree_file_list() { # <root>
+  (cd "$1" && find . -type f -print | LC_ALL=C sort)
+}
+
+installed_tree_ok() { # <source-root> <cached-root>
+  local source_root="$1" cached_root="$2" source_files cached_files file
+  source_files="$(tree_file_list "$source_root")" || return 1
+  cached_files="$(tree_file_list "$cached_root")" || return 1
+  [ "$source_files" = "$cached_files" ] || return 1
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    cmp -s "$source_root/$file" "$cached_root/$file" || return 1
+    [ "$(stat -c '%a' "$source_root/$file")" = "$(stat -c '%a' "$cached_root/$file")" ] || return 1
+  done <<< "$source_files"
+}
+
 results_ok() { # <results.tsv> <fail-on-skip:0|1>
   local results="$1" fail_on_skip="$2"
   grep -q $'\tFAIL\t' "$results" && return 1
@@ -34,6 +50,16 @@ if [ "${1:-}" = "--selftest" ]; then
   if installed_skill_ok "$st/verbatim.out" "$st/cached.out"; then echo "ok   identical installed bytes accepted"; else echo "FAIL identical installed bytes rejected"; sf=1; fi
   printf 'mutation\n' >> "$st/cached.out"
   if installed_skill_ok "$st/verbatim.out" "$st/cached.out"; then echo "FAIL mutated installed bytes accepted"; sf=1; else echo "ok   mutated installed bytes rejected"; fi
+  mkdir -p "$st/source-tree/hooks" "$st/cached-tree/hooks"
+  printf 'same\n' > "$st/source-tree/plugin.txt"
+  printf 'same\n' > "$st/source-tree/hooks/hooks.json"
+  cp -a "$st/source-tree/." "$st/cached-tree/"
+  if installed_tree_ok "$st/source-tree" "$st/cached-tree"; then echo "ok   identical installed tree accepted"; else echo "FAIL identical installed tree rejected"; sf=1; fi
+  printf 'changed\n' > "$st/cached-tree/plugin.txt"
+  if installed_tree_ok "$st/source-tree" "$st/cached-tree"; then echo "FAIL mutated installed tree accepted"; sf=1; else echo "ok   mutated installed tree rejected"; fi
+  cp "$st/source-tree/plugin.txt" "$st/cached-tree/plugin.txt"
+  chmod 600 "$st/cached-tree/plugin.txt"
+  if installed_tree_ok "$st/source-tree" "$st/cached-tree"; then echo "FAIL installed mode change accepted"; sf=1; else echo "ok   installed mode change rejected"; fi
   printf 'claude\tSKIP\tCLI unavailable\ncodex\tSKIP\tCLI unavailable\n' > "$st/all-skip.tsv"
   if results_ok "$st/all-skip.tsv" 0; then echo "FAIL all-SKIP results accepted"; sf=1; else echo "ok   all-SKIP results rejected"; fi
   printf 'claude\tPASS\tinstalled\ncodex\tSKIP\tCLI unavailable\n' > "$st/mixed.tsv"
@@ -118,7 +144,7 @@ if [ "$source_claude_version" != "$EXPECTED_VERSION" ]; then
 fi
 
 verify_installed_bytes() { # <harness> <fresh-home> <install-path>
-  local harness="$1" fresh_home="$2" install_path="$3"
+  local harness="$1" fresh_home="$2" install_path="$3" hook_manifest
   case "$install_path" in
     "$fresh_home"/plugins/cache/*) ;;
     *) note "$harness" FAIL "reported install path is outside fresh home"; return 1 ;;
@@ -137,7 +163,18 @@ verify_installed_bytes() { # <harness> <fresh-home> <install-path>
     "$install_path/skills/evidence-research/SKILL.md" || {
     note "$harness" FAIL "cached evidence-research bytes differ"; return 1;
   }
-  note "$harness" PASS "registered megapowers $EXPECTED_VERSION with exact cached skill bytes"
+  installed_tree_ok "$REPO/plugins/megapowers" "$install_path" || {
+    note "$harness" FAIL "cached plugin tree differs in paths, modes, or bytes"; return 1;
+  }
+  hook_manifest="$install_path/hooks/hooks.json"
+  jq -e '
+    [.hooks[][] | .hooks[] | .command] as $commands |
+    ($commands | length) == 2 and
+    all($commands[]; startswith("\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd "))
+  ' "$hook_manifest" >/dev/null 2>&1 || {
+    note "$harness" FAIL "cached hook commands do not use the shared wrapper"; return 1;
+  }
+  note "$harness" PASS "registered megapowers $EXPECTED_VERSION with exact cached tree and hooks"
 }
 
 smoke_claude() (

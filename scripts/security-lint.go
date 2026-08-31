@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"unicode/utf8"
 )
 
 var (
@@ -337,9 +336,6 @@ func logicalLines(s string) []rec {
 }
 
 func isText(data []byte) bool {
-	if !utf8.Valid(data) {
-		// still scan if mostly text; skip only if NUL present
-	}
 	for _, b := range data {
 		if b == 0 {
 			return false

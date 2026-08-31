@@ -31,9 +31,9 @@ and it fell to 406 the next day when Antigravity was dropped as a target and its
 manifest checks went with it. The total moves as guards land and as scope
 changes; a falling count is not a weakened suite unless the guards it lost still
 had something to guard. The `deny-destructive` guard additionally ships a **123-case** test suite
-(run via `validate.sh`). The currently wired mutation selftests cover the
-process-behavior, install-smoke, and gauntlet oracles; historical sections below
-describe their contemporaneous testing separately.
+(run via `validate.sh`). At that snapshot, the wired mutation selftests covered
+the process-behavior, install-smoke, and gauntlet oracles. Historical sections
+below describe their contemporaneous testing separately.
 
 **The spine was red through 0.9.0, and this section said otherwise.** Three
 oracles failed on the 0.9.0 tree while the numbers above still claimed 16/16,
