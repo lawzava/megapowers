@@ -68,18 +68,40 @@ it. This is genuine non-engagement of the shipped Codex trigger surface in a
 bare brokered project, not missing instrumentation. The open defect is the
 plugin's Codex-side skill surfacing, not the corpus or the broker.
 
+### Post-v2 fix verification (2026-08-31, negative results)
+
+Two targeted fixes were shipped (`06339a9`) and verified against fresh
+slices; both verifications returned nulls worth keeping:
+
+- **Codex loading directive: no effect.** A startup developer-context
+  section ("load that skill's SKILL.md before you act; do not claim a skill
+  without loading it") verifiably reaches the actor, yet 54 fresh rows
+  across three slices still show zero selection attempts. Catalog
+  visibility was already confirmed. Conclusion: on `gpt-5.6-sol`, neither
+  visibility nor explicit instruction produces engagement in a bare
+  project; the lever is harness-level, outside this plugin. The directive
+  ships anyway as the correct contract.
+- **safe-effects boundary rewording: no effect.** "any other effect beyond
+  the local workspace" still over-fires on a local sample-file overwrite
+  (near-miss 1/3, previously 2/3; n=3 each). Recall held 9/9. Two wordings
+  measured, both over-fire: treat this as cautious model behavior, not
+  description text.
+
 ### Gate state and next steps
 
 `report-only` retained. Enforcement on Claude is justified once
 `code-quality` and `verify-and-finish-verbatim` are addressed; every other
 skill clears `default_min_recall: 0.60` with margin. Ranked next work:
 
-1. Codex trigger surface (blocking half the study's value).
+1. Codex engagement: plugin-side levers are exhausted (visibility and an
+   explicit loading directive both measured null); needs a harness-level
+   mechanism or an operator decision to descope Codex activation gating.
 2. `code-quality` activation mechanism — evidence says the model makes the
    judgment call inline instead of reaching for a skill; this is a design
    decision, not a wording fix.
 3. Installed A/B rerun with the fixed broker (write path restored).
-4. `safe-effects` boundary sentence, low priority.
+4. safe-effects boundary: closed as measured model caution; both wordings
+   over-fire at n=3, no further text change planned.
 
 ## Trigger recall — 2026-08-30 baseline (superseded; kept for history)
 
