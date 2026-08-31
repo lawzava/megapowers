@@ -34,3 +34,4 @@ evals/.runs/
 
 # Linked git worktrees created for isolated feature work.
 .worktrees/
+/results/
