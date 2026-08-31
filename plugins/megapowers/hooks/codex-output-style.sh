@@ -23,3 +23,16 @@ awk '
   frontmatter && $0 == "---" { frontmatter = 0; next }
   !frontmatter { print }
 ' "$style"
+
+# Codex lists skill trigger descriptions but nothing makes it load a body;
+# Claude Code needs no equivalent because its native Skill tool carries this
+# contract. Measured 2026-08-31: zero skill engagement in 210 brokered rows.
+cat <<'SKILLS'
+
+# Skills
+
+The available-skills catalog lists trigger descriptions, not skill content.
+When a task matches a skill's description, load that skill's SKILL.md with
+the skills tool or a direct file read before you act on the task, and follow
+what it says. Do not claim a skill without loading it.
+SKILLS

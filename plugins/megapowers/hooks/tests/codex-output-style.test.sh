@@ -26,6 +26,10 @@ grep -qF 'Preserve exact identifiers, commands, numbers, caveats, decisions, and
 if grep -qF 'force-for-plugin:' <<< "$codex_out"; then
   fail 'Codex context exposes Claude frontmatter'
 fi
+grep -qF 'load that skill' <<< "$codex_out" ||
+  fail 'Codex context omits the skill-loading directive'
+grep -qF 'Do not claim a skill without loading it.' <<< "$codex_out" ||
+  fail 'Codex context omits the no-claim-without-loading rule'
 
 claude_out="$(printf '%s' "$event" | env -u PLUGIN_ROOT "$ADAPTER")"
 [[ -z $claude_out ]] || fail 'Claude must keep using its native output-style component'
