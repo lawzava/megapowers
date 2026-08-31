@@ -5,6 +5,34 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.26.1 - 2026-08-31
+
+This maintenance release removes stale repository artifacts, repairs release
+verification commands, and aligns the public documentation with current
+plugin and evaluation behavior.
+
+### Fixed
+
+- Plugin hook commands quote their root path, so installations under paths
+  containing spaces invoke every hook correctly.
+- Release verification entries use the supported install-smoke arguments, and
+  the contract test now checks each command's flags.
+- Skill, evaluation, broker, and archive documentation now matches the current
+  implementation and measured results.
+
+### Changed
+
+- Installation smoke tests reuse the staged plugin tree instead of repeating
+  registration, and skill contract tests derive their inventory from the
+  catalog.
+- Repeated evaluation guidance now lives in each study README, with concise
+  links from the overview documents.
+
+### Removed
+
+- Stale evaluation schemas, obsolete provenance tooling, dead helper code,
+  unused configuration, and inert ignore rules.
+
 ## 0.26.0 - 2026-08-31
 
 The first credentialed trigger-recall baselines drove this release: two skill
