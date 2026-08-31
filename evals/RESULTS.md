@@ -11,7 +11,77 @@ fifteen-skill candidate. Installed A/B and PR replay are optional diagnostic
 studies, not release gates. Exact-tag install smoke runs after publication and
 proves delivery, not candidate quality.
 
-## Trigger recall — 2026-08-30 baseline (report-only)
+## Trigger recall — 2026-08-31 v2 (report-only; supersedes the 2026-08-30 baseline)
+
+Re-run after four instrumentation and text fixes, 3 reps per probe through
+the rebuilt hash-pinned broker. Claude arm: 210 rows across all 16 slices,
+CLI 2.1.251, `claude-fable-5` high. Codex arm: 210 rows, CLI 0.151.0,
+`gpt-5.6-sol` high. Revisions `2d75929`–`7526762`; skill text and corpus
+byte-identical across slices except the deliberate `code-quality`
+description change (`0cedde9`).
+
+### Broker defects this round uncovered (all fixed, `b3219b6`..`7526762`)
+
+1. **Actor writes were never granted.** `acceptEdits` alone no longer covers
+   non-interactive Edit/Write on CLI 2.1.251; every repair-type case was
+   structurally unpassable. This retroactively explains the 2026-08-30
+   installed A/B verdict that `code-quality-go-errors` and `tdd-add-multiply`
+   "cannot pass in the sandbox": the oracle boundary was healthy (verified by
+   direct replication); the actors simply could not write. An A/B rerun is
+   now viable.
+2. **Statusless tool successes were dropped.** Successful tool results now
+   arrive without `is_error`; matched results carrying a `tool_use_result`
+   payload count as executed.
+3. **Batched parallel fan-out traces were rejected (rc 125).** The CLI now
+   opens forwarded subagent segments as notifications complete and flushes
+   all results at trace end; the old one-open-segment model failed all eight
+   `orchestrating` slice attempts while the captured trace showed a clean,
+   skill-activated three-agent fan-out. Also fixed alongside: spawns were
+   double-counted (lifecycle + tool paths) and the response was taken from
+   the last forwarded result instead of the main one.
+4. **Codex shell reads of `SKILL.md` now count as activation** (first
+   successful read per skill), closing the instrumentation half of the Codex
+   question.
+
+### Claude Code — per-skill recall (pass/total over verbatim, paraphrase, buried)
+
+| skill | recall | note |
+|---|---:|---|
+| code-quality | 2/9 | verbatim 0/3; reworked description (v2) lifted it only from 1/9 to a 5/18 pooled rate — wording is not the lever |
+| autonomous-run | 7/9 | stable vs baseline |
+| orchestrating | 7/9 | first measurement; unmeasurable before fix 3 |
+| verify-and-finish | 7/9 | verbatim 1/3; echoes the standing backlog item |
+| remaining 11 skills | 9/9 | perfect |
+
+Aggregate recall 113/126. Precision 74/75; the one recurring miss is
+`safe-effects-near-miss` (fires on a local sample-file edit in about one rep
+in three across arms — the description's "any action with a real-world side
+effect" reads broadly). The corrected `systematic-debugging-near-miss` probe
+(now forbid-debugging-only) passes 3/3.
+
+### Codex — dually-instrumented null
+
+210 rows, zero `skill_selected` events, zero selection attempts, with both
+the `skills.read` tool path and shell `SKILL.md` reads instrumented. A live
+trace shows the actor *claiming* a skill in message text while never loading
+it. This is genuine non-engagement of the shipped Codex trigger surface in a
+bare brokered project, not missing instrumentation. The open defect is the
+plugin's Codex-side skill surfacing, not the corpus or the broker.
+
+### Gate state and next steps
+
+`report-only` retained. Enforcement on Claude is justified once
+`code-quality` and `verify-and-finish-verbatim` are addressed; every other
+skill clears `default_min_recall: 0.60` with margin. Ranked next work:
+
+1. Codex trigger surface (blocking half the study's value).
+2. `code-quality` activation mechanism — evidence says the model makes the
+   judgment call inline instead of reaching for a skill; this is a design
+   decision, not a wording fix.
+3. Installed A/B rerun with the fixed broker (write path restored).
+4. `safe-effects` boundary sentence, low priority.
+
+## Trigger recall — 2026-08-30 baseline (superseded; kept for history)
 
 First credentialed activation baseline: 3 reps per probe through the
 hash-pinned bwrap broker. Claude Code arm: CLI 2.1.251, `claude-fable-5`,
