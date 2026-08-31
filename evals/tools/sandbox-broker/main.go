@@ -2171,8 +2171,9 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 	terminal := false
 	valid := len(bytes.TrimSpace(trace)) > 0
 	claudeSegments := 0
-	claudeSegmentComplete := false
-	claudeForwardSegmentOpen := false
+	claudeMainResultSeen := false
+	claudeOpenForwarded := 0
+	claudeBatchedForwarding := false
 	claudeForwardPermissions := 0
 	pendingClaudeTools := make(map[string]pendingTool)
 	seenClaudeTools := make(map[string]bool)
@@ -2198,7 +2199,17 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 			if claudeSegments == 0 && preInitHook {
 				continue
 			}
-			if terminal && (!isInit || claudeForwardPermissions == 0) {
+			// A batched fan-out flushes forwarded-segment results after the
+			// main terminal result; those stay legal while their segments
+			// remain open. Everything else after the terminal result needs a
+			// permissioned forwarded init.
+			isForwardedResult := false
+			if object["type"] == "result" {
+				if origin, ok := object["origin"].(map[string]any); ok {
+					isForwardedResult = lowerString(origin["kind"]) == "task-notification"
+				}
+			}
+			if terminal && !(isInit && claudeForwardPermissions > 0) && !(isForwardedResult && claudeOpenForwarded > 0) {
 				valid = false
 				continue
 			}
@@ -2214,25 +2225,20 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 			}
 			if isInit {
 				if claudeSegments > 0 {
-					if claudeForwardSegmentOpen {
-						valid = false
-					}
 					if claudeForwardPermissions == 0 {
 						valid = false
 					} else {
 						claudeForwardPermissions--
 					}
-					claudeForwardSegmentOpen = true
+					if claudeOpenForwarded > 0 {
+						claudeBatchedForwarding = true
+					}
+					claudeOpenForwarded++
 				}
 				claudeSegments++
-				claudeSegmentComplete = false
 				terminal = false
 			}
 			if object["type"] == "result" {
-				activeSegment := claudeSegments > 0
-				if claudeSegmentComplete {
-					valid = false
-				}
 				value, hasResult := object["result"].(string)
 				isError, hasStatus := object["is_error"].(bool)
 				originKind := ""
@@ -2241,30 +2247,41 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 				if originObject {
 					originKind = lowerString(origin["kind"])
 				}
-				if claudeSegments > 1 {
-					if !originPresent {
-						if !activeSegment || !hasResult || !hasStatus || isError {
-							valid = false
-						}
+				wellFormed := claudeSegments > 0 && hasResult && hasStatus && !isError
+				switch {
+				case originPresent && originObject && originKind == "task-notification":
+					if !wellFormed || claudeOpenForwarded == 0 {
+						valid = false
 						terminal = false
-						claudeSegmentComplete = false
 						continue
 					}
-				}
-				if hasResult {
-					response = value
-				}
-				validOrigin := (claudeSegments == 1 && !originPresent) || (claudeSegments > 1 && originObject && originKind == "task-notification")
-				if !activeSegment || !hasResult || !hasStatus || isError || !validOrigin {
+					claudeOpenForwarded--
+					// In a batched fan-out these results carry subagent
+					// output; the main result already holds the answer. In a
+					// sequential resume they carry the resumed lead's answer.
+					if !claudeBatchedForwarding {
+						response = value
+					}
+					terminal = true
+				case originPresent:
 					valid = false
 					terminal = false
-					claudeSegmentComplete = false
-				} else {
-					terminal = true
-					claudeSegmentComplete = true
-					if claudeSegments > 1 {
-						claudeForwardSegmentOpen = false
+				case !claudeMainResultSeen:
+					if !wellFormed {
+						valid = false
+						terminal = false
+						continue
 					}
+					claudeMainResultSeen = true
+					response = value
+					terminal = true
+				case claudeSegments > 1:
+					// An origin-less inner result inside a forwarded segment
+					// carries no terminal meaning.
+					terminal = false
+				default:
+					valid = false
+					terminal = false
 				}
 			}
 		} else {
@@ -2298,11 +2315,14 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 	if scanner.Err() != nil {
 		valid = false
 	}
+	if harness == "claude" {
+		events = reconcileClaudeSpawns(events)
+	}
 	events = promoteSkillReads(events)
 	events = deduplicateEvents(events)
 	complete := valid && terminal && processRC == 0
 	if harness == "claude" {
-		complete = complete && claudeSegments > 0 && claudeSegmentComplete
+		complete = complete && claudeSegments > 0 && claudeMainResultSeen && claudeOpenForwarded == 0
 	}
 	if complete {
 		events = append(events, actorEvent{Kind: "trace_complete", RC: 0})
@@ -2493,7 +2513,16 @@ func normalizeClaudeToolResults(object map[string]any, pending map[string]pendin
 			if isError {
 				rc = 1
 			}
-			events = append(events, normalizeTool(tool.name, tool.input, rc)...)
+			toolEvents := normalizeTool(tool.name, tool.input, rc)
+			// Task lifecycle events are the authoritative spawn evidence
+			// when present; tool-derived spawns stay provisional until the
+			// trace-level reconciliation pass.
+			for index := range toolEvents {
+				if toolEvents[index].Kind == "agent_spawn" {
+					toolEvents[index].Kind = "agent_spawn_tool"
+				}
+			}
+			events = append(events, toolEvents...)
 		}
 	}
 	return events, valid
@@ -2793,6 +2822,30 @@ func skillReadEvents(command string, rc int) []actorEvent {
 		}
 	}
 	return events
+}
+
+// reconcileClaudeSpawns keeps lifecycle task events as the single source of
+// spawn evidence when they exist; otherwise provisional tool-derived spawns
+// are promoted so older single-source traces keep their evidence.
+func reconcileClaudeSpawns(events []actorEvent) []actorEvent {
+	lifecycleSpawns := false
+	for _, event := range events {
+		if event.Kind == "agent_spawn" {
+			lifecycleSpawns = true
+			break
+		}
+	}
+	result := events[:0]
+	for _, event := range events {
+		if event.Kind == "agent_spawn_tool" {
+			if lifecycleSpawns {
+				continue
+			}
+			event.Kind = "agent_spawn"
+		}
+		result = append(result, event)
+	}
+	return result
 }
 
 func promoteSkillReads(events []actorEvent) []actorEvent {
@@ -3875,6 +3928,35 @@ func selftestTrace() error {
 	response, events, complete = normalizeTrace("claude", []byte(enrichedHookPrefix+initEvent+terminalResult), 0)
 	if response != "done" || !complete || len(events) != 1 || events[0].Kind != "trace_complete" {
 		return errors.New("Claude pre-init hook payload produced actor evidence")
+	}
+	// CLI 2.1.251 fan-out shape observed live 2026-08-31: parallel subagents
+	// forward as consecutive permissioned inits, and every result — main
+	// first, then one per forwarded segment — arrives batched at the end.
+	batchedFanOut := initEvent +
+		"{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu-a\",\"name\":\"Task\",\"input\":{\"description\":\"Sweep A\"}}]}}\n" +
+		"{\"type\":\"user\",\"tool_use_result\":{\"type\":\"spawn\"},\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu-a\"}]}}\n" +
+		"{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"agent-a\",\"tool_use_id\":\"toolu-a\",\"task_type\":\"local_agent\"}\n" +
+		"{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"agent-b\",\"task_type\":\"local_agent\"}\n" +
+		"{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"agent-a\",\"status\":\"completed\"}\n" +
+		initEvent +
+		"{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"agent-b\",\"status\":\"completed\"}\n" +
+		initEvent +
+		"{\"type\":\"result\",\"is_error\":false,\"result\":\"merged answer\"}\n" +
+		"{\"type\":\"result\",\"is_error\":false,\"result\":\"agent-a output\",\"origin\":{\"kind\":\"task-notification\"}}\n" +
+		"{\"type\":\"result\",\"is_error\":false,\"result\":\"agent-b output\",\"origin\":{\"kind\":\"task-notification\"}}\n"
+	response, events, complete = normalizeTrace("claude", []byte(batchedFanOut), 0)
+	spawns := 0
+	completes := 0
+	for _, event := range events {
+		if event.Kind == "agent_spawn" {
+			spawns++
+		}
+		if event.Kind == "agent_complete" {
+			completes++
+		}
+	}
+	if !complete || response != "merged answer" || spawns != 2 || completes != 2 || events[len(events)-1].Kind != "trace_complete" {
+		return fmt.Errorf("batched parallel fan-out trace not normalized: complete=%v response=%q spawns=%d completes=%d", complete, response, spawns, completes)
 	}
 	taskNotificationResult := "{\"type\":\"result\",\"is_error\":false,\"result\":\"resumed\",\"origin\":{\"kind\":\"task-notification\"}}\n"
 	forwardLifecycle := "{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"agent-forwarded\",\"task_type\":\"local_agent\"}\n{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"agent-forwarded\",\"status\":\"completed\"}\n"
