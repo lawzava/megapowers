@@ -1,6 +1,6 @@
 ---
 name: safe-effects
-description: Use when preparing a deploy, message, charge, migration, destructive query, DNS change, external API write, or any other effect beyond the local workspace.
+description: Use when preparing a deploy, message, charge, migration, destructive query, DNS change, external API write, or any action with a real-world side effect.
 ---
 
 # Safe Effects

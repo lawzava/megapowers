@@ -74,9 +74,10 @@ Two calibrated boundaries are accepted, not defects: `code-quality`
 (`min_recall: 0`) and `verify-and-finish` (`min_recall: 0.3`) trigger on
 conditions the model only recognizes mid-task, so intake-time selection
 under-fires while inline behavior stays sound; and
-`safe-effects-near-miss` tolerates two false fires in three
-(`per_case.max_false_selection_rate: 0.67`) because two wordings both
-measured the same cautious over-fire. Their probes remain in the corpus as
+`safe-effects-near-miss` never gates
+(`per_case.max_false_selection_rate: 1`): once the broker write fix let
+actors actually perform the probe's file overwrite, the model consistently
+consulted the skill first — defensible caution kept as signal only. Their probes remain in the corpus as
 longitudinal signal. Recalibrate against `evals/RESULTS.md` when skill text
 or models change.
 

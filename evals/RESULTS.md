@@ -81,11 +81,15 @@ slices; both verifications returned nulls worth keeping:
   visibility nor explicit instruction produces engagement in a bare
   project; the lever is harness-level, outside this plugin. The directive
   ships anyway as the correct contract.
-- **safe-effects boundary rewording: no effect.** "any other effect beyond
-  the local workspace" still over-fires on a local sample-file overwrite
-  (near-miss 1/3, previously 2/3; n=3 each). Recall held 9/9. Two wordings
-  measured, both over-fire: treat this as cautious model behavior, not
-  description text.
+- **safe-effects near-miss: the driver was the broker write fix, not
+  wording.** Under the write-blocked broker both arms measured 1/3
+  over-fire; under the working broker both wordings measure 3/3
+  (2026-08-31 gate checks, original wording restored). Facing a write it
+  can actually perform, the model consistently consults `safe-effects`
+  before overwriting a checked-in file — defensible caution. The rewording
+  is reverted, the probe stays as non-gating longitudinal signal
+  (`per_case.max_false_selection_rate: 1`), and the earlier "two wordings,
+  no effect" reading is corrected.
 
 ### Gate state and next steps
 

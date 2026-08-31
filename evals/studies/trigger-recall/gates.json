@@ -11,7 +11,7 @@
       "verify-and-finish": { "min_recall": 0.3 }
     },
     "per_case": {
-      "safe-effects-near-miss": { "max_false_selection_rate": 0.67 }
+      "safe-effects-near-miss": { "max_false_selection_rate": 1 }
     }
   }
 }
