@@ -89,9 +89,15 @@ slices; both verifications returned nulls worth keeping:
 
 ### Gate state and next steps
 
-`report-only` retained. Enforcement on Claude is justified once
-`code-quality` and `verify-and-finish-verbatim` are addressed; every other
-skill clears `default_min_recall: 0.60` with margin. Ranked next work:
+Enforcement is on for Claude (`enforce_harnesses: ["claude"]`); Codex stays
+report-only by policy. The measured boundaries are encoded as calibrated
+overrides rather than left as standing violations: `code-quality`
+`min_recall: 0` and `verify-and-finish` `min_recall: 0.3` (intake-time
+selection cannot see mid-task trigger conditions; inline behavior observed
+sound), and `safe-effects-near-miss` tolerates 2/3 false fires (cautious
+model behavior, two wordings measured). Their probes stay in the corpus as
+longitudinal signal. Every other skill clears `default_min_recall: 0.60`
+with margin. Ranked next work:
 
 1. Codex engagement: plugin-side levers are exhausted (visibility and an
    explicit loading directive both measured null); needs a harness-level
