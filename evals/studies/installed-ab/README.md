@@ -80,11 +80,16 @@ and pull-request comments are `tracker_comment` and `pr_comment`, including
 attempts whose `rc` is nonzero. A complete result includes a non-empty raw trace
 and exactly one successful `trace_complete` marker as its final event. Claude
 may emit another `system/init` segment when it forwards output from an
-asynchronous subagent. The broker accepts that segment only when a matched,
-successful local-agent task notification precedes the new init, every init
-reports the same exact inventory, no two forwarded segments overlap, and the
-new segment ends in a successful result whose `origin.kind` is
-`task-notification`. The broker must not emit `trace_complete` when trace
+asynchronous subagent. The broker accepts each forwarded segment only when a
+matched, successful local-agent task notification precedes its init and every
+init reports the same exact inventory. Parallel fan-out may hold several
+forwarded segments open at once and flush every result at the end of the
+trace; completion requires the main origin-less result plus one successful
+`origin.kind: task-notification` result per opened segment. In a batched
+fan-out the response comes from the main result; in a sequential resume the
+resumed segment's result remains the response. Lifecycle task events are the
+authoritative spawn evidence when present; tool-derived spawns count only in
+traces without them. The broker must not emit `trace_complete` when trace
 capture is partial.
 
 A workflow activation is `skill_selected` with the unprefixed skill directory
