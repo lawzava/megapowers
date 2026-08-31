@@ -5,6 +5,36 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.26.0 - 2026-08-31
+
+The first credentialed trigger-recall baselines drove this release: two skill
+trigger fixes, four broker defect fixes, and an enforced activation gate.
+
+### Fixed
+
+- The `code-quality` trigger description names the concrete choice kinds and
+  decide/settle verbs; the baseline measured 1/9 recall from pure silence.
+- Eval broker: Claude actors receive explicit Edit/Write allows (acceptEdits
+  alone no longer grants them non-interactively, which had made every
+  repair-type case structurally unpassable), matched statusless tool results
+  with a `tool_use_result` payload count as executed, and batched parallel
+  fan-out traces from current Claude CLIs normalize completely — including
+  correct main-result responses and single-source spawn evidence.
+
+### Added
+
+- The Codex startup context directs models to load a matching skill's
+  SKILL.md before acting; measured null on `gpt-5.6-sol` but ships as the
+  correct contract.
+- Trigger recall: one automatic retry per probe, private failure evidence
+  under `<out>/failures/`, Codex shell reads of skill bodies as activation
+  evidence, and harness-scoped gate enforcement — on for Claude with
+  calibrated boundaries for the two mid-task-trigger skills, report-only for
+  Codex, whose activation is descoped after both plugin-side levers measured
+  null.
+- Eval results: v1 and v2 activation baselines for both harnesses, including
+  the broker-defect findings and negative verifications.
+
 ## 0.25.0 - 2026-08-30
 
 The shipped plugin tree is unchanged apart from the version stamp; this release
