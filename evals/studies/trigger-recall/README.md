@@ -65,11 +65,20 @@ private paths are never published.
 ## Corpus and gates
 
 `cases.json` ships at least three recall probes per skill and at least ten
-no-skill probes. Every probe records provenance. `gates.json` starts in
-`report-only` mode: violations are printed and recorded in the manifest but do
-not fail the run. After the first full baseline on both harnesses, calibrate
-per-skill `min_recall` overrides against observed rates and switch `mode` to
-`enforce`.
+no-skill probes. Every probe records provenance. `gates.json` enforces for
+the harnesses in `enforce_harnesses` (currently Claude only; Codex
+activation is descoped because both plugin-side levers measured null on
+2026-08-31) and records violations without failing elsewhere.
+
+Two calibrated boundaries are accepted, not defects: `code-quality`
+(`min_recall: 0`) and `verify-and-finish` (`min_recall: 0.3`) trigger on
+conditions the model only recognizes mid-task, so intake-time selection
+under-fires while inline behavior stays sound; and
+`safe-effects-near-miss` tolerates two false fires in three
+(`per_case.max_false_selection_rate: 0.67`) because two wordings both
+measured the same cautious over-fire. Their probes remain in the corpus as
+longitudinal signal. Recalibrate against `evals/RESULTS.md` when skill text
+or models change.
 
 ## Oracle mutation check
 

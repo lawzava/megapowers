@@ -30,6 +30,7 @@ for claim in \
   "broker request excludes repository root" \
   "enforce gates reject a recall floor" \
   "report-only gates record violations without failing" \
+  "enforcement applies only to listed harnesses" \
   "publish bundle contains sanitized files only"
 do
   grep -qF "ok   $claim" "$out"
@@ -74,6 +75,18 @@ jq -e '[.cases[].id] | length == (unique | length)' \
 jq -e '[.cases[].provenance] | all(length > 0)' \
   "$ROOT/evals/studies/trigger-recall/cases.json" >/dev/null || {
   echo 'FAIL a probe is missing provenance' >&2
+  exit 1
+}
+
+# The shipped gates enforce Claude only and encode the accepted
+# intake-time-selection boundary for the two inline-decision skills.
+jq -e '
+  .mode == "enforce" and
+  .enforce_harnesses == ["claude"] and
+  .acceptance.per_skill["code-quality"].min_recall == 0 and
+  .acceptance.per_skill["verify-and-finish"].min_recall == 0.3
+' "$ROOT/evals/studies/trigger-recall/gates.json" >/dev/null || {
+  echo 'FAIL shipped gates do not encode claude-only enforcement with accepted boundaries' >&2
   exit 1
 }
 

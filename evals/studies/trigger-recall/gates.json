@@ -1,10 +1,17 @@
 {
   "schema_version": "1",
-  "mode": "report-only",
+  "mode": "enforce",
+  "enforce_harnesses": ["claude"],
   "acceptance": {
     "minimum_reps": 3,
     "default_min_recall": 0.6,
     "default_max_false_selection_rate": 0.34,
-    "per_skill": {}
+    "per_skill": {
+      "code-quality": { "min_recall": 0 },
+      "verify-and-finish": { "min_recall": 0.3 }
+    },
+    "per_case": {
+      "safe-effects-near-miss": { "max_false_selection_rate": 0.67 }
+    }
   }
 }

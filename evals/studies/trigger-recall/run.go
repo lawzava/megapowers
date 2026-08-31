@@ -78,12 +78,34 @@ type gatesAcceptance struct {
 	PerSkill                     map[string]struct {
 		MinRecall float64 `json:"min_recall"`
 	} `json:"per_skill"`
+	PerCase map[string]struct {
+		MaxFalseSelectionRate float64 `json:"max_false_selection_rate"`
+	} `json:"per_case,omitempty"`
 }
 
 type gatesFile struct {
-	SchemaVersion string          `json:"schema_version"`
-	Mode          string          `json:"mode"`
-	Acceptance    gatesAcceptance `json:"acceptance"`
+	SchemaVersion string `json:"schema_version"`
+	Mode          string `json:"mode"`
+	// EnforceHarnesses limits enforce mode to the listed harnesses; an empty
+	// list enforces everywhere. Codex activation is descoped by policy: its
+	// engagement lever is harness-level, measured 2026-08-31.
+	EnforceHarnesses []string        `json:"enforce_harnesses,omitempty"`
+	Acceptance       gatesAcceptance `json:"acceptance"`
+}
+
+func enforcementApplies(gates gatesFile, harness string) bool {
+	if gates.Mode != "enforce" {
+		return false
+	}
+	if len(gates.EnforceHarnesses) == 0 {
+		return true
+	}
+	for _, listed := range gates.EnforceHarnesses {
+		if listed == harness {
+			return true
+		}
+	}
+	return false
 }
 
 type skillCatalog struct {
@@ -302,7 +324,7 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	if gates.Mode == "enforce" && len(manifest.Assessment.Violations) > 0 {
+	if enforcementApplies(gates, *harness) && len(manifest.Assessment.Violations) > 0 {
 		fatal(fmt.Errorf("gate violations: %s", strings.Join(manifest.Assessment.Violations, "; ")))
 	}
 	for _, violation := range manifest.Assessment.Violations {
@@ -482,6 +504,32 @@ func validateConfiguration(cases casesFile, gates gatesFile, catalog map[string]
 			return fmt.Errorf("gates override for %q must be within [0,1]", skill)
 		}
 	}
+	caseByID := make(map[string]probeCase, len(cases.Cases))
+	for _, c := range cases.Cases {
+		caseByID[c.ID] = c
+	}
+	for caseID, override := range gates.Acceptance.PerCase {
+		c, exists := caseByID[caseID]
+		if !exists {
+			return fmt.Errorf("gates per_case override names unknown case %q", caseID)
+		}
+		if c.Expected != "" {
+			return fmt.Errorf("gates per_case override %q applies only to precision probes", caseID)
+		}
+		if override.MaxFalseSelectionRate < 0 || override.MaxFalseSelectionRate > 1 {
+			return fmt.Errorf("gates per_case override for %q must be within [0,1]", caseID)
+		}
+	}
+	seenHarnesses := make(map[string]bool)
+	for _, harness := range gates.EnforceHarnesses {
+		if harness != "claude" && harness != "codex" {
+			return fmt.Errorf("gates enforce_harnesses entry %q is unknown", harness)
+		}
+		if seenHarnesses[harness] {
+			return fmt.Errorf("gates enforce_harnesses repeats %q", harness)
+		}
+		seenHarnesses[harness] = true
+	}
 	return nil
 }
 
@@ -557,8 +605,12 @@ func assessGates(tallies []caseTally, gates gatesFile, reps int) gateAssessment 
 			}
 			continue
 		}
-		if falseRate := 1 - rate; falseRate > gates.Acceptance.DefaultMaxFalseSelectionRate {
-			assessment.Violations = append(assessment.Violations, fmt.Sprintf("case %s false selections %d/%d above %.2f", tally.CaseID, tally.Total-tally.Pass, tally.Total, gates.Acceptance.DefaultMaxFalseSelectionRate))
+		maxFalseRate := gates.Acceptance.DefaultMaxFalseSelectionRate
+		if override, exists := gates.Acceptance.PerCase[tally.CaseID]; exists {
+			maxFalseRate = override.MaxFalseSelectionRate
+		}
+		if falseRate := 1 - rate; falseRate > maxFalseRate {
+			assessment.Violations = append(assessment.Violations, fmt.Sprintf("case %s false selections %d/%d above %.2f", tally.CaseID, tally.Total-tally.Pass, tally.Total, maxFalseRate))
 		}
 	}
 	return assessment
@@ -1458,6 +1510,9 @@ func runSelftest() error {
 	check("enforce gates reject a recall floor", len(enforceAssessment.Violations) == 1 && strings.Contains(enforceAssessment.Violations[0], "recall 0/3"))
 	reportAssessment := assessGates(floorTallies, gates, 3)
 	check("report-only gates record violations without failing", reportAssessment.Mode == "report-only" && len(reportAssessment.Violations) == 1)
+	scopedGates := enforceGates
+	scopedGates.EnforceHarnesses = []string{"claude"}
+	check("enforcement applies only to listed harnesses", enforcementApplies(scopedGates, "claude") && !enforcementApplies(scopedGates, "codex") && enforcementApplies(enforceGates, "codex") && !enforcementApplies(gates, "claude"))
 
 	sanitized := publishFilesOnly(outSuccess) && publishLacks(outSuccess, []string{sentinel, tempParent})
 	check("publish bundle contains sanitized files only", sanitized && len(manifest.Assessment.Cases) == len(corpus.Cases))
