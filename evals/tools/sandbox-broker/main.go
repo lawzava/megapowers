@@ -2095,8 +2095,10 @@ func rolloutSkillsInstructions(path string) ([]string, error) {
 }
 
 var (
-	skillRootPattern  = regexp.MustCompile("^- `([A-Za-z0-9_]+)` = `(.+)`$")
-	skillEntryPattern = regexp.MustCompile(`^- ([^\s:]+): .*\(file: ([^)]+)\)\s*$`)
+	skillRootPattern = regexp.MustCompile("^- `([A-Za-z0-9_]+)` = `(.+)`$")
+	// Codex 0.152+ namespaces plugin skills as "megapowers:<name>"; older
+	// builds list the bare name. The name group therefore admits one colon.
+	skillEntryPattern = regexp.MustCompile(`^- ([^\s:]+(?::[^\s:]+)?): .*\(file: ([^)]+)\)\s*$`)
 )
 
 func megapowersSkillsInBlock(block, installedPlugin string) []string {
@@ -2122,7 +2124,11 @@ func megapowersSkillsInBlock(block, installedPlugin string) []string {
 			}
 		}
 		if pathsOverlap(file, installedPlugin) && file != installedPlugin {
-			names = append(names, match[1])
+			name := match[1]
+			if _, bare, namespaced := strings.Cut(name, ":"); namespaced {
+				name = bare
+			}
+			names = append(names, name)
 		}
 	}
 	return names
@@ -3898,7 +3904,7 @@ func selftestSkillsCatalog() error {
 	installed := filepath.Join(codexHome, "plugins", "cache", "megapowers-eval", "megapowers", "0.26.1")
 	// Shape observed in a codex-cli 0.152.0 rollout: the developer message
 	// renders roots as `rN` aliases and each skill as one "- name: ... (file: rN/...)" line.
-	block := "<skills_instructions>\n## Skills\nA skill is a set of local instructions to follow that is stored in a `SKILL.md` file.\n### Skill roots\n- `r0` = `" + filepath.Join(codexHome, "skills", ".system") + "`\n- `r1` = `" + filepath.Join(installed, "skills") + "`\n### Available skills\n- imagegen: Generate or edit raster images (file: r0/imagegen/SKILL.md)\n- orchestrating: Use when two or more independent lanes can run in parallel (file: r1/orchestrating/SKILL.md)\n- safe-effects: Use when preparing a deploy: with (file: parens) inside (file: r1/safe-effects/SKILL.md)\n- skill-creator: Create skills (file: r0/skill-creator/SKILL.md)\n</skills_instructions>"
+	block := "<skills_instructions>\n## Skills\nA skill is a set of local instructions to follow that is stored in a `SKILL.md` file.\n### Skill roots\n- `r0` = `" + filepath.Join(codexHome, "skills", ".system") + "`\n- `r1` = `" + filepath.Join(installed, "skills") + "`\n### Available skills\n- imagegen: Generate or edit raster images (file: r0/imagegen/SKILL.md)\n- megapowers:orchestrating: Use when two or more independent lanes can run in parallel (file: r1/orchestrating/SKILL.md)\n- safe-effects: Use when preparing a deploy: with (file: parens) inside (file: r1/safe-effects/SKILL.md)\n- skill-creator: Create skills (file: r0/skill-creator/SKILL.md)\n</skills_instructions>"
 	developerLine := func(text string) string {
 		// Codex's serializer writes angle brackets literally; keep the
 		// fixture faithful rather than HTML-escaped.
@@ -3930,7 +3936,7 @@ func selftestSkillsCatalog() error {
 	if err != nil || detected.Rendered || len(detected.Skills) != 0 {
 		return fmt.Errorf("Codex rollout without a skills block counted as rendered: %+v %v", detected, err)
 	}
-	systemOnly := strings.ReplaceAll(strings.ReplaceAll(block, "- orchestrating: Use when two or more independent lanes can run in parallel (file: r1/orchestrating/SKILL.md)\n", ""), "- safe-effects: Use when preparing a deploy: with (file: parens) inside (file: r1/safe-effects/SKILL.md)\n", "")
+	systemOnly := strings.ReplaceAll(strings.ReplaceAll(block, "- megapowers:orchestrating: Use when two or more independent lanes can run in parallel (file: r1/orchestrating/SKILL.md)\n", ""), "- safe-effects: Use when preparing a deploy: with (file: parens) inside (file: r1/safe-effects/SKILL.md)\n", "")
 	if err := writeRollout("rollout-2026-09-01T21-04-18-thread-selftest.jsonl", sessionMeta+developerLine(systemOnly)); err != nil {
 		return err
 	}

@@ -13,7 +13,5 @@
     "orchestration",
     "verification",
     "safety"
-  ],
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  ]
 }
