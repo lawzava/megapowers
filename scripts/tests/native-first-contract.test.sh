@@ -42,7 +42,7 @@ actual_skills=$(
     sort
 )
 [[ $actual_skills == "$expected_skills" ]] ||
-  fail "plugin skill inventory differs from the fifteen native-first skills"
+  fail "plugin skill inventory differs from skills/catalog.json"
 
 actual_links=$(find "$ROOT/.agents/skills" -mindepth 1 -maxdepth 1 -type l -printf '%f\n' | sort)
 [[ $actual_links == "$expected_skills" ]] ||

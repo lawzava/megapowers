@@ -1,6 +1,9 @@
 ---
 name: evidence-research
 description: Use when a decision needs evidence beyond the repository, including current product research, historical rationale, cross-system incident history, or contested reports.
+when_to_use: Trigger phrases: investigate whether, research, look up, compare options, why did we do X, what changed upstream, is X supported, double-check these claims. Frames the question and classifies evidence; fetch pages with the harness web or firecrawl tools inside it.
+metadata:
+  short-description: Question framing and evidence classification beyond the repo
 ---
 
 # Evidence Research
@@ -14,8 +17,10 @@ source is available, authorized, and proportionate. Prefer primary sources for
 external facts. Use independent sources when a claim is contested or one source
 cannot establish the decision.
 
-For each load-bearing claim, classify the support as `direct`, `supported`,
-`inferred`, `speculative`, `unknown`, or `contested`. Keep API contracts,
+For each load-bearing claim, classify the support as `direct-statement`,
+`direct-observation`, `source-backed`, or `history-entry-only`, and mark the
+rest `inferred`, `speculative`, `unknown`, or `contested`. Only the first four
+classes support a decision; the same vocabulary governs `memory-hygiene`. Keep API contracts,
 observed runtime behavior, and commercial promises distinct. Record sources
 consulted, dates or revisions where material, and material gaps. State what
 would resolve an unknown or contested claim.

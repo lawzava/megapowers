@@ -14,6 +14,18 @@ if [ -z "$claude_out" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo 
 codex_out="$(printf '%s' "$input" | PLUGIN_ROOT="$here/.." "$dispatch" deny-destructive.sh codex-deny-destructive.sh)"
 if [ -z "$codex_out" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "  FAIL Codex path must emit no reversible-risk decision"; fi
 
+forced_codex="$(printf '%s' "$input" | env -u PLUGIN_ROOT MEGAPOWERS_HARNESS=codex "$dispatch" deny-destructive.sh codex-deny-destructive.sh)"
+if [ -z "$forced_codex" ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "  FAIL MEGAPOWERS_HARNESS=codex must select the Codex adapter without PLUGIN_ROOT"; fi
+set +e
+unknown_err="$(printf '%s' "$input" | MEGAPOWERS_HARNESS=other "$dispatch" deny-destructive.sh codex-deny-destructive.sh 2>&1 >/dev/null)"
+unknown_rc=$?
+set -e
+if [ "$unknown_rc" -ne 0 ] && printf '%s' "$unknown_err" | grep -q 'cannot evaluate'; then
+  pass=$((pass + 1))
+else
+  fail=$((fail + 1)); echo "  FAIL unknown MEGAPOWERS_HARNESS must report a visible evaluation error"
+fi
+
 set +e
 missing_err="$(printf '%s' "$input" | "$dispatch" missing-hook.sh codex-deny-destructive.sh 2>&1 >/dev/null)"
 missing_rc=$?

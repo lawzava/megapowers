@@ -66,16 +66,25 @@ HEAD_OID="$(git -C "$REPO" rev-parse HEAD)"
 
 EXTERNAL_BIN="$TMP/external-bin"
 mkdir -p "$EXTERNAL_BIN"
-for provider in claude codex; do
+install_fake_provider() {
+  local provider="$1"
   {
     printf '#!/usr/bin/env bash\n'
     printf 'env | sort > "%s/provider.env"\n' "$TMP"
     printf 'printf "%%s\\n" "$*" > "%s/provider.args"\n' "$TMP"
+    printf 'printf "%%s\\n" "$*" >> "%s/provider.calls"\n' "$TMP"
     printf 'printf "%%s\\n" "$0" > "%s/provider.path"\n' "$TMP"
     printf 'cat > "%s/provider.stdin"\n' "$TMP"
+    printf 'while [ "$#" -gt 0 ]; do\n'
+    printf '  if [ "$1" = --prompt-file ]; then cat "$2" > "%s/provider.stdin"; fi\n' "$TMP"
+    printf '  shift\n'
+    printf 'done\n'
     printf 'printf "reviewed by fake provider\\n"\n'
   } > "$EXTERNAL_BIN/$provider"
   chmod +x "$EXTERNAL_BIN/$provider"
+}
+for provider in claude codex grok; do
+  install_fake_provider "$provider"
 done
 
 ACTIVE_PATH="$EXTERNAL_BIN:$PATH"
@@ -270,27 +279,38 @@ else
   bad 'provider executes from a verified private copy'
 fi
 
-receipt="$(find "$OUT" -type f -name receipt.json -print -quit 2>/dev/null)"
-if [ -n "$receipt" ] && [ "$(mode_of "$OUT")" = 700 ] && \
+receipt="$(find "$OUT" -mindepth 2 -maxdepth 2 -type f -name receipt.json -print -quit 2>/dev/null)"
+chunk_receipt="$(find "$OUT" -mindepth 3 -maxdepth 3 -type f -path '*/chunk-01/receipt.json' -print -quit 2>/dev/null)"
+if [ -n "$receipt" ] && [ -n "$chunk_receipt" ] && [ "$(mode_of "$OUT")" = 700 ] && \
    [ "$(mode_of "$(dirname "$receipt")")" = 700 ] && \
-   [ "$(mode_of "$receipt")" = 600 ]; then
-  ok 'receipt directory and file are private'
+   [ "$(mode_of "$(dirname "$chunk_receipt")")" = 700 ] && \
+   [ "$(mode_of "$receipt")" = 600 ] && [ "$(mode_of "$chunk_receipt")" = 600 ]; then
+  ok 'index and chunk receipt directories and files are private'
 else
-  bad 'receipt directory and file are private'
+  bad 'index and chunk receipt directories and files are private'
 fi
 
-if [ -n "$receipt" ] && grep -q 'megapowers.advisory-review-receipt.v1' "$receipt" && \
-   grep -q '"provider": "claude"' "$receipt" && \
-   grep -q '"author": "codex"' "$receipt" && \
-   grep -q '"advisory": true' "$receipt" && \
-   grep -q '"sha256"' "$receipt"; then
-  ok 'receipt is schema-versioned, advisory, independent, and source-bound'
+if [ -n "$chunk_receipt" ] && grep -q 'megapowers.advisory-review-receipt.v1' "$chunk_receipt" && \
+   grep -q '"provider": "claude"' "$chunk_receipt" && \
+   grep -q '"author": "codex"' "$chunk_receipt" && \
+   grep -q '"advisory": true' "$chunk_receipt" && \
+   grep -q '"sha256"' "$chunk_receipt"; then
+  ok 'chunk receipt is schema-versioned, advisory, independent, and source-bound'
 else
-  bad 'receipt is schema-versioned, advisory, independent, and source-bound'
+  bad 'chunk receipt is schema-versioned, advisory, independent, and source-bound'
+fi
+
+if [ -n "$receipt" ] && grep -q 'megapowers.advisory-review-index.v1' "$receipt" && \
+   grep -q '"chunk_count": 1' "$receipt" && \
+   grep -q '"author": "codex"' "$receipt" && \
+   grep -q 'chunk-01/receipt.json' "$receipt"; then
+  ok 'index receipt lists the single chunk receipt'
+else
+  bad 'index receipt lists the single chunk receipt'
 fi
 
 file_count="$(find "$OUT" -type f | wc -l | tr -d ' ')"
-if [ "$file_count" = 1 ]; then ok 'transcript is not retained by default'; else bad 'transcript is not retained by default'; fi
+if [ "$file_count" = 2 ]; then ok 'transcript is not retained by default'; else bad 'transcript is not retained by default'; fi
 
 if grep -q '^MEGAPOWERS_TEST_LEAK=' "$TMP/provider.env"; then
   bad 'provider environment excludes ambient variables'
@@ -308,7 +328,7 @@ must_succeed 'transcript retention is explicit opt-in' \
   review --file app.go --provider claude --author codex \
   --approve-external "$APPROVAL_TOKEN" \
   --retain-transcript --out "$TRANSCRIPT_OUT"
-transcript_receipt="$(find "$TRANSCRIPT_OUT" -type f -name receipt.json -print -quit 2>/dev/null)"
+transcript_receipt="$(find "$TRANSCRIPT_OUT" -type f -path '*/chunk-01/receipt.json' -print -quit 2>/dev/null)"
 transcript_dir="$(dirname "$transcript_receipt")"
 if [ -n "$transcript_receipt" ] && [ -f "$transcript_dir/prompt.txt" ] && \
    [ -f "$transcript_dir/provider.stdout" ] && [ -f "$transcript_dir/provider.stderr" ] && \
@@ -392,6 +412,214 @@ if [ -z "$(find "$EMPTY_OUT" -name receipt.json -print -quit 2>/dev/null)" ]; th
   ok 'empty provider output writes no receipt'
 else
   bad 'empty provider output writes no receipt'
+fi
+
+# --- chunking -----------------------------------------------------------------
+
+install_fake_provider claude
+install_fake_provider codex
+CHUNK_BASE="$(git -C "$REPO" rev-parse HEAD)"
+for dir in alpha beta gamma; do
+  mkdir -p "$REPO/$dir"
+  for i in $(seq 1 60); do
+    printf 'file %s %s\n' "$dir" "$i" > "$REPO/$dir/f$(printf '%03d' "$i").txt"
+  done
+done
+for i in $(seq 1 20); do
+  printf 'root %s\n' "$i" > "$REPO/root$(printf '%02d' "$i").txt"
+done
+git -C "$REPO" add alpha beta gamma root*.txt
+git -C "$REPO" -c commit.gpgsign=false commit -qm 'add 200 files'
+CHUNK_HEAD="$(git -C "$REPO" rev-parse HEAD)"
+
+must_succeed '200-file range is chunked instead of rejected' \
+  inspect --base "$CHUNK_BASE" --head "$CHUNK_HEAD" --provider claude
+CHUNK_TOKEN="$(printf '%s\n' "$last_out" | json_value approval_token)"
+if [ "$last_rc" -eq 0 ] && printf '%s\n' "$last_out" | jq -e '
+     .file_count == 200 and .chunk_count == 2 and (.chunks | length) == 2 and
+     .chunks[0].file_count == 80 and .chunks[1].file_count == 120 and
+     (.chunks[0].paths[0] | startswith("root")) and
+     (.chunks[0].paths[-1] | startswith("alpha/")) and
+     (.chunks[1].paths[0] | startswith("beta/")) and
+     (.chunks[1].paths[-1] | startswith("gamma/")) and
+     (.chunks[0].package_sha256 | length) == 64 and
+     (.chunks[1].package_sha256 | length) == 64 and
+     .chunks[0].package_sha256 != .chunks[1].package_sha256 and
+     (.chunks[0].byte_count > 0) and (.chunks[1].byte_count > 0) and
+     (.approval_token | startswith("mpr1_"))' >/dev/null && \
+   [ "$(printf '%s\n' "$last_out" | grep -c '"approval_token"')" = 1 ]; then
+  ok 'chunks group by top-level directory with one approval token'
+else
+  bad 'chunks group by top-level directory with one approval token'
+fi
+
+must_succeed 'chunked inspection is repeatable' \
+  inspect --base "$CHUNK_BASE" --head "$CHUNK_HEAD" --provider claude
+if [ -n "$CHUNK_TOKEN" ] && [ "$(printf '%s\n' "$last_out" | json_value approval_token)" = "$CHUNK_TOKEN" ]; then
+  ok 'chunked approval token is deterministic'
+else
+  bad 'chunked approval token is deterministic'
+fi
+
+must_fail_with 'chunk ceiling rejects excessive chunk counts' 'chunk ceiling' \
+  inspect --base "$CHUNK_BASE" --head "$CHUNK_HEAD" --provider claude --max-files-per-chunk 10
+
+printf 'file beta 1 changed\n' > "$REPO/beta/f001.txt"
+git -C "$REPO" add beta/f001.txt
+git -C "$REPO" -c commit.gpgsign=false commit -qm 'change one chunked file'
+CHUNK_HEAD_CHANGED="$(git -C "$REPO" rev-parse HEAD)"
+rm -f "$TMP/provider.calls"
+must_fail_with 'changed chunk invalidates approval token' 'approval token does not match' \
+  review --base "$CHUNK_BASE" --head "$CHUNK_HEAD_CHANGED" --provider claude --author codex \
+  --approve-external "$CHUNK_TOKEN"
+if [ ! -e "$TMP/provider.calls" ]; then
+  ok 'changed chunk is rejected before the provider runs'
+else
+  bad 'changed chunk is rejected before the provider runs'
+fi
+
+CHUNK_OUT="$TMP/chunk-out"
+mkdir -m 700 "$CHUNK_OUT"
+rm -f "$TMP/provider.calls"
+must_succeed 'chunked review dispatches every chunk' \
+  review --base "$CHUNK_BASE" --head "$CHUNK_HEAD" --provider claude --author codex \
+  --approve-external "$CHUNK_TOKEN" --out "$CHUNK_OUT"
+chunk_index="$(find "$CHUNK_OUT" -mindepth 2 -maxdepth 2 -name receipt.json -print -quit 2>/dev/null)"
+if [ "$last_rc" -eq 0 ] && [ "$(grep -c 'reviewed by fake provider' <<<"$last_out")" = 2 ] && \
+   [ "$(wc -l < "$TMP/provider.calls" | tr -d ' ')" = 3 ] && \
+   [ -n "$chunk_index" ] && jq -e '.chunk_count == 2 and (.chunks | length) == 2 and
+     .chunks[0].receipt == "chunk-01/receipt.json" and .chunks[1].receipt == "chunk-02/receipt.json"' \
+     "$chunk_index" >/dev/null && \
+   [ -f "$(dirname "$chunk_index")/chunk-01/receipt.json" ] && \
+   [ -f "$(dirname "$chunk_index")/chunk-02/receipt.json" ] && \
+   jq -e '.chunk.index == 2 and .chunk.count == 2 and (.source.files | length) == 120' \
+     "$(dirname "$chunk_index")/chunk-02/receipt.json" >/dev/null; then
+  ok 'chunked review writes one receipt per chunk plus an index receipt'
+else
+  bad 'chunked review writes one receipt per chunk plus an index receipt'
+fi
+
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'cat >/dev/null\n'
+  printf 'n=0; [ -f "%s/fail.count" ] && n="$(cat "%s/fail.count")"\n' "$TMP" "$TMP"
+  printf 'n=$((n + 1)); printf "%%s" "$n" > "%s/fail.count"\n' "$TMP"
+  printf 'if [ "$n" -ge 3 ]; then printf "rate limit exceeded\\n" >&2; exit 1; fi\n'
+  printf 'printf "reviewed chunk %%s\\n" "$n"\n'
+} > "$EXTERNAL_BIN/claude"
+chmod +x "$EXTERNAL_BIN/claude"
+rm -f "$TMP/fail.count"
+must_succeed 'inspect chunk-failing provider for a bound token' \
+  inspect --base "$CHUNK_BASE" --head "$CHUNK_HEAD" --provider claude
+CHUNK_FAIL_TOKEN="$(printf '%s\n' "$last_out" | json_value approval_token)"
+CHUNK_FAIL_OUT="$TMP/chunk-fail-out"
+mkdir -m 700 "$CHUNK_FAIL_OUT"
+must_fail_with 'provider failure on a later chunk stops the run' 'chunk 2 of 2' \
+  review --base "$CHUNK_BASE" --head "$CHUNK_HEAD" --provider claude --author codex \
+  --approve-external "$CHUNK_FAIL_TOKEN" --out "$CHUNK_FAIL_OUT"
+if printf '%s\n' "$last_out" | grep -q 'completed chunks: 1' && \
+   [ -z "$(find "$CHUNK_FAIL_OUT" -name receipt.json -print -quit 2>/dev/null)" ]; then
+  ok 'chunk failure reports completed chunks and writes no receipt'
+else
+  bad 'chunk failure reports completed chunks and writes no receipt'
+fi
+install_fake_provider claude
+
+BYTES_BASE="$CHUNK_HEAD_CHANGED"
+mkdir -p "$REPO/bulk"
+for i in 1 2 3 4 5 6; do
+  yes "bulk file $i lorem ipsum dolor sit amet" | head -c 300000 > "$REPO/bulk/b$i.txt"
+done
+git -C "$REPO" add bulk
+git -C "$REPO" -c commit.gpgsign=false commit -qm 'add bulk files'
+BYTES_HEAD="$(git -C "$REPO" rev-parse HEAD)"
+must_succeed 'range above the package byte limit is chunked' \
+  inspect --base "$BYTES_BASE" --head "$BYTES_HEAD" --provider claude
+if [ "$last_rc" -eq 0 ] && printf '%s\n' "$last_out" | jq -e '
+     .file_count == 6 and .chunk_count >= 2 and
+     ([.chunks[].byte_count] | max) <= 1048576 and
+     ([.chunks[].file_count] | add) == 6' >/dev/null; then
+  ok 'byte-limited chunks each stay under the package limit'
+else
+  bad 'byte-limited chunks each stay under the package limit'
+fi
+
+dd if=/dev/zero bs=600000 count=1 2>/dev/null | tr '\000' 'b' > "$REPO/bulk/huge.txt"
+git -C "$REPO" add bulk/huge.txt
+git -C "$REPO" -c commit.gpgsign=false commit -qm 'add oversized file'
+HUGE_HEAD="$(git -C "$REPO" rev-parse HEAD)"
+must_fail_with 'oversized single file in a range is still rejected' 'size limit' \
+  inspect --base "$BYTES_HEAD" --head "$HUGE_HEAD" --provider claude
+
+# --- preflight ------------------------------------------------------------------
+
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'cat >/dev/null\n'
+  printf 'printf "You'"'"'ve reached your usage limit\\n"\n'
+  printf 'exit 1\n'
+} > "$EXTERNAL_BIN/claude"
+chmod +x "$EXTERNAL_BIN/claude"
+must_succeed 'inspect limit-exhausted provider for a bound token' \
+  inspect --file app.go --provider claude
+LIMIT_TOKEN="$(printf '%s\n' "$last_out" | json_value approval_token)"
+LIMIT_OUT="$TMP/limit-out"
+mkdir -m 700 "$LIMIT_OUT"
+must_fail_with 'preflight classifies a usage-limit failure' 'preflight' \
+  review --file app.go --provider claude --author codex \
+  --approve-external "$LIMIT_TOKEN" --out "$LIMIT_OUT"
+if printf '%s\n' "$last_out" | grep -q 'provider claude' && \
+   printf '%s\n' "$last_out" | grep -qi 'auth-or-limit' && \
+   [ -z "$(find "$LIMIT_OUT" -name receipt.json -print -quit 2>/dev/null)" ]; then
+  ok 'preflight limit failure names provider and class and writes no receipt'
+else
+  bad 'preflight limit failure names provider and class and writes no receipt'
+fi
+
+{
+  printf '#!/usr/bin/env bash\n'
+  printf 'exec sleep 30\n'
+} > "$EXTERNAL_BIN/claude"
+chmod +x "$EXTERNAL_BIN/claude"
+must_succeed 'inspect stalled provider for a bound token' \
+  inspect --file app.go --provider claude
+STALL_TOKEN="$(printf '%s\n' "$last_out" | json_value approval_token)"
+STALL_OUT="$TMP/stall-out"
+mkdir -m 700 "$STALL_OUT"
+stall_started="$(date +%s)"
+must_fail_with 'preflight times out on a stalled provider' 'timeout' \
+  review --file app.go --provider claude --author codex \
+  --approve-external "$STALL_TOKEN" --out "$STALL_OUT" --preflight-timeout 1s
+stall_elapsed="$(( $(date +%s) - stall_started ))"
+if printf '%s\n' "$last_out" | grep -q 'provider claude' && [ "$stall_elapsed" -lt 15 ] && \
+   [ -z "$(find "$STALL_OUT" -name receipt.json -print -quit 2>/dev/null)" ]; then
+  ok 'preflight timeout exits within the window and writes no receipt'
+else
+  bad "preflight timeout exits within the window and writes no receipt (elapsed ${stall_elapsed}s)"
+fi
+install_fake_provider claude
+
+# --- grok provider ----------------------------------------------------------------
+
+must_fail_with 'grok author cannot review own artifact' 'must differ' \
+  review --file app.go --provider grok --author grok --approve-external invalid-token
+must_succeed 'inspect resolves grok provider' \
+  inspect --file app.go --provider grok
+GROK_TOKEN="$(printf '%s\n' "$last_out" | json_value approval_token)"
+GROK_OUT="$TMP/grok-out"
+mkdir -m 700 "$GROK_OUT"
+rm -f "$TMP/provider.args" "$TMP/provider.stdin"
+must_succeed 'grok reviews a claude-authored artifact' \
+  review --file app.go --provider grok --author claude \
+  --approve-external "$GROK_TOKEN" --out "$GROK_OUT"
+if [ "$last_rc" -eq 0 ] && grep -q -- '--output-format plain' "$TMP/provider.args" && \
+   grep -q -- '--prompt-file' "$TMP/provider.args" && \
+   grep -q 'review-package' "$TMP/provider.stdin" && \
+   printf '%s\n' "$last_out" | grep -q 'reviewed by fake provider' && \
+   grep -q '"provider": "grok"' "$(find "$GROK_OUT" -path '*/chunk-01/receipt.json' -print -quit)"; then
+  ok 'grok dispatch uses headless plain output with a private prompt file'
+else
+  bad 'grok dispatch uses headless plain output with a private prompt file'
 fi
 
 printf '%d passed, %d failed\n' "$pass" "$fail"

@@ -30,6 +30,9 @@ grep -qF 'Lead with the answer, result, decision, or status in the first sentenc
   fail 'style does not require answer-first communication'
 grep -qF 'Default to 100 prose words or fewer.' "$STYLE" || fail 'style omits its default prose budget'
 grep -qF 'Do not exceed 250 prose words' "$STYLE" || fail 'style omits its prose ceiling'
+grep -qF 'Do not use em dashes.' "$STYLE" || fail 'style omits the em-dash rule'
+grep -qF 'load
+  `humanizing-prose`' "$STYLE" || fail 'style omits the publishing-prose exception'
 grep -qF 'Preserve exact identifiers, commands, numbers, caveats, decisions, and material uncertainty.' "$STYLE" ||
   fail 'style can discard load-bearing facts'
 grep -qF 'named source, direct observation, or explicit uncertainty' "$STYLE" ||
@@ -42,10 +45,10 @@ grep -qF 'this style takes precedence' "$STYLE" ||
 jq -e '
   .hooks.SessionStart
   | length == 1 and
-    .[0].hooks == [{
-      "type": "command",
-      "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd codex-output-style.sh"
-    }]
+    .[0].hooks[0].type == "command" and
+    .[0].hooks[0].command == "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd codex-output-style.sh" and
+    (.[0].hooks[0].timeout | type) == "number" and
+    (.[0].hooks[0].statusMessage | type) == "string"
 ' "$HOOKS" >/dev/null || fail 'Codex startup hook does not load the shared style'
 
 grep -qF 'shared default communication style' "$ROOT/README.md" ||

@@ -81,16 +81,40 @@ type gatesAcceptance struct {
 	PerCase map[string]struct {
 		MaxFalseSelectionRate float64 `json:"max_false_selection_rate"`
 	} `json:"per_case,omitempty"`
+	// MaxMedianFinalWords bounds the median final_words over no-skill and
+	// near-miss probes; MaxEmDashRate bounds the fraction of all finals that
+	// contain U+2014. Both are report-only when absent.
+	MaxMedianFinalWords *float64 `json:"max_median_final_words,omitempty"`
+	MaxEmDashRate       *float64 `json:"max_em_dash_rate,omitempty"`
 }
 
 type gatesFile struct {
 	SchemaVersion string `json:"schema_version"`
 	Mode          string `json:"mode"`
 	// EnforceHarnesses limits enforce mode to the listed harnesses; an empty
-	// list enforces everywhere. Codex activation is descoped by policy: its
-	// engagement lever is harness-level, measured 2026-08-31.
+	// list enforces everywhere. Codex enforcement is withheld while the
+	// 2026-08-31 null result is re-verified against the broker's skills
+	// catalog assertion.
 	EnforceHarnesses []string        `json:"enforce_harnesses,omitempty"`
 	Acceptance       gatesAcceptance `json:"acceptance"`
+}
+
+// skillsCatalog mirrors the broker's optional attestation that the harness
+// presented the Megapowers skill catalog to the model. Source "unavailable"
+// means the harness path exposes no signal.
+type skillsCatalog struct {
+	Rendered bool     `json:"rendered"`
+	Skills   []string `json:"skills"`
+	Source   string   `json:"source"`
+}
+
+const catalogSourceUnavailable = "unavailable"
+
+// catalogMissing is true when the broker reported a catalog signal and that
+// signal says the catalog was not rendered: an infrastructure failure, never
+// a recall failure.
+func catalogMissing(catalog *skillsCatalog) bool {
+	return catalog != nil && catalog.Source != catalogSourceUnavailable && !catalog.Rendered
 }
 
 func enforcementApplies(gates gatesFile, harness string) bool {
@@ -139,6 +163,7 @@ type actorResult struct {
 	Trace      []byte
 	Events     []actorEvent
 	Inventory  []string
+	Catalog    *skillsCatalog
 	CLIVersion string
 	Sandbox    string
 	RC         int
@@ -203,6 +228,20 @@ type gateAssessment struct {
 	MinimumReps int         `json:"minimum_reps"`
 	Violations  []string    `json:"violations"`
 	Cases       []caseTally `json:"cases"`
+	// MedianPrecisionFinalWords is the median final_words over no-skill and
+	// near-miss probes; EmDashRate is the fraction of all finals containing
+	// U+2014. Both are always reported; thresholds in gates.json decide
+	// whether they become violations.
+	MedianPrecisionFinalWords *float64 `json:"median_precision_final_words,omitempty"`
+	EmDashRate                *float64 `json:"em_dash_rate,omitempty"`
+}
+
+// finalSummary collects per-run response-length measurements for gate
+// assessment.
+type finalSummary struct {
+	precisionWords []float64
+	finals         int
+	emDashFinals   int
 }
 
 type runEnvironment struct {
@@ -225,6 +264,12 @@ type publishManifest struct {
 	CaseCatalogHash string         `json:"case_catalog_hash"`
 	GatesHash       string         `json:"gates_hash"`
 	Retries         int            `json:"retries"`
+	// CatalogRendered is true when every accepted probe carried a broker
+	// attestation that the skills catalog was presented; null when the
+	// harness path reports no signal. A false value never publishes because
+	// the run fails closed first.
+	CatalogRendered *bool          `json:"catalog_rendered"`
+	CatalogSource   string         `json:"catalog_source,omitempty"`
 	Assessment      gateAssessment `json:"assessment"`
 }
 
@@ -281,11 +326,15 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	unselectable, err := loadUnselectableSkills(root, catalog)
+	if err != nil {
+		fatal(err)
+	}
 	cases, gates, err := loadConfiguration(*casesPath, *gatesPath)
 	if err != nil {
 		fatal(err)
 	}
-	if err := validateConfiguration(cases, gates, catalog); err != nil {
+	if err := validateConfiguration(cases, gates, catalog, unselectable); err != nil {
 		fatal(err)
 	}
 	if *validateConfig {
@@ -394,6 +443,39 @@ func loadCatalog(root string) (map[string]bool, error) {
 	return names, nil
 }
 
+var disableModelInvocationPattern = regexp.MustCompile(`(?m)^disable-model-invocation:\s*true\s*$`)
+
+// loadUnselectableSkills reads each shipped SKILL.md frontmatter and returns
+// the skills whose `disable-model-invocation: true` keeps the model from
+// selecting them. They stay in the catalog for precision accounting but
+// cannot carry recall probes.
+func loadUnselectableSkills(root string, catalog map[string]bool) (map[string]bool, error) {
+	unselectable := make(map[string]bool)
+	for name := range catalog {
+		content, err := os.ReadFile(filepath.Join(root, "plugins", "megapowers", "skills", name, "SKILL.md"))
+		if err != nil {
+			return nil, err
+		}
+		frontmatter := frontmatterOf(string(content))
+		if disableModelInvocationPattern.MatchString(frontmatter) {
+			unselectable[name] = true
+		}
+	}
+	return unselectable, nil
+}
+
+func frontmatterOf(content string) string {
+	if !strings.HasPrefix(content, "---\n") {
+		return ""
+	}
+	rest := content[len("---\n"):]
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return ""
+	}
+	return rest[:end+1]
+}
+
 func loadConfiguration(casesPath, gatesPath string) (casesFile, gatesFile, error) {
 	var cases casesFile
 	var gates gatesFile
@@ -457,7 +539,7 @@ func validateCases(cases casesFile, catalog map[string]bool) error {
 	return nil
 }
 
-func validateConfiguration(cases casesFile, gates gatesFile, catalog map[string]bool) error {
+func validateConfiguration(cases casesFile, gates gatesFile, catalog, unselectable map[string]bool) error {
 	if err := validateCases(cases, catalog); err != nil {
 		return err
 	}
@@ -465,6 +547,9 @@ func validateConfiguration(cases casesFile, gates gatesFile, catalog map[string]
 	noSkillProbes := 0
 	for _, c := range cases.Cases {
 		if c.Expected != "" {
+			if unselectable[c.Expected] {
+				return fmt.Errorf("case %q expects %q, which sets disable-model-invocation and cannot be selected", c.ID, c.Expected)
+			}
 			recallProbes[c.Expected]++
 		}
 		if c.Kind == "no-skill" {
@@ -472,6 +557,9 @@ func validateConfiguration(cases casesFile, gates gatesFile, catalog map[string]
 		}
 	}
 	for skill := range catalog {
+		if unselectable[skill] {
+			continue
+		}
 		if recallProbes[skill] < 3 {
 			return fmt.Errorf("skill %q has %d recall probes; require at least 3", skill, recallProbes[skill])
 		}
@@ -503,6 +591,12 @@ func validateConfiguration(cases casesFile, gates gatesFile, catalog map[string]
 		if override.MinRecall < 0 || override.MinRecall > 1 {
 			return fmt.Errorf("gates override for %q must be within [0,1]", skill)
 		}
+	}
+	if limit := gates.Acceptance.MaxMedianFinalWords; limit != nil && *limit < 0 {
+		return errors.New("gates max_median_final_words must not be negative")
+	}
+	if limit := gates.Acceptance.MaxEmDashRate; limit != nil && (*limit < 0 || *limit > 1) {
+		return errors.New("gates max_em_dash_rate must be within [0,1]")
 	}
 	caseByID := make(map[string]probeCase, len(cases.Cases))
 	for _, c := range cases.Cases {
@@ -585,10 +679,46 @@ func evaluateProbe(c probeCase, events []actorEvent, catalog map[string]bool) (m
 	return metrics, verdict
 }
 
-func assessGates(tallies []caseTally, gates gatesFile, reps int) gateAssessment {
+var fencedCodePattern = regexp.MustCompile("(?s)```.*?(```|$)")
+
+// finalWords counts whitespace-separated words in a final response after
+// removing fenced code blocks, so code volume never inflates prose length.
+func finalWords(response string) int {
+	return len(strings.Fields(fencedCodePattern.ReplaceAllString(response, " ")))
+}
+
+func finalEmDashes(response string) int {
+	return strings.Count(response, "—")
+}
+
+func median(values []float64) float64 {
+	sorted := append([]float64(nil), values...)
+	sort.Float64s(sorted)
+	middle := len(sorted) / 2
+	if len(sorted)%2 == 1 {
+		return sorted[middle]
+	}
+	return (sorted[middle-1] + sorted[middle]) / 2
+}
+
+func assessGates(tallies []caseTally, gates gatesFile, reps int, finals finalSummary) gateAssessment {
 	assessment := gateAssessment{Mode: gates.Mode, MinimumReps: gates.Acceptance.MinimumReps, Violations: []string{}, Cases: tallies}
 	if reps < gates.Acceptance.MinimumReps {
 		assessment.Violations = append(assessment.Violations, fmt.Sprintf("%d reps below the %d minimum", reps, gates.Acceptance.MinimumReps))
+	}
+	if len(finals.precisionWords) > 0 {
+		value := median(finals.precisionWords)
+		assessment.MedianPrecisionFinalWords = &value
+		if limit := gates.Acceptance.MaxMedianFinalWords; limit != nil && value > *limit {
+			assessment.Violations = append(assessment.Violations, fmt.Sprintf("median final_words %.1f over no-skill and near-miss probes above %.0f", value, *limit))
+		}
+	}
+	if finals.finals > 0 {
+		rate := float64(finals.emDashFinals) / float64(finals.finals)
+		assessment.EmDashRate = &rate
+		if limit := gates.Acceptance.MaxEmDashRate; limit != nil && rate > *limit {
+			assessment.Violations = append(assessment.Violations, fmt.Sprintf("em dash rate %d/%d finals above %.2f", finals.emDashFinals, finals.finals, *limit))
+		}
 	}
 	for _, tally := range tallies {
 		if tally.Total == 0 {
@@ -660,6 +790,9 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 	retries := 0
 	rows := make([]resultRow, 0, len(cases.Cases)*opts.Reps)
 	tallies := make([]caseTally, 0, len(cases.Cases))
+	var finals finalSummary
+	var catalogRendered *bool
+	catalogSource := ""
 	for _, c := range cases.Cases {
 		tally := caseTally{CaseID: c.ID, Expected: c.Expected}
 		for rep := 1; rep <= opts.Reps; rep++ {
@@ -670,6 +803,8 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 			// One automatic retry absorbs a transient actor failure; the
 			// broker requires an empty disposable home, so every attempt
 			// gets fresh directories. A second failure still fails closed.
+			// A reported-but-unrendered skills catalog is a transient
+			// infrastructure failure of the same class.
 			for attempt := 1; attempt <= 2; attempt++ {
 				armRoot := filepath.Join(root, c.ID, fmt.Sprintf("%s-attempt-%d", blockID, attempt))
 				home := filepath.Join(armRoot, "home")
@@ -690,14 +825,14 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 				if result.CLIVersion != "" {
 					cliVersion = result.CLIVersion
 				}
-				if actorErr == nil && !timedOut && result.RC == 0 {
+				if actorErr == nil && !timedOut && result.RC == 0 && !catalogMissing(result.Catalog) {
 					break
 				}
 				if attempt == 1 {
 					retries++
 				}
 			}
-			if timedOut || actorErr != nil || result.RC != 0 {
+			if timedOut || actorErr != nil || result.RC != 0 || catalogMissing(result.Catalog) {
 				if err := writeFailureEvidence(opts.Out, c.ID, blockID, result, actorErr); err != nil {
 					return rows, publishManifest{}, err
 				}
@@ -711,7 +846,24 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 			if result.RC != 0 {
 				return rows, publishManifest{}, fmt.Errorf("%s/%s actor exited %d", c.ID, blockID, result.RC)
 			}
+			if catalogMissing(result.Catalog) {
+				return rows, publishManifest{}, fmt.Errorf("%s/%s infrastructure failure: harness %s did not render the megapowers skills catalog (source %s, skills %v) on two attempts; not a recall failure", c.ID, blockID, opts.Harness, result.Catalog.Source, result.Catalog.Skills)
+			}
+			if result.Catalog != nil && result.Catalog.Source != catalogSourceUnavailable {
+				rendered := true
+				catalogRendered = &rendered
+				catalogSource = result.Catalog.Source
+			}
 			metrics, verdict := evaluateProbe(c, result.Events, catalog)
+			metrics["final_words"] = float64(finalWords(result.Response))
+			metrics["final_em_dashes"] = float64(finalEmDashes(result.Response))
+			finals.finals++
+			if metrics["final_em_dashes"] > 0 {
+				finals.emDashFinals++
+			}
+			if c.Kind == "no-skill" || c.Kind == "near-miss" {
+				finals.precisionWords = append(finals.precisionWords, metrics["final_words"])
+			}
 			sandbox := "selftest"
 			if result.Sandbox != "" {
 				sandbox = portableIdentifier(result.Sandbox)
@@ -764,7 +916,9 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 		CaseCatalogHash: caseCatalogHash,
 		GatesHash:       gatesHash,
 		Retries:         retries,
-		Assessment:      assessGates(tallies, gates, opts.Reps),
+		CatalogRendered: catalogRendered,
+		CatalogSource:   catalogSource,
+		Assessment:      assessGates(tallies, gates, opts.Reps, finals),
 	}
 	if err := writePublish(opts.Out, rows, manifest); err != nil {
 		return rows, manifest, err
@@ -789,12 +943,13 @@ func writeFailureEvidence(out, caseID, blockID string, result actorResult, actor
 		message = actorErr.Error()
 	}
 	evidence, err := json.MarshalIndent(map[string]any{
-		"case":     caseID,
-		"block":    blockID,
-		"rc":       result.RC,
-		"error":    message,
-		"response": result.Response,
-		"trace":    string(result.Trace),
+		"case":           caseID,
+		"block":          blockID,
+		"rc":             result.RC,
+		"error":          message,
+		"skills_catalog": result.Catalog,
+		"response":       result.Response,
+		"trace":          string(result.Trace),
 	}, "", "  ")
 	if err != nil {
 		return err
@@ -1183,6 +1338,7 @@ type brokerResponse struct {
 	Trace           string               `json:"trace"`
 	Events          []actorEvent         `json:"events"`
 	PluginInventory []string             `json:"plugin_inventory"`
+	SkillsCatalog   *skillsCatalog       `json:"skills_catalog,omitempty"`
 	OracleRC        *int                 `json:"oracle_rc,omitempty"`
 	RC              int                  `json:"rc"`
 	DurationMS      int64                `json:"duration_ms"`
@@ -1325,17 +1481,20 @@ func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult
 	if response.OracleRC != nil {
 		return actorResult{RC: 125}, errors.New("sandbox broker returned an unexpected oracle result")
 	}
-	return actorResult{Response: response.Response, Trace: []byte(response.Trace), Events: response.Events, Inventory: response.PluginInventory, CLIVersion: response.CLIVersion, Sandbox: response.Isolation.Boundary, RC: response.RC, Duration: time.Duration(response.DurationMS) * time.Millisecond}, nil
+	return actorResult{Response: response.Response, Trace: []byte(response.Trace), Events: response.Events, Inventory: response.PluginInventory, Catalog: response.SkillsCatalog, CLIVersion: response.CLIVersion, Sandbox: response.Isolation.Boundary, RC: response.RC, Duration: time.Duration(response.DurationMS) * time.Millisecond}, nil
 }
 
 // --- selftest ---
 
 type scriptedActor struct {
-	events   map[string][]actorEvent
-	fail     map[string]error
-	failOnce map[string]error
-	rc       map[string]int
-	calls    map[string]int
+	events      map[string][]actorEvent
+	responses   map[string]string
+	catalog     map[string]*skillsCatalog
+	catalogOnce map[string]*skillsCatalog
+	fail        map[string]error
+	failOnce    map[string]error
+	rc          map[string]int
+	calls       map[string]int
 }
 
 func (s scriptedActor) Run(_ context.Context, request actorRequest) (actorResult, error) {
@@ -1349,10 +1508,20 @@ func (s scriptedActor) Run(_ context.Context, request actorRequest) (actorResult
 	if err := s.fail[request.Case.ID]; err != nil {
 		return actorResult{RC: 125}, err
 	}
+	response := "done"
+	if scripted, ok := s.responses[request.Case.ID]; ok {
+		response = scripted
+	}
+	catalog := s.catalog[request.Case.ID]
+	if once, ok := s.catalogOnce[request.Case.ID]; ok {
+		catalog = once
+		delete(s.catalogOnce, request.Case.ID)
+	}
 	return actorResult{
-		Response:   "done",
+		Response:   response,
 		Trace:      []byte("trace"),
 		Events:     s.events[request.Case.ID],
+		Catalog:    catalog,
 		CLIVersion: "selftest",
 		Sandbox:    "selftest",
 		RC:         s.rc[request.Case.ID],
@@ -1408,6 +1577,9 @@ func runSelftest() error {
 			},
 			"no-skill-clean": {{Kind: "skill_selected", Path: "random-helper", RC: 0, Step: 1}},
 		},
+		responses: map[string]string{
+			"no-skill-clean": "Three words here — plus\n```go\nfunc ignored() { return }\n```\nfour more words done.",
+		},
 		fail: map[string]error{},
 		rc:   map[string]int{},
 	}
@@ -1444,6 +1616,24 @@ func runSelftest() error {
 		}
 	}
 	check("rows carry binary activation_success", binaryOK)
+	lengthOK := len(rows) > 0
+	for _, row := range rows {
+		words, hasWords := row.Metrics["final_words"]
+		dashes, hasDashes := row.Metrics["final_em_dashes"]
+		if !hasWords || !hasDashes || words < 0 || dashes < 0 {
+			lengthOK = false
+		}
+	}
+	// "Three words here — plus" + "four more words done." = 9 words; the
+	// fenced block is stripped and the em dash is not a word.
+	check("rows carry final_words and final_em_dashes", lengthOK && metricsByCase["no-skill-clean"]["final_words"] == 9 && metricsByCase["no-skill-clean"]["final_em_dashes"] == 1 && metricsByCase["recall-hit"]["final_words"] == 1 && metricsByCase["recall-hit"]["final_em_dashes"] == 0)
+	lengthViolation := false
+	for _, violation := range manifest.Assessment.Violations {
+		if strings.Contains(violation, "final_words") || strings.Contains(violation, "em dash") {
+			lengthViolation = true
+		}
+	}
+	check("manifest reports length measurements without thresholds", manifest.CatalogRendered == nil && manifest.Assessment.MedianPrecisionFinalWords != nil && manifest.Assessment.EmDashRate != nil && !lengthViolation)
 	check("rows pass the strict scorer", strictScore(root, filepath.Join(outSuccess, "publish", "results.jsonl")) == nil)
 
 	outReps := filepath.Join(tempParent, "reps")
@@ -1485,6 +1675,31 @@ func runSelftest() error {
 	transientRows, transientManifest, err := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: corpus.Cases[:1]}, gates, catalog, transientOptions, transient)
 	check("transient actor failures retry once", err == nil && len(transientRows) == 1 && transientRows[0].Verdict == "pass" && transientManifest.Retries == 1 && transient.calls["recall-hit"] == 2)
 
+	unrendered := &skillsCatalog{Rendered: false, Skills: []string{}, Source: "codex-rollout-developer-message"}
+	rendered := &skillsCatalog{Rendered: true, Skills: []string{"systematic-debugging"}, Source: "codex-rollout-developer-message"}
+	hitEvents := map[string][]actorEvent{"recall-hit": {{Kind: "skill_selected", Path: "systematic-debugging", RC: 0, Step: 1}}}
+	missingCatalog := scriptedActor{events: hitEvents, catalog: map[string]*skillsCatalog{"recall-hit": unrendered}, fail: map[string]error{}, rc: map[string]int{}, calls: map[string]int{}}
+	missingOptions := options
+	missingOptions.Harness = "codex"
+	missingOptions.Out = filepath.Join(tempParent, "missing-catalog")
+	_, _, err = executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: corpus.Cases[:1]}, gates, catalog, missingOptions, missingCatalog)
+	check("missing skills catalog fails closed as infrastructure", err != nil && strings.Contains(err.Error(), "infrastructure failure") && strings.Contains(err.Error(), "harness codex") && !strings.Contains(err.Error(), "recall failure:") && missingCatalog.calls["recall-hit"] == 2)
+	missingEvidence, missingEvidenceErr := os.ReadFile(filepath.Join(missingOptions.Out, "failures", "recall-hit-rep-1.json"))
+	check("missing skills catalog persists private diagnostics", missingEvidenceErr == nil && strings.Contains(string(missingEvidence), `"rendered": false`))
+
+	recoveringCatalog := scriptedActor{events: hitEvents, catalog: map[string]*skillsCatalog{"recall-hit": rendered}, catalogOnce: map[string]*skillsCatalog{"recall-hit": unrendered}, fail: map[string]error{}, rc: map[string]int{}, calls: map[string]int{}}
+	recoveringOptions := options
+	recoveringOptions.Out = filepath.Join(tempParent, "recovering-catalog")
+	recoveringRows, recoveringManifest, err := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: corpus.Cases[:1]}, gates, catalog, recoveringOptions, recoveringCatalog)
+	check("missing skills catalog retries once", err == nil && len(recoveringRows) == 1 && recoveringRows[0].Verdict == "pass" && recoveringManifest.Retries == 1 && recoveringCatalog.calls["recall-hit"] == 2)
+	check("manifest records catalog_rendered", err == nil && recoveringManifest.CatalogRendered != nil && *recoveringManifest.CatalogRendered && recoveringManifest.CatalogSource == "codex-rollout-developer-message")
+
+	unavailableCatalog := scriptedActor{events: hitEvents, catalog: map[string]*skillsCatalog{"recall-hit": {Rendered: false, Skills: []string{}, Source: catalogSourceUnavailable}}, fail: map[string]error{}, rc: map[string]int{}, calls: map[string]int{}}
+	unavailableOptions := options
+	unavailableOptions.Out = filepath.Join(tempParent, "unavailable-catalog")
+	unavailableRows, unavailableManifest, err := executeStudy(context.Background(), casesFile{SchemaVersion: "1", Cases: corpus.Cases[:1]}, gates, catalog, unavailableOptions, unavailableCatalog)
+	check("unavailable catalog signal never fails a run", err == nil && len(unavailableRows) == 1 && unavailableManifest.CatalogRendered == nil && unavailableCatalog.calls["recall-hit"] == 1)
+
 	deadlineOptions := options
 	deadlineOptions.Out = filepath.Join(tempParent, "deadline")
 	deadlineOptions.ActorTimeout = 10 * time.Millisecond
@@ -1506,10 +1721,48 @@ func runSelftest() error {
 	floorTallies := []caseTally{{CaseID: "recall-hit", Expected: "systematic-debugging", Pass: 0, Total: 3}}
 	enforceGates := gates
 	enforceGates.Mode = "enforce"
-	enforceAssessment := assessGates(floorTallies, enforceGates, 3)
+	enforceAssessment := assessGates(floorTallies, enforceGates, 3, finalSummary{})
 	check("enforce gates reject a recall floor", len(enforceAssessment.Violations) == 1 && strings.Contains(enforceAssessment.Violations[0], "recall 0/3"))
-	reportAssessment := assessGates(floorTallies, gates, 3)
+	reportAssessment := assessGates(floorTallies, gates, 3, finalSummary{})
 	check("report-only gates record violations without failing", reportAssessment.Mode == "report-only" && len(reportAssessment.Violations) == 1)
+
+	passingTallies := []caseTally{{CaseID: "recall-hit", Expected: "systematic-debugging", Pass: 3, Total: 3}}
+	verboseFinals := finalSummary{precisionWords: []float64{40, 200, 130, 90}, finals: 10, emDashFinals: 2}
+	lengthGates := enforceGates
+	wordLimit := 120.0
+	dashLimit := 0.1
+	lengthGates.Acceptance.MaxMedianFinalWords = &wordLimit
+	lengthGates.Acceptance.MaxEmDashRate = &dashLimit
+	lengthAssessment := assessGates(passingTallies, lengthGates, 3, verboseFinals)
+	check("em dash gate flags dashed finals while a median within limit passes", len(lengthAssessment.Violations) == 1 && strings.Contains(lengthAssessment.Violations[0], "em dash rate 2/10 finals above 0.10") && lengthAssessment.MedianPrecisionFinalWords != nil && *lengthAssessment.MedianPrecisionFinalWords == 110)
+	verboseFinals.precisionWords = []float64{40, 200, 130, 300}
+	lengthAssessment = assessGates(passingTallies, lengthGates, 3, verboseFinals)
+	check("length gates flag a verbose precision median", len(lengthAssessment.Violations) == 2 && strings.Contains(lengthAssessment.Violations[0], "median final_words 165.0 over no-skill and near-miss probes above 120") && strings.Contains(lengthAssessment.Violations[1], "em dash rate 2/10 finals above 0.10"))
+	absentAssessment := assessGates(passingTallies, enforceGates, 3, verboseFinals)
+	check("absent length gates stay report-only", len(absentAssessment.Violations) == 0 && absentAssessment.MedianPrecisionFinalWords != nil && *absentAssessment.MedianPrecisionFinalWords == 165 && absentAssessment.EmDashRate != nil && *absentAssessment.EmDashRate == 0.2)
+	check("final_words strips fenced code and counts em dashes", finalWords("one two\n```sh\nignored words here\n```\nthree") == 3 && finalWords("open ```never closed words") == 1 && finalEmDashes("a — b — c") == 2 && finalEmDashes("a - b -- c") == 0)
+
+	unselectable := map[string]bool{"memory-hygiene": true}
+	exemptCorpus := casesFile{SchemaVersion: "1", Cases: []probeCase{}}
+	for name := range catalog {
+		if unselectable[name] {
+			continue
+		}
+		for _, kind := range []string{"verbatim", "paraphrase", "buried"} {
+			exemptCorpus.Cases = append(exemptCorpus.Cases, probeCase{ID: name + "-" + kind, Kind: kind, Expected: name, Prompt: "p", Provenance: "selftest"})
+		}
+	}
+	for index := 0; index < 10; index++ {
+		exemptCorpus.Cases = append(exemptCorpus.Cases, probeCase{ID: fmt.Sprintf("no-skill-%d", index), Kind: "no-skill", Prompt: "p", Provenance: "selftest"})
+	}
+	exemptGates := gatesFile{SchemaVersion: "1", Mode: "report-only", Acceptance: gatesAcceptance{MinimumReps: 1, DefaultMinRecall: 0.6, DefaultMaxFalseSelectionRate: 0.34}}
+	exemptErr := validateConfiguration(exemptCorpus, exemptGates, catalog, unselectable)
+	strictErr := validateConfiguration(exemptCorpus, exemptGates, catalog, map[string]bool{})
+	probeUnselectable := exemptCorpus
+	probeUnselectable.Cases = append(append([]probeCase(nil), exemptCorpus.Cases...), probeCase{ID: "memory-hygiene-verbatim", Kind: "verbatim", Expected: "memory-hygiene", Prompt: "p", Provenance: "selftest"})
+	probeErr := validateConfiguration(probeUnselectable, exemptGates, catalog, unselectable)
+	check("unselectable skills are exempt from recall probe minimums", exemptErr == nil && strictErr != nil && strings.Contains(strictErr.Error(), `"memory-hygiene" has 0 recall probes`) && probeErr != nil && strings.Contains(probeErr.Error(), "disable-model-invocation"))
+	check("frontmatter flag detection reads only the frontmatter", disableModelInvocationPattern.MatchString(frontmatterOf("---\nname: x\ndisable-model-invocation: true\n---\n# body\n")) && !disableModelInvocationPattern.MatchString(frontmatterOf("---\nname: x\n---\n# body\ndisable-model-invocation: true\n")))
 	scopedGates := enforceGates
 	scopedGates.EnforceHarnesses = []string{"claude"}
 	check("enforcement applies only to listed harnesses", enforcementApplies(scopedGates, "claude") && !enforcementApplies(scopedGates, "codex") && enforcementApplies(enforceGates, "codex") && !enforcementApplies(gates, "claude"))

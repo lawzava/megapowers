@@ -114,8 +114,8 @@ jobs:
 
       - name: Install pinned harness CLIs
         run: |
-          npm install -g @anthropic-ai/claude-code@2.1.233
-          npm install -g @openai/codex@0.149.0
+          npm install -g @anthropic-ai/claude-code@2.1.257
+          npm install -g @openai/codex@0.152.0
 
       - name: Validate repository
         run: scripts/validate.sh
@@ -210,3 +210,31 @@ jobs:
           path: attestation.json
           if-no-files-found: error
           retention-days: 14
+
+  publish-release-branch:
+    # Installs track the release branch, which only ever fast-forwards to an
+    # attested tag. A failed attestation therefore never reaches installs.
+    needs: attest
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Fast-forward release to the attested tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse "$TAG^{commit}")"
+          if git ls-remote --exit-code --heads origin release >/dev/null; then
+            git fetch origin release
+            git merge-base --is-ancestor origin/release "$sha" || {
+              printf 'release branch is not an ancestor of %s; refusing non-fast-forward\n' "$TAG" >&2
+              exit 1
+            }
+          fi
+          git push origin "$sha:refs/heads/release"

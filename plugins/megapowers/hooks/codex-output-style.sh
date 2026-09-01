@@ -4,7 +4,11 @@
 # PLUGIN_ROOT, so the shared hooks file remains silent there.
 set -u
 
-[ -n "${PLUGIN_ROOT:-}" ] || exit 0
+case "${MEGAPOWERS_HARNESS:-}" in
+  codex) ;;
+  claude) exit 0 ;;
+  *) [ -n "${PLUGIN_ROOT:-}" ] || exit 0 ;;
+esac
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 style="$here/../output-styles/megapowers.md"
@@ -26,7 +30,8 @@ awk '
 
 # Codex lists skill trigger descriptions but nothing makes it load a body;
 # Claude Code needs no equivalent because its native Skill tool carries this
-# contract. Measured 2026-08-31: zero skill engagement in 210 brokered rows.
+# contract. Real Codex sessions read SKILL.md in 27/32 sessions (2026-09-01
+# audit); this reminder keeps that behavior explicit.
 cat <<'SKILLS'
 
 # Skills

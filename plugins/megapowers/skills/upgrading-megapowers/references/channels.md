@@ -14,8 +14,13 @@ codex plugin marketplace list --json
 codex plugin list --json
 ```
 
-After the approved stable tag commit matches the observed marketplace head,
-refresh and register the floating install:
+The supported floating registration tracks the `release` branch
+(`lawzava/megapowers@release` on Claude, `--ref release` on Codex), which only
+fast-forwards to signed release tags. A registration without a ref tracks
+`main`; Codex refreshes it at startup and prunes superseded caches, so treat it
+as a channel defect and propose re-registration with the ref. After the
+approved stable tag commit matches the observed marketplace head, refresh and
+register the floating install:
 
 ```bash
 claude plugin marketplace update megapowers

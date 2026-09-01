@@ -6,8 +6,9 @@
     "minimum_reps": 3,
     "default_min_recall": 0.6,
     "default_max_false_selection_rate": 0.34,
+    "max_median_final_words": 120,
+    "max_em_dash_rate": 0.1,
     "per_skill": {
-      "code-quality": { "min_recall": 0 },
       "verify-and-finish": { "min_recall": 0.3 }
     },
     "per_case": {

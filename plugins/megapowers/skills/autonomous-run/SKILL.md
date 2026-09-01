@@ -1,6 +1,9 @@
 ---
 name: autonomous-run
 description: Use when an approved goal must continue unattended across many steps, milestones, context resets, or sessions.
+when_to_use: Trigger phrases: run unattended, keep going across resets, babysit this PR until merged, continue until done, overnight run, resume the approved goal. Not for one bounded task.
+metadata:
+  short-description: Durable unattended progress across steps, resets, and sessions
 ---
 
 # Autonomous Run

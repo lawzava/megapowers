@@ -2,7 +2,6 @@
   "schema_version": "1",
   "skills": [
     { "name": "autonomous-run", "status": "stable" },
-    { "name": "code-quality", "status": "stable" },
     { "name": "design-and-plan", "status": "stable" },
     { "name": "evidence-research", "status": "experimental" },
     { "name": "grill-me", "status": "experimental" },

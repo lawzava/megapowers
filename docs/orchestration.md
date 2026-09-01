@@ -36,20 +36,27 @@ The file is Markdown so the lead can read it directly. A compact structured
 block keeps the vocabulary consistent:
 
 ```yaml
-version: 1
-refreshed_at: 2026-08-18
-expires_at: 2026-09-01
+version: 2
+refreshed_at: 2026-09-01
+expires_at: 2026-10-01
 policy:
   capability_floor: strong
-  optimize: [speed, cost]
+  optimize_after_floor: [speed, cost]
+  dispatch:
+    selection_reuse: once-per-session
+    fallback: { strategy: next-ranked, on: [unavailable, auth_failure, timeout, oracle_failure] }
   escalate_on: [oracle_failure, high_risk, unresolved_ambiguity]
 profiles:
   balanced-build:
-    roles: [writer, challenger]
-    reasoning: strong
+    roles: [writer]
+    intelligence: strong
     speed: balanced
     cost: medium
     write: true
+harnesses:
+  <harness>: { integration: megapowers-plugin, integration_version: <plugin-version>, support: native }
+lead_defaults:
+  <harness>: { model: <native-model-id>, effort: high, intelligence: frontier, status: available }
 bindings:
   <harness>:
     balanced-build:
@@ -60,12 +67,15 @@ bindings:
       access: native
       status: available
       rankable: true
+      fallbacks:
+        - { model: <other-model-id>, effort: high, access: native, rankable: false }
 ```
 
-`reasoning`, `speed`, and `cost` are relative operator judgments, not measured
-facts. A binding is eligible for capability ranking only when `rankable: true`,
+`intelligence`, `speed`, and `cost` are relative operator judgments, not
+measured facts. Version 1 files that use `reasoning` and `optimize` remain
+readable; treat `reasoning` as `intelligence`. A binding is eligible for capability ranking only when `rankable: true`,
 its model and effort are known, it is available to the active harness, fits the
-lane's role and write boundary, meets the reasoning floor, and has native
+lane's role and write boundary, meets the capability floor, and has native
 access. Keep ambient or otherwise unverified bindings unranked; use them only
 through an explicit task-shape route. For independent review, its opaque
 `family` must differ from every artifact author's family. Among eligible

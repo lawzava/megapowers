@@ -5,8 +5,9 @@
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
 megapowers is exactly one plugin for current Claude Code and Codex. It adds
-fifteen task-level skills, one shared default communication style, and a small
-destructive-command tripwire. It does not replace native agents, plans, goals,
+task-level skills (the inventory lives in `plugins/megapowers/skills/catalog.json`),
+one shared default communication style, and a small destructive-command
+tripwire. It does not replace native agents, plans, goals,
 permissions, worktrees, memory, or browser tools.
 
 The plugin is deliberately small. There is no model router, session catalog,
@@ -18,19 +19,21 @@ layer for other harnesses.
 Claude Code:
 
 ```bash
-claude plugin marketplace add lawzava/megapowers
+claude plugin marketplace add lawzava/megapowers@release
 claude plugin install megapowers@megapowers
 ```
 
 Codex:
 
 ```bash
-codex plugin marketplace add lawzava/megapowers
+codex plugin marketplace add lawzava/megapowers --ref release
 codex plugin add megapowers@megapowers
 ```
 
-Start a fresh session after installation. Full update, verification, pinning,
-and uninstall instructions are in [docs/install.md](./docs/install.md).
+Start a fresh session after installation. The `release` branch only moves to
+signed release tags, so marketplace refreshes never install unreleased `main`
+state. Full update, verification, pinning, and uninstall instructions are in
+[docs/install.md](./docs/install.md).
 
 ## The workflow
 
@@ -42,7 +45,7 @@ the full body loads only when selected.
 | Choose between inline work, native agents, a durable run, or review | `orchestrating` |
 | Specify behavior, resolve requirements, and write an executable plan | `design-and-plan` |
 | Stress-test a plan, decision, or idea through a round-based interview | `grill-me` |
-| Change behavior with a verified red, green, refactor loop | `test-first-implementation` |
+| Change behavior with a verified red, green, refactor loop and language-specific code judgment | `test-first-implementation` |
 | Find a root cause before fixing a bug or flaky test | `systematic-debugging` |
 | Prove completion, handoff, commit, merge, or release claims | `verify-and-finish` |
 | Preview and authorize a real-world side effect | `safe-effects` |
@@ -50,7 +53,6 @@ the full body loads only when selected.
 | Send an explicit artifact to a different provider for adversarial review | `independent-review` |
 | Audit memory and automatically apply one approved evidence-based cleanup | `memory-hygiene` |
 | Draft, rewrite, edit, or preserve prose without dropping or inventing facts | `humanizing-prose` |
-| Make code-quality judgments from repository context and stable language guidance | `code-quality` |
 | Upgrade Megapowers without changing its source, scope, pins, or local edits | `upgrading-megapowers` |
 | Research current facts, historical rationale, or contested evidence | `evidence-research` |
 | Configure, debug, or verify an MCP server connection | `mcp-setup` |
@@ -103,7 +105,7 @@ Four evidence classes are kept separate:
    Credentialed execution is disabled pending broker schema `2`; the study is
    report-only.
 
-No current fifteen-skill behavioral result is claimed from selftests. Historical
+No current-candidate behavioral result is claimed from selftests. Historical
 measurements, including null results and their limitations, remain in
 [evals/RESULTS-archive.md](./evals/RESULTS-archive.md). Current protocols and gates are in
 [evals/README.md](./evals/README.md) and

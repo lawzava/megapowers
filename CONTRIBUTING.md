@@ -26,7 +26,8 @@ A runner selftest proves mechanics only. It is not behavioral evidence.
 
 ## Scope
 
-- Keep the marketplace at exactly one plugin and the inventory at fifteen skills.
+- Keep the marketplace at exactly one plugin. `skills/catalog.json` is the
+  skill inventory; tests and docs derive counts from it, never restate them.
 - Keep semantic skills portable. Harness-specific mechanics belong at a narrow
   adapter or documented provider boundary.
 - Prefer native agents, goals, permissions, worktrees, memory, and browser tools.
@@ -67,5 +68,6 @@ indeterminate, timed-out, or harness-error data fails closed.
 3. Run `scripts/release.sh X.Y.Z`; it validates the clean, already-versioned
    candidate without mutating, tagging, or publishing it.
 4. Review the diff, then perform separately authorized tag and publish actions.
-5. Wait for remote CI on the exact revision.
+5. Wait for remote CI on the exact revision. The release workflow fast-forwards
+   the `release` branch to the attested tag; installs track that branch.
 6. Run exact-tag install smoke against the public tag.

@@ -35,7 +35,7 @@ credential_count="$(grep -c 'persist-credentials: false' "$ci")"
 [[ $checkout_count -eq $credential_count ]] ||
   fail 'every checkout must disable persisted credentials'
 
-grep -qF '@anthropic-ai/claude-code@2.1.233' "$ci" ||
+grep -qF '@anthropic-ai/claude-code@2.1.257' "$ci" ||
   fail 'Claude Code CLI is not version-pinned'
 grep -qF 'apt-get install -y jq ripgrep shellcheck' "$ci" ||
   fail 'CI does not install the declared ripgrep test dependency'
