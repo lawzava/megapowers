@@ -32,6 +32,5 @@
     "brandColor": "#1F6FEB",
     "websiteURL": "https://github.com/lawzava/megapowers"
   },
-  "homepage": "https://github.com/lawzava/megapowers",
-  "hooks": "./hooks/hooks.json"
+  "homepage": "https://github.com/lawzava/megapowers"
 }

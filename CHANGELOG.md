@@ -28,7 +28,6 @@ proves the Codex skills catalog was rendered.
   Codex skills catalog was rendered and the runner fails closed when it is not.
 - `MEGAPOWERS_HARNESS=claude|codex` overrides the Codex adapter heuristic in
   both hooks; hooks declare `timeout` and `statusMessage`.
-- Plugin manifests declare `skills` and `hooks` component paths explicitly.
 
 ### Changed
 
