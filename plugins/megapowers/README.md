@@ -4,10 +4,10 @@ One native-first workflow plugin for current Claude Code and Codex.
 
 ## Contents
 
-- `skills/`: fifteen task-level skills for orchestration, structured interviews,
-  research, design, implementation, debugging, verification, effects, durable
-  runs, independent review, memory hygiene, MCP setup, prose, code quality, and
-  safe upgrades. `skills/catalog.json` records stable or experimental maturity
+- `skills/`: task-level skills for orchestration, structured interviews,
+  research, design, implementation with language-specific code judgment,
+  debugging, verification, effects, durable runs, independent review, memory
+  hygiene, MCP setup, prose, and safe upgrades. `skills/catalog.json` records stable or experimental maturity
   outside portable skill frontmatter.
 - `output-styles/`: the shared source for direct, concise technical replies.
 - `hooks/`: a Codex startup hook for the shared style and one

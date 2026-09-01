@@ -87,7 +87,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install pinned Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code@2.1.233
+        run: npm install -g @anthropic-ai/claude-code@2.1.257
       - name: Validate sole Claude plugin
         run: |
           claude plugin validate --strict .claude-plugin/marketplace.json
@@ -100,7 +100,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install pinned minimum Codex CLI
-        run: npm install -g @openai/codex@0.149.0
+        run: npm install -g @openai/codex@0.152.0
       - name: Codex install smoke
         run: scripts/codex-install-smoke.sh
 

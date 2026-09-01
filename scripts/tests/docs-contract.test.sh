@@ -40,7 +40,7 @@ active_docs=(
   "$ROOT/evals/README.md"
 )
 
-if rg -ni 'OpenCode|Grok|model(s|)[.]toml|delegates[.]toml|model catalog|model routing|mega-(orchestration|guardrails|go|python|ts|frontend)' "${active_docs[@]}"; then
+if rg -ni 'OpenCode|model(s|)[.]toml|delegates[.]toml|model catalog|model routing|mega-(orchestration|guardrails|go|python|ts|frontend)' "${active_docs[@]}"; then
   fail 'active docs retain removed runtime or plugin claims'
 fi
 
@@ -96,22 +96,22 @@ grep -Eqi 'native (team|task)' "$ROOT/docs/orchestration.md" ||
   fail 'orchestration docs omit native durable coordination'
 grep -q 'report-only' "$ROOT/docs/advanced/evals.md" || fail 'eval docs do not label PR replay report-only'
 grep -q 'not a security boundary' "$ROOT/SECURITY.md" || fail 'security boundary warning missing'
-grep -q '| Fifteen skills |' "$ROOT/SECURITY.md" || fail 'security capability count is stale'
+grep -q '^| Skills |' "$ROOT/SECURITY.md" || fail 'security table omits the skills row'
 
+# Counts derive from skills/catalog.json; no current document may restate one.
 catalog_count="$(jq '.skills | length' "$ROOT/plugins/megapowers/skills/catalog.json")"
-[[ "$catalog_count" == 15 ]] || fail "skill catalog count changed to $catalog_count; update every pinned count in this test"
-grep -q 'fifteen-skill' "$ROOT/README.md" || fail 'README does not carry the current skill count'
-grep -q 'fifteen-skill' "$ROOT/evals/RESULTS.md" || fail 'RESULTS current-candidate section does not carry the current skill count'
-# RESULTS.md keeps dated counts below its historical divider; only the
-# current-candidate section must track the catalog.
-for file in README.md .agents/skills/README.md; do
-  if grep -Eqi '(ten|eleven|twelve|thirteen|fourteen|sixteen)[- ]skill' "$ROOT/$file"; then
-    fail "$file restates a stale skill count"
+dir_count="$(find "$ROOT/plugins/megapowers/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')"
+[[ "$catalog_count" == "$dir_count" ]] || fail "catalog lists $catalog_count skills but $dir_count SKILL.md files ship"
+grep -q 'skills/catalog.json' "$ROOT/README.md" || fail 'README does not point at the catalog as the inventory'
+count_words='(ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen)[- ]skill'
+for file in README.md .agents/skills/README.md SECURITY.md CONTRIBUTING.md docs/harness-support.md plugins/megapowers/README.md; do
+  if grep -Eqi "$count_words" "$ROOT/$file"; then
+    fail "$file restates a skill count; derive it from catalog.json"
   fi
 done
-if sed -n '1,/^## Historical record$/p' "$ROOT/evals/RESULTS.md" |
-  grep -Eqi '(ten|eleven|twelve|thirteen|fourteen|sixteen)[- ]skill'; then
-  fail 'evals/RESULTS.md current-candidate section restates a stale skill count'
+# RESULTS.md keeps dated counts below its historical divider.
+if sed -n '1,/^## Historical record$/p' "$ROOT/evals/RESULTS.md" | grep -Eqi "$count_words"; then
+  fail 'evals/RESULTS.md current-candidate section restates a skill count'
 fi
 experimental_list="$(jq -r '[.skills[] | select(.status == "experimental") | "`" + .name + "`"] | join(", ")' \
   "$ROOT/plugins/megapowers/skills/catalog.json")"

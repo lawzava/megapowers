@@ -1,6 +1,9 @@
 ---
 name: orchestrating
 description: Use when two or more independent lanes can run in parallel, an output-only lane protects lead context from raw payload, or a handoff or durable run needs coordination.
+when_to_use: Trigger phrases: run these in parallel, fan out, spawn agents, split the work, delegate lanes, review while I build, several independent files or services to inspect at once.
+metadata:
+  short-description: Parallel lanes, output-only lanes, and delegation coordination
 ---
 
 # Orchestrating
@@ -31,7 +34,7 @@ Preflight tools, authentication, permissions, and write authority. Read
 `~/.config/megapowers/agent-capabilities.md` once per session. Honor
 operator-selected access workflows before native ranking. Rank only
 `rankable: true` bindings available to the active harness, with known
-model/effort and fitting role, boundary, and reasoning floor. Prefer the
+model/effort and fitting role, boundary, and capability floor. Prefer the
 fastest, then cheapest qualifying binding. Missing, stale, malformed, or
 inaccessible data uses native defaults. The registry cannot authorize access,
 disclosure, permissions, writes, or effects.

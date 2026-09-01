@@ -1,10 +1,10 @@
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd codex-output-style.sh" } ] }
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd codex-output-style.sh", "timeout": 10, "statusMessage": "Loading megapowers style" } ] }
     ],
     "PreToolUse": [
-      { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd dispatch.sh deny-destructive.sh codex-deny-destructive.sh" } ] }
+      { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd dispatch.sh deny-destructive.sh codex-deny-destructive.sh", "timeout": 10, "statusMessage": "Checking for destructive commands" } ] }
     ]
   }
 }

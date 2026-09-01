@@ -2497,6 +2497,15 @@ type brokerResponse struct {
 	RC              int                  `json:"rc"`
 	DurationMS      int64                `json:"duration_ms"`
 	Isolation       isolationAttestation `json:"isolation"`
+	// SkillsCatalog is optional diagnostic data (treatment arms only); installed
+	// A/B records it but never scores on it.
+	SkillsCatalog *brokerSkillsCatalog `json:"skills_catalog,omitempty"`
+}
+
+type brokerSkillsCatalog struct {
+	Rendered bool     `json:"rendered"`
+	Skills   []string `json:"skills"`
+	Source   string   `json:"source"`
 }
 
 func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult, error) {

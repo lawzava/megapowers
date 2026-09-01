@@ -33,49 +33,6 @@
       "provenance": "authored 2026-08-30; attended continuation must not read as an unattended run"
     },
     {
-      "id": "code-quality-verbatim",
-      "kind": "verbatim",
-      "expected": "code-quality",
-      "prompt": "Should Load return an error or panic on a missing file here? Nothing in this repository settles the convention. Decide, apply the decision, and say why in one line.",
-      "files": {
-        "go.mod": "module example.com/probe\n\ngo 1.24\n",
-        "store.go": "package store\n\nimport \"os\"\n\nfunc Load(path string) string {\n\tdata, _ := os.ReadFile(path)\n\treturn string(data)\n}\n"
-      },
-      "provenance": "authored 2026-08-30 against the v0.23.0 description"
-    },
-    {
-      "id": "code-quality-paraphrase",
-      "kind": "paraphrase",
-      "expected": "code-quality",
-      "prompt": "I cannot decide between a sentinel error and wrapped context errors for this helper, and the codebase has no precedent either way. Pick one, change the code, and justify briefly.",
-      "files": {
-        "go.mod": "module example.com/probe\n\ngo 1.24\n",
-        "fetch.go": "package fetch\n\nimport \"errors\"\n\nfunc Get(key string) (string, error) {\n\tif key == \"\" {\n\t\treturn \"\", errors.New(\"bad\")\n\t}\n\treturn key, nil\n}\n"
-      },
-      "provenance": "authored 2026-08-30 against the v0.23.0 description"
-    },
-    {
-      "id": "code-quality-buried",
-      "kind": "buried",
-      "expected": "code-quality",
-      "prompt": "While you add the missing size check to Grow below, you will hit a fork: mutex or atomic for guarding the counter? Neither pattern appears elsewhere in this repo, so settle it yourself and note why in one line.",
-      "files": {
-        "go.mod": "module example.com/probe\n\ngo 1.24\n",
-        "counter.go": "package counter\n\ntype Counter struct {\n\tn int\n}\n\nfunc (c *Counter) Grow(delta int) {\n\tc.n += delta\n}\n"
-      },
-      "provenance": "authored 2026-08-30 against the v0.23.0 description"
-    },
-    {
-      "id": "code-quality-near-miss",
-      "kind": "near-miss",
-      "prompt": "Run gofmt over main.go and apply whatever it changes. Nothing else.",
-      "files": {
-        "go.mod": "module example.com/probe\n\ngo 1.24\n",
-        "main.go": "package main\n\nimport \"fmt\"\n\nfunc main()  {\n\tfmt.Println( \"hi\" )\n}\n"
-      },
-      "provenance": "authored 2026-08-30; tool-settled formatting is not a judgment call"
-    },
-    {
       "id": "design-and-plan-verbatim",
       "kind": "verbatim",
       "expected": "design-and-plan",
@@ -262,30 +219,6 @@
       "kind": "near-miss",
       "prompt": "What is the Model Context Protocol, in two sentences?",
       "provenance": "authored 2026-08-30; explaining MCP is not installing or debugging a server"
-    },
-    {
-      "id": "memory-hygiene-verbatim",
-      "kind": "verbatim",
-      "expected": "memory-hygiene",
-      "prompt": "Audit the harness memory in memory/MEMORY.md for stale or unsupported claims and propose evidence-based cleanup. Show the proposal; apply nothing yet.",
-      "files": { "memory/MEMORY.md": "- The deploy script lives at scripts/deploy.sh\n- The team uses spaces, never tabs\n- Redis is required since March\n" },
-      "provenance": "authored 2026-08-30 against the v0.23.0 description"
-    },
-    {
-      "id": "memory-hygiene-paraphrase",
-      "kind": "paraphrase",
-      "expected": "memory-hygiene",
-      "prompt": "My assistant's persistent memory file has accumulated junk from months ago. Prune whatever the evidence in this repo no longer supports — but show me the deletions for approval first. The file is memory/MEMORY.md.",
-      "files": { "memory/MEMORY.md": "- Build with make all\n- The API key rotates weekly\n" },
-      "provenance": "authored 2026-08-30 against the v0.23.0 description"
-    },
-    {
-      "id": "memory-hygiene-buried",
-      "kind": "buried",
-      "expected": "memory-hygiene",
-      "prompt": "Quick check plus a chore. Check: does memory/MEMORY.md mention Redis? Chore: the same memory file needs a correctness pass — flag entries no evidence supports and propose their removal for my approval.",
-      "files": { "memory/MEMORY.md": "- Redis caches sessions\n- Deploys happen on Fridays\n" },
-      "provenance": "authored 2026-08-30 against the v0.23.0 description"
     },
     {
       "id": "memory-hygiene-near-miss",

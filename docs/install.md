@@ -1,7 +1,10 @@
 # Install megapowers
 
 megapowers supports current Claude Code and Codex. Choose one native channel per
-harness so each skill registers once.
+harness so each skill registers once. Register the marketplace at the `release`
+branch: it only fast-forwards to signed release tags, so the automatic
+marketplace refresh that both harnesses run never installs unreleased `main`
+state.
 
 ## Requirements
 
@@ -14,7 +17,7 @@ harness so each skill registers once.
 ## Claude Code
 
 ```bash
-claude plugin marketplace add lawzava/megapowers
+claude plugin marketplace add lawzava/megapowers@release
 claude plugin install megapowers@megapowers
 ```
 
@@ -39,7 +42,7 @@ install commands. For a local user-only install, use `--scope local`.
 ## Codex
 
 ```bash
-codex plugin marketplace add lawzava/megapowers
+codex plugin marketplace add lawzava/megapowers --ref release
 codex plugin add megapowers@megapowers
 ```
 
@@ -71,8 +74,8 @@ git clone --branch "$release_tag" --depth 1 \
   https://github.com/lawzava/megapowers.git "megapowers-$release_tag"
 ```
 
-Pass that checkout path instead of `lawzava/megapowers` to the marketplace add
-command. Verify the selected commit before trusting it:
+Pass that checkout path instead of `lawzava/megapowers@release` (Claude) or
+`lawzava/megapowers --ref release` (Codex) to the marketplace add command. Verify the selected commit before trusting it:
 
 ```bash
 git -C "megapowers-$release_tag" rev-parse HEAD
@@ -88,9 +91,14 @@ a valid no-op. Preserve the channel already in use and read
 [CHANGELOG.md](../CHANGELOG.md) before changing it.
 
 Before approving a floating update, resolve the latest stable tag to its commit
-and compare it with the observed marketplace repository's default-branch head.
-Stop if they differ; marketplace refresh follows the branch snapshot and must
-not install unreleased branch state as a stable upgrade.
+and compare it with the observed marketplace repository's `release` branch head
+(the default branch only for a registration without a ref). Stop if they
+differ; marketplace refresh follows the branch snapshot and must not install
+unreleased branch state as a stable upgrade. Codex refreshes Git marketplaces
+at startup and prunes superseded plugin caches, so a registration that tracks
+`main` receives unreleased commits and can break sessions that started under
+an older cache path; re-register with `--ref release` if `codex plugin
+marketplace list --json` shows no ref.
 
 Claude Code:
 

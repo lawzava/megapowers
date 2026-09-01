@@ -1,6 +1,9 @@
 ---
 name: verify-and-finish
 description: Use when preparing to claim success, hand work off, commit, merge, open a PR, publish, deploy, or close a task, including in headless and SDK-driven sessions.
+when_to_use: Trigger phrases: commit, push, open the PR, merge, publish, deploy, ship it, done?, wrap up, hand off, final check, all good. Before any claim that work is complete or pushed.
+metadata:
+  short-description: Verification and honest status before any completion claim
 ---
 
 # Verify and Finish

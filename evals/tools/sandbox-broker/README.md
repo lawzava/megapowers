@@ -37,8 +37,42 @@ proxy. Claude receives a random, run-scoped OAuth capability, and the proxy
 replaces it only on allowed Anthropic requests. For Codex, the broker sends the
 access token and ChatGPT account ID directly to `codex app-server` over its
 private standard-input protocol. Codex receives no auth file, auth environment
-variable, or auth command-line argument. The app-server login is in-memory and
-the thread is ephemeral.
+variable, or auth command-line argument. The app-server login is in-memory.
+The thread is not ephemeral: its rollout is recorded under the disposable
+`CODEX_HOME` (`sessions/YYYY/MM/DD/rollout-*.jsonl`) so the broker can read
+the developer prompt after the turn. An ephemeral thread returns `path: null`
+and writes no rollout (observed with codex-cli 0.152.0). The runner deletes
+the disposable home, so nothing persists beyond the run.
+
+## Skills catalog assertion
+
+Treatment responses carry an optional `skills_catalog` object:
+
+```json
+{"rendered": true, "skills": ["orchestrating", "safe-effects"], "source": "codex-rollout-developer-message"}
+```
+
+`rendered` is true only when at least one Megapowers skill was presented to
+the model; `skills` lists the Megapowers skills found; `source` names the
+mechanism:
+
+- `claude-init-skills`: the Claude Code `system/init` event lists every
+  loaded skill in `skills` (plugin skills appear as `megapowers:<name>`;
+  observed with CLI 2.1.257). `claude-init-slash-commands` is the fallback
+  for builds that expose the same names only in `slash_commands`.
+- `codex-rollout-developer-message`: the rollout's `response_item` with
+  `role: developer` whose `input_text` carries `<skills_instructions>`.
+  Codex renders `### Skill roots` as `` - `rN` = `<dir>` `` and each entry as
+  `- <name>: <description> (file: rN/<...>/SKILL.md)`; a skill counts as
+  Megapowers when its expanded path lies inside the verified installed plugin
+  cache. The detected block is appended to the trace as a trailing
+  `broker/skillsCatalog` line for diagnostics; it never becomes actor
+  evidence. A missing rollout or a block without Megapowers entries reports
+  `rendered: false`.
+- `unavailable`: the path exposes no signal (Codex `exec --ephemeral`
+  API-key fallback). `rendered` carries no meaning there.
+
+Control responses omit the field.
 
 The proxy accepts only `POST` requests to the provider message or response endpoints.
 Claude may use the exact `beta=true` query required by current subscription
@@ -90,7 +124,9 @@ The broker otherwise resolves `claude` or `codex` from its own `PATH`.
 It exercises strict decoding, subscription precedence, API-key fallback,
 credential containment, the Codex app-server handshake and authority denylist,
 proxy scope, mount visibility, read/write policy, process-tree timeout, trace
-completion, oracle isolation, redaction, and inventory parsing.
+completion, skills catalog detection and non-detection for both harnesses
+(including a fake app-server that writes its rollout inside the boundary),
+oracle isolation, redaction, and inventory parsing.
 
 The broker emits `trace_complete` only after a valid terminal harness event and exit code `0`.
 Claude tool events count only after their matching `tool_result` event.

@@ -1,6 +1,9 @@
 ---
 name: independent-review
 description: Use when security, auth, billing, concurrency, data integrity, or another high-stakes artifact needs adversarial review by a provider other than its author.
+when_to_use: Trigger phrases: get a second opinion from another model, external review, have Codex, Claude, or Grok review this, adversarial review of auth, billing, or migration code before merge.
+metadata:
+  short-description: Cross-provider adversarial review of a high-stakes artifact
 ---
 
 # Independent Review
@@ -21,8 +24,8 @@ go run "$review_tool" inspect --file path/to/file --provider claude
 go run "$review_tool" inspect --base <base-revision> --head <head-revision> --provider codex
 ```
 
-The inspection prints the provider path, binary hash, package hash, and an
-`approval_token`. Check them, copy that token, declare the
+The inspection prints the provider path, binary hash, each chunk's package
+hash, and one `approval_token`. Check them, copy that token, declare the
 different artifact author, and approve only that exact package and binary:
 
 ```bash
@@ -33,7 +36,10 @@ go run "$review_tool" review --base <base-revision> --head <head-revision> \
   --provider codex --author claude --approve-external "$approval_token"
 ```
 
-Author and provider must differ. The tool also rejects project-selected
+Author and provider must differ; providers are `claude`, `codex`, and `grok`.
+Ranges above one package split into up to 16 directory-grouped chunks
+dispatched in order. A preflight probe fails fast on login, usage-limit, or
+stall before any artifact bytes leave the machine. The tool also rejects project-selected
 binaries, symlinks, submodules, binary data, oversized packages, and secret-like
 paths or patterns. Commit ranges use immutable revisions, so unrelated
 worktree changes are excluded.

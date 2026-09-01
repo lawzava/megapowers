@@ -41,8 +41,11 @@ condition, or measurement.
 
 ## Skills
 
-- Skill frontmatter contains portable `name` and task-triggering `description`
-  fields only. Components remain at plugin root under `skills/` and `hooks/`.
+- Skill frontmatter contains `name`, a task-triggering `description`, a
+  `when_to_use` line of trigger phrases, `metadata.short-description`, and
+  optionally `disable-model-invocation`. Codex honors `name`, `description`,
+  and `metadata.short-description` and ignores the rest. Components remain at
+  plugin root under `skills/` and `hooks/`.
 - Keep judgment in skills and deterministic policy in tests or tools. Required
   references are linked directly; optional details load only when relevant.
 - Do not commit generated agent workspaces or planning artifacts under

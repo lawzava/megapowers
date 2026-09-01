@@ -56,6 +56,25 @@ second failure fails the run closed and writes the attempt's trace and error
 to `<out>/failures/` — private maintainer diagnostics, never part of the
 publish bundle.
 
+A broker `skills_catalog` attestation with `rendered: false` is the same
+class of failure: the harness never presented the Megapowers catalog, so the
+probe cannot measure recall. The attempt is retried once and a second miss
+fails the run closed naming the harness. The manifest records
+`catalog_rendered` (`true` when every probe was attested, `null` when the
+harness path reports no signal) and `catalog_source`.
+
+## Response length
+
+Every row carries `final_words` (whitespace-separated words in the final
+response after fenced code blocks are removed) and `final_em_dashes` (count
+of U+2014). The manifest reports `median_precision_final_words` over
+`no-skill` and `near-miss` probes and `em_dash_rate`, the fraction of all
+finals containing an em dash. `gates.json` may set
+`acceptance.max_median_final_words` and `acceptance.max_em_dash_rate`; absent
+values are report-only, present values become violations enforced for the
+harnesses in `enforce_harnesses`. The shipped gates set 120 words and 0.1
+for Claude.
+
 Run Claude Code and Codex separately. `--filter <substring>` restricts a run
 to matching case ids; use it for the pre-merge slice of one edited skill plus
 the `no-skill` pool. The publish bundle contains only sanitized
@@ -64,22 +83,28 @@ private paths are never published.
 
 ## Corpus and gates
 
-`cases.json` ships at least three recall probes per skill and at least ten
-no-skill probes. Every probe records provenance. `gates.json` enforces for
-the harnesses in `enforce_harnesses` (currently Claude only; Codex
-activation is descoped because both plugin-side levers measured null on
-2026-08-31) and records violations without failing elsewhere.
+`cases.json` ships at least three recall probes per model-selectable skill
+and at least ten no-skill probes. Skills whose `SKILL.md` frontmatter sets
+`disable-model-invocation: true` (currently `memory-hygiene`) cannot be
+selected by the model, carry no recall probes, and keep only precision
+probes. Every probe records provenance. `gates.json` enforces for the
+harnesses in `enforce_harnesses` (currently Claude only) and records
+violations without failing elsewhere. The 2026-08-31 Codex null result
+(0/210 activations) is under re-verification pending the broker's skills
+catalog assertion: a 2026-09-01 audit found 27/32 interactive Codex sessions
+reading a Megapowers `SKILL.md`, so the null is suspected to be a staging
+artifact rather than a harness property. Codex enforcement stays withheld
+until a run with `catalog_rendered: true` reproduces or overturns it.
 
-Two calibrated boundaries are accepted, not defects: `code-quality`
-(`min_recall: 0`) and `verify-and-finish` (`min_recall: 0.3`) trigger on
-conditions the model only recognizes mid-task, so intake-time selection
-under-fires while inline behavior stays sound; and
-`safe-effects-near-miss` never gates
+Two calibrated boundaries are accepted, not defects: `verify-and-finish`
+(`min_recall: 0.3`) triggers on conditions the model only recognizes
+mid-task, so intake-time selection under-fires while inline behavior stays
+sound; and `safe-effects-near-miss` never gates
 (`per_case.max_false_selection_rate: 1`): once the broker write fix let
 actors actually perform the probe's file overwrite, the model consistently
-consulted the skill first — defensible caution kept as signal only. Their probes remain in the corpus as
-longitudinal signal. Recalibrate against `evals/RESULTS.md` when skill text
-or models change.
+consulted the skill first — defensible caution kept as signal only. Their
+probes remain in the corpus as longitudinal signal. Recalibrate against
+`evals/RESULTS.md` when skill text or models change.
 
 ## Oracle mutation check
 

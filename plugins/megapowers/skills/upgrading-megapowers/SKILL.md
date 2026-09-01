@@ -1,6 +1,9 @@
 ---
 name: upgrading-megapowers
 description: Use when asked to update, upgrade, refresh, reinstall, or migrate Megapowers, check for a newer release, or repair stale installed plugin state.
+when_to_use: Trigger phrases: update megapowers, upgrade the plugin, is there a newer release, reinstall megapowers, stale plugin cache, plugin path not found.
+metadata:
+  short-description: Inventory, approve, and verify a Megapowers upgrade
 ---
 
 # Upgrading Megapowers
@@ -18,9 +21,12 @@ per harness and exclude unrelated cleanup. If already current, report a
 verified no-op.
 
 Resolve the stable release tag to its exact commit and the observed marketplace
-source's default-branch head. A floating refresh may proceed only when the
+source's tracked head: its `release` branch when the registration carries that
+ref, otherwise its default branch. A floating refresh may proceed only when the
 release commit and marketplace head match. Otherwise stop before any write;
-never install unreleased branch state as a stable upgrade.
+never install unreleased branch state as a stable upgrade. A registration that
+tracks the default branch is a channel defect: report it and propose
+re-registering at `release` as a separately approved write.
 
 After refreshing but before registration, resolve the snapshot commit and
 require it to match the approved commit. Otherwise stop with the installed

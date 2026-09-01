@@ -1,6 +1,6 @@
 # Harness support
 
-Last reviewed: 2026-08-27.
+Last reviewed: 2026-09-01.
 
 Current stable Claude Code and Codex are the only supported harnesses. Portable
 skills may load elsewhere, but this repository does not test or document those
@@ -10,19 +10,21 @@ environments.
 |---|---|---|
 | Marketplace metadata | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
 | Plugin manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
-| Fifteen task skills | Supported | Supported |
+| Task skills | Supported | Supported |
 | Default communication style | Forced plugin output style | Trusted startup hook |
 | Destructive-command guard | High-confidence denies only | High-confidence denies only |
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
-| Independent review provider | Claude or Codex CLI, different from author | Claude or Codex CLI, different from author |
+| Independent review provider | Claude, Codex, or Grok CLI, different from author | Claude, Codex, or Grok CLI, different from author |
 | Credentialed installed A/B | Optional diagnostic arm | Optional diagnostic arm |
 | Exact-tag install smoke | Post-publish oracle | Post-publish oracle |
 
 ## Shared contract
 
-Skills use portable `name` and `description` frontmatter. `SKILL.md` bodies
+Skills use `name`, `description`, `when_to_use`, and `metadata.short-description`
+frontmatter; `memory-hygiene` sets `disable-model-invocation`. Codex honors
+`name`, `description`, and the short description and ignores the rest. `SKILL.md` bodies
 remain harness-neutral except `independent-review`, whose purpose is to select
 one of the two supported provider CLIs explicitly. Channel-specific upgrade
 commands live in a directly linked reference loaded only after channel

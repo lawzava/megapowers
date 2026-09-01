@@ -8,7 +8,8 @@ work. It supplements tests and measurements. It does not replace them.
 
 - Run inside the Git repository that owns the artifact.
 - Go 1.25 or newer available for `go run` and rooted receipt writes.
-- Claude Code or Codex installed and authenticated as the reviewer provider.
+- Claude Code, Codex, or Grok CLI installed and authenticated as the reviewer
+  provider. The provider's vendor family must differ from the author's.
 - A reviewer provider different from the artifact author.
 - Human approval for the disclosed package.
 
@@ -33,7 +34,8 @@ go run "$review_tool" inspect --base <base-revision> --head <head-revision> \
   --provider codex
 ```
 
-The disclosure shows source identity, paths, bytes, package hash, resolved
+The disclosure shows source identity, per-chunk paths, bytes, and package
+hashes, resolved
 provider binary path, binary hash, and an `approval_token`. Stop if a path,
 byte count, provider, or binary is not the one intended. Copy the token only
 after reviewing those fields:
@@ -73,7 +75,12 @@ execution path, so later pathname replacement cannot change what runs.
 ## Receipts and transcripts
 
 Receipts are private advisory records. They bind the source identity, package
-hash, provider, author, and command outcome. They are not tamper-proof
+hash, provider, author, and command outcome. A range above one package splits
+into up to 16 directory-grouped chunks under one approval token; an index
+`receipt.json` lists one `chunk-NN/receipt.json` per dispatched package. A
+preflight probe fails fast, before any artifact bytes leave the machine, when
+the provider reports a login or usage limit or stalls past
+`--preflight-timeout`. They are not tamper-proof
 attestations and do not gate a release by themselves.
 
 Raw prompts and provider output are not retained by default. Use

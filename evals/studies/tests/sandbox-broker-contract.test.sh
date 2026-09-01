@@ -47,6 +47,7 @@ for claim in \
   "trace normalization requires a complete result" \
   "Codex skills.read activation is normalized" \
   "Codex shell reads of a skill body are normalized once" \
+  "skills catalog rendering is detected per harness" \
   "oracle phase excludes credentials and network" \
   "response redaction removes credential values" \
   "arm inventory is exact"
@@ -101,6 +102,17 @@ if grep -qF -- '"--bare"' "$SOURCE"; then
   echo "FAIL sandbox broker disables Claude subscription authentication with --bare" >&2
   exit 1
 fi
+
+# An ephemeral app-server thread persists no rollout, which is the only place
+# the rendered Codex skills catalog is observable.
+if grep -qF '"ephemeral": true' "$SOURCE"; then
+  echo "FAIL sandbox broker starts an ephemeral Codex thread and cannot assert the skills catalog" >&2
+  exit 1
+fi
+grep -qF '"skills_catalog,omitempty"' "$SOURCE" || {
+  echo "FAIL sandbox broker response does not carry the skills_catalog assertion" >&2
+  exit 1
+}
 
 grep -qF '"defaultMode": "acceptEdits"' "$SOURCE" || {
   echo "FAIL sandbox broker does not allow isolated fixture edits" >&2

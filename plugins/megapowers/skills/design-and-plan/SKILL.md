@@ -1,6 +1,9 @@
 ---
 name: design-and-plan
 description: Use when behavior or an interface needs a specification, requirements need tradeoffs, or approved work needs a multi-step plan.
+when_to_use: Trigger phrases: write a spec, plan the implementation, how should we build this, break it into steps, requirements, tradeoffs, architecture for a new feature or interface.
+metadata:
+  short-description: Specification, tradeoffs, and executable plan before building
 ---
 
 # Design and Plan
@@ -9,14 +12,10 @@ Resolve repository facts before user-owned decisions.
 
 ## Understand the system
 
-Read repository instructions and relevant code. Establish:
-
-1. Entry points, callers, implementations, and blast radius.
-2. The nearest sibling that defines naming, errors, and test conventions.
-3. Existing tests and whether they catch the proposed failure.
-4. The one load-bearing safety fact that could make a small-looking change
-   unsafe, and a proportionate way to prove it.
-5. What was not read and why it cannot affect the decision.
+Read repository instructions and relevant code. Establish entry points,
+callers, blast radius, the nearest convention-setting sibling, existing test
+coverage, the one safety fact that could make a small change unsafe, and what
+was not read and why it cannot affect the decision.
 
 Separate factual prerequisites from preference, policy, and other user-owned
 decisions. Ask dependency-frontier questions only after repository facts are

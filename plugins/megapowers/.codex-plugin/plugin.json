@@ -1,6 +1,6 @@
 {
   "name": "megapowers",
-  "version": "0.26.1",
+  "version": "0.27.0",
   "description": "Native-first agentic workflow skills, concise default communication, and a high-confidence destructive-command guard.",
   "author": {
     "name": "lawzava"
@@ -17,20 +17,21 @@
   "interface": {
     "displayName": "megapowers",
     "shortDescription": "Native-first agentic workflows and safety.",
-    "longDescription": "Fifteen task-level skills for orchestration, structured interviews, evidence research, design, implementation, debugging, verification, effects, autonomous work, independent review, memory hygiene, MCP setup, prose, code quality, and safe upgrades, plus concise startup communication and a destructive-command guard.",
+    "longDescription": "Task-level skills for orchestration, structured interviews, evidence research, design, implementation, debugging, verification, effects, autonomous work, independent review, memory hygiene, MCP setup, prose, and safe upgrades, plus concise startup communication and a destructive-command guard.",
     "developerName": "lawzava",
-    "category": "Workflow",
+    "category": "Developer Tools",
     "capabilities": [
-      "Skills",
-      "Workflow guidance",
-      "Default communication style",
-      "Safety hooks"
+      "Read",
+      "Write"
     ],
     "defaultPrompt": [
       "Use megapowers to orchestrate this task.",
       "Use megapowers to implement this change test-first.",
       "Use megapowers to independently review this change."
     ],
-    "brandColor": "#1F6FEB"
-  }
+    "brandColor": "#1F6FEB",
+    "websiteURL": "https://github.com/lawzava/megapowers"
+  },
+  "homepage": "https://github.com/lawzava/megapowers",
+  "hooks": "./hooks/hooks.json"
 }

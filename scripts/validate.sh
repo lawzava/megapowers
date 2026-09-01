@@ -127,7 +127,7 @@ run_check "Go vet" 120s bash -c '
 '
 
 run_check "full-tree security lint" 60s scripts/security-lint.sh
-run_check "freshness metadata" 30s scripts/check-freshness.sh --max-age-days 36500
+run_check "freshness metadata" 30s scripts/check-freshness.sh --max-age-days "${MEGAPOWERS_FRESHNESS_MAX_AGE_DAYS:-30}"
 
 script_tests=(
   scripts/tests/ci-contract.test.sh

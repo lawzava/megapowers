@@ -37,8 +37,8 @@ not_contains() {
 
 printf '== skill contracts ==\n'
 
-actual="$(find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
-if [ "$actual" = "$EXPECTED" ]; then ok 'inventory is exactly fifteen skills'; else bad 'inventory is exactly fifteen skills'; fi
+actual="$(find "$SKILLS" -mindepth 1 -maxdepth 1 -type d -not -name '.*' -printf '%f\n' | sort)"
+if [ "$actual" = "$EXPECTED" ]; then ok 'inventory matches catalog.json'; else bad 'inventory matches catalog.json'; fi
 
 while IFS= read -r skill; do
   file="$SKILLS/$skill/SKILL.md"
@@ -49,12 +49,19 @@ while IFS= read -r skill; do
 
   name="$(sed -n '2s/^name: //p' "$file")"
   description="$(sed -n '3s/^description: //p' "$file")"
-  fields="$(awk 'NR == 1 { next } /^---$/ { exit } /^[A-Za-z0-9_-]+:/ { sub(/:.*/, ""); print }' "$file")"
+  fields="$(awk 'NR == 1 { next } /^---$/ { exit } /^[A-Za-z0-9_-]+:/ { sub(/:.*/, ""); print }' "$file" | grep -Evx 'disable-model-invocation')"
+  when_to_use="$(sed -n 's/^when_to_use: //p' "$file")"
+  short="$(awk '/^metadata:/ { m = 1; next } m && /^  short-description: / { sub(/^  short-description: /, ""); print; exit }' "$file")"
   if [ "$name" = "$skill" ]; then ok "$skill name matches directory"; else bad "$skill name matches directory"; fi
   if printf '%s' "$description" | grep -Eq '^Use when .+'; then ok "$skill description is task-triggering"; else bad "$skill description is task-triggering"; fi
   if [ "${#description}" -le 250 ]; then ok "$skill description fits 250 characters"; else bad "$skill description fits 250 characters"; fi
   if [ "$fields" = "name
-description" ]; then ok "$skill frontmatter is portable"; else bad "$skill frontmatter is portable"; fi
+description
+when_to_use
+metadata" ]; then ok "$skill frontmatter is portable"; else bad "$skill frontmatter is portable"; fi
+  if printf '%s' "$when_to_use" | grep -Eq '^Trigger phrases: .+'; then ok "$skill when_to_use lists trigger phrases"; else bad "$skill when_to_use lists trigger phrases"; fi
+  if [ $(( ${#description} + ${#when_to_use} )) -le 1536 ]; then ok "$skill listing fits 1536 characters"; else bad "$skill listing fits 1536 characters"; fi
+  if [ -n "$short" ] && [ "${#short}" -le 80 ]; then ok "$skill short-description fits 80 characters"; else bad "$skill short-description fits 80 characters"; fi
 done <<EOF
 $EXPECTED
 EOF
@@ -63,7 +70,6 @@ AGENT_RULES="$ROOT/AGENTS.md"
 GRILL="$SKILLS/grill-me/SKILL.md"
 DESIGN="$SKILLS/design-and-plan/SKILL.md"
 FINISH="$SKILLS/verify-and-finish/SKILL.md"
-QUALITY="$SKILLS/code-quality/SKILL.md"
 RESEARCH="$SKILLS/evidence-research/SKILL.md"
 PROSE="$SKILLS/humanizing-prose/SKILL.md"
 REVIEW="$SKILLS/independent-review/SKILL.md"
@@ -73,7 +79,7 @@ UPGRADE_CHANNELS="$SKILLS/upgrading-megapowers/references/channels.md"
 
 authority='Repository instructions, existing code, and configured project tools are authoritative; skills supply defaults only where the repository is silent\.'
 contains 'root instructions carry repository authority' "$AGENT_RULES" "$authority"
-contains 'code quality carries repository authority' "$QUALITY" "$authority"
+contains 'implementation carries repository authority' "$SKILLS/test-first-implementation/SKILL.md" "$authority"
 
 contains 'design scopes specifications to non-trivial observable behavior' "$DESIGN" 'non-trivial change.*observable behavior'
 contains_document 'design separates requirements from implementation' "$DESIGN" 'behavior contract.*requirements?.*(independent|separate).*(implementation|technical design)'
@@ -141,7 +147,7 @@ contains_document 'research fixes the question decision time boundary and stoppi
 contains_document 'research starts from an artifact anchor' "$RESEARCH" '(code|artifact) anchor'
 contains_document 'research uses proportionate authorized sources' "$RESEARCH" 'tickets.*docs.*chat.*observability.*errors.*analytics.*available.*authorized.*proportionate'
 contains_document 'research prefers primary sources' "$RESEARCH" 'prefer primary sources'
-contains_document 'research classifies load-bearing claims' "$RESEARCH" 'direct.*supported.*inferred.*speculative.*unknown.*contested'
+contains_document 'research classifies load-bearing claims' "$RESEARCH" 'direct-statement.*direct-observation.*source-backed.*history-entry-only.*inferred.*speculative.*unknown.*contested'
 contains_document 'research records sources and gaps' "$RESEARCH" 'sources consulted.*material gaps'
 contains_document 'research protects sensitive transcripts' "$RESEARCH" 'sensitive transcripts.*raw chat.*out of'
 contains_document 'research does not grant implementation or publication authority' "$RESEARCH" 'conclusion.*(does not|is not).*(authority|authorization).*(implement|publish)'
@@ -174,24 +180,23 @@ done
 contains_document 'prose requires accountable attribution' "$PROSE" 'named source.*direct observation.*explicit uncertainty'
 contains_document 'prose makes evaluative claims concrete' "$PROSE" 'actor.*mechanism.*scope.*condition.*measurement'
 contains_document 'prose calibrates unmeasured strength' "$PROSE" 'unmeasured intensifiers?.*(number|bounded scope|source)'
-not_contains 'prose imposes no punctuation ban' 'ban (commas|colons|semicolons|dashes|punctuation)|never use (commas|colons|semicolons|dashes|punctuation)' "$PROSE" "$AGENT_RULES"
+contains_document 'prose bans em dashes' "$PROSE" 'Do not use em dashes'
+contains_document 'prose names machine-prose markers' "$PROSE" 'triads.*rhetorical questions.*closing offers'
 
-contains 'code quality triggers on decisions the repository does not settle' "$QUALITY" 'not settled by the repositor'
-contains 'language references load lazily' "$QUALITY" 'load (exactly|only) one.*language reference'
+TFI="$SKILLS/test-first-implementation/SKILL.md"
+contains 'language references load lazily' "$TFI" 'load (exactly|only) one.*language reference'
 for decision in maintenance review refactor architecture API concurrency debugging; do
-  contains "language gate includes $decision" "$QUALITY" "$decision"
+  contains "language gate includes $decision" "$TFI" "$decision"
 done
-contains 'mechanical style stays with tools' "$QUALITY" 'formatter.*linter.*tests|formatter, linter, and tests'
-contains_document 'quality reduces reader state load' "$QUALITY" 'reader.*(state|load)'
-contains_document 'quality models repeated state branches' "$QUALITY" 'repeated state branches.*domain'
-contains_document 'quality makes lifecycle operations idempotent' "$QUALITY" 'lifecycle operations?.*idempotent'
-contains_document 'quality separates ownership before serialization' "$QUALITY" 'separate ownership before serialization'
-contains_document 'quality promotes recurring failures into structural checks' "$QUALITY" 'failure recurs.*types.*tests.*lint.*canonical helper'
+contains 'mechanical style stays with tools' "$TFI" 'formatter.*linter.*tests|formatter, linter, and tests'
+contains_document 'implementation models repeated state branches' "$TFI" 'repeated state branches.*domain'
+contains_document 'implementation makes lifecycle operations idempotent' "$TFI" 'lifecycle operations?.*idempotent'
+contains_document 'implementation promotes recurring failures into structural checks' "$TFI" 'failure recurs.*types.*tests.*lint.*canonical helper'
 
-references="$(find "$SKILLS/code-quality/references" -maxdepth 1 -type f -printf '%f\n' | sort)"
+references="$(find "$SKILLS/test-first-implementation/references" -maxdepth 1 -type f -printf '%f\n' | sort)"
 if [ "$references" = "go.md
 python.md
-typescript.md" ]; then ok 'code quality has exactly three lazy references'; else bad 'code quality has exactly three lazy references'; fi
+typescript.md" ]; then ok 'implementation has exactly three lazy language references'; else bad 'implementation has exactly three lazy language references'; fi
 
 contains 'implementation requires red before code' "$SKILLS/test-first-implementation/SKILL.md" '(failing test|verify red).*(before|precedes).*(implementation|production code)|production code.*follows.*failing test'
 contains 'implementation requires green evidence' "$SKILLS/test-first-implementation/SKILL.md" 'run.*focused test|verify green'
@@ -267,7 +272,8 @@ contains_document 'review requires explicit egress authorization' "$REVIEW" 'aut
 contains_document 'review surfaces stalled dispatches instead of waiting' "$REVIEW" '(permission prompt|provider stall).*surface|do not wait silently'
 
 catalog_names="$(jq -r '.skills[].name' "$CATALOG" 2>/dev/null | sort)"
-if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count 15 '
+expected_count="$(printf '%s\n' "$EXPECTED" | grep -c .)"
+if [ "$catalog_names" = "$EXPECTED" ] && jq -e --argjson count "$expected_count" '
   .schema_version == "1" and
   (.skills | length) == $count and
   ([.skills[].name] | sort) == ([.skills[].name] | unique | sort) and
@@ -282,11 +288,19 @@ not_contains 'deleted skill names are absent' "$deleted" "$SKILLS" "$AGENT_RULES
 lineage='superpowers|obra/superpowers|jesse vincent|derived from|inspired by|^origin:'
 not_contains 'agent-loaded guidance omits historical lineage' "$lineage" "$SKILLS" "$AGENT_RULES" "$ROOT/plugins/megapowers/hooks"
 
-total_words="$(find "$SKILLS" -mindepth 2 -maxdepth 2 -type f -name SKILL.md -print0 | xargs -0 cat | wc -w)"
+# Word budgets cover the body that loads on selection; frontmatter is bounded
+# separately by the 1536-character listing check above.
+skill_body_words() { awk 'c >= 2 { print } /^---$/ { c++ }' "$1" | wc -w; }
+total_words=0
+while IFS= read -r skill; do
+  total_words=$((total_words + $(skill_body_words "$SKILLS/$skill/SKILL.md")))
+done <<EOF
+$EXPECTED
+EOF
 if [ "$total_words" -le 4600 ]; then ok 'primary skill guidance stays within 4600 words'; else bad 'primary skill guidance stays within 4600 words'; fi
 
 while IFS= read -r skill; do
-  words="$(wc -w < "$SKILLS/$skill/SKILL.md")"
+  words="$(skill_body_words "$SKILLS/$skill/SKILL.md")"
   if [ "$words" -le 400 ]; then ok "$skill stays within 400 words"; else bad "$skill stays within 400 words"; fi
 done <<EOF
 $EXPECTED

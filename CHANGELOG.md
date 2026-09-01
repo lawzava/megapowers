@@ -5,6 +5,50 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.27.0 - 2026-09-02
+
+This release acts on the 2026-09-01 seven-lane audit of real Claude Code and
+Codex sessions: skills gain explicit trigger phrases, the output style bans
+em dashes, installs track a tag-only `release` branch, independent review
+chunks large ranges and adds Grok, and the eval suite measures reply length and
+proves the Codex skills catalog was rendered.
+
+### Added
+
+- Every skill declares `when_to_use` trigger phrases drawn from real session
+  prompts and a `metadata.short-description` for Codex catalog budgets.
+- `memory-hygiene` is user-invoked only (`disable-model-invocation`).
+- The `release` branch only fast-forwards to attested tags; install docs
+  register marketplaces at that ref, and the release workflow moves it.
+- `independent-review` chunks ranges over the byte cap by directory under one
+  approval token, runs a provider preflight that fails fast on quota or auth
+  limits, and accepts `grok` as a third provider.
+- Trigger-recall rows record `final_words` and `final_em_dashes`; Claude gates
+  bound median reply length and em-dash rate. The broker reports whether the
+  Codex skills catalog was rendered and the runner fails closed when it is not.
+- `MEGAPOWERS_HARNESS=claude|codex` overrides the Codex adapter heuristic in
+  both hooks; hooks declare `timeout` and `statusMessage`.
+- Plugin manifests declare `skills` and `hooks` component paths explicitly.
+
+### Changed
+
+- The output style leads with its length budget and bans em dashes; publishing
+  prose defers to `humanizing-prose`, which now lists machine-prose markers.
+- `evidence-research` uses the `memory-hygiene` evidence vocabulary.
+- `design-and-plan` no longer restates the fact-resolution list `grill-me` owns.
+- `docs/orchestration.md` documents registry schema version 2.
+- Skill counts are derived from `skills/catalog.json`; no current document
+  restates a number.
+- CI pins Claude Code 2.1.257 and Codex 0.152.0; local validation checks
+  freshness at 30 days (`MEGAPOWERS_FRESHNESS_MAX_AGE_DAYS` overrides).
+- The marketplace schema URL uses the canonical `www.schemastore.org` host.
+
+### Removed
+
+- `code-quality`. Its durable principles and the three language references
+  moved into `test-first-implementation`. Field recall was 2/9 across two
+  description rewrites; the model decides inline.
+
 ## 0.26.1 - 2026-08-31
 
 This maintenance release removes stale repository artifacts, repairs release

@@ -74,6 +74,25 @@ type isolationAttestation struct {
 	ActorHome                   string   `json:"actor_home"`
 }
 
+// skillsCatalog reports whether the harness presented the Megapowers skill
+// catalog to the model. It is emitted for treatment runs only; Source names
+// the detection mechanism, and "unavailable" means the harness path exposes
+// no signal, so Rendered carries no meaning.
+type skillsCatalog struct {
+	Rendered bool     `json:"rendered"`
+	Skills   []string `json:"skills"`
+	Source   string   `json:"source"`
+}
+
+const (
+	catalogSourceUnavailable         = "unavailable"
+	catalogSourceClaudeInit          = "claude-init-skills"
+	catalogSourceClaudeSlashCommands = "claude-init-slash-commands"
+	catalogSourceCodexRollout        = "codex-rollout-developer-message"
+	skillsInstructionsOpen           = "<skills_instructions>"
+	skillsInstructionsClose          = "</skills_instructions>"
+)
+
 type brokerResponse struct {
 	SchemaVersion   string               `json:"schema_version"`
 	CLIVersion      string               `json:"cli_version"`
@@ -81,6 +100,7 @@ type brokerResponse struct {
 	Trace           string               `json:"trace"`
 	Events          []actorEvent         `json:"events"`
 	PluginInventory []string             `json:"plugin_inventory"`
+	SkillsCatalog   *skillsCatalog       `json:"skills_catalog,omitempty"`
 	OracleRC        *int                 `json:"oracle_rc,omitempty"`
 	RC              int                  `json:"rc"`
 	DurationMS      int64                `json:"duration_ms"`
@@ -104,6 +124,7 @@ type harnessRun struct {
 	duration  time.Duration
 	secrets   []string
 	inventory []string
+	catalog   *skillsCatalog
 }
 
 type authentication struct {
@@ -410,6 +431,7 @@ func execute(ctx context.Context, req brokerRequest) (brokerResponse, error) {
 		Trace:           string(run.trace),
 		Events:          run.events,
 		PluginInventory: run.inventory,
+		SkillsCatalog:   run.catalog,
 		OracleRC:        oracleRC,
 		RC:              run.rc,
 		DurationMS:      run.duration.Milliseconds(),
@@ -1048,7 +1070,7 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 		environment = actorEnvironment(req, authEnvironment)
 		input = []byte(req.Task)
 	} else {
-		codexHome, observedInventory, err := prepareCodexHome(ctx, req, binary)
+		codexHome, installedPlugin, observedInventory, err := prepareCodexHome(ctx, req, binary)
 		if err != nil {
 			return harnessRun{}, err
 		}
@@ -1082,7 +1104,18 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 					result.rc = 125
 				}
 			}
-			return harnessRun{version: version, response: response, trace: trace, events: events, rc: result.rc, duration: result.duration, secrets: []string{auth.credential}, inventory: inventory}, nil
+			var catalog *skillsCatalog
+			if req.Arm == "treatment" {
+				detected, block, catalogErr := codexSkillsCatalog(codexHome, installedPlugin)
+				if catalogErr != nil {
+					return harnessRun{}, fmt.Errorf("read Codex skills catalog: %w", catalogErr)
+				}
+				catalog = &detected
+				// The block is appended after normalization so it can never
+				// become actor evidence; it exists for diagnostics only.
+				trace = append(trace, skillsCatalogTraceLine(detected, block)...)
+			}
+			return harnessRun{version: version, response: response, trace: trace, events: events, rc: result.rc, duration: result.duration, secrets: []string{auth.credential}, inventory: inventory, catalog: catalog}, nil
 		}
 		args = []string{"exec", "--json", "--ephemeral", "--ignore-rules", "--skip-git-repo-check", "-C", req.Project, "-s", "workspace-write", "-c", `approval_policy="never"`, "-c", `sandbox_workspace_write.network_access=false`, "-c", `shell_environment_policy.inherit="none"`, "-m", req.Model}
 		if req.Effort != "" {
@@ -1118,11 +1151,20 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 		trace = trace[:traceLimit]
 		result.rc = 125
 	}
+	var catalog *skillsCatalog
 	if req.Harness == "claude" {
 		inventory, err = observedClaudeInventory(trace, req)
 		if err != nil {
 			return harnessRun{}, err
 		}
+		if req.Arm == "treatment" {
+			detected := claudeSkillsCatalog(trace)
+			catalog = &detected
+		}
+	} else if req.Arm == "treatment" {
+		// codex exec --ephemeral persists no rollout, so the developer prompt
+		// is not observable on the API-key fallback path.
+		catalog = &skillsCatalog{Rendered: false, Skills: []string{}, Source: catalogSourceUnavailable}
 	}
 	response, events, complete := normalizeTrace(req.Harness, trace, result.rc)
 	if !complete {
@@ -1139,7 +1181,7 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 	if proxy != nil {
 		secrets = append(secrets, proxy.token)
 	}
-	return harnessRun{version: version, response: response, trace: trace, events: events, rc: result.rc, duration: result.duration, secrets: secrets, inventory: inventory}, nil
+	return harnessRun{version: version, response: response, trace: trace, events: events, rc: result.rc, duration: result.duration, secrets: secrets, inventory: inventory, catalog: catalog}, nil
 }
 
 type appServerOutput struct {
@@ -1352,8 +1394,14 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 	if _, err := sendRequest(2, "account/login/start", login); err != nil {
 		return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, err
 	}
+	// A non-ephemeral thread records its rollout under the disposable
+	// CODEX_HOME (sessions/YYYY/MM/DD/rollout-*.jsonl). That rollout is the
+	// only place the developer prompt, including the rendered skills catalog,
+	// is observable; an ephemeral thread returns path null and writes nothing
+	// (observed with codex-cli 0.152.0). The disposable home is deleted by
+	// the runner, so nothing persists beyond the run.
 	threadResult, err := sendRequest(3, "thread/start", map[string]any{
-		"model": req.Model, "cwd": req.Project, "approvalPolicy": "never", "sandbox": "danger-full-access", "ephemeral": true, "environments": []any{},
+		"model": req.Model, "cwd": req.Project, "approvalPolicy": "never", "sandbox": "danger-full-access", "ephemeral": false, "environments": []any{},
 		"config": map[string]any{"shell_environment_policy": map[string]any{"inherit": "none"}},
 	})
 	if err != nil {
@@ -1694,10 +1742,12 @@ func writeClaudeSettings(req brokerRequest) (string, error) {
 	return path, nil
 }
 
-func prepareCodexHome(ctx context.Context, req brokerRequest, binary string) (string, []string, error) {
+// prepareCodexHome stages the disposable CODEX_HOME and returns its path, the
+// verified installed plugin cache path (empty for control), and the inventory.
+func prepareCodexHome(ctx context.Context, req brokerRequest, binary string) (string, string, []string, error) {
 	home := filepath.Join(req.ActorHome, ".codex")
 	if err := os.Mkdir(home, 0o700); err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	commands := make([][]string, 0, 3)
 	stagedPlugin := ""
@@ -1706,11 +1756,11 @@ func prepareCodexHome(ctx context.Context, req brokerRequest, binary string) (st
 		pluginDestination := filepath.Join(marketplace, "plugins", "megapowers")
 		stagedPlugin = pluginDestination
 		if err := copyRegularTree(req.PluginRepo, pluginDestination); err != nil {
-			return "", nil, fmt.Errorf("stage Codex plugin: %w", err)
+			return "", "", nil, fmt.Errorf("stage Codex plugin: %w", err)
 		}
 		manifestDirectory := filepath.Join(marketplace, ".agents", "plugins")
 		if err := os.MkdirAll(manifestDirectory, 0o700); err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		manifest := map[string]any{
 			"name": "megapowers-eval",
@@ -1722,10 +1772,10 @@ func prepareCodexHome(ctx context.Context, req brokerRequest, binary string) (st
 		}
 		content, err := json.Marshal(manifest)
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		if err := os.WriteFile(filepath.Join(manifestDirectory, "marketplace.json"), append(content, '\n'), 0o400); err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		commands = append(commands, []string{"plugin", "marketplace", "add", marketplace, "--json"}, []string{"plugin", "add", "megapowers@megapowers-eval", "--json"})
 	}
@@ -1737,10 +1787,10 @@ func prepareCodexHome(ctx context.Context, req brokerRequest, binary string) (st
 	for _, command := range commands {
 		result, runErr := runHarnessUtility(ctx, req, binary, command, environment, true)
 		if runErr != nil {
-			return "", nil, fmt.Errorf("stage Codex plugin registration: %w", runErr)
+			return "", "", nil, fmt.Errorf("stage Codex plugin registration: %w", runErr)
 		}
 		if result.rc != 0 {
-			return "", nil, fmt.Errorf("stage Codex plugin registration: exit %d: %s", result.rc, strings.TrimSpace(string(result.stderr)))
+			return "", "", nil, fmt.Errorf("stage Codex plugin registration: exit %d: %s", result.rc, strings.TrimSpace(string(result.stderr)))
 		}
 		if len(command) >= 2 && command[0] == "plugin" && command[1] == "add" {
 			addOutput = result.stdout
@@ -1749,20 +1799,22 @@ func prepareCodexHome(ctx context.Context, req brokerRequest, binary string) (st
 			listOutput = result.stdout
 		}
 	}
+	installedPath := ""
 	if req.Arm == "treatment" {
-		installedPath, err := codexInstalledPath(addOutput, home)
+		var err error
+		installedPath, err = codexInstalledPath(addOutput, home)
 		if err != nil {
-			return "", nil, err
+			return "", "", nil, err
 		}
 		if err := verifyRegularTreeBytes(stagedPlugin, installedPath); err != nil {
-			return "", nil, fmt.Errorf("verify Codex installed plugin cache: %w", err)
+			return "", "", nil, fmt.Errorf("verify Codex installed plugin cache: %w", err)
 		}
 	}
 	inventory, err := observedCodexInventory(listOutput, req.Arm)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
-	return home, inventory, nil
+	return home, installedPath, inventory, nil
 }
 
 func codexInstalledPath(content []byte, home string) (string, error) {
@@ -1903,6 +1955,188 @@ func observedCodexInventory(content []byte, arm string) ([]string, error) {
 		return nil, errors.New("Codex plugin inventory is not exactly one enabled Megapowers candidate")
 	}
 	return []string{"megapowers"}, nil
+}
+
+// claudeSkillsCatalog reads the first Claude system/init event. Claude Code
+// 2.1.257 lists every loaded skill in init "skills" (plugin skills as
+// "megapowers:<name>"); older builds expose the same names only through
+// "slash_commands".
+func claudeSkillsCatalog(trace []byte) skillsCatalog {
+	scanner := bufio.NewScanner(bytes.NewReader(trace))
+	scanner.Buffer(make([]byte, 64<<10), 8<<20)
+	for scanner.Scan() {
+		var object map[string]any
+		if json.Unmarshal(bytes.TrimSpace(scanner.Bytes()), &object) != nil {
+			continue
+		}
+		if lowerString(object["type"]) != "system" || lowerString(object["subtype"]) != "init" {
+			continue
+		}
+		for _, field := range []struct{ key, source string }{{"skills", catalogSourceClaudeInit}, {"slash_commands", catalogSourceClaudeSlashCommands}} {
+			listed, ok := object[field.key].([]any)
+			if !ok {
+				continue
+			}
+			skills := make([]string, 0)
+			for _, entry := range listed {
+				name, _ := entry.(string)
+				if strings.HasPrefix(name, "megapowers:") {
+					skills = append(skills, strings.TrimPrefix(name, "megapowers:"))
+				}
+			}
+			sort.Strings(skills)
+			return skillsCatalog{Rendered: len(skills) > 0, Skills: skills, Source: field.source}
+		}
+		break
+	}
+	return skillsCatalog{Rendered: false, Skills: []string{}, Source: catalogSourceUnavailable}
+}
+
+// codexSkillsCatalog scans the rollouts recorded under the disposable
+// CODEX_HOME for the developer message that carries <skills_instructions>.
+// Codex renders that block as "### Skill roots" (- `rN` = `<dir>`) followed
+// by "### Available skills" (- <name>: <description> (file: rN/<...>/SKILL.md)).
+// A skill counts as Megapowers when its expanded file path lies inside the
+// verified installed plugin cache. It returns the catalog and the first block
+// found for diagnostics.
+func codexSkillsCatalog(codexHome, installedPlugin string) (skillsCatalog, string, error) {
+	catalog := skillsCatalog{Rendered: false, Skills: []string{}, Source: catalogSourceCodexRollout}
+	sessions := filepath.Join(codexHome, "sessions")
+	if _, err := os.Lstat(sessions); errors.Is(err, os.ErrNotExist) {
+		return catalog, "", nil
+	}
+	rollouts := make([]string, 0)
+	err := filepath.WalkDir(sessions, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() && entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".jsonl") {
+			rollouts = append(rollouts, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return catalog, "", err
+	}
+	sort.Strings(rollouts)
+	firstBlock := ""
+	seen := make(map[string]bool)
+	for _, rollout := range rollouts {
+		blocks, err := rolloutSkillsInstructions(rollout)
+		if err != nil {
+			return catalog, "", err
+		}
+		for _, block := range blocks {
+			if firstBlock == "" {
+				firstBlock = block
+			}
+			for _, name := range megapowersSkillsInBlock(block, installedPlugin) {
+				seen[name] = true
+			}
+		}
+	}
+	for name := range seen {
+		catalog.Skills = append(catalog.Skills, name)
+	}
+	sort.Strings(catalog.Skills)
+	catalog.Rendered = len(catalog.Skills) > 0
+	return catalog, firstBlock, nil
+}
+
+func rolloutSkillsInstructions(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64<<10), 16<<20)
+	blocks := make([]string, 0)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		// Cheap prefilter before JSON decoding; the tag may be written
+		// literally or with JSON-escaped angle brackets.
+		if !bytes.Contains(line, []byte("skills_instructions")) {
+			continue
+		}
+		var record struct {
+			Type    string `json:"type"`
+			Payload struct {
+				Type    string `json:"type"`
+				Role    string `json:"role"`
+				Content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"payload"`
+		}
+		if json.Unmarshal(line, &record) != nil || record.Type != "response_item" || record.Payload.Type != "message" || record.Payload.Role != "developer" {
+			continue
+		}
+		for _, content := range record.Payload.Content {
+			if content.Type != "input_text" {
+				continue
+			}
+			start := strings.Index(content.Text, skillsInstructionsOpen)
+			if start < 0 {
+				continue
+			}
+			block := content.Text[start:]
+			if end := strings.Index(block, skillsInstructionsClose); end >= 0 {
+				block = block[:end+len(skillsInstructionsClose)]
+			}
+			blocks = append(blocks, block)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read rollout %s: %w", filepath.Base(path), err)
+	}
+	return blocks, nil
+}
+
+var (
+	skillRootPattern  = regexp.MustCompile("^- `([A-Za-z0-9_]+)` = `(.+)`$")
+	skillEntryPattern = regexp.MustCompile(`^- ([^\s:]+): .*\(file: ([^)]+)\)\s*$`)
+)
+
+func megapowersSkillsInBlock(block, installedPlugin string) []string {
+	if installedPlugin == "" {
+		return nil
+	}
+	roots := make(map[string]string)
+	names := make([]string, 0)
+	for _, line := range strings.Split(block, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if match := skillRootPattern.FindStringSubmatch(line); match != nil {
+			roots[match[1]] = match[2]
+			continue
+		}
+		match := skillEntryPattern.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		file := match[2]
+		if root, rest, found := strings.Cut(file, "/"); found {
+			if directory, known := roots[root]; known {
+				file = filepath.Join(directory, rest)
+			}
+		}
+		if pathsOverlap(file, installedPlugin) && file != installedPlugin {
+			names = append(names, match[1])
+		}
+	}
+	return names
+}
+
+// skillsCatalogTraceLine renders the detection result as one trailing trace
+// line. It carries no "type", "item", or tool-name keys, so trace
+// normalization can never turn it into actor evidence.
+func skillsCatalogTraceLine(catalog skillsCatalog, block string) []byte {
+	content, err := json.Marshal(map[string]any{"method": "broker/skillsCatalog", "params": map[string]any{"catalog": catalog, "block": block}})
+	if err != nil {
+		return nil
+	}
+	return append(content, '\n')
 }
 
 func copyRegularTree(source, destination string) error {
@@ -2924,6 +3158,7 @@ func selftest() error {
 		{"Codex skills.read activation is normalized", selftestCodexSkillActivation},
 		{"Codex shell reads of a skill body are normalized once", selftestCodexSkillShellReads},
 		{"repeated Claude init inventories stay consistent", selftestRepeatedClaudeInit},
+		{"skills catalog rendering is detected per harness", selftestSkillsCatalog},
 		{"oracle phase excludes credentials and network", selftestOracle},
 		{"response redaction removes credential values", selftestRedaction},
 		{"arm inventory is exact", selftestInventory},
@@ -3605,7 +3840,7 @@ func selftestEndToEnd() error {
 		return errors.New("long actor-home fixture does not exceed Linux Unix-socket path capacity")
 	}
 	fake := filepath.Join(paths.root, "fake-claude")
-	initEvent, err := json.Marshal(map[string]any{"type": "system", "subtype": "init", "plugins": []any{map[string]any{"name": "megapowers", "path": paths.plugin}}, "plugin_errors": []any{}})
+	initEvent, err := json.Marshal(map[string]any{"type": "system", "subtype": "init", "plugins": []any{map[string]any{"name": "megapowers", "path": paths.plugin}}, "plugin_errors": []any{}, "skills": []any{"deep-research", "megapowers:orchestrating", "megapowers:safe-effects"}})
 	if err != nil {
 		return err
 	}
@@ -3628,6 +3863,158 @@ func selftestEndToEnd() error {
 	}
 	if response.SchemaVersion != "2" || response.CLIVersion != "fake-claude-1" || response.Response != "fake result" || response.RC != 0 || len(response.Events) != 1 || response.Events[0].Kind != "trace_complete" || len(response.PluginInventory) != 1 || response.PluginInventory[0] != "megapowers" || response.Isolation.Boundary != "bwrap" || response.Isolation.CredentialsReadableByActor || response.Isolation.SiblingStateReadableByActor {
 		return errors.New("end-to-end response does not satisfy schema version 2")
+	}
+	if response.SkillsCatalog == nil || !response.SkillsCatalog.Rendered || response.SkillsCatalog.Source != catalogSourceClaudeInit || strings.Join(response.SkillsCatalog.Skills, ",") != "orchestrating,safe-effects" {
+		return fmt.Errorf("end-to-end response did not assert the Claude skills catalog: %+v", response.SkillsCatalog)
+	}
+	return nil
+}
+
+func selftestSkillsCatalog() error {
+	initWithSkills := []byte(`{"type":"system","subtype":"init","plugins":[],"skills":["deep-research","megapowers:orchestrating","megapowers:humanizing-prose"],"slash_commands":["megapowers:orchestrating"]}` + "\n")
+	catalog := claudeSkillsCatalog(initWithSkills)
+	if !catalog.Rendered || catalog.Source != catalogSourceClaudeInit || strings.Join(catalog.Skills, ",") != "humanizing-prose,orchestrating" {
+		return fmt.Errorf("Claude init skills were not detected: %+v", catalog)
+	}
+	catalog = claudeSkillsCatalog([]byte(`{"type":"system","subtype":"init","plugins":[],"slash_commands":["clear","megapowers:safe-effects"]}` + "\n"))
+	if !catalog.Rendered || catalog.Source != catalogSourceClaudeSlashCommands || strings.Join(catalog.Skills, ",") != "safe-effects" {
+		return fmt.Errorf("Claude slash-command fallback was not detected: %+v", catalog)
+	}
+	catalog = claudeSkillsCatalog([]byte(`{"type":"system","subtype":"init","plugins":[],"skills":["deep-research"]}` + "\n"))
+	if catalog.Rendered || catalog.Source != catalogSourceClaudeInit || len(catalog.Skills) != 0 {
+		return fmt.Errorf("Claude init without plugin skills counted as rendered: %+v", catalog)
+	}
+	catalog = claudeSkillsCatalog([]byte(`{"type":"system","subtype":"init","plugins":[]}` + "\n"))
+	if catalog.Rendered || catalog.Source != catalogSourceUnavailable {
+		return fmt.Errorf("Claude init without a skill listing was not reported unavailable: %+v", catalog)
+	}
+
+	paths, cleanup, err := newSelftestPaths()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	codexHome := filepath.Join(paths.home, ".codex")
+	installed := filepath.Join(codexHome, "plugins", "cache", "megapowers-eval", "megapowers", "0.26.1")
+	// Shape observed in a codex-cli 0.152.0 rollout: the developer message
+	// renders roots as `rN` aliases and each skill as one "- name: ... (file: rN/...)" line.
+	block := "<skills_instructions>\n## Skills\nA skill is a set of local instructions to follow that is stored in a `SKILL.md` file.\n### Skill roots\n- `r0` = `" + filepath.Join(codexHome, "skills", ".system") + "`\n- `r1` = `" + filepath.Join(installed, "skills") + "`\n### Available skills\n- imagegen: Generate or edit raster images (file: r0/imagegen/SKILL.md)\n- orchestrating: Use when two or more independent lanes can run in parallel (file: r1/orchestrating/SKILL.md)\n- safe-effects: Use when preparing a deploy: with (file: parens) inside (file: r1/safe-effects/SKILL.md)\n- skill-creator: Create skills (file: r0/skill-creator/SKILL.md)\n</skills_instructions>"
+	developerLine := func(text string) string {
+		// Codex's serializer writes angle brackets literally; keep the
+		// fixture faithful rather than HTML-escaped.
+		var content bytes.Buffer
+		encoder := json.NewEncoder(&content)
+		encoder.SetEscapeHTML(false)
+		_ = encoder.Encode(map[string]any{"timestamp": "2026-09-01T21:04:25.182Z", "ordinal": 2, "type": "response_item", "payload": map[string]any{"type": "message", "id": "msg-selftest", "role": "developer", "content": []any{map[string]any{"type": "input_text", "text": text}}}})
+		return content.String()
+	}
+	sessionMeta := `{"timestamp":"2026-09-01T21:04:22.484Z","ordinal":0,"type":"session_meta","payload":{"id":"thread-selftest","cwd":"/project"}}` + "\n"
+	writeRollout := func(name, content string) error {
+		directory := filepath.Join(codexHome, "sessions", "2026", "09", "01")
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(directory, name), []byte(content), 0o600)
+	}
+	if err := os.MkdirAll(codexHome, 0o700); err != nil {
+		return err
+	}
+	detected, firstBlock, err := codexSkillsCatalog(codexHome, installed)
+	if err != nil || detected.Rendered || detected.Source != catalogSourceCodexRollout || len(detected.Skills) != 0 || firstBlock != "" {
+		return fmt.Errorf("missing Codex rollout counted as rendered: %+v %v", detected, err)
+	}
+	if err := writeRollout("rollout-2026-09-01T21-04-18-thread-selftest.jsonl", sessionMeta+developerLine("## Memory\nunrelated developer context\n")); err != nil {
+		return err
+	}
+	detected, _, err = codexSkillsCatalog(codexHome, installed)
+	if err != nil || detected.Rendered || len(detected.Skills) != 0 {
+		return fmt.Errorf("Codex rollout without a skills block counted as rendered: %+v %v", detected, err)
+	}
+	systemOnly := strings.ReplaceAll(strings.ReplaceAll(block, "- orchestrating: Use when two or more independent lanes can run in parallel (file: r1/orchestrating/SKILL.md)\n", ""), "- safe-effects: Use when preparing a deploy: with (file: parens) inside (file: r1/safe-effects/SKILL.md)\n", "")
+	if err := writeRollout("rollout-2026-09-01T21-04-18-thread-selftest.jsonl", sessionMeta+developerLine(systemOnly)); err != nil {
+		return err
+	}
+	detected, firstBlock, err = codexSkillsCatalog(codexHome, installed)
+	if err != nil || detected.Rendered || len(detected.Skills) != 0 || firstBlock != systemOnly {
+		return fmt.Errorf("Codex catalog without plugin skills counted as rendered: %+v %v", detected, err)
+	}
+	if err := writeRollout("rollout-2026-09-01T21-04-18-thread-selftest.jsonl", sessionMeta+developerLine("## Memory\nunrelated\n")+developerLine(block+"\n<permissions instructions>\nlater context")); err != nil {
+		return err
+	}
+	detected, firstBlock, err = codexSkillsCatalog(codexHome, installed)
+	if err != nil || !detected.Rendered || detected.Source != catalogSourceCodexRollout || strings.Join(detected.Skills, ",") != "orchestrating,safe-effects" || firstBlock != block {
+		return fmt.Errorf("Codex rendered catalog was not detected: %+v %v", detected, err)
+	}
+	// A skill line that only names a plugin skill but resolves outside the
+	// verified cache is not the installed candidate.
+	foreign := strings.ReplaceAll(block, "- `r1` = `"+filepath.Join(installed, "skills")+"`", "- `r1` = `/elsewhere/megapowers/skills`")
+	if err := writeRollout("rollout-2026-09-01T21-04-18-thread-selftest.jsonl", sessionMeta+developerLine(foreign)); err != nil {
+		return err
+	}
+	detected, _, err = codexSkillsCatalog(codexHome, installed)
+	if err != nil || detected.Rendered || len(detected.Skills) != 0 {
+		return fmt.Errorf("Codex catalog from a foreign plugin root counted as rendered: %+v %v", detected, err)
+	}
+	if err := writeRollout("rollout-2026-09-01T21-04-18-thread-selftest.jsonl", sessionMeta+developerLine(block)); err != nil {
+		return err
+	}
+	if control, _, err := codexSkillsCatalog(codexHome, ""); err != nil || control.Rendered || len(control.Skills) != 0 {
+		return errors.New("catalog without an installed plugin attributed skills to Megapowers")
+	}
+	traceLine := skillsCatalogTraceLine(detected, block)
+	_, events, complete := normalizeTrace("codex", append([]byte(`{"method":"turn/completed","params":{"turn":{"status":"completed"}}}`+"\n"), traceLine...), 0)
+	if !complete || len(events) != 1 || events[0].Kind != "trace_complete" {
+		return fmt.Errorf("skills catalog trace line produced actor evidence: %+v", events)
+	}
+
+	// The fake app-server writes its rollout inside the Bubblewrap boundary,
+	// proving the disposable CODEX_HOME sessions directory is where the
+	// broker looks after the turn.
+	accessToken := selftestJWT(time.Now().Add(time.Hour))
+	auth := authentication{mode: authSubscription, credential: accessToken, accountID: "account-selftest"}
+	req := validSelftestRequest(paths)
+	req.Harness = "codex"
+	if err := os.RemoveAll(filepath.Join(codexHome, "sessions")); err != nil {
+		return err
+	}
+	if err := os.Mkdir(filepath.Join(req.ActorHome, "codex-marketplace"), 0o700); err != nil {
+		return err
+	}
+	rolloutLine := developerLine(block)
+	fake := filepath.Join(paths.root, "fake-codex-catalog-app-server")
+	script := "#!/bin/sh\n" +
+		"read -r initialize\ncase \"$initialize\" in *'\"method\":\"initialize\"'*) ;; *) exit 41;; esac\n" +
+		"printf '%s\\n' '{\"id\":1,\"result\":{}}'\n" +
+		"read -r initialized\nread -r login\nprintf '%s\\n' '{\"id\":2,\"result\":{\"type\":\"chatgptAuthTokens\"}}'\n" +
+		"read -r thread\ncase \"$thread\" in *'\"method\":\"thread/start\"'*'\"ephemeral\":false'*) ;; *) exit 44;; esac\n" +
+		"mkdir -p \"$CODEX_HOME/sessions/2026/09/01\"\n" +
+		// Base64 keeps the rendered backticks out of shell quoting.
+		"printf '%s' '" + base64.StdEncoding.EncodeToString([]byte(sessionMeta+rolloutLine)) + "' | base64 -d > \"$CODEX_HOME/sessions/2026/09/01/rollout-2026-09-01T21-04-18-thread-selftest.jsonl\"\n" +
+		"printf '%s\\n' '{\"id\":3,\"result\":{\"thread\":{\"id\":\"thread-selftest\"}}}'\n" +
+		"read -r turn\nprintf '%s\\n' '{\"id\":4,\"result\":{\"turn\":{\"id\":\"turn-selftest\",\"status\":\"inProgress\",\"items\":[]}}}'\n" +
+		"printf '%s\\n' '{\"method\":\"item/completed\",\"params\":{\"threadId\":\"thread-selftest\",\"turnId\":\"turn-selftest\",\"item\":{\"id\":\"message-selftest\",\"type\":\"agentMessage\",\"text\":\"catalog result\"}}}'\n" +
+		"printf '%s\\n' '{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"thread-selftest\",\"turn\":{\"id\":\"turn-selftest\",\"status\":\"completed\",\"items\":[],\"error\":null}}}'\n" +
+		"sleep 2\n"
+	if err := os.WriteFile(fake, []byte(script), 0o700); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := runCodexAppServer(ctx, req, fake, codexHome, auth)
+	if err != nil || result.rc != 0 {
+		return fmt.Errorf("fake catalog app-server rc=%d: %w: %s", result.rc, err, result.stderr)
+	}
+	detected, firstBlock, err = codexSkillsCatalog(codexHome, installed)
+	if err != nil || !detected.Rendered || strings.Join(detected.Skills, ",") != "orchestrating,safe-effects" || firstBlock != block {
+		written := make([]string, 0)
+		_ = filepath.WalkDir(codexHome, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr == nil && !entry.IsDir() {
+				content, _ := os.ReadFile(path)
+				written = append(written, fmt.Sprintf("%s(%d bytes: %.120q)", strings.TrimPrefix(path, codexHome), len(content), content))
+			}
+			return nil
+		})
+		return fmt.Errorf("rollout written inside the sandbox was not detected: %+v %v; files: %s; stderr: %s", detected, err, strings.Join(written, ", "), result.stderr)
 	}
 	return nil
 }
