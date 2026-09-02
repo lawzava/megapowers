@@ -11,6 +11,43 @@ candidate. Installed A/B and PR replay are optional diagnostic
 studies, not release gates. Exact-tag install smoke runs after publication and
 proves delivery, not candidate quality.
 
+## Trigger recall — 2026-09-02 v3 (Claude enforced; supersedes v2)
+
+Run after the 2026-09-01 field audit changes: every skill carries
+`when_to_use` trigger phrases, `code-quality` is removed, `memory-hygiene`
+is user-invoked only, and the broker now asserts that the harness rendered
+the plugin skills catalog. 3 reps per probe, 63 cases, rebuilt hash-pinned
+broker. Claude arm: 189 rows, CLI 2.1.257, `claude-fable-5-1` high, zero
+retries. Codex arm: 189 rows over 15 slices, CLI 0.152.0, `gpt-5.6-sol` high.
+Revisions `4c3da86`..`1848dc6`.
+
+### Claude Code — per-skill recall (pass/total over verbatim, paraphrase, buried)
+
+| skill | recall | note |
+|---|---:|---|
+| safe-effects | 8/9 | buried 2/3 |
+| remaining 12 skills | 9/9 | perfect, including verify-and-finish (7/9 in v2, verbatim 1/3) |
+
+Aggregate recall 116/117. Precision 70/72; the two misses are
+`safe-effects-near-miss` and `systematic-debugging-near-miss`, one rep each.
+Reply length on precision probes: median 41.5 words against the 120-word
+gate; em-dash rate 0 against the 0.1 gate. All gates pass with no
+violations; `memory-hygiene` has no recall probes because the model cannot
+select it.
+
+### Codex — catalog rendered, still no selection
+
+The broker's new `skills_catalog` field confirms every Codex row received
+the full 14-skill catalog (`megapowers:<name>` entries under the plugin
+root). Recall is still 0/117 across all slices; precision 69/69. So the v2
+null was not a rendering artifact. Real interactive Codex sessions from the
+same week read a megapowers `SKILL.md` in 27 of 32 sessions (2026-09-01
+transcript audit), so the gap is probe shape: single-turn brokered prompts
+with untrusted plugin hooks and no startup style, versus long multi-turn
+sessions with the trusted hook. Codex stays report-only. Median reply on
+precision probes 19.5 to 85 words per slice; em-dash rate up to 0.58 in
+slices where the untrusted startup hook could not inject the style.
+
 ## Trigger recall — 2026-08-31 v2 (report-only; supersedes the 2026-08-30 baseline)
 
 Re-run after four instrumentation and text fixes, 3 reps per probe through

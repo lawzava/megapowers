@@ -60,7 +60,7 @@ grep -Eqi 'Claude.*enforce|enforce.*Claude' "$ROOT/evals/README.md" ||
   fail 'eval README does not state the Claude trigger-recall gate'
 grep -Eqi 'Codex.*report-only|report-only.*Codex' "$ROOT/evals/README.md" ||
   fail 'eval README does not state Codex trigger-recall policy'
-grep -qF 'Aggregate recall 122/135.' "$ROOT/evals/RESULTS.md" ||
+grep -qF 'Aggregate recall 116/117.' "$ROOT/evals/RESULTS.md" ||
   fail 'current trigger-recall aggregate does not match its table'
 if grep -qF 'Only one forwarded segment may be open at a time.' \
   "$ROOT/evals/tools/sandbox-broker/README.md"; then
