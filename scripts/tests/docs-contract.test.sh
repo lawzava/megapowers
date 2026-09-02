@@ -119,7 +119,7 @@ while IFS= read -r name; do
   grep -q "\`$name\`" "$ROOT/README.md" ||
     fail "README omits experimental skill $name (catalog experimental set: $experimental_list)"
 done < <(jq -r '.skills[] | select(.status == "experimental") | .name' "$ROOT/plugins/megapowers/skills/catalog.json")
-grep -Eq 'inspect --file .* --provider claude' "$ROOT/docs/advanced/independent-review.md" ||
+grep -Eq 'inspect --file .* --provider <reviewer-family>' "$ROOT/docs/advanced/independent-review.md" ||
   fail 'review docs do not bind inspection to the provider'
 grep -q 'approval_token' "$ROOT/docs/advanced/independent-review.md" ||
   fail 'review docs omit the inspection token'

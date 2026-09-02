@@ -12,7 +12,7 @@ Review the exact revision before installing it.
 | Codex output-style hook | Bundled static style | Developer context on standard output | None |
 | Destructive-command hook | Proposed shell command from hook input | Hook decision on standard output | None |
 | Memory-audit tool | One explicit audit manifest | Standard output only | None |
-| Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | Selected Claude, Codex, or Grok provider call after approval |
+| Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | One operator-named reviewer command after approval |
 
 There is no daemon, model router, formatter, status line, or background
 scheduler.

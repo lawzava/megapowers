@@ -16,7 +16,7 @@ environments.
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
-| Independent review provider | Claude, Codex, or Grok CLI, different from author | Claude, Codex, or Grok CLI, different from author |
+| Independent review provider | Any operator-named reviewer CLI, different vendor family from author | Any operator-named reviewer CLI, different vendor family from author |
 | Credentialed installed A/B | Optional diagnostic arm | Optional diagnostic arm |
 | Exact-tag install smoke | Post-publish oracle | Post-publish oracle |
 
@@ -25,8 +25,8 @@ environments.
 Skills use `name`, `description`, `when_to_use`, and `metadata.short-description`
 frontmatter; `memory-hygiene` sets `disable-model-invocation`. Codex honors
 `name`, `description`, and the short description and ignores the rest. `SKILL.md` bodies
-remain harness-neutral except `independent-review`, whose purpose is to select
-one of the two supported provider CLIs explicitly. Channel-specific upgrade
+remain harness-neutral; `independent-review` runs whichever reviewer command
+the operator names and forces no vendor. Channel-specific upgrade
 commands live in a directly linked reference loaded only after channel
 detection.
 

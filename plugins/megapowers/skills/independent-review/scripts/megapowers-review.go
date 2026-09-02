@@ -37,25 +37,36 @@ const (
 	providerWaitDelay       = 5 * time.Second
 )
 
-// providerFamilies maps each supported provider CLI to its vendor family.
-// Author and reviewer must come from different families.
-var providerFamilies = map[string]string{
-	"claude": "anthropic",
-	"codex":  "openai",
-	"grok":   "xai",
-}
+// Placeholders an operator may use in --provider-command arguments after
+// argv[0]. Every other argument passes to the provider verbatim.
+const (
+	promptFilePlaceholder = "{prompt_file}"
+	scratchDirPlaceholder = "{scratch_dir}"
+)
 
 type options struct {
 	file             string
 	base             string
 	head             string
 	provider         string
+	providerCommand  string
+	providerEnv      stringList
 	author           string
 	out              string
 	approveExternal  string
 	retainTranscript bool
 	maxFilesPerChunk int
 	preflightTimeout time.Duration
+}
+
+// stringList collects a repeatable string flag.
+type stringList []string
+
+func (l *stringList) String() string { return strings.Join(*l, ",") }
+
+func (l *stringList) Set(value string) error {
+	*l = append(*l, value)
+	return nil
 }
 
 type sourceFile struct {
@@ -110,16 +121,17 @@ type chunkDisclosure struct {
 }
 
 type disclosure struct {
-	Provider      string            `json:"provider"`
-	BinaryPath    string            `json:"binary_path"`
-	BinarySHA256  string            `json:"binary_sha256"`
-	FileCount     int               `json:"file_count"`
-	ByteCount     int               `json:"byte_count"`
-	ChunkCount    int               `json:"chunk_count"`
-	Paths         []string          `json:"paths"`
-	Source        sourceIdentity    `json:"source"`
-	Chunks        []chunkDisclosure `json:"chunks"`
-	ApprovalToken string            `json:"approval_token"`
+	Provider        string            `json:"provider"`
+	ProviderCommand string            `json:"provider_command"`
+	BinaryPath      string            `json:"binary_path"`
+	BinarySHA256    string            `json:"binary_sha256"`
+	FileCount       int               `json:"file_count"`
+	ByteCount       int               `json:"byte_count"`
+	ChunkCount      int               `json:"chunk_count"`
+	Paths           []string          `json:"paths"`
+	Source          sourceIdentity    `json:"source"`
+	Chunks          []chunkDisclosure `json:"chunks"`
+	ApprovalToken   string            `json:"approval_token"`
 }
 
 type transcriptEvidence struct {
@@ -138,15 +150,25 @@ type reviewOutcome struct {
 }
 
 type reviewerIdentity struct {
-	Provider     string `json:"provider"`
-	BinaryPath   string `json:"binary_path"`
-	BinarySHA256 string `json:"binary_sha256"`
+	Provider        string `json:"provider"`
+	ProviderCommand string `json:"provider_command"`
+	BinaryPath      string `json:"binary_path"`
+	BinarySHA256    string `json:"binary_sha256"`
 }
 
+// providerExecutable is the resolved operator-supplied provider command:
+// the opaque provider label, the command template as given, the resolved
+// argv[0] with its hash, and the template arguments after argv[0].
 type providerExecutable struct {
 	Provider string
+	Command  string
+	Args     []string
 	Path     string
 	SHA256   string
+}
+
+func (p providerExecutable) identity() reviewerIdentity {
+	return reviewerIdentity{Provider: p.Provider, ProviderCommand: p.Command, BinaryPath: p.Path, BinarySHA256: p.SHA256}
 }
 
 type receiptDestination struct {
@@ -236,24 +258,22 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateProvider(opt.provider); err != nil {
-		return err
-	}
-	binary, err := providerBinary(opt.provider, root)
+	binary, err := providerBinary(opt.provider, opt.providerCommand, root)
 	if err != nil {
 		return err
 	}
 	token := approvalToken(binary, chunkHashes(cap))
 	disc := disclosure{
-		Provider:      opt.provider,
-		BinaryPath:    binary.Path,
-		BinarySHA256:  binary.SHA256,
-		FileCount:     len(cap.Paths),
-		ChunkCount:    len(cap.Chunks),
-		Paths:         cap.Paths,
-		Source:        cap.Source,
-		Chunks:        make([]chunkDisclosure, 0, len(cap.Chunks)),
-		ApprovalToken: token,
+		Provider:        opt.provider,
+		ProviderCommand: binary.Command,
+		BinaryPath:      binary.Path,
+		BinarySHA256:    binary.SHA256,
+		FileCount:       len(cap.Paths),
+		ChunkCount:      len(cap.Chunks),
+		Paths:           cap.Paths,
+		Source:          cap.Source,
+		Chunks:          make([]chunkDisclosure, 0, len(cap.Chunks)),
+		ApprovalToken:   token,
 	}
 	for i, chunk := range cap.Chunks {
 		disc.ByteCount += len(chunk.Package)
@@ -272,16 +292,13 @@ func run(args []string) error {
 		return enc.Encode(disc)
 	}
 
-	if err := validateReviewOptions(opt); err != nil {
-		return err
-	}
 	receiptDest, err := openReceiptDestination(root, opt.out)
 	if err != nil {
 		return err
 	}
 	defer receiptDest.Root.Close()
-	fmt.Fprintf(os.Stderr, "review disclosure: provider=%s binary=%q binary_sha256=%s files=%d bytes=%d chunks=%d source=%s\n",
-		opt.provider, binary.Path, binary.SHA256, disc.FileCount, disc.ByteCount, disc.ChunkCount, cap.Source.Identity)
+	fmt.Fprintf(os.Stderr, "review disclosure: provider=%s command=%q binary=%q binary_sha256=%s files=%d bytes=%d chunks=%d source=%s\n",
+		opt.provider, binary.Command, binary.Path, binary.SHA256, disc.FileCount, disc.ByteCount, disc.ChunkCount, cap.Source.Identity)
 	for _, chunk := range disc.Chunks {
 		pathsJSON, _ := json.Marshal(chunk.Paths)
 		fmt.Fprintf(os.Stderr, "review chunk %d/%d: files=%d bytes=%d package_sha256=%s paths=%s\n",
@@ -291,7 +308,7 @@ func run(args []string) error {
 		return errors.New("external disclosure not approved; run inspect, then pass its token as --approve-external TOKEN")
 	}
 	if !approvalTokenMatches(opt.approveExternal, binary, chunkHashes(cap)) {
-		return errors.New("approval token does not match the current package and provider binary; run inspect again")
+		return errors.New("approval token does not match the current package, provider label, command, and binary; run inspect again")
 	}
 	// Allocate the receipt run before dispatch so an unwritable destination
 	// fails before credentials or source reach the provider.
@@ -306,7 +323,7 @@ func run(args []string) error {
 			_ = receiptDest.Root.RemoveAll(runName)
 		}
 	}()
-	session, err := openProviderSession(binary, root)
+	session, err := openProviderSession(binary, opt.providerEnv, root)
 	if err != nil {
 		return err
 	}
@@ -321,7 +338,7 @@ func run(args []string) error {
 		Advisory:    true,
 		Warning:     receiptWarning,
 		Author:      opt.author,
-		Reviewer:    reviewerIdentity{Provider: opt.provider, BinaryPath: binary.Path, BinarySHA256: binary.SHA256},
+		Reviewer:    binary.identity(),
 		Independent: true,
 		Source:      cap.Source,
 		ChunkCount:  total,
@@ -386,8 +403,10 @@ func parseOptions(command string, args []string) (options, error) {
 	fs.StringVar(&opt.file, "file", "", "explicit file to review")
 	fs.StringVar(&opt.base, "base", "", "base commit")
 	fs.StringVar(&opt.head, "head", "", "head commit")
-	fs.StringVar(&opt.provider, "provider", "", "claude, codex, or grok")
-	fs.StringVar(&opt.author, "author", "", "claude, codex, or grok")
+	fs.StringVar(&opt.provider, "provider", "", "reviewer label; must differ from --author")
+	fs.StringVar(&opt.providerCommand, "provider-command", "", "provider command template: argv[0] plus arguments, with optional {prompt_file} and {scratch_dir}")
+	fs.Var(&opt.providerEnv, "provider-env", "environment variable name to pass through (repeatable)")
+	fs.StringVar(&opt.author, "author", "", "artifact author label; must differ from --provider")
 	fs.StringVar(&opt.out, "out", "", "private receipt directory")
 	fs.StringVar(&opt.approveExternal, "approve-external", "", "token emitted by inspect")
 	fs.BoolVar(&opt.retainTranscript, "retain-transcript", false, "retain prompt and provider output")
@@ -400,7 +419,7 @@ func parseOptions(command string, args []string) (options, error) {
 		return opt, fmt.Errorf("unexpected positional arguments: %s", strings.Join(fs.Args(), " "))
 	}
 	if command == "inspect" && (opt.author != "" || opt.out != "" || opt.approveExternal != "" || opt.retainTranscript) {
-		return opt, errors.New("inspect accepts --provider with one input mode only")
+		return opt, errors.New("inspect accepts --provider, --provider-command, --provider-env, and one input mode only")
 	}
 	if opt.maxFilesPerChunk < 1 {
 		return opt, errors.New("--max-files-per-chunk must be at least 1")
@@ -408,8 +427,29 @@ func parseOptions(command string, args []string) (options, error) {
 	if opt.preflightTimeout <= 0 {
 		return opt, errors.New("--preflight-timeout must be positive")
 	}
+	if strings.TrimSpace(opt.provider) == "" {
+		return opt, errors.New("--provider LABEL is required")
+	}
+	if strings.TrimSpace(opt.providerCommand) == "" {
+		return opt, errors.New("--provider-command 'ARGV' is required")
+	}
+	for _, name := range opt.providerEnv {
+		if !environmentNamePattern.MatchString(name) {
+			return opt, fmt.Errorf("--provider-env %q is not an environment variable name", name)
+		}
+	}
+	if command == "review" {
+		if strings.TrimSpace(opt.author) == "" {
+			return opt, errors.New("--author LABEL is required")
+		}
+		if opt.author == opt.provider {
+			return opt, errors.New("--provider and --author must differ for independent review")
+		}
+	}
 	return opt, nil
 }
+
+var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func validateInputMode(opt options) error {
 	fileMode := opt.file != ""
@@ -419,24 +459,6 @@ func validateInputMode(opt options) error {
 	}
 	if rangeMode && (opt.base == "" || opt.head == "") {
 		return errors.New("commit range requires both --base and --head")
-	}
-	return nil
-}
-
-func validateReviewOptions(opt options) error {
-	authorFamily, ok := providerFamilies[opt.author]
-	if !ok {
-		return errors.New("--author must be claude, codex, or grok")
-	}
-	if providerFamilies[opt.provider] == authorFamily {
-		return errors.New("--provider and --author must differ for independent review")
-	}
-	return nil
-}
-
-func validateProvider(provider string) error {
-	if _, ok := providerFamilies[provider]; !ok {
-		return errors.New("--provider must be claude, codex, or grok")
 	}
 	return nil
 }
@@ -881,10 +903,95 @@ func secretLikePath(path string) bool {
 	return false
 }
 
-func providerBinary(provider, root string) (providerExecutable, error) {
-	path, err := exec.LookPath(provider)
+// parseProviderCommand splits an operator-supplied command template into
+// argv using shell-style words: whitespace separates arguments, single
+// quotes are literal, double quotes honor backslash escapes of `"` and `\`,
+// and a backslash outside quotes escapes the next character. Nothing is
+// executed, expanded, or globbed; unquoted shell control characters are
+// rejected so the template cannot be mistaken for a shell command line.
+func parseProviderCommand(template string) ([]string, error) {
+	var argv []string
+	var current strings.Builder
+	inWord := false
+	runes := []rune(template)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		switch {
+		case r == '\\':
+			if i+1 >= len(runes) {
+				return nil, errors.New("--provider-command ends with a dangling backslash")
+			}
+			i++
+			current.WriteRune(runes[i])
+			inWord = true
+		case r == '\'':
+			end := -1
+			for j := i + 1; j < len(runes); j++ {
+				if runes[j] == '\'' {
+					end = j
+					break
+				}
+			}
+			if end < 0 {
+				return nil, errors.New("--provider-command has an unterminated single quote")
+			}
+			current.WriteString(string(runes[i+1 : end]))
+			inWord = true
+			i = end
+		case r == '"':
+			closed := false
+			for j := i + 1; j < len(runes); j++ {
+				if runes[j] == '\\' && j+1 < len(runes) && (runes[j+1] == '"' || runes[j+1] == '\\') {
+					current.WriteRune(runes[j+1])
+					j++
+					continue
+				}
+				if runes[j] == '"' {
+					closed = true
+					i = j
+					break
+				}
+				current.WriteRune(runes[j])
+			}
+			if !closed {
+				return nil, errors.New("--provider-command has an unterminated double quote")
+			}
+			inWord = true
+		case r == '|' || r == ';' || r == '&' || r == '>' || r == '<' || r == '`':
+			return nil, fmt.Errorf("--provider-command contains unquoted shell control character %q; the template is executed directly, not through a shell", r)
+		case r == '$' && i+1 < len(runes) && runes[i+1] == '(':
+			return nil, errors.New("--provider-command contains unquoted command substitution $(; the template is executed directly, not through a shell")
+		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
+			if inWord {
+				argv = append(argv, current.String())
+				current.Reset()
+				inWord = false
+			}
+		default:
+			current.WriteRune(r)
+			inWord = true
+		}
+	}
+	if inWord {
+		argv = append(argv, current.String())
+	}
+	if len(argv) == 0 {
+		return nil, errors.New("--provider-command names no executable")
+	}
+	if strings.Contains(argv[0], promptFilePlaceholder) || strings.Contains(argv[0], scratchDirPlaceholder) {
+		return nil, errors.New("--provider-command placeholders are allowed only after argv[0]")
+	}
+	return argv, nil
+}
+
+func providerBinary(provider, template, root string) (providerExecutable, error) {
+	argv, err := parseProviderCommand(template)
 	if err != nil {
-		return providerExecutable{}, fmt.Errorf("provider CLI %q is not installed", provider)
+		return providerExecutable{}, err
+	}
+	path, err := exec.LookPath(argv[0])
+	if err != nil {
+		return providerExecutable{}, fmt.Errorf("provider command %q is not installed or not executable", argv[0])
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -897,17 +1004,17 @@ func providerBinary(provider, root string) (providerExecutable, error) {
 	}
 	resolved = filepath.Clean(resolved)
 	if insideRoot(abs, root) || insideRoot(resolved, root) {
-		return providerExecutable{}, fmt.Errorf("provider CLI resolves inside the repository and is rejected: %s", path)
+		return providerExecutable{}, fmt.Errorf("provider command resolves inside the repository and is rejected: %s", path)
 	}
 	info, err := os.Stat(resolved)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-		return providerExecutable{}, fmt.Errorf("provider CLI is not an executable regular file: %s", resolved)
+		return providerExecutable{}, fmt.Errorf("provider command is not an executable regular file: %s", resolved)
 	}
 	hash, err := hashProviderBinary(resolved, info)
 	if err != nil {
 		return providerExecutable{}, err
 	}
-	return providerExecutable{Provider: provider, Path: resolved, SHA256: hash}, nil
+	return providerExecutable{Provider: provider, Command: template, Args: argv[1:], Path: resolved, SHA256: hash}, nil
 }
 
 func hashProviderBinary(path string, before os.FileInfo) (string, error) {
@@ -940,21 +1047,25 @@ func hashProviderBinary(path string, before os.FileInfo) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-// approvalToken binds the provider binary identity to the ordered list of
-// chunk package hashes, so a single token approves the whole run.
+// approvalToken binds the provider label, the command template as given,
+// the resolved binary identity, and the ordered list of chunk package hashes,
+// so a single token approves the whole run and any of those changing
+// invalidates it.
 func approvalToken(binary providerExecutable, packageSHA256s []string) string {
 	material := struct {
-		Schema         string   `json:"schema"`
-		Provider       string   `json:"provider"`
-		BinaryPath     string   `json:"binary_path"`
-		BinarySHA256   string   `json:"binary_sha256"`
-		PackageSHA256s []string `json:"package_sha256s"`
+		Schema          string   `json:"schema"`
+		Provider        string   `json:"provider"`
+		ProviderCommand string   `json:"provider_command"`
+		BinaryPath      string   `json:"binary_path"`
+		BinarySHA256    string   `json:"binary_sha256"`
+		PackageSHA256s  []string `json:"package_sha256s"`
 	}{
-		Schema:         "megapowers.external-review-approval.v2",
-		Provider:       binary.Provider,
-		BinaryPath:     binary.Path,
-		BinarySHA256:   binary.SHA256,
-		PackageSHA256s: packageSHA256s,
+		Schema:          "megapowers.external-review-approval.v3",
+		Provider:        binary.Provider,
+		ProviderCommand: binary.Command,
+		BinaryPath:      binary.Path,
+		BinarySHA256:    binary.SHA256,
+		PackageSHA256s:  packageSHA256s,
 	}
 	encoded, err := json.Marshal(material)
 	if err != nil {
@@ -1038,8 +1149,9 @@ func stageVerifiedExecutable(parent string, binary providerExecutable) (string, 
 }
 
 // providerSession holds one private scratch directory and one verified,
-// read-only copy of the approved provider CLI. The preflight probe and every
-// chunk dispatch execute that same copy with the same environment.
+// read-only copy of the approved provider executable. The preflight probe and
+// every chunk dispatch execute that same copy with the same template
+// arguments and the same environment.
 type providerSession struct {
 	binary  providerExecutable
 	scratch string
@@ -1047,7 +1159,7 @@ type providerSession struct {
 	env     []string
 }
 
-func openProviderSession(binary providerExecutable, root string) (*providerSession, error) {
+func openProviderSession(binary providerExecutable, extraEnv []string, root string) (*providerSession, error) {
 	scratch, err := os.MkdirTemp("", "megapowers-review-")
 	if err != nil {
 		return nil, fmt.Errorf("create provider scratch directory: %w", err)
@@ -1071,7 +1183,7 @@ func openProviderSession(binary providerExecutable, root string) (*providerSessi
 		session.close()
 		return nil, err
 	}
-	session.env, err = providerEnvironment(binary.Provider, root)
+	session.env, err = providerEnvironment(extraEnv, root)
 	if err != nil {
 		session.close()
 		return nil, err
@@ -1084,30 +1196,36 @@ func (s *providerSession) close() {
 	_ = os.RemoveAll(s.scratch)
 }
 
-// invoke runs the verified provider copy once with the fixed adapter for its
-// provider. It reports a deadline separately from other failures.
+// invoke runs the verified provider copy once with the operator's template
+// arguments. When the template names {prompt_file}, the prompt is written to
+// a private 0600 file inside the scratch directory and stdin is empty;
+// otherwise the prompt is delivered on stdin. {scratch_dir} expands to the
+// scratch directory. It reports a deadline separately from other failures.
 func (s *providerSession) invoke(prompt []byte, timeout time.Duration) (stdout, stderr []byte, timedOut bool, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	var args []string
 	stdin := io.Reader(bytes.NewReader(prompt))
-	switch s.binary.Provider {
-	case "claude":
-		args = []string{"-p", "--safe-mode", "--no-session-persistence", "--permission-mode", "plan", "--tools", ""}
-	case "codex":
-		args = []string{"exec", "--ephemeral", "--ignore-user-config", "--skip-git-repo-check", "-C", s.scratch, "--sandbox", "read-only", "-"}
-	case "grok":
-		// grok 1.0.5 reads a single-turn prompt from a file and prints the
-		// plain-text response to stdout; the file stays inside the private
-		// scratch directory and is removed with it.
-		promptFile := filepath.Join(s.scratch, "prompt.txt")
+	promptFile := ""
+	for _, arg := range s.binary.Args {
+		if strings.Contains(arg, promptFilePlaceholder) {
+			promptFile = filepath.Join(s.scratch, "prompt.txt")
+			break
+		}
+	}
+	if promptFile != "" {
 		if err := os.WriteFile(promptFile, prompt, 0600); err != nil {
 			return nil, nil, false, fmt.Errorf("write provider prompt file: %w", err)
 		}
-		args = []string{"--prompt-file", promptFile, "--output-format", "plain", "--verbatim", "--max-turns", "1", "--no-subagents", "--disable-web-search", "--permission-mode", "plan"}
+		if err := os.Chmod(promptFile, 0600); err != nil {
+			return nil, nil, false, fmt.Errorf("make provider prompt file private: %w", err)
+		}
 		stdin = bytes.NewReader(nil)
-	default:
-		return nil, nil, false, fmt.Errorf("no fixed adapter for provider %q", s.binary.Provider)
+	}
+	args := make([]string, 0, len(s.binary.Args))
+	for _, arg := range s.binary.Args {
+		arg = strings.ReplaceAll(arg, promptFilePlaceholder, promptFile)
+		arg = strings.ReplaceAll(arg, scratchDirPlaceholder, s.scratch)
+		args = append(args, arg)
 	}
 	cmd := exec.CommandContext(ctx, s.staged, args...)
 	cmd.Dir = s.scratch
@@ -1173,7 +1291,7 @@ func preflight(session *providerSession, timeout time.Duration) error {
 	}
 	if err != nil {
 		class := "provider-error"
-		if authOrLimit && !strings.Contains(detail, "fixed adapter arguments") {
+		if authOrLimit && !strings.Contains(detail, "rejected command arguments") {
 			class = "auth-or-limit"
 		}
 		return fmt.Errorf("preflight probe for provider %s failed (%s): provider exited unsuccessfully: %w; provider diagnostic: %s; no receipt written", provider, class, err, detail)
@@ -1201,14 +1319,14 @@ func classifyProviderDiagnostic(raw []byte) string {
 	}{
 		{
 			message: "authentication failed; verify provider login or API credentials",
-			needles: []string{"authentication", "unauthorized", "not logged in", "oauth", "api key", "api_key", "credential", "401", "token has expired", "login expired", "please log in", "run /login"},
+			needles: []string{"authentication", "unauthorized", "not logged in", "oauth", "api key", "api_key", "credential", "401", "token has expired", "login expired", "please log in"},
 		},
 		{
 			message: "rate limit or quota exceeded; retry after provider limits reset",
 			needles: []string{"rate limit", "too many requests", "quota", "usage limit", "limit reached", "reached your", "429"},
 		},
 		{
-			message: "provider rejected fixed adapter arguments; verify provider CLI compatibility",
+			message: "provider rejected command arguments; verify --provider-command against the provider CLI",
 			needles: []string{"unknown option", "unrecognized option", "unexpected argument", "unknown flag", "invalid option"},
 		},
 		{
@@ -1230,21 +1348,25 @@ func classifyProviderDiagnostic(raw []byte) string {
 	return "details withheld because provider stderr is untrusted"
 }
 
-func providerEnvironment(provider, root string) ([]string, error) {
-	common := []string{
+// providerEnvironment builds the provider process environment from a neutral
+// base allowlist plus the operator's --provider-env names. PATH is sanitized
+// and any directory-valued variable that resolves inside the repository is
+// dropped.
+func providerEnvironment(extra []string, root string) ([]string, error) {
+	names := []string{
 		"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM",
 		"SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY",
 		"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
 	}
-	providerSpecific := map[string][]string{
-		"claude": {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR"},
-		"codex":  {"OPENAI_API_KEY", "CODEX_HOME"},
-		"grok":   {"XAI_API_KEY", "GROK_HOME"},
-	}
-	names := append(common, providerSpecific[provider]...)
+	names = append(names, extra...)
 	sort.Strings(names)
 	env := make([]string, 0, len(names))
+	seen := make(map[string]bool, len(names))
 	for _, name := range names {
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
 		if value, ok := os.LookupEnv(name); ok {
 			if name == "PATH" {
 				value = sanitizedPath(value, root)
@@ -1282,13 +1404,15 @@ func sanitizedPath(value, root string) string {
 	return strings.Join(kept, string(os.PathListSeparator))
 }
 
+// environmentPathVariable reports whether a variable names a directory the
+// provider would read configuration or state from, so a value inside the
+// repository must not be forwarded.
 func environmentPathVariable(name string) bool {
 	switch name {
-	case "HOME", "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "GROK_HOME":
+	case "HOME", "TMPDIR":
 		return true
-	default:
-		return false
 	}
+	return strings.HasSuffix(name, "_HOME") || strings.HasSuffix(name, "_CONFIG_DIR")
 }
 
 func pathValueInsideRoot(value, root string) bool {
@@ -1338,16 +1462,12 @@ func writeChunkReceipt(runRoot *os.Root, chunkDir string, opt options, binary pr
 	}
 
 	rec := receipt{
-		Schema:    "megapowers.advisory-review-receipt.v1",
-		Advisory:  true,
-		Warning:   receiptWarning,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		Author:    opt.author,
-		Reviewer: reviewerIdentity{
-			Provider:     opt.provider,
-			BinaryPath:   binary.Path,
-			BinarySHA256: binary.SHA256,
-		},
+		Schema:        "megapowers.advisory-review-receipt.v1",
+		Advisory:      true,
+		Warning:       receiptWarning,
+		CreatedAt:     time.Now().UTC().Format(time.RFC3339Nano),
+		Author:        opt.author,
+		Reviewer:      binary.identity(),
 		Independent:   true,
 		Source:        chunk.Source,
 		Chunk:         info,
