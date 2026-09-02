@@ -108,14 +108,13 @@ jq -e '[.cases[].provenance] | all(length > 0)' \
   exit 1
 }
 
-# The shipped gates enforce Claude only, encode the accepted
-# intake-time-selection boundary for verify-and-finish, and bound Claude's
-# final response length and em dash usage.
+# The shipped gates enforce Claude only, carry no per-skill recall
+# exceptions (the verify-and-finish boundary retired at 9/9 on 2026-09-02),
+# and bound Claude's final response length and em dash usage.
 jq -e '
   .mode == "enforce" and
   .enforce_harnesses == ["claude"] and
-  (.acceptance.per_skill | has("code-quality") | not) and
-  .acceptance.per_skill["verify-and-finish"].min_recall == 0.3 and
+  ((.acceptance.per_skill // {}) | length) == 0 and
   .acceptance.max_median_final_words == 120 and
   .acceptance.max_em_dash_rate == 0.1
 ' "$ROOT/evals/studies/trigger-recall/gates.json" >/dev/null || {

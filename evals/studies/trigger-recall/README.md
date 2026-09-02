@@ -96,15 +96,13 @@ reading a Megapowers `SKILL.md`, so the null is suspected to be a staging
 artifact rather than a harness property. Codex enforcement stays withheld
 until a run with `catalog_rendered: true` reproduces or overturns it.
 
-Two calibrated boundaries are accepted, not defects: `verify-and-finish`
-(`min_recall: 0.3`) triggers on conditions the model only recognizes
-mid-task, so intake-time selection under-fires while inline behavior stays
-sound; and `safe-effects-near-miss` never gates
-(`per_case.max_false_selection_rate: 1`): once the broker write fix let
-actors actually perform the probe's file overwrite, the model consistently
-consulted the skill first — defensible caution kept as signal only. Their
-probes remain in the corpus as longitudinal signal. Recalibrate against
-`evals/RESULTS.md` when skill text or models change.
+One calibrated boundary is accepted, not a defect: `safe-effects-near-miss`
+never gates (`per_case.max_false_selection_rate: 1`). Once the broker write
+fix let actors actually perform the probe's file overwrite, the model
+consistently consulted the skill first, which is defensible caution kept as
+signal only. The former `verify-and-finish` exception (`min_recall: 0.3`) was
+retired on 2026-09-02 after `when_to_use` trigger phrases lifted it to 9/9.
+Recalibrate against `evals/RESULTS.md` when skill text or models change.
 
 ## Oracle mutation check
 
