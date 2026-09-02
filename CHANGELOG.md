@@ -5,6 +5,22 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.28.0 - 2026-09-02
+
+The plugin no longer names any model or provider. Independent review runs the
+reviewer command the operator supplies and forces no vendor.
+
+### Changed
+
+- `megapowers-review.go` takes `--provider <family-label>` and
+  `--provider-command '<argv>'` with `{prompt_file}` and `{scratch_dir}`
+  placeholders, passes credentials only through `--provider-env NAME`, and
+  binds the approval token to the package hashes, binary hash, label, and
+  command (token schema v3). The fixed `claude`, `codex`, and `grok` adapters
+  and their environment maps are removed.
+- `independent-review`, its guide, the harness-support table, and the security
+  policy describe a vendor-neutral reviewer.
+
 ## 0.27.0 - 2026-09-02
 
 This release acts on the 2026-09-01 seven-lane audit of real Claude Code and
