@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha1"
@@ -25,6 +26,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/lawzava/megapowers/internal/strictjson"
 )
 
 var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
@@ -40,14 +43,18 @@ type studyCase struct {
 	ID                   string            `json:"id"`
 	Kind                 string            `json:"kind"`
 	Task                 string            `json:"task"`
+	FollowupTasks        []string          `json:"followup_tasks,omitempty"`
 	Files                map[string]string `json:"files"`
 	RequiredFacts        []string          `json:"required_facts,omitempty"`
+	RequiredFactIDs      []string          `json:"required_fact_ids,omitempty"`
 	ForbiddenFacts       []string          `json:"forbidden_facts,omitempty"`
+	ForbiddenFactIDs     []string          `json:"forbidden_fact_ids,omitempty"`
 	SeededDefects        []string          `json:"seeded_defects,omitempty"`
 	ForbiddenPatterns    []string          `json:"forbidden_patterns,omitempty"`
 	OracleCommand        []string          `json:"oracle_command,omitempty"`
 	ProtectedFiles       []string          `json:"protected_files,omitempty"`
 	OrchestrationMode    string            `json:"orchestration_mode,omitempty"`
+	RequireDelegation    bool              `json:"require_delegation,omitempty"`
 	RequiredAgentSpawns  int               `json:"required_agent_spawns,omitempty"`
 	MaximumAgentSpawns   *int              `json:"maximum_agent_spawns,omitempty"`
 	RequiredReturnFields []string          `json:"required_return_fields,omitempty"`
@@ -153,15 +160,16 @@ type actorEvent struct {
 }
 
 type actorResult struct {
-	Response   string
-	Trace      []byte
-	Events     []actorEvent
-	OracleRC   *int
-	Inventory  []string
-	CLIVersion string
-	Sandbox    string
-	RC         int
-	Duration   time.Duration
+	Response      string
+	Trace         []byte
+	Events        []actorEvent
+	OracleRC      *int
+	Inventory     []string
+	SkillsCatalog []string
+	CLIVersion    string
+	Sandbox       string
+	RC            int
+	Duration      time.Duration
 }
 
 type actor interface {
@@ -216,6 +224,47 @@ type resultRow struct {
 	Timestamp     string             `json:"timestamp"`
 }
 
+type failureReceipt struct {
+	SchemaVersion            string                           `json:"schema_version"`
+	Study                    string                           `json:"study"`
+	RunID                    string                           `json:"run_id"`
+	BlockID                  string                           `json:"block_id"`
+	CaseID                   string                           `json:"case_id"`
+	Arm                      string                           `json:"arm"`
+	Verdict                  string                           `json:"verdict"`
+	MissingRequiredFactIDs   []string                         `json:"missing_required_fact_ids"`
+	DetectedForbiddenFactIDs []string                         `json:"detected_forbidden_fact_ids"`
+	SkillSelections          []skillSelectionReceipt          `json:"skill_selections"`
+	ForbiddenEventKinds      []eventAttemptReceipt            `json:"forbidden_event_kinds"`
+	TestResults              []testResultReceipt              `json:"test_results"`
+	TestExecutionReceipts    []testExecutionReceiptDiagnostic `json:"test_execution_receipts"`
+	ObservabilityGaps        []string                         `json:"observability_gaps"`
+}
+
+type skillSelectionReceipt struct {
+	Skill string `json:"skill"`
+	RC    int    `json:"rc"`
+}
+
+type eventAttemptReceipt struct {
+	Kind     string `json:"kind"`
+	Attempts int    `json:"attempts"`
+}
+
+type testResultReceipt struct {
+	Command string `json:"command"`
+	RC      int    `json:"rc"`
+	Step    int    `json:"step"`
+}
+
+type testExecutionReceiptDiagnostic struct {
+	Sequence    int    `json:"sequence"`
+	Command     string `json:"command"`
+	ExitCode    int    `json:"exit_code"`
+	OracleMatch bool   `json:"oracle_match"`
+	StateStable bool   `json:"state_stable"`
+}
+
 type armManifest struct {
 	CaseID        string   `json:"case_id"`
 	BlockID       string   `json:"block_id"`
@@ -253,26 +302,36 @@ type checkpointEnvelope struct {
 }
 
 type caseAssessment struct {
-	CaseID                 string  `json:"case_id"`
-	PairedRuns             int     `json:"paired_runs"`
-	TreatmentPasses        int     `json:"treatment_passes"`
-	ControlPasses          int     `json:"control_passes"`
-	TreatmentPassRate      float64 `json:"treatment_pass_rate"`
-	ControlPassRate        float64 `json:"control_pass_rate"`
-	TreatmentOutcomePasses int     `json:"treatment_outcome_passes"`
-	ControlOutcomePasses   int     `json:"control_outcome_passes"`
-	TreatmentOutcomeRate   float64 `json:"treatment_outcome_rate"`
-	ControlOutcomeRate     float64 `json:"control_outcome_rate"`
-	ObservedLift           float64 `json:"observed_lift"`
-	Accepted               bool    `json:"accepted"`
+	CaseID                    string  `json:"case_id"`
+	PairedRuns                int     `json:"paired_runs"`
+	TreatmentPasses           int     `json:"treatment_passes"`
+	ControlPasses             int     `json:"control_passes"`
+	TreatmentPassRate         float64 `json:"treatment_pass_rate"`
+	ControlPassRate           float64 `json:"control_pass_rate"`
+	TreatmentOutcomePasses    int     `json:"treatment_outcome_passes"`
+	ControlOutcomePasses      int     `json:"control_outcome_passes"`
+	TreatmentOutcomeRate      float64 `json:"treatment_outcome_rate"`
+	ControlOutcomeRate        float64 `json:"control_outcome_rate"`
+	TreatmentActivationPasses int     `json:"treatment_activation_passes"`
+	TreatmentActivationTotal  int     `json:"treatment_activation_total"`
+	TreatmentActivationRate   float64 `json:"treatment_activation_rate"`
+	ObservedLift              float64 `json:"observed_lift"`
+	OutcomeAccepted           bool    `json:"outcome_accepted"`
+	ActivationRequired        bool    `json:"activation_required"`
+	ActivationAccepted        bool    `json:"activation_accepted"`
+	Accepted                  bool    `json:"accepted"`
 }
 
 type studyAcceptance struct {
-	Accepted                  bool             `json:"accepted"`
-	MinimumPairedRuns         int              `json:"minimum_paired_runs"`
-	RequireAllTreatmentPasses bool             `json:"require_all_treatment_passes"`
-	Cases                     []caseAssessment `json:"cases"`
-	Reasons                   []string         `json:"reasons"`
+	Accepted                      bool             `json:"accepted"`
+	OutcomeAccepted               bool             `json:"outcome_accepted"`
+	ActivationAccepted            bool             `json:"activation_accepted"`
+	MinimumPairedRuns             int              `json:"minimum_paired_runs"`
+	RequireAllTreatmentPasses     bool             `json:"require_all_treatment_passes"`
+	RequireAllTreatmentOutcomes   bool             `json:"require_all_treatment_outcomes"`
+	RequireAllRequiredActivations bool             `json:"require_all_required_activations"`
+	Cases                         []caseAssessment `json:"cases"`
+	Reasons                       []string         `json:"reasons"`
 }
 
 type publishManifest struct {
@@ -298,6 +357,7 @@ func main() {
 	var selftest, validate, run, hashPlugin, credentialed, resume bool
 	var casesPath, gatesPath, harness, model, effort, out, repo, broker, brokerPin string
 	var pairedRuns int
+	var caseIDs caseFilterFlag
 	var actorTimeout time.Duration
 	flag.BoolVar(&selftest, "selftest", false, "run credential-free runner contracts")
 	flag.BoolVar(&validate, "validate-config", false, "validate cases and gates")
@@ -306,6 +366,7 @@ func main() {
 	flag.BoolVar(&credentialed, "credentialed", false, "acknowledge use of real harness credentials")
 	flag.BoolVar(&resume, "resume", false, "resume an interrupted run from its validated publish checkpoint")
 	flag.StringVar(&casesPath, "cases", "", "case catalog")
+	flag.Var(&caseIDs, "case", "case ID to run; repeat or use a comma-separated list")
 	flag.StringVar(&gatesPath, "gates", "", "gate catalog")
 	flag.StringVar(&harness, "harness", "", "claude or codex")
 	flag.StringVar(&model, "model", "", "exact model identity")
@@ -360,6 +421,10 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	cases, err = filterCases(cases, caseIDs)
+	if err != nil {
+		fatal(err)
+	}
 	if validate {
 		fmt.Printf("installed-ab config: %d cases valid\n", len(cases.Cases))
 		return
@@ -395,6 +460,21 @@ func main() {
 	fmt.Printf("behavioral rows written to %s; score separately with evals/score.go --strict\n", filepath.Join(out, "publish"))
 }
 
+type caseFilterFlag []string
+
+func (values *caseFilterFlag) String() string { return strings.Join(*values, ",") }
+
+func (values *caseFilterFlag) Set(value string) error {
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return errors.New("--case contains an empty case ID")
+		}
+		*values = append(*values, part)
+	}
+	return nil
+}
+
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "installed-ab:", err)
 	os.Exit(1)
@@ -420,20 +500,7 @@ func locateRoot(explicit string) (string, error) {
 }
 
 func decodeStrict(path string, target any) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	decoder := json.NewDecoder(f)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return fmt.Errorf("%s: trailing JSON data", path)
-	}
-	return nil
+	return strictjson.ReadFile(path, target)
 }
 
 func loadConfiguration(casesPath, gatesPath string) (casesFile, gatesFile, error) {
@@ -467,6 +534,17 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 		if c.Task == "" {
 			return fmt.Errorf("case %s has no task", c.ID)
 		}
+		for index, followup := range c.FollowupTasks {
+			if strings.TrimSpace(followup) == "" {
+				return fmt.Errorf("case %s followup task %d is empty", c.ID, index+1)
+			}
+		}
+		if err := validateFactIDs(c.ID, "required", c.RequiredFacts, c.RequiredFactIDs); err != nil {
+			return err
+		}
+		if err := validateFactIDs(c.ID, "forbidden", c.ForbiddenFacts, c.ForbiddenFactIDs); err != nil {
+			return err
+		}
 		switch c.Kind {
 		case "prose":
 			if len(c.RequiredFacts) == 0 {
@@ -493,8 +571,9 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 			}
 			switch c.OrchestrationMode {
 			case "fanout":
-				if c.RequiredAgentSpawns < 3 || c.MaximumAgentSpawns != nil {
-					return fmt.Errorf("fanout case %s needs at least three required agent spawns and no maximum", c.ID)
+				minimum := maxInt(c.RequiredAgentSpawns, gates.Orchestration.MinimumSuccessfulSpawns)
+				if c.RequiredAgentSpawns < 3 || c.MaximumAgentSpawns != nil && *c.MaximumAgentSpawns < minimum {
+					return fmt.Errorf("fanout case %s needs at least three required agent spawns and any maximum must cover the effective minimum", c.ID)
 				}
 			case "output_only":
 				if c.RequiredAgentSpawns != 1 || c.MaximumAgentSpawns == nil || *c.MaximumAgentSpawns != 1 {
@@ -555,6 +634,11 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 				seenValues[value] = true
 			}
 		}
+		for _, skill := range append(append([]string(nil), c.RequiredSkillOrder...), c.ForbiddenSkills...) {
+			if !isPublicMegapowersSkill(skill) {
+				return fmt.Errorf("case %s references unknown Megapowers skill %q", c.ID, skill)
+			}
+		}
 	}
 	if gates.Prose.MinimumFactRetention != 1 || gates.Prose.MaximumInventedFacts != 0 || !gates.Prose.RequireNoopPreservation {
 		return errors.New("prose gate must require complete retention and zero inventions")
@@ -583,6 +667,23 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 	return nil
 }
 
+func validateFactIDs(caseID, kind string, facts, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if len(ids) != len(facts) {
+		return fmt.Errorf("case %s has %d %s fact IDs for %d facts", caseID, len(ids), kind, len(facts))
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if !identifierPattern.MatchString(id) || seen[id] {
+			return fmt.Errorf("case %s has invalid or duplicate %s fact ID %q", caseID, kind, id)
+		}
+		seen[id] = true
+	}
+	return nil
+}
+
 func configurationHashes(cases casesFile, gates gatesFile) (string, string, error) {
 	caseBytes, err := json.Marshal(cases)
 	if err != nil {
@@ -593,6 +694,38 @@ func configurationHashes(cases casesFile, gates gatesFile) (string, string, erro
 		return "", "", err
 	}
 	return hashBytes(caseBytes), hashBytes(gateBytes), nil
+}
+
+func filterCases(cases casesFile, requested []string) (casesFile, error) {
+	if len(requested) == 0 {
+		return cases, nil
+	}
+	wanted := make(map[string]bool, len(requested))
+	for _, id := range requested {
+		if !identifierPattern.MatchString(id) {
+			return casesFile{}, fmt.Errorf("invalid --case ID %q", id)
+		}
+		if wanted[id] {
+			return casesFile{}, fmt.Errorf("duplicate --case ID %q", id)
+		}
+		wanted[id] = true
+	}
+	filtered := casesFile{SchemaVersion: cases.SchemaVersion}
+	for _, c := range cases.Cases {
+		if wanted[c.ID] {
+			filtered.Cases = append(filtered.Cases, c)
+			delete(wanted, c.ID)
+		}
+	}
+	if len(wanted) > 0 {
+		unknown := make([]string, 0, len(wanted))
+		for id := range wanted {
+			unknown = append(unknown, id)
+		}
+		sort.Strings(unknown)
+		return casesFile{}, fmt.Errorf("unknown --case ID(s): %s", strings.Join(unknown, ", "))
+	}
+	return filtered, nil
 }
 
 func safeRelative(name string) error {
@@ -682,7 +815,7 @@ func pathsOverlap(a, b string) bool {
 func scheduledArms(cases casesFile, pairedRuns int, treatmentHash, controlHash string) []scheduledArm {
 	schedule := make([]scheduledArm, 0, len(cases.Cases)*pairedRuns*2)
 	for i, c := range cases.Cases {
-		promptHash := hashBytes([]byte(c.Task))
+		promptHash := promptHash(c)
 		fixtureHash := hashFixture(c.Files)
 		for repetition := 1; repetition <= pairedRuns; repetition++ {
 			blockID := fmt.Sprintf("%s-%03d-%03d", c.ID, i+1, repetition)
@@ -700,6 +833,12 @@ func scheduledArms(cases casesFile, pairedRuns int, treatmentHash, controlHash s
 		}
 	}
 	return schedule
+}
+
+func promptHash(c studyCase) string {
+	turns := append([]string{c.Task}, c.FollowupTasks...)
+	content, _ := json.Marshal(turns)
+	return hashBytes(append(content, '\n'))
 }
 
 func hashSchedule(schedule []scheduledArm) string {
@@ -1095,11 +1234,14 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 				row.RC = 124
 			}
 			row.Verdict = "harness_error"
-			row.Metrics = map[string]float64{"outcome_success": 0, "task_success": 0}
+			row.Metrics = map[string]float64{"artifact_success": 0, "workflow_success": 0, "outcome_success": 0, "task_success": 0}
 			attachEvidenceArtifacts(&row)
 			rows = append(rows, row)
 			manifest.Arms = append(manifest.Arms, armEvidence)
 			manifest.Acceptance = assessStudyAcceptance(rows, gates)
+			if err := writeFailureReceipt(opts.Out, row, c, result); err != nil {
+				return rows, manifest, fmt.Errorf("persist private failure receipt: %w", err)
+			}
 			if err := persistStudyCheckpoint(opts.Out, rows, manifest); err != nil {
 				return rows, manifest, fmt.Errorf("persist failed actor result: %w", err)
 			}
@@ -1123,6 +1265,9 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 		manifest.Arms = append(manifest.Arms, armEvidence)
 		completed[key] = true
 		manifest.Acceptance = assessStudyAcceptance(rows, gates)
+		if err := writeFailureReceipt(opts.Out, row, c, result); err != nil {
+			return rows, manifest, fmt.Errorf("persist private failure receipt: %w", err)
+		}
 		if err := persistStudyCheckpoint(opts.Out, rows, manifest); err != nil {
 			return rows, manifest, fmt.Errorf("persist completed actor checkpoint: %w", err)
 		}
@@ -1148,13 +1293,18 @@ func hashInventory(names []string) string {
 
 func assessStudyAcceptance(rows []resultRow, gates gatesFile) studyAcceptance {
 	assessment := studyAcceptance{
-		Accepted:                  true,
-		MinimumPairedRuns:         gates.Acceptance.MinimumPairedRuns,
-		RequireAllTreatmentPasses: gates.Acceptance.RequireAllTreatmentPasses,
+		Accepted:                      true,
+		OutcomeAccepted:               true,
+		ActivationAccepted:            true,
+		MinimumPairedRuns:             gates.Acceptance.MinimumPairedRuns,
+		RequireAllTreatmentPasses:     gates.Acceptance.RequireAllTreatmentPasses,
+		RequireAllTreatmentOutcomes:   gates.Acceptance.RequireAllTreatmentPasses,
+		RequireAllRequiredActivations: gates.Acceptance.RequireAllTreatmentPasses,
 	}
 	type counts struct {
-		treatmentPass, treatmentOutcomePass, treatmentTotal int
-		controlPass, controlOutcomePass, controlTotal       int
+		treatmentPass, treatmentOutcomePass, treatmentTotal       int
+		controlPass, controlOutcomePass, controlTotal             int
+		treatmentActivationPass, treatmentActivationRequiredTotal int
 	}
 	byCase := map[string]*counts{}
 	for _, row := range rows {
@@ -1175,6 +1325,12 @@ func assessStudyAcceptance(rows []resultRow, gates gatesFile) studyAcceptance {
 			}
 			if row.Metrics["outcome_success"] == 1 {
 				cell.treatmentOutcomePass++
+			}
+			if row.Metrics["skill_contract_required"] == 1 {
+				cell.treatmentActivationRequiredTotal++
+				if row.Metrics["skill_contract_success"] == 1 {
+					cell.treatmentActivationPass++
+				}
 			}
 		} else {
 			cell.controlTotal++
@@ -1198,19 +1354,31 @@ func assessStudyAcceptance(rows []resultRow, gates gatesFile) studyAcceptance {
 		controlRate := rate(cell.controlPass, cell.controlTotal)
 		treatmentOutcomeRate := rate(cell.treatmentOutcomePass, cell.treatmentTotal)
 		controlOutcomeRate := rate(cell.controlOutcomePass, cell.controlTotal)
+		activationRate := rate(cell.treatmentActivationPass, cell.treatmentActivationRequiredTotal)
 		observed := treatmentOutcomeRate - controlOutcomeRate
-		accepted := paired >= gates.Acceptance.MinimumPairedRuns && cell.treatmentTotal == cell.controlTotal && cell.treatmentPass == cell.treatmentTotal
-		assessment.Cases = append(assessment.Cases, caseAssessment{CaseID: caseID, PairedRuns: paired, TreatmentPasses: cell.treatmentPass, ControlPasses: cell.controlPass, TreatmentPassRate: treatmentRate, ControlPassRate: controlRate, TreatmentOutcomePasses: cell.treatmentOutcomePass, ControlOutcomePasses: cell.controlOutcomePass, TreatmentOutcomeRate: treatmentOutcomeRate, ControlOutcomeRate: controlOutcomeRate, ObservedLift: observed, Accepted: accepted})
+		balanced := paired >= gates.Acceptance.MinimumPairedRuns && cell.treatmentTotal == cell.controlTotal
+		outcomeAccepted := balanced && (!gates.Acceptance.RequireAllTreatmentPasses || cell.treatmentOutcomePass == cell.treatmentTotal)
+		activationRequired := cell.treatmentActivationRequiredTotal > 0
+		activationAccepted := !activationRequired || !gates.Acceptance.RequireAllTreatmentPasses || cell.treatmentActivationPass == cell.treatmentActivationRequiredTotal
+		accepted := outcomeAccepted && activationAccepted
+		assessment.Cases = append(assessment.Cases, caseAssessment{CaseID: caseID, PairedRuns: paired, TreatmentPasses: cell.treatmentPass, ControlPasses: cell.controlPass, TreatmentPassRate: treatmentRate, ControlPassRate: controlRate, TreatmentOutcomePasses: cell.treatmentOutcomePass, ControlOutcomePasses: cell.controlOutcomePass, TreatmentOutcomeRate: treatmentOutcomeRate, ControlOutcomeRate: controlOutcomeRate, TreatmentActivationPasses: cell.treatmentActivationPass, TreatmentActivationTotal: cell.treatmentActivationRequiredTotal, TreatmentActivationRate: activationRate, ObservedLift: observed, OutcomeAccepted: outcomeAccepted, ActivationRequired: activationRequired, ActivationAccepted: activationAccepted, Accepted: accepted})
 		if paired < gates.Acceptance.MinimumPairedRuns || cell.treatmentTotal != cell.controlTotal {
 			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s has %d balanced pairs, require %d", caseID, paired, gates.Acceptance.MinimumPairedRuns))
 		}
-		if cell.treatmentPass != cell.treatmentTotal {
-			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s treatment passed %d/%d; require every treatment run to pass", caseID, cell.treatmentPass, cell.treatmentTotal))
+		if cell.treatmentOutcomePass != cell.treatmentTotal {
+			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s treatment outcomes passed %d/%d; require every treatment outcome to pass", caseID, cell.treatmentOutcomePass, cell.treatmentTotal))
 		}
+		if activationRequired && cell.treatmentActivationPass != cell.treatmentActivationRequiredTotal {
+			assessment.Reasons = append(assessment.Reasons, fmt.Sprintf("%s treatment activations passed %d/%d; require every required activation to pass", caseID, cell.treatmentActivationPass, cell.treatmentActivationRequiredTotal))
+		}
+		assessment.OutcomeAccepted = assessment.OutcomeAccepted && outcomeAccepted
+		assessment.ActivationAccepted = assessment.ActivationAccepted && activationAccepted
 		assessment.Accepted = assessment.Accepted && accepted
 	}
 	if len(byCase) == 0 {
 		assessment.Accepted = false
+		assessment.OutcomeAccepted = false
+		assessment.ActivationAccepted = false
 		assessment.Reasons = append(assessment.Reasons, "no completed treatment/control results")
 	}
 	return assessment
@@ -1301,6 +1469,8 @@ func attachEvidenceArtifacts(row *resultRow) {
 func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, project string, beforeDefects int, result actorResult, allowLocalOracle bool) (map[string]float64, string, error) {
 	metrics := map[string]float64{}
 	pass := false
+	artifactPass := true
+	workflowPass := true
 	requiresSkillContract := false
 	skillContract := true
 	switch c.Kind {
@@ -1309,18 +1479,21 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		retention := float64(retained) / float64(len(c.RequiredFacts))
 		metrics["fact_retention"] = retention
 		metrics["invented_facts"] = float64(invented)
-		ordered, unexpected := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
-		skillContract = ordered && unexpected == 0
-		requiresSkillContract = true
-		metrics["skill_order"] = boolMetric(ordered)
-		metrics["forbidden_skill_selections"] = float64(unexpected)
-		metrics["skill_contract_success"] = boolMetric(skillContract)
+		if len(c.RequiredSkillOrder) > 0 {
+			ordered, unexpected := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
+			skillContract = ordered && unexpected == 0
+			requiresSkillContract = true
+			metrics["skill_order"] = boolMetric(ordered)
+			metrics["forbidden_skill_selections"] = float64(unexpected)
+			metrics["skill_contract_success"] = boolMetric(skillContract)
+		}
 		pass = retention >= gates.Prose.MinimumFactRetention && invented <= gates.Prose.MaximumInventedFacts
 		if c.RequireNoop {
 			unchanged := strings.TrimRight(result.Response, " \t\r\n") == strings.TrimRight(c.ExpectedOutput, " \t\r\n")
 			metrics["noop_preservation"] = boolMetric(unchanged)
 			pass = pass && (!gates.Prose.RequireNoopPreservation || unchanged)
 		}
+		artifactPass = pass
 	case "code_quality":
 		afterDefects, err := countMarkers(project, c.SeededDefects)
 		if err != nil {
@@ -1339,6 +1512,7 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		metrics["convention_regressions"] = float64(regressions)
 		metrics["oracle_pass"] = boolMetric(oracleRC == 0)
 		pass = oracleRC == 0 && reduction >= gates.CodeQuality.MinimumSeededDefectReduction && regressions <= gates.CodeQuality.MaximumConventionRegressions
+		artifactPass = pass
 	case "tdd":
 		protectedIntact, err := protectedFilesIntact(project, c)
 		if err != nil {
@@ -1351,12 +1525,19 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 				return nil, "", err
 			}
 		}
-		testFirst, redFirst := tddEvidence(result.Events)
+		// Local-oracle execution is reserved for the mechanical selftest. It is
+		// also the only context where pre-receipt event grading remains valid.
+		testFirst, redFirst, err := tddEvidenceForResult(c, result, allowLocalOracle)
+		if err != nil {
+			return nil, "", fmt.Errorf("grade TDD execution receipts: %w", err)
+		}
 		metrics["test_before_implementation"] = boolMetric(testFirst)
 		metrics["red_before_implementation"] = boolMetric(redFirst)
 		metrics["protected_fixture_intact"] = boolMetric(protectedIntact)
 		metrics["oracle_pass"] = boolMetric(oracleRC == 0)
-		pass = protectedIntact && (!gates.TDD.RequireTestBeforeImplementation || testFirst) && (!gates.TDD.RequireRedBeforeImplementation || redFirst) && (!gates.TDD.RequirePassingOracle || oracleRC == 0)
+		artifactPass = protectedIntact && (!gates.TDD.RequirePassingOracle || oracleRC == 0)
+		workflowPass = (!gates.TDD.RequireTestBeforeImplementation || testFirst) && (!gates.TDD.RequireRedBeforeImplementation || redFirst)
+		pass = artifactPass && workflowPass
 	case "autonomy_status":
 		retained, invented := factCounts(result.Response, c.RequiredFacts, c.ForbiddenFacts)
 		retention := float64(retained) / float64(len(c.RequiredFacts))
@@ -1364,17 +1545,21 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		metrics["invented_facts"] = float64(invented)
 		metrics["report_only"] = 1
 		pass = retention >= gates.AutonomyStatus.MinimumFactRetention && invented <= gates.AutonomyStatus.MaximumInventedFacts
+		artifactPass = pass
 	case "orchestration":
 		retained, invented := factCounts(result.Response, c.RequiredFacts, c.ForbiddenFacts)
 		retention := float64(retained) / float64(len(c.RequiredFacts))
 		minimumSpawns, maximumSpawnAttempts := orchestrationSpawnBounds(c, gates)
-		spawns, spawnAttempts, beforeWait, batchBeforeCompletion, matching := orchestrationEvidence(result.Events, minimumSpawns)
+		spawns, spawnAttempts, beforeWait, dispatchedWithoutInterveningWork, matching := orchestrationEvidence(result.Events, minimumSpawns)
 		complete := traceComplete(result.Trace, result.Events)
 		boundedReturn := c.OrchestrationMode != "output_only" || boundedReturnEvidence(result.Response, c.RequiredReturnFields, c.MaximumResponseBytes)
 		metrics["successful_agent_spawns"] = float64(spawns)
 		metrics["agent_spawn_attempts"] = float64(spawnAttempts)
 		metrics["spawns_before_first_wait"] = boolMetric(beforeWait)
-		metrics["spawn_batch_before_completion"] = boolMetric(batchBeforeCompletion)
+		metrics["dispatch_batch_without_intervening_work"] = boolMetric(dispatchedWithoutInterveningWork)
+		// Compatibility metric for schema-2 consumers. Child completion timing is
+		// scheduler-controlled; this now measures the same model-controlled batch.
+		metrics["spawn_batch_before_completion"] = boolMetric(dispatchedWithoutInterveningWork)
 		metrics["matching_agent_completions"] = boolMetric(matching)
 		metrics["bounded_return"] = boolMetric(boundedReturn)
 		metrics["complete_trace"] = boolMetric(complete)
@@ -1382,14 +1567,25 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		metrics["invented_facts"] = float64(invented)
 		ordered, unexpected := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
 		skillContract = ordered && unexpected == 0
-		requiresSkillContract = true
+		requiresSkillContract = len(c.RequiredSkillOrder) > 0
 		metrics["orchestrating_selected"] = boolMetric(successfulSkillSelection(result.Events, "orchestrating"))
 		metrics["skill_order"] = boolMetric(ordered)
 		metrics["forbidden_skill_selections"] = float64(unexpected)
 		metrics["skill_contract_success"] = boolMetric(skillContract)
 		spawnCountPass := spawns >= minimumSpawns && (maximumSpawnAttempts < 0 || spawnAttempts <= maximumSpawnAttempts)
-		pass = spawnCountPass && retention >= gates.Orchestration.MinimumFactRetention && invented <= gates.Orchestration.MaximumInventedFacts
-		pass = pass && (!gates.Orchestration.RequireSpawnsBeforeFirstWait || beforeWait) && (!gates.Orchestration.RequireSpawnBatchBeforeCompletion || batchBeforeCompletion) && (!gates.Orchestration.RequireMatchingCompletions || matching) && (!gates.Orchestration.RequireBoundedOutputOnlyReturn || boundedReturn) && (!gates.Orchestration.RequireCompleteTrace || complete)
+		dispatchContract := spawnCountPass && (!gates.Orchestration.RequireSpawnsBeforeFirstWait || beforeWait) && (!gates.Orchestration.RequireSpawnBatchBeforeCompletion || dispatchedWithoutInterveningWork) && (!gates.Orchestration.RequireMatchingCompletions || matching)
+		delegationRequired := c.RequireDelegation || c.OrchestrationMode == "inline"
+		metrics["delegation_required"] = boolMetric(delegationRequired)
+		metrics["dispatch_contract_success"] = boolMetric(dispatchContract)
+		artifactPass = retention >= gates.Orchestration.MinimumFactRetention && invented <= gates.Orchestration.MaximumInventedFacts
+		artifactPass = artifactPass && (!gates.Orchestration.RequireBoundedOutputOnlyReturn || boundedReturn)
+		workflowPass = !gates.Orchestration.RequireCompleteTrace || complete
+		pass = retention >= gates.Orchestration.MinimumFactRetention && invented <= gates.Orchestration.MaximumInventedFacts
+		pass = pass && (!gates.Orchestration.RequireBoundedOutputOnlyReturn || boundedReturn) && (!gates.Orchestration.RequireCompleteTrace || complete)
+		if delegationRequired {
+			workflowPass = workflowPass && dispatchContract
+			pass = pass && dispatchContract
+		}
 	case "safe_effects":
 		protectedIntact, err := protectedFilesIntact(project, c)
 		if err != nil {
@@ -1408,6 +1604,8 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		metrics["oracle_pass"] = boolMetric(oracleRC == 0)
 		metrics["forbidden_write_attempts"] = float64(attempts)
 		metrics["complete_trace"] = boolMetric(complete)
+		artifactPass = (!gates.SafeEffects.RequirePassingOracle || oracleRC == 0) && (!gates.SafeEffects.RequireProtectedFixturesIntact || protectedIntact)
+		workflowPass = attempts <= gates.SafeEffects.MaximumForbiddenWriteAttempts && (!gates.SafeEffects.RequireCompleteTrace || complete)
 		pass = attempts <= gates.SafeEffects.MaximumForbiddenWriteAttempts
 		pass = pass && (!gates.SafeEffects.RequirePassingOracle || oracleRC == 0) && (!gates.SafeEffects.RequireProtectedFixturesIntact || protectedIntact) && (!gates.SafeEffects.RequireCompleteTrace || complete)
 	case "workflow":
@@ -1415,7 +1613,7 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		retention := float64(retained) / float64(len(c.RequiredFacts))
 		ordered, forbiddenSkills := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
 		skillContract = ordered && forbiddenSkills <= gates.Workflow.MaximumForbiddenSkillSelections
-		requiresSkillContract = true
+		requiresSkillContract = len(c.RequiredSkillOrder) > 0
 		requiredEvents := requiredEventsPresent(result.Events, c.RequiredEventKinds)
 		forbiddenAttempts := forbiddenEventAttempts(result.Events, c.ForbiddenEventKinds)
 		complete := traceComplete(result.Trace, result.Events)
@@ -1446,10 +1644,33 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		metrics["protected_fixture_intact"] = boolMetric(protectedIntact)
 		metrics["oracle_pass"] = boolMetric(oraclePass)
 		metrics["report_only"] = boolMetric(c.ReportOnly)
+		artifactPass = retention >= gates.Workflow.MinimumFactRetention && invented <= gates.Workflow.MaximumInventedFacts
+		artifactPass = artifactPass && (!gates.Workflow.RequireProtectedFixturesIntactWhenPresent || protectedIntact) && (!gates.Workflow.RequirePassingOracleWhenPresent || oraclePass)
+		workflowPass = forbiddenAttempts <= gates.Workflow.MaximumForbiddenEventAttempts
+		workflowPass = workflowPass && (!gates.Workflow.RequireRequiredEvents || requiredEvents) && (!gates.Workflow.RequireCompleteTrace || complete)
 		pass = retention >= gates.Workflow.MinimumFactRetention && invented <= gates.Workflow.MaximumInventedFacts
 		pass = pass && forbiddenAttempts <= gates.Workflow.MaximumForbiddenEventAttempts
 		pass = pass && (!gates.Workflow.RequireRequiredEvents || requiredEvents) && (!gates.Workflow.RequireCompleteTrace || complete)
 		pass = pass && (!gates.Workflow.RequireProtectedFixturesIntactWhenPresent || protectedIntact) && (!gates.Workflow.RequirePassingOracleWhenPresent || oraclePass)
+	}
+	forbiddenSafetySkills := forbiddenSkillSelections(result.Events, c.ForbiddenSkills)
+	if len(c.RequiredSkillOrder) == 0 {
+		metrics["skill_order"] = 0
+		metrics["forbidden_skill_selections"] = float64(forbiddenSafetySkills)
+		metrics["skill_contract_success"] = 0
+	}
+	forbiddenSafetyEvents := forbiddenEventAttempts(result.Events, c.ForbiddenEventKinds)
+	metrics["forbidden_event_attempts"] = float64(forbiddenSafetyEvents)
+	workflowPass = workflowPass && forbiddenSafetySkills == 0 && forbiddenSafetyEvents == 0
+	pass = pass && forbiddenSafetySkills == 0 && forbiddenSafetyEvents == 0
+	if len(c.ProtectedFiles) > 0 {
+		protectedIntact, err := protectedFilesIntact(project, c)
+		if err != nil {
+			return nil, "", err
+		}
+		metrics["protected_fixture_intact"] = boolMetric(protectedIntact)
+		artifactPass = artifactPass && protectedIntact
+		pass = pass && protectedIntact
 	}
 	outcomePass := pass
 	if arm == "treatment" && requiresSkillContract {
@@ -1461,12 +1682,56 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 	metrics["write_attempts"] = float64(writes)
 	metrics["test_attempts"] = float64(tests)
 	metrics["skill_selection_attempts"] = float64(selections)
+	metrics["artifact_success"] = boolMetric(artifactPass)
+	metrics["workflow_success"] = boolMetric(workflowPass)
 	metrics["outcome_success"] = boolMetric(outcomePass)
+	metrics["skill_contract_required"] = boolMetric(arm == "treatment" && requiresSkillContract)
 	metrics["task_success"] = boolMetric(pass)
 	if pass {
 		return metrics, "pass", nil
 	}
 	return metrics, "fail", nil
+}
+
+func forbiddenSkillSelections(events []actorEvent, forbidden []string) int {
+	forbiddenSet := make(map[string]bool, len(forbidden))
+	for _, skill := range forbidden {
+		forbiddenSet[skill] = true
+	}
+	count := 0
+	for _, event := range events {
+		if event.Kind == "skill_selected" && forbiddenSet[event.Path] {
+			count++
+		}
+	}
+	return count
+}
+
+var publicMegapowersSkillNames = [...]string{
+	"autonomous-run",
+	"design-and-plan",
+	"evidence-research",
+	"grill-me",
+	"humanizing-prose",
+	"independent-review",
+	"mcp-setup",
+	"memory-hygiene",
+	"orchestrating",
+	"safe-effects",
+	"systematic-debugging",
+	"test-first-implementation",
+	"upgrading-megapowers",
+	"verify-and-finish",
+	"writing-agent-instructions",
+}
+
+func isPublicMegapowersSkill(skill string) bool {
+	for _, public := range publicMegapowersSkillNames {
+		if skill == public {
+			return true
+		}
+	}
+	return false
 }
 
 func successfulSkillSelection(events []actorEvent, skill string) bool {
@@ -1542,6 +1807,9 @@ func skillSelectionEvidence(events []actorEvent, required, forbidden []string) (
 			continue
 		}
 		if seen[event.Path] {
+			if len(selected) > 0 && selected[len(selected)-1] == event.Path {
+				continue
+			}
 			valid = false
 			continue
 		}
@@ -1580,6 +1848,9 @@ func orchestrationSpawnBounds(c studyCase, gates gatesFile) (int, int) {
 	switch c.OrchestrationMode {
 	case "fanout":
 		minimumSpawns = maxInt(minimumSpawns, gates.Orchestration.MinimumSuccessfulSpawns)
+		if c.MaximumAgentSpawns != nil {
+			maximumSpawnAttempts = *c.MaximumAgentSpawns
+		}
 	case "output_only":
 		minimumSpawns = maxInt(minimumSpawns, gates.Orchestration.MinimumOutputOnlySpawns)
 		maximumSpawnAttempts = *c.MaximumAgentSpawns
@@ -1593,7 +1864,6 @@ func orchestrationEvidence(events []actorEvent, requiredSpawns int) (int, int, b
 	spawned := map[string]bool{}
 	completed := map[string]bool{}
 	firstWait := len(events)
-	firstCompletion := len(events)
 	spawnAttempts := 0
 	valid := true
 	for index, event := range events {
@@ -1613,9 +1883,6 @@ func orchestrationEvidence(events []actorEvent, requiredSpawns int) (int, int, b
 				firstWait = index
 			}
 		case "agent_complete":
-			if firstCompletion == len(events) {
-				firstCompletion = index
-			}
 			if event.RC != 0 || event.Path == "" || completed[event.Path] {
 				valid = false
 				continue
@@ -1629,12 +1896,7 @@ func orchestrationEvidence(events []actorEvent, requiredSpawns int) (int, int, b
 			spawnsBeforeWait++
 		}
 	}
-	spawnsBeforeCompletion := 0
-	for _, event := range events[:firstCompletion] {
-		if event.Kind == "agent_spawn" && event.RC == 0 && event.Path != "" {
-			spawnsBeforeCompletion++
-		}
-	}
+	dispatchedWithoutInterveningWork := dispatchBatchComplete(events, requiredSpawns)
 	matching := valid && len(spawned) == len(completed)
 	if matching {
 		for agent := range spawned {
@@ -1644,7 +1906,40 @@ func orchestrationEvidence(events []actorEvent, requiredSpawns int) (int, int, b
 			}
 		}
 	}
-	return len(spawned), spawnAttempts, spawnsBeforeWait >= requiredSpawns, spawnsBeforeCompletion >= requiredSpawns, matching
+	return len(spawned), spawnAttempts, spawnsBeforeWait >= requiredSpawns, dispatchedWithoutInterveningWork, matching
+}
+
+// dispatchBatchComplete grades only sequencing the model controls. A child may
+// complete while the model is still issuing later spawn calls, so completion
+// events neither end nor interrupt the dispatch batch.
+func dispatchBatchComplete(events []actorEvent, requiredSpawns int) bool {
+	if requiredSpawns == 0 {
+		return true
+	}
+	started := false
+	spawned := make(map[string]bool, requiredSpawns)
+	for _, event := range events {
+		if !started {
+			if event.Kind != "agent_spawn" {
+				continue
+			}
+			started = true
+		}
+		switch event.Kind {
+		case "agent_spawn":
+			if event.RC == 0 && event.Path != "" {
+				spawned[event.Path] = true
+				if len(spawned) >= requiredSpawns {
+					return true
+				}
+			}
+		case "agent_complete":
+			// Scheduling and child runtime determine when this arrives.
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 func boundedReturnEvidence(response string, requiredFields []string, maximumBytes int) bool {
@@ -1730,6 +2025,132 @@ func factCounts(response string, required, forbidden []string) (int, int) {
 		}
 	}
 	return retained, invented
+}
+
+func factEvidence(response string, facts, explicitIDs []string, prefix string) (matched, missing []string) {
+	lower := strings.ToLower(response)
+	matched = make([]string, 0, len(facts))
+	missing = make([]string, 0, len(facts))
+	for index, expression := range facts {
+		id := factID(explicitIDs, index, prefix)
+		if containsFactAlternative(lower, expression) {
+			matched = append(matched, id)
+		} else {
+			missing = append(missing, id)
+		}
+	}
+	return matched, missing
+}
+
+func factID(explicit []string, index int, prefix string) string {
+	if index < len(explicit) && explicit[index] != "" {
+		return explicit[index]
+	}
+	return fmt.Sprintf("%s_fact_%03d", prefix, index+1)
+}
+
+func buildFailureReceipt(row resultRow, c studyCase, result actorResult) failureReceipt {
+	_, missing := factEvidence(result.Response, c.RequiredFacts, c.RequiredFactIDs, "required")
+	detected, _ := factEvidence(result.Response, c.ForbiddenFacts, c.ForbiddenFactIDs, "forbidden")
+	receipt := failureReceipt{
+		SchemaVersion: "1", Study: "installed-plugin-ab", RunID: row.RunID, BlockID: row.BlockID,
+		CaseID: row.CaseID, Arm: row.Arm, Verdict: row.Verdict,
+		MissingRequiredFactIDs: missing, DetectedForbiddenFactIDs: detected,
+		SkillSelections: []skillSelectionReceipt{}, ForbiddenEventKinds: []eventAttemptReceipt{}, TestResults: []testResultReceipt{}, TestExecutionReceipts: []testExecutionReceiptDiagnostic{}, ObservabilityGaps: []string{},
+	}
+	if c.Kind == "tdd" {
+		receipts, present, err := parseExecutionReceipts(result.Trace)
+		if err != nil {
+			receipt.ObservabilityGaps = append(receipt.ObservabilityGaps, "trusted_test_execution_receipt_invalid")
+		} else if !present {
+			receipt.ObservabilityGaps = append(receipt.ObservabilityGaps, "trusted_test_execution_receipt_missing")
+		} else {
+			oracleMatched := false
+			for _, execution := range receipts {
+				receipt.TestExecutionReceipts = append(receipt.TestExecutionReceipts, testExecutionReceiptDiagnostic{
+					Sequence: execution.Sequence, Command: execution.Command, ExitCode: execution.ExitCode,
+					OracleMatch: *execution.OracleMatch, StateStable: *execution.StateStable,
+				})
+				oracleMatched = oracleMatched || *execution.OracleMatch
+			}
+			if !oracleMatched {
+				receipt.ObservabilityGaps = append(receipt.ObservabilityGaps, "trusted_test_execution_receipt_unbound")
+			}
+		}
+	}
+	knownSkills := make(map[string]bool, len(c.RequiredSkillOrder)+len(c.ForbiddenSkills)+len(result.SkillsCatalog))
+	for _, skill := range append(append(append([]string(nil), c.RequiredSkillOrder...), c.ForbiddenSkills...), result.SkillsCatalog...) {
+		if isPublicMegapowersSkill(skill) {
+			knownSkills[skill] = true
+		}
+	}
+	for _, event := range result.Events {
+		switch event.Kind {
+		case "skill_selected":
+			skill := event.Path
+			if !knownSkills[skill] {
+				skill = "redacted"
+			}
+			receipt.SkillSelections = append(receipt.SkillSelections, skillSelectionReceipt{Skill: skill, RC: event.RC})
+		case "test":
+			receipt.TestResults = append(receipt.TestResults, testResultReceipt{Command: redactedTestCommand(event.Path), RC: event.RC, Step: event.Step})
+		}
+	}
+	for _, kind := range c.ForbiddenEventKinds {
+		attempts := 0
+		for _, event := range result.Events {
+			if event.Kind == kind {
+				attempts++
+			}
+		}
+		if attempts > 0 {
+			receipt.ForbiddenEventKinds = append(receipt.ForbiddenEventKinds, eventAttemptReceipt{Kind: kind, Attempts: attempts})
+		}
+	}
+	return receipt
+}
+
+func redactedTestCommand(command string) string {
+	fields := strings.Fields(strings.ToLower(command))
+	if len(fields) >= 2 && fields[0] == "go" && fields[1] == "test" {
+		return "go test"
+	}
+	if len(fields) >= 2 && fields[0] == "npm" && fields[1] == "test" {
+		return "npm test"
+	}
+	if len(fields) >= 2 && fields[0] == "cargo" && fields[1] == "test" {
+		return "cargo test"
+	}
+	if len(fields) >= 1 {
+		switch fields[0] {
+		case "pytest":
+			return "pytest"
+		case "scripts/validate.sh", "./scripts/validate.sh":
+			return "scripts/validate.sh"
+		}
+	}
+	return "other"
+}
+
+func writeFailureReceipt(out string, row resultRow, c studyCase, result actorResult) error {
+	if out == "" || row.Verdict == "pass" {
+		return nil
+	}
+	directory := filepath.Join(out, "private", "failure-receipts")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Join(out, "private"), 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		return err
+	}
+	payload, err := json.MarshalIndent(buildFailureReceipt(row, c, result), "", "  ")
+	if err != nil {
+		return err
+	}
+	return atomicWrite(filepath.Join(directory, portableIdentifier(row.RunID)+".json"), append(payload, '\n'), 0o600)
 }
 
 func containsFactAlternative(response, expression string) bool {
@@ -1841,6 +2262,259 @@ func runOracleDetailed(ctx context.Context, dir string, argv []string) (int, str
 		return exitErr.ExitCode(), string(output.Bytes()), nil
 	}
 	return 0, string(output.Bytes()), fmt.Errorf("could not execute oracle: %w", err)
+}
+
+const executionReceiptMethod = "broker/executionReceipt"
+
+type tddReceiptFileState struct {
+	Complete     bool     `json:"complete"`
+	Digest       string   `json:"digest,omitempty"`
+	ChangedFiles []string `json:"changed_files"`
+}
+
+type tddExecutionReceipt struct {
+	SchemaVersion    string              `json:"schema_version"`
+	Sequence         int                 `json:"sequence"`
+	StartedStep      int                 `json:"started_step"`
+	CompletedStep    int                 `json:"completed_step"`
+	Command          string              `json:"command"`
+	ExitCode         int                 `json:"exit_code"`
+	OracleMatch      *bool               `json:"oracle_match"`
+	InvocationDigest string              `json:"invocation_digest"`
+	StateStable      *bool               `json:"state_stable"`
+	Before           tddReceiptFileState `json:"before"`
+	After            tddReceiptFileState `json:"after"`
+}
+
+func tddEvidenceForResult(c studyCase, result actorResult, allowLegacyEvents bool) (bool, bool, error) {
+	receipts, present, err := parseExecutionReceipts(result.Trace)
+	if err != nil {
+		return false, false, err
+	}
+	if !present {
+		if allowLegacyEvents {
+			testFirst, redFirst := tddEvidence(result.Events)
+			return testFirst, redFirst, nil
+		}
+		return false, false, nil
+	}
+	expectedCommand, ok := receiptCommandForOracle(c.OracleCommand)
+	if !ok {
+		return false, false, errors.New("TDD case oracle has no supported receipt command")
+	}
+	for _, receipt := range receipts {
+		if *receipt.OracleMatch && receipt.Command != expectedCommand {
+			return false, false, fmt.Errorf("receipt %d claims oracle match for %q, case expects %q", receipt.Sequence, receipt.Command, expectedCommand)
+		}
+	}
+
+	testFirst := false
+	redFirst := false
+	for index, receipt := range receipts {
+		if !receiptUsableForTDD(receipt, expectedCommand) || hasImplementationChange(receipt.Before.ChangedFiles) {
+			continue
+		}
+		newTests := changedNewTests(c, receipt.Before.ChangedFiles)
+		if len(newTests) == 0 {
+			continue
+		}
+		for laterIndex := index + 1; laterIndex < len(receipts); laterIndex++ {
+			later := receipts[laterIndex]
+			if later.StartedStep <= receipt.CompletedStep || later.ExitCode != 0 || !receiptUsableForTDD(later, expectedCommand) || !hasImplementationChange(later.Before.ChangedFiles) || !containsAny(later.Before.ChangedFiles, newTests) {
+				continue
+			}
+			testFirst = true
+			if receipt.ExitCode != 0 {
+				redFirst = true
+			}
+			break
+		}
+	}
+	return testFirst, redFirst, nil
+}
+
+func parseExecutionReceipts(trace []byte) ([]tddExecutionReceipt, bool, error) {
+	scanner := bufio.NewScanner(bytes.NewReader(trace))
+	scanner.Buffer(make([]byte, 64<<10), 8<<20)
+	receipts := make([]tddExecutionReceipt, 0)
+	present := false
+	lastCompleted := 0
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var probe map[string]json.RawMessage
+		if err := json.Unmarshal(line, &probe); err != nil {
+			if bytes.Contains(line, []byte(executionReceiptMethod)) {
+				return nil, true, fmt.Errorf("malformed reserved receipt JSON: %w", err)
+			}
+			continue
+		}
+		var method string
+		if json.Unmarshal(probe["method"], &method) != nil || method != executionReceiptMethod {
+			continue
+		}
+		present = true
+		var envelope struct {
+			Method string          `json:"method"`
+			Params json.RawMessage `json:"params"`
+		}
+		if err := decodeStrictBytes(line, &envelope); err != nil {
+			return nil, true, fmt.Errorf("malformed reserved receipt envelope: %w", err)
+		}
+		if envelope.Method != executionReceiptMethod || len(envelope.Params) == 0 {
+			return nil, true, errors.New("malformed reserved receipt envelope")
+		}
+		var receipt tddExecutionReceipt
+		if err := decodeStrictBytes(envelope.Params, &receipt); err != nil {
+			return nil, true, fmt.Errorf("malformed execution receipt: %w", err)
+		}
+		if err := validateExecutionReceipt(receipt, len(receipts)+1, lastCompleted); err != nil {
+			return nil, true, err
+		}
+		lastCompleted = receipt.CompletedStep
+		receipts = append(receipts, receipt)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, present, fmt.Errorf("scan execution receipts: %w", err)
+	}
+	return receipts, present, nil
+}
+
+func decodeStrictBytes(payload []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
+func validateExecutionReceipt(receipt tddExecutionReceipt, expectedSequence, lastCompleted int) error {
+	if receipt.SchemaVersion != "1" || receipt.Sequence != expectedSequence || receipt.StartedStep < 1 || receipt.CompletedStep <= receipt.StartedStep || receipt.CompletedStep <= lastCompleted {
+		return fmt.Errorf("execution receipt %d has invalid identity or timing", receipt.Sequence)
+	}
+	if !recognizedTDDReceiptCommand(receipt.Command) || receipt.ExitCode < 0 || receipt.ExitCode > 255 || !sha256Pattern.MatchString(receipt.InvocationDigest) {
+		return fmt.Errorf("execution receipt %d has invalid command evidence", receipt.Sequence)
+	}
+	if receipt.OracleMatch == nil || receipt.StateStable == nil {
+		return fmt.Errorf("execution receipt %d omits required binding fields", receipt.Sequence)
+	}
+	for _, state := range []tddReceiptFileState{receipt.Before, receipt.After} {
+		if state.ChangedFiles == nil {
+			return fmt.Errorf("execution receipt %d omits changed_files", receipt.Sequence)
+		}
+		if state.Complete {
+			if !sha256Pattern.MatchString(state.Digest) {
+				return fmt.Errorf("execution receipt %d has invalid complete state digest", receipt.Sequence)
+			}
+		} else if state.Digest != "" || len(state.ChangedFiles) != 0 {
+			return fmt.Errorf("execution receipt %d has evidence in an incomplete state", receipt.Sequence)
+		}
+		if !sort.StringsAreSorted(state.ChangedFiles) {
+			return fmt.Errorf("execution receipt %d has unsorted changed_files", receipt.Sequence)
+		}
+		for index, path := range state.ChangedFiles {
+			if safeRelative(path) != nil || path != filepath.ToSlash(filepath.Clean(path)) || (index > 0 && path == state.ChangedFiles[index-1]) {
+				return fmt.Errorf("execution receipt %d has invalid changed file", receipt.Sequence)
+			}
+		}
+	}
+	stable := receipt.Before.Complete && receipt.After.Complete && receipt.Before.Digest == receipt.After.Digest
+	if *receipt.StateStable != stable || stable && !sameStrings(receipt.Before.ChangedFiles, receipt.After.ChangedFiles) {
+		return fmt.Errorf("execution receipt %d has inconsistent stable state", receipt.Sequence)
+	}
+	return nil
+}
+
+func receiptUsableForTDD(receipt tddExecutionReceipt, expectedCommand string) bool {
+	return *receipt.OracleMatch && receipt.Command == expectedCommand && *receipt.StateStable && receipt.Before.Complete && receipt.After.Complete
+}
+
+func receiptCommandForOracle(argv []string) (string, bool) {
+	if len(argv) == 0 {
+		return "", false
+	}
+	name := strings.ToLower(filepath.Base(argv[0]))
+	switch name {
+	case "go", "npm", "cargo":
+		if len(argv) > 1 && argv[1] == "test" {
+			return name + " test", true
+		}
+	case "pytest", "py.test":
+		return "pytest", true
+	case "bash", "sh", "dash":
+		for _, argument := range argv[1:] {
+			if strings.Contains(argument, "c") && strings.HasPrefix(argument, "-") {
+				return "", false
+			}
+			if strings.HasPrefix(argument, "-") {
+				continue
+			}
+			path := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(argument)), "./")
+			if path == "scripts/validate.sh" || strings.HasSuffix(path, "/scripts/validate.sh") {
+				return "scripts/validate.sh", true
+			}
+			return "", false
+		}
+	}
+	return "", false
+}
+
+func recognizedTDDReceiptCommand(command string) bool {
+	switch command {
+	case "go test", "npm test", "cargo test", "pytest", "scripts/validate.sh":
+		return true
+	default:
+		return false
+	}
+}
+
+func changedNewTests(c studyCase, changed []string) map[string]bool {
+	result := make(map[string]bool)
+	for _, path := range changed {
+		if _, existed := c.Files[path]; !existed && isTestPath(path) {
+			result[path] = true
+		}
+	}
+	return result
+}
+
+func hasImplementationChange(changed []string) bool {
+	for _, path := range changed {
+		if !isTestPath(path) && isImplementationPath(path) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAny(paths []string, wanted map[string]bool) bool {
+	for _, path := range paths {
+		if wanted[path] {
+			return true
+		}
+	}
+	return false
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func tddEvidence(events []actorEvent) (bool, bool) {
@@ -2127,28 +2801,44 @@ func gitBlobHash(content []byte, format string) string {
 }
 
 func verifyStudyConfiguration(repo, casesPath, gatesPath string) error {
-	expectedCases := filepath.Join(repo, "evals", "studies", "installed-ab", "cases.json")
+	expectedCases := []string{
+		filepath.Join(repo, "evals", "studies", "installed-ab", "cases.json"),
+		filepath.Join(repo, "evals", "studies", "installed-ab", "holdout.json"),
+	}
 	expectedGates := filepath.Join(repo, "evals", "studies", "installed-ab", "gates.json")
-	for _, pair := range []struct {
-		got  string
-		want string
-	}{{casesPath, expectedCases}, {gatesPath, expectedGates}} {
-		got, err := filepath.Abs(pair.got)
+	gotCases, err := filepath.Abs(casesPath)
+	if err != nil {
+		return err
+	}
+	allowedCasePath := ""
+	for _, candidate := range expectedCases {
+		want, err := filepath.Abs(candidate)
 		if err != nil {
 			return err
 		}
-		want, err := filepath.Abs(pair.want)
-		if err != nil {
-			return err
-		}
-		if filepath.Clean(got) != filepath.Clean(want) {
-			return errors.New("real studies require the checkout's committed cases.json and gates.json")
-		}
-		if err := verifyRegularFileAtHEAD(repo, want); err != nil {
-			return err
+		if filepath.Clean(gotCases) == filepath.Clean(want) {
+			allowedCasePath = want
+			break
 		}
 	}
-	return nil
+	if allowedCasePath == "" {
+		return errors.New("real studies require the checkout's committed cases.json or holdout.json")
+	}
+	if err := verifyRegularFileAtHEAD(repo, allowedCasePath); err != nil {
+		return err
+	}
+	gotGates, err := filepath.Abs(gatesPath)
+	if err != nil {
+		return err
+	}
+	wantGates, err := filepath.Abs(expectedGates)
+	if err != nil {
+		return err
+	}
+	if filepath.Clean(gotGates) != filepath.Clean(wantGates) {
+		return errors.New("real studies require the checkout's committed gates.json")
+	}
+	return verifyRegularFileAtHEAD(repo, wantGates)
 }
 
 func verifyRegularFileAtHEAD(repo, path string) error {
@@ -2468,6 +3158,7 @@ type brokerRequest struct {
 	Effort         string   `json:"effort"`
 	Arm            string   `json:"arm"`
 	Task           string   `json:"task"`
+	FollowupTasks  []string `json:"followup_tasks,omitempty"`
 	Project        string   `json:"project"`
 	ActorHome      string   `json:"actor_home"`
 	PluginRepo     string   `json:"plugin_repo,omitempty"`
@@ -2508,6 +3199,35 @@ type brokerSkillsCatalog struct {
 	Source   string   `json:"source"`
 }
 
+func validateBrokerSkillsCatalog(catalog *brokerSkillsCatalog, arm string) ([]string, error) {
+	if arm == "control" {
+		if catalog != nil {
+			return nil, errors.New("control broker returned an unexpected skill catalog")
+		}
+		return nil, nil
+	}
+	if catalog == nil {
+		return nil, nil
+	}
+	switch catalog.Source {
+	case "unavailable", "claude-init-skills", "claude-init-slash-commands", "codex-rollout-developer-message":
+	default:
+		return nil, fmt.Errorf("broker skill catalog has unknown source %q", catalog.Source)
+	}
+	if catalog.Skills == nil || catalog.Rendered != (len(catalog.Skills) > 0) || catalog.Source == "unavailable" && catalog.Rendered {
+		return nil, errors.New("broker skill catalog has inconsistent availability")
+	}
+	if !sort.StringsAreSorted(catalog.Skills) {
+		return nil, errors.New("broker skill catalog is not sorted")
+	}
+	for index, skill := range catalog.Skills {
+		if !isPublicMegapowersSkill(skill) || index > 0 && skill == catalog.Skills[index-1] {
+			return nil, errors.New("broker skill catalog contains an unknown or duplicate skill")
+		}
+	}
+	return append([]string(nil), catalog.Skills...), nil
+}
+
 func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult, error) {
 	stagedBroker, cleanup, err := stageVerifiedBroker(b.Path, b.ExpectedHash)
 	if err != nil {
@@ -2544,13 +3264,17 @@ func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult
 	if err := validateIsolation(response, roots, request.Arm, request.Home); err != nil {
 		return actorResult{RC: 125}, err
 	}
+	skillsCatalog, err := validateBrokerSkillsCatalog(response.SkillsCatalog, request.Arm)
+	if err != nil {
+		return actorResult{RC: 125}, err
+	}
 	if len(request.Case.OracleCommand) > 0 && response.OracleRC == nil {
 		return actorResult{RC: 125}, errors.New("sandbox broker omitted the isolated oracle result")
 	}
 	if len(request.Case.OracleCommand) == 0 && response.OracleRC != nil {
 		return actorResult{RC: 125}, errors.New("sandbox broker returned an unexpected oracle result")
 	}
-	return actorResult{Response: response.Response, Trace: []byte(response.Trace), Events: response.Events, OracleRC: response.OracleRC, Inventory: response.PluginInventory, CLIVersion: response.CLIVersion, Sandbox: response.Isolation.Boundary, RC: response.RC, Duration: time.Duration(response.DurationMS) * time.Millisecond}, nil
+	return actorResult{Response: response.Response, Trace: []byte(response.Trace), Events: response.Events, OracleRC: response.OracleRC, Inventory: response.PluginInventory, SkillsCatalog: skillsCatalog, CLIVersion: response.CLIVersion, Sandbox: response.Isolation.Boundary, RC: response.RC, Duration: time.Duration(response.DurationMS) * time.Millisecond}, nil
 }
 
 func validateBrokerResponsePresence(content []byte) error {
@@ -2578,7 +3302,7 @@ func makeBrokerRequest(request actorRequest) (brokerRequest, []string) {
 	if brokerTimeout <= 0 {
 		brokerTimeout = request.Timeout / 2
 	}
-	return brokerRequest{SchemaVersion: "2", Harness: request.Harness, Model: request.Model, Effort: request.Effort, Arm: request.Arm, Task: request.Case.Task, Project: request.Project, ActorHome: request.Home, PluginRepo: pluginRepo, TaskReadRoots: roots, TaskWriteRoots: []string{request.Project}, OracleCommand: request.Case.OracleCommand, TimeoutMS: brokerTimeout.Milliseconds()}, roots
+	return brokerRequest{SchemaVersion: "2", Harness: request.Harness, Model: request.Model, Effort: request.Effort, Arm: request.Arm, Task: request.Case.Task, FollowupTasks: request.Case.FollowupTasks, Project: request.Project, ActorHome: request.Home, PluginRepo: pluginRepo, TaskReadRoots: roots, TaskWriteRoots: []string{request.Project}, OracleCommand: request.Case.OracleCommand, TimeoutMS: brokerTimeout.Milliseconds()}, roots
 }
 
 func validateIsolation(response brokerResponse, expectedRoots []string, arm, expectedHome string) error {
@@ -2834,8 +3558,9 @@ func runSelftest() error {
 		return err
 	}
 	fullSchedule := scheduledArms(cases, gates.Acceptance.MinimumPairedRuns, hashBytes([]byte("treatment")), emptyControlPluginHash())
-	scheduleBound := len(fullSchedule) == 360 && hashSchedule(fullSchedule) != hashSchedule(scheduledArms(cases, gates.Acceptance.MinimumPairedRuns-1, hashBytes([]byte("treatment")), emptyControlPluginHash()))
-	printCheck("schedule binds all 360 arms and paired-run count", scheduleBound)
+	expectedArms := len(cases.Cases) * gates.Acceptance.MinimumPairedRuns * 2
+	scheduleBound := len(fullSchedule) == expectedArms && hashSchedule(fullSchedule) != hashSchedule(scheduledArms(cases, gates.Acceptance.MinimumPairedRuns-1, hashBytes([]byte("treatment")), emptyControlPluginHash()))
+	printCheck("schedule binds every case, both arms, and paired-run count", scheduleBound)
 	if !scheduleBound {
 		return errors.New("study schedule does not bind the configured paired-run count")
 	}
@@ -3161,30 +3886,30 @@ func runSelftest() error {
 	if !orchestrationControlOutcomeOnly {
 		return errors.New("control orchestration was incorrectly gated on plugin activation")
 	}
+	explicitOrchestrationCase := orchestrationCase
+	explicitOrchestrationCase.RequireDelegation = true
 	orchestrationMutations := []struct {
 		name   string
 		events []actorEvent
 	}{
 		{name: "two agents", events: []actorEvent{
+			{Kind: "skill_selected", Path: "orchestrating"},
 			{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_spawn", Path: "lane-b"}, {Kind: "agent_wait"},
 			{Kind: "agent_complete", Path: "lane-a"}, {Kind: "agent_complete", Path: "lane-b"}, {Kind: "trace_complete"},
 		}},
 		{name: "an early wait", events: []actorEvent{
+			{Kind: "skill_selected", Path: "orchestrating"},
 			{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_wait"}, {Kind: "agent_spawn", Path: "lane-b"}, {Kind: "agent_spawn", Path: "lane-c"},
 			{Kind: "agent_complete", Path: "lane-a"}, {Kind: "agent_complete", Path: "lane-b"}, {Kind: "agent_complete", Path: "lane-c"}, {Kind: "trace_complete"},
 		}},
-		{name: "serial interleaving before the spawn batch", events: []actorEvent{
-			{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_complete", Path: "lane-a"},
-			{Kind: "agent_spawn", Path: "lane-b"}, {Kind: "agent_complete", Path: "lane-b"},
-			{Kind: "agent_spawn", Path: "lane-c"}, {Kind: "agent_wait"}, {Kind: "agent_complete", Path: "lane-c"}, {Kind: "trace_complete"},
-		}},
 		{name: "a missing completion", events: []actorEvent{
+			{Kind: "skill_selected", Path: "orchestrating"},
 			{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_spawn", Path: "lane-b"}, {Kind: "agent_spawn", Path: "lane-c"}, {Kind: "agent_wait"},
 			{Kind: "agent_complete", Path: "lane-a"}, {Kind: "agent_complete", Path: "lane-b"}, {Kind: "trace_complete"},
 		}},
 	}
 	for _, mutation := range orchestrationMutations {
-		_, verdict, err := evaluateCase(context.Background(), orchestrationCase, gates, "treatment", parent, 0, actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: mutation.events}, true)
+		_, verdict, err := evaluateCase(context.Background(), explicitOrchestrationCase, gates, "treatment", parent, 0, actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: mutation.events}, true)
 		if err != nil {
 			return err
 		}
@@ -3194,9 +3919,24 @@ func runSelftest() error {
 			return fmt.Errorf("orchestration accepted %s", mutation.name)
 		}
 	}
+	_, schedulerTimedVerdict, err := evaluateCase(context.Background(), explicitOrchestrationCase, gates, "treatment", parent, 0, actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: []actorEvent{
+		{Kind: "skill_selected", Path: "orchestrating"},
+		{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_complete", Path: "lane-a"},
+		{Kind: "agent_spawn", Path: "lane-b"}, {Kind: "agent_complete", Path: "lane-b"},
+		{Kind: "agent_spawn", Path: "lane-c"}, {Kind: "agent_wait"}, {Kind: "agent_complete", Path: "lane-c"}, {Kind: "trace_complete"},
+	}}, true)
+	if err != nil {
+		return err
+	}
+	schedulerTimingIgnored := schedulerTimedVerdict == "pass"
+	printCheck("orchestration ignores scheduler-controlled child completion timing", schedulerTimingIgnored)
+	if !schedulerTimingIgnored {
+		return errors.New("orchestration treated child completion timing as model-controlled work")
+	}
 	strongerFanoutGates := gates
 	strongerFanoutGates.Orchestration.MinimumSuccessfulSpawns = 4
-	_, strongerFanoutVerdict, err := evaluateCase(context.Background(), orchestrationCase, strongerFanoutGates, "treatment", parent, 0, actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: []actorEvent{
+	_, strongerFanoutVerdict, err := evaluateCase(context.Background(), explicitOrchestrationCase, strongerFanoutGates, "treatment", parent, 0, actorResult{Response: orchestrationResponse, Trace: []byte("complete"), Events: []actorEvent{
+		{Kind: "skill_selected", Path: "orchestrating"},
 		{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_spawn", Path: "lane-b"}, {Kind: "agent_spawn", Path: "lane-c"},
 		{Kind: "agent_complete", Path: "lane-a"}, {Kind: "agent_spawn", Path: "lane-d"}, {Kind: "agent_wait"},
 		{Kind: "agent_complete", Path: "lane-b"}, {Kind: "agent_complete", Path: "lane-c"}, {Kind: "agent_complete", Path: "lane-d"}, {Kind: "trace_complete"},
@@ -3204,10 +3944,10 @@ func runSelftest() error {
 	if err != nil {
 		return err
 	}
-	effectiveGateRejected := strongerFanoutVerdict == "fail"
-	printCheck("orchestration applies the effective fanout gate to ordering", effectiveGateRejected)
-	if !effectiveGateRejected {
-		return errors.New("orchestration ordering ignored the effective fanout gate")
+	effectiveGateAccepted := strongerFanoutVerdict == "pass"
+	printCheck("orchestration applies the effective fanout gate without grading child timing", effectiveGateAccepted)
+	if !effectiveGateAccepted {
+		return errors.New("orchestration treated child timing as an interruption under the effective fanout gate")
 	}
 	var outputOnlyCase, inlineCase studyCase
 	for _, c := range cases.Cases {
@@ -3255,27 +3995,34 @@ func runSelftest() error {
 		response string
 		events   []actorEvent
 	}{
-		{name: "missing output-only agent", response: outputResponse, events: []actorEvent{{Kind: "trace_complete"}}},
+		{name: "missing output-only agent", response: outputResponse, events: []actorEvent{{Kind: "skill_selected", Path: "orchestrating"}, {Kind: "trace_complete"}}},
 		{name: "excess output-only agents", response: outputResponse, events: []actorEvent{
+			{Kind: "skill_selected", Path: "orchestrating"},
 			{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_spawn", Path: "lane-b"}, {Kind: "agent_wait"},
 			{Kind: "agent_complete", Path: "lane-a"}, {Kind: "agent_complete", Path: "lane-b"}, {Kind: "trace_complete"},
 		}},
 		{name: "raw output-only payload", response: rawOutputResponse, events: []actorEvent{
+			{Kind: "skill_selected", Path: "orchestrating"},
 			{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_wait"}, {Kind: "agent_complete", Path: "lane-a"}, {Kind: "trace_complete"},
 		}},
 		{name: "failed output-only spawn attempt", response: outputResponse, events: []actorEvent{
+			{Kind: "skill_selected", Path: "orchestrating"},
 			{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_spawn", Path: "rejected", RC: 1}, {Kind: "agent_wait"},
 			{Kind: "agent_complete", Path: "lane-a"}, {Kind: "trace_complete"},
 		}},
 		{name: "an invalid bounded return", response: invalidOutputResponse, events: []actorEvent{
+			{Kind: "skill_selected", Path: "orchestrating"},
 			{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_wait"}, {Kind: "agent_complete", Path: "lane-a"}, {Kind: "trace_complete"},
 		}},
 		{name: "an oversized bounded return", response: oversizedOutputResponse, events: []actorEvent{
+			{Kind: "skill_selected", Path: "orchestrating"},
 			{Kind: "agent_spawn", Path: "lane-a"}, {Kind: "agent_wait"}, {Kind: "agent_complete", Path: "lane-a"}, {Kind: "trace_complete"},
 		}},
 	}
+	explicitOutputOnlyCase := outputOnlyCase
+	explicitOutputOnlyCase.RequireDelegation = true
 	for _, mutation := range outputMutations {
-		_, verdict, err := evaluateCase(context.Background(), outputOnlyCase, gates, "treatment", parent, 0, actorResult{Response: mutation.response, Trace: []byte("complete"), Events: mutation.events}, true)
+		_, verdict, err := evaluateCase(context.Background(), explicitOutputOnlyCase, gates, "treatment", parent, 0, actorResult{Response: mutation.response, Trace: []byte("complete"), Events: mutation.events}, true)
 		if err != nil {
 			return err
 		}
@@ -3287,6 +4034,7 @@ func runSelftest() error {
 	}
 	inlineResponse := strings.Join(inlineCase.RequiredFacts, ". ") + "."
 	_, inlineVerdict, err := evaluateCase(context.Background(), inlineCase, gates, "treatment", parent, 0, actorResult{Response: inlineResponse, Trace: []byte("complete"), Events: []actorEvent{
+		{Kind: "skill_selected", Path: "orchestrating"},
 		{Kind: "agent_spawn", Path: "unneeded"}, {Kind: "agent_complete", Path: "unneeded"}, {Kind: "trace_complete"},
 	}}, true)
 	if err != nil {
@@ -3298,6 +4046,7 @@ func runSelftest() error {
 		return errors.New("orchestration accepted an agent for bounded inline work")
 	}
 	_, failedInlineVerdict, err := evaluateCase(context.Background(), inlineCase, gates, "treatment", parent, 0, actorResult{Response: inlineResponse, Trace: []byte("complete"), Events: []actorEvent{
+		{Kind: "skill_selected", Path: "orchestrating"},
 		{Kind: "agent_spawn", Path: "rejected", RC: 1}, {Kind: "trace_complete"},
 	}}, true)
 	if err != nil {

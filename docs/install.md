@@ -10,9 +10,9 @@ state.
 
 - A current Claude Code or Codex CLI, already authenticated.
 - Git, for marketplace snapshots.
-- `jq`, for the destructive-command hook.
-- Go 1.25 or newer, only when using the independent-review tool or repository
-  validation.
+- Go 1.25 or newer, for hooks and deterministic tools. Hooks compile once into
+  a local cache, outside the installed plugin. Later calls reuse that executable.
+  Missing Go or an unusable cache produces an explicit hook error.
 
 ## Claude Code
 
@@ -31,10 +31,9 @@ Start a fresh session. Ask Claude Code to load `humanizing-prose` and summarize
 its preservation rules. This checks discovery and full skill loading without
 claiming broader behavioral quality.
 
-While megapowers is enabled, Claude Code automatically applies its direct,
-concise output style. The style preserves built-in coding instructions and
-overrides another selected output style. Disable the plugin before starting a
-session that needs a different style.
+Select `Megapowers` in `/config` under Output style for concise technical replies.
+The style preserves built-in coding instructions. Select another style to opt
+out while keeping the plugin enabled. Start a new session after changing style.
 
 For a project-scoped install, add `--scope project` to both marketplace and
 install commands. For a local user-only install, use `--scope local`.
@@ -56,9 +55,19 @@ codex plugin list --json
 Start a fresh session, then review and trust the plugin hooks when Codex asks.
 Codex skips both hook features until they are trusted. Once trusted, the startup
 hook applies the shared direct, concise style without editing user config.
+Set `MEGAPOWERS_OUTPUT_STYLE=off` in the environment before launching Codex to
+omit the startup style while keeping the destructive-command guard enabled.
 
 Ask Codex to load `humanizing-prose` and summarize its preservation rules. This
 checks skill discovery separately from the startup style.
+
+## Developing this repository
+
+The repository's `.agents/skills` links and an installed plugin can expose the
+same skills twice. Use the repository links for source development, or disable
+that discovery channel when testing the installed plugin in an isolated home.
+Keep the links as the canonical development entrypoints. Do not edit installed
+caches or global configuration to hide a duplicate during an unrelated task.
 
 ## Pin a release
 

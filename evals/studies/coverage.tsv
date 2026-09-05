@@ -11,6 +11,7 @@ installed-plugin-ab	independent-review	behavioral
 installed-plugin-ab	systematic-debugging	behavioral
 installed-plugin-ab	upgrading-megapowers	behavioral
 installed-plugin-ab	verify-and-finish	behavioral
+installed-plugin-ab	writing-agent-instructions	behavioral
 pr-replay	test-first-implementation	report-only
 install-smoke	evidence-research	delivery
 trigger-recall	autonomous-run	activation
@@ -27,3 +28,4 @@ trigger-recall	systematic-debugging	activation
 trigger-recall	test-first-implementation	activation
 trigger-recall	upgrading-megapowers	activation
 trigger-recall	verify-and-finish	activation
+trigger-recall	writing-agent-instructions	activation

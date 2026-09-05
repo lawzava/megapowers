@@ -41,10 +41,19 @@ var bidiRunes = []rune{
 }
 
 func main() {
-	os.Exit(runSecurityLint(os.Args[1:]))
+	args := os.Args[1:]
+	if caller := os.Getenv("MEGAPOWERS_CALLER_CWD"); caller != "" {
+		for index, arg := range args {
+			if !filepath.IsAbs(arg) {
+				args[index] = filepath.Join(caller, arg)
+			}
+		}
+	}
+	os.Exit(runSecurityLint(args))
 }
 
 func runSecurityLint(args []string) int {
+	explicitScope := len(args) > 0
 	root := os.Getenv("MEGAPOWERS_ROOT")
 	if root == "" {
 		wd, err := os.Getwd()
@@ -125,6 +134,9 @@ func runSecurityLint(args []string) int {
 			continue
 		}
 		if isControlFile(rel) {
+			continue
+		}
+		if !explicitScope && isTestFixture(rel) {
 			continue
 		}
 		if allow[rel] {
@@ -230,11 +242,21 @@ func validAllowlistEntry(entry string) bool {
 	if clean == "CHANGELOG.md" || clean == "evals/RESULTS.md" {
 		return true
 	}
-	return strings.Contains(clean, "/tests/") || strings.Contains(clean, "/fixtures/") || strings.HasSuffix(clean, ".test.sh")
+	return isTestFixture(clean)
+}
+
+func isTestFixture(rel string) bool {
+	clean := filepath.ToSlash(rel)
+	return strings.Contains(clean, "/tests/") ||
+		strings.Contains(clean, "/fixtures/") ||
+		strings.HasSuffix(clean, ".test.sh") ||
+		strings.HasSuffix(clean, "_test.go")
 }
 
 func isControlFile(rel string) bool {
-	return rel == "scripts/security-lint.go" || rel == "scripts/security-lint.allowlist"
+	return rel == "scripts/cmd/security-lint/main.go" ||
+		rel == "scripts/cmd/security-lint/main_test.go" ||
+		rel == "scripts/security-lint.allowlist"
 }
 
 func displayPath(path string) string {

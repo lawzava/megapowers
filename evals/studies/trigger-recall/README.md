@@ -84,24 +84,25 @@ private paths are never published.
 ## Corpus and gates
 
 `cases.json` ships at least three recall probes per model-selectable skill
-and at least ten no-skill probes. Skills whose `SKILL.md` frontmatter sets
-`disable-model-invocation: true` (currently `memory-hygiene`) cannot be
-selected by the model, carry no recall probes, and keep only precision
+and at least ten no-skill probes. Skills with
+`disable-model-invocation: true` in Claude Code, or
+`policy.allow_implicit_invocation: false` in Codex's `agents/openai.yaml`,
+are exempt from implicit recall. The runner reads each harness's native policy.
+`memory-hygiene` has separate explicit-invocation and implicit non-selection
 probes. Every probe records provenance. `gates.json` enforces for the
 harnesses in `enforce_harnesses` (currently Claude only) and records
-violations without failing elsewhere. The 2026-08-31 Codex null result
-(0/210 activations) is under re-verification pending the broker's skills
-catalog assertion: a 2026-09-01 audit found 27/32 interactive Codex sessions
-reading a Megapowers `SKILL.md`, so the null is suspected to be a staging
-artifact rather than a harness property. Codex enforcement stays withheld
-until a run with `catalog_rendered: true` reproduces or overturns it.
+violations without failing elsewhere. The 2026-09-02 Codex run reported
+0/117 implicit recall despite a rendered catalog. Interactive sessions did
+load skills. Probe shape, hook trust, and multi-turn context are hypotheses
+for the difference, not established causes. Codex stays report-only until
+controlled comparisons explain the gap.
 
 One calibrated boundary is accepted, not a defect: `safe-effects-near-miss`
 never gates (`per_case.max_false_selection_rate: 1`). Once the broker write
 fix let actors actually perform the probe's file overwrite, the model
 consistently consulted the skill first, which is defensible caution kept as
 signal only. The former `verify-and-finish` exception (`min_recall: 0.3`) was
-retired on 2026-09-02 after `when_to_use` trigger phrases lifted it to 9/9.
+retired after the 2026-09-02 run measured 9/9 with revised trigger text.
 Recalibrate against `evals/RESULTS.md` when skill text or models change.
 
 ## Oracle mutation check

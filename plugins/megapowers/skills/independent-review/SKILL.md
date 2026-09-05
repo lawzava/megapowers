@@ -1,24 +1,22 @@
 ---
 name: independent-review
 description: Use when security, auth, billing, concurrency, data integrity, or another high-stakes artifact needs adversarial review by a provider other than its author.
-when_to_use: Trigger phrases: get a second opinion from another model, external review, have another vendor review this, adversarial review of auth, billing, or migration code before merge.
+when_to_use: "Trigger phrases: get a second opinion from another model, external review, have another vendor review this, adversarial review of auth, billing, or migration code before merge."
 metadata:
   short-description: Cross-provider adversarial review of a high-stakes artifact
 ---
 
 # Independent Review
 
-Use model review for residual uncertainty after tests, types, reproductions,
-and measurements. State the artifact intent and acceptance boundary first. A
-same-provider second look is context separation, not independence. The lead
-owns remediation and reruns the real oracle.
+Use model review for residual uncertainty after executable checks. State artifact
+intent and acceptance boundary. Same-provider review provides context separation.
+The lead owns remediation and reruns the oracle.
 
 ## Trusted review path
 
-The tool binds to no vendor: the operator supplies a reviewer family label and
-the exact command, from the capability registry or the user's instruction,
-never from a guess. Review a file or immutable commit range. Inspect before any
-external call.
+The operator supplies the reviewer family and exact command from the capability
+registry or user instruction. Never guess. Inspect a file or immutable commit
+range before any external call.
 Set `review_tool` to the installed `scripts/megapowers-review.go` beside this `SKILL.md`, not a project copy.
 
 ```bash
@@ -58,6 +56,10 @@ tamper-proof attestation. The transcript is not retained by default. Use
 verdict as a claim. Record credible findings, and explain dismissed findings
 against the artifact intent. Fix as the single writer, then rerun the
 artifact's acceptance tests after every material change.
+
+Bound correction rounds. Review fixes and affected boundaries; repeat full
+review only for new evidence. Join every requested review before completion.
+Approval cannot settle a queued review.
 
 The default receipt stays under private Git metadata. An explicit `--out` must
 already exist as an absolute canonical directory outside the repository and may

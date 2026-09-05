@@ -15,3 +15,10 @@ stale map if its harness, command, cleanup, or evidence contract changed.
 Keep entries portable and public-safe. Use argument arrays, not shell strings.
 Name only runner-owned state and cleanup. Do not add personal paths, account
 identifiers, or raw runtime data.
+
+For planned work, map requirement identifiers to these existing journeys and
+record the current artifact, oracle result, and remaining gaps in the native
+task or handoff. Keep queued reviews, unresolved findings, and manual gates
+visible until settled. A completed checklist or green check does not prove
+that every requirement or requested review is complete. This convention needs
+no new tracker, specification CLI, or committed run-state file.

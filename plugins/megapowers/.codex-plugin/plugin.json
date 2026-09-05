@@ -1,6 +1,6 @@
 {
   "name": "megapowers",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "description": "Native-first agentic workflow skills, concise default communication, and a high-confidence destructive-command guard.",
   "author": {
     "name": "lawzava"
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "megapowers",
     "shortDescription": "Native-first agentic workflows and safety.",
-    "longDescription": "Task-level skills for orchestration, structured interviews, evidence research, design, implementation, debugging, verification, effects, autonomous work, independent review, memory hygiene, MCP setup, prose, and safe upgrades, plus concise startup communication and a destructive-command guard.",
+    "longDescription": "Task-level skills for orchestration, structured interviews, evidence research, design, implementation, debugging, verification, effects, autonomous work, independent review, memory hygiene, MCP setup, prose, instruction authoring, and safe upgrades, plus concise communication and a destructive-command guard.",
     "developerName": "lawzava",
     "category": "Developer Tools",
     "capabilities": [

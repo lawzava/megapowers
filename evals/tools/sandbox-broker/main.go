@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -34,12 +35,21 @@ import (
 )
 
 const (
-	requestLimit       = 4 << 20
-	traceLimit         = 64 << 20
-	maximumRun         = 24 * time.Hour
-	actorBridgeAddress = "127.0.0.1:43191"
-	actorBrokerPath    = "/run/megapowers-broker"
-	maximumSocketPath  = 100
+	requestLimit          = 4 << 20
+	traceLimit            = 64 << 20
+	maximumRun            = 24 * time.Hour
+	actorBridgeAddress    = "127.0.0.1:43191"
+	actorBrokerPath       = "/run/megapowers-broker"
+	maximumSocketPath     = 100
+	receiptSocketName     = "execution-receipts.sock"
+	receiptMaximumRuns    = 256
+	receiptMaximumEntries = 4096
+	receiptMaximumBytes   = 64 << 20
+	receiptMaximumFile    = 16 << 20
+	receiptMaximumPath    = 1024
+	receiptMaximumArgs    = 128
+	receiptMaximumArg     = 4 << 10
+	receiptMaximumArgv    = 12 << 10
 )
 
 type brokerRequest struct {
@@ -49,6 +59,7 @@ type brokerRequest struct {
 	Effort         string   `json:"effort"`
 	Arm            string   `json:"arm"`
 	Task           string   `json:"task"`
+	FollowupTasks  []string `json:"followup_tasks,omitempty"`
 	Project        string   `json:"project"`
 	ActorHome      string   `json:"actor_home"`
 	PluginRepo     string   `json:"plugin_repo,omitempty"`
@@ -63,6 +74,32 @@ type actorEvent struct {
 	Path string `json:"path,omitempty"`
 	RC   int    `json:"rc,omitempty"`
 	Step int    `json:"step"`
+}
+
+type receiptFileState struct {
+	Complete     bool     `json:"complete"`
+	Digest       string   `json:"digest,omitempty"`
+	ChangedFiles []string `json:"changed_files"`
+}
+
+type testExecutionReceipt struct {
+	SchemaVersion    string           `json:"schema_version"`
+	Sequence         int              `json:"sequence"`
+	StartedStep      int              `json:"started_step"`
+	CompletedStep    int              `json:"completed_step"`
+	Command          string           `json:"command"`
+	ExitCode         int              `json:"exit_code"`
+	OracleMatch      bool             `json:"oracle_match"`
+	InvocationDigest string           `json:"invocation_digest"`
+	StateStable      bool             `json:"state_stable"`
+	Before           receiptFileState `json:"before"`
+	After            receiptFileState `json:"after"`
+}
+
+type receiptProjectSnapshot struct {
+	complete bool
+	digest   string
+	files    map[string]string
 }
 
 type isolationAttestation struct {
@@ -133,11 +170,13 @@ type authentication struct {
 	accountID  string
 	planType   string
 	sourcePath string
+	upstream   string
 }
 
 const (
 	authSubscription = "subscription"
 	authAPIKey       = "api-key"
+	authSubswapper   = "subswapper"
 )
 
 type credentialProxy struct {
@@ -168,7 +207,42 @@ type protectedEffectMonitor struct {
 	watches []watchedEffect
 }
 
+type receiptCollector struct {
+	listener    *net.UnixListener
+	project     string
+	oracle      []string
+	baseline    receiptProjectSnapshot
+	mu          sync.Mutex
+	connections map[*net.UnixConn]bool
+	records     []testExecutionReceipt
+	nextID      int
+	nextStep    int
+	activeRuns  int
+	sealed      bool
+	serveDone   chan struct{}
+	stopOnce    sync.Once
+	wg          sync.WaitGroup
+}
+
+type receiptClientMessage struct {
+	SchemaVersion string   `json:"schema_version"`
+	Action        string   `json:"action"`
+	ID            int      `json:"id,omitempty"`
+	Command       string   `json:"command,omitempty"`
+	Arguments     []string `json:"arguments,omitempty"`
+	ExitCode      *int     `json:"exit_code,omitempty"`
+}
+
+type receiptServerMessage struct {
+	Accepted bool `json:"accepted"`
+	ID       int  `json:"id,omitempty"`
+}
+
 func main() {
+	if real, ok := receiptWrapperExecutable(os.Args[0]); ok {
+		command := receiptCommand(os.Args[0], os.Args[1:])
+		os.Exit(runReceiptWrappedExecutable(real, os.Args[1:], command, filepath.Join(actorBrokerPath, receiptSocketName)))
+	}
 	if len(os.Args) >= 4 && os.Args[1] == "--actor-bridge" {
 		os.Exit(runActorBridge(os.Args[2], os.Args[3], os.Args[4:]))
 	}
@@ -187,6 +261,27 @@ func main() {
 	if err := serve(os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "sandbox broker: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func receiptWrapperExecutable(executable string) (string, bool) {
+	switch strings.ToLower(filepath.Base(executable)) {
+	case "go":
+		return "/opt/megapowers-receipt/real/go", true
+	case "bash":
+		return "/opt/megapowers-receipt/real/bash", true
+	case "sh", "dash":
+		return "/opt/megapowers-receipt/real/sh", true
+	case "python3":
+		return "/usr/bin/python3", true
+	case "pytest", "py.test":
+		return "/usr/bin/pytest", true
+	case "npm":
+		return "/usr/bin/npm", true
+	case "cargo":
+		return "/usr/bin/cargo", true
+	default:
+		return "", false
 	}
 }
 
@@ -246,6 +341,19 @@ func validateRequest(req *brokerRequest) error {
 	}
 	if strings.TrimSpace(req.Model) == "" || strings.TrimSpace(req.Task) == "" {
 		return errors.New("model and task are required")
+	}
+	if len(req.FollowupTasks) > 8 {
+		return errors.New("followup_tasks must contain at most 8 turns")
+	}
+	promptBytes := len(req.Task)
+	for index, task := range req.FollowupTasks {
+		if strings.TrimSpace(task) == "" || strings.ContainsRune(task, '\x00') {
+			return fmt.Errorf("followup_tasks[%d] must be non-empty and contain no NUL", index)
+		}
+		promptBytes += len(task)
+	}
+	if promptBytes > 256<<10 {
+		return errors.New("task and followup_tasks exceed 256 KiB")
 	}
 	if strings.ContainsRune(req.Model, '\x00') || strings.ContainsRune(req.Effort, '\x00') {
 		return errors.New("model and effort must not contain NUL")
@@ -364,7 +472,11 @@ func samePaths(got, want []string) bool {
 func pathsOverlap(a, b string) bool {
 	a = filepath.Clean(a)
 	b = filepath.Clean(b)
-	return a == b || strings.HasPrefix(a, b+string(filepath.Separator)) || strings.HasPrefix(b, a+string(filepath.Separator))
+	contains := func(parent, child string) bool {
+		relative, err := filepath.Rel(parent, child)
+		return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	}
+	return contains(a, b) || contains(b, a)
 }
 
 func execute(ctx context.Context, req brokerRequest) (brokerResponse, error) {
@@ -382,22 +494,30 @@ func execute(ctx context.Context, req brokerRequest) (brokerResponse, error) {
 	if err != nil {
 		return brokerResponse{}, err
 	}
+	if err := validateFollowupTransport(req, auth); err != nil {
+		return brokerResponse{}, err
+	}
+	brokerDirectory, err := newPrivateSocketDirectory()
+	if err != nil {
+		return brokerResponse{}, fmt.Errorf("create private broker directory: %w", err)
+	}
+	defer os.RemoveAll(brokerDirectory)
+	receiptCollector, err := startReceiptCollector(req.Project, filepath.Join(brokerDirectory, receiptSocketName), req.OracleCommand)
+	if err != nil {
+		return brokerResponse{}, fmt.Errorf("start execution receipt collector: %w", err)
+	}
+	defer receiptCollector.close()
 	var proxy *credentialProxy
 	if req.Harness == "claude" || auth.mode == authAPIKey {
-		proxyDirectory, err := newPrivateSocketDirectory()
-		if err != nil {
-			return brokerResponse{}, fmt.Errorf("create credential proxy directory: %w", err)
-		}
-		defer os.RemoveAll(proxyDirectory)
-		proxySocket := filepath.Join(proxyDirectory, "provider.sock")
-		proxy, err = startCredentialProxy(req.Harness, auth.mode, auth.credential, "", proxySocket)
+		proxySocket := filepath.Join(brokerDirectory, "provider.sock")
+		proxy, err = startCredentialProxy(req.Harness, auth.mode, auth.credential, auth.upstream, proxySocket)
 		if err != nil {
 			return brokerResponse{}, fmt.Errorf("start credential proxy: %w", err)
 		}
 		defer proxy.close()
 	}
 
-	run, err := runHarness(ctx, req, binary, auth, proxy)
+	run, err := runHarness(ctx, req, binary, auth, proxy, brokerDirectory, receiptCollector)
 	if err != nil {
 		return brokerResponse{}, err
 	}
@@ -452,6 +572,8 @@ func resolveAuthentication(req brokerRequest) (authentication, error) {
 		mode = authSubscription
 	}
 	switch mode {
+	case authSubswapper:
+		return readSubswapperAuthentication(req)
 	case authSubscription:
 		return readSubscriptionAuthentication(req)
 	case authAPIKey:
@@ -461,8 +583,69 @@ func resolveAuthentication(req brokerRequest) (authentication, error) {
 		}
 		return authentication{mode: authAPIKey, credential: credential}, nil
 	default:
-		return authentication{}, errors.New("MEGAPOWERS_BROKER_AUTH_MODE must be subscription or api-key")
+		return authentication{}, errors.New("MEGAPOWERS_BROKER_AUTH_MODE must be subscription, subswapper, or api-key")
 	}
+}
+
+func validateFollowupTransport(req brokerRequest, auth authentication) error {
+	if req.Harness == "codex" && len(req.FollowupTasks) > 0 && auth.mode == authAPIKey {
+		return errors.New("codex followup_tasks require the subscription or subswapper app-server transport")
+	}
+	return nil
+}
+
+func readSubswapperAuthentication(req brokerRequest) (authentication, error) {
+	// Reject Subswapper's fixed-login fallback so a proxy outage cannot silently
+	// change routing or introduce a real provider credential into this mode.
+	if os.Getenv("SUBSWAPPER_PROXY") != "1" || os.Getenv("SUBSWAPPER_SERVICE") != req.Harness {
+		return authentication{}, errors.New("subswapper mode requires a matching home run proxy launch")
+	}
+	endpoint := os.Getenv("MEGAPOWERS_BROKER_SUBSWAPPER_URL")
+	if req.Harness == "claude" {
+		endpoint = os.Getenv("ANTHROPIC_BASE_URL")
+	}
+	base, err := url.Parse(endpoint)
+	if err != nil || base.Scheme != "http" || base.User != nil || base.RawQuery != "" || base.ForceQuery || base.Fragment != "" || base.RawPath != "" || (base.Path != "" && base.Path != "/") {
+		return authentication{}, errors.New("subswapper endpoint must be an HTTP loopback origin with an explicit port")
+	}
+	ip := net.ParseIP(base.Hostname())
+	port, err := strconv.Atoi(base.Port())
+	if ip == nil || !ip.IsLoopback() || err != nil || port < 1 || port > 65535 {
+		return authentication{}, errors.New("subswapper endpoint must be an HTTP loopback origin with an explicit port")
+	}
+	auth := authentication{mode: authSubswapper, upstream: strings.TrimSuffix(base.String(), "/")}
+	if req.Harness == "claude" {
+		auth.credential = os.Getenv("CLAUDE_CODE_OAUTH_TOKEN")
+		if !validBearerCredential(auth.credential) {
+			return authentication{}, errors.New("subswapper proxy capability is unavailable")
+		}
+		return auth, nil
+	}
+	relativeDefault := filepath.Join(".codex", "auth.json")
+	if home := os.Getenv("CODEX_HOME"); home != "" {
+		relativeDefault = filepath.Join(home, "auth.json")
+	}
+	path, err := subscriptionCredentialPath(req, "MEGAPOWERS_BROKER_CODEX_AUTH_FILE", relativeDefault)
+	if err != nil {
+		return authentication{}, err
+	}
+	content, err := readPrivateCredentialFile(req, path, 64<<10)
+	if err != nil {
+		return authentication{}, err
+	}
+	var stored struct {
+		AuthMode string `json:"auth_mode"`
+		Tokens   struct {
+			AccessToken  string `json:"access_token"`
+			RefreshToken string `json:"refresh_token"`
+			AccountID    string `json:"account_id"`
+		} `json:"tokens"`
+	}
+	if json.Unmarshal(content, &stored) != nil || stored.AuthMode != "chatgpt" || stored.Tokens.AccountID != "subswapper-proxy" || stored.Tokens.RefreshToken != "subswapper-proxy-placeholder" || !validBearerCredential(stored.Tokens.AccessToken) {
+		return authentication{}, errors.New("subswapper mode requires a Codex proxy placeholder, not a provider login")
+	}
+	auth.credential, auth.accountID, auth.sourcePath = stored.Tokens.AccessToken, stored.Tokens.AccountID, path
+	return auth, nil
 }
 
 func readSubscriptionAuthentication(req brokerRequest) (authentication, error) {
@@ -482,10 +665,10 @@ func readSubscriptionAuthentication(req brokerRequest) (authentication, error) {
 			} `json:"claudeAiOauth"`
 		}
 		if json.Unmarshal(content, &stored) != nil || !validBearerCredential(stored.ClaudeAIOAuth.AccessToken) {
-			return authentication{}, errors.New("Claude subscription credentials are unavailable; run claude /login or set MEGAPOWERS_BROKER_AUTH_MODE=api-key explicitly")
+			return authentication{}, errors.New("claude subscription credentials are unavailable; run claude /login or set MEGAPOWERS_BROKER_AUTH_MODE=api-key explicitly")
 		}
 		if stored.ClaudeAIOAuth.ExpiresAt > 0 && time.UnixMilli(stored.ClaudeAIOAuth.ExpiresAt).Before(time.Now().Add(2*time.Minute)) {
-			return authentication{}, errors.New("Claude subscription access has expired or is too close to expiry; refresh claude login before running the broker")
+			return authentication{}, errors.New("claude subscription access has expired or is too close to expiry; refresh claude login before running the broker")
 		}
 		return authentication{mode: authSubscription, credential: stored.ClaudeAIOAuth.AccessToken, sourcePath: path}, nil
 	}
@@ -506,10 +689,10 @@ func readSubscriptionAuthentication(req brokerRequest) (authentication, error) {
 		} `json:"tokens"`
 	}
 	if json.Unmarshal(content, &stored) != nil || stored.AuthMode != "chatgpt" || !validBearerCredential(stored.Tokens.AccessToken) || strings.TrimSpace(stored.Tokens.AccountID) == "" {
-		return authentication{}, errors.New("Codex ChatGPT subscription credentials are unavailable; run codex login or set MEGAPOWERS_BROKER_AUTH_MODE=api-key explicitly")
+		return authentication{}, errors.New("codex ChatGPT subscription credentials are unavailable; run codex login or set MEGAPOWERS_BROKER_AUTH_MODE=api-key explicitly")
 	}
 	if expires, ok := jwtExpiry(stored.Tokens.AccessToken); ok && expires.Before(time.Now().Add(2*time.Minute)) {
-		return authentication{}, errors.New("Codex subscription access has expired or is too close to expiry; refresh codex login before running the broker")
+		return authentication{}, errors.New("codex subscription access has expired or is too close to expiry; refresh codex login before running the broker")
 	}
 	return authentication{mode: authSubscription, credential: stored.Tokens.AccessToken, accountID: stored.Tokens.AccountID, sourcePath: path}, nil
 }
@@ -521,7 +704,10 @@ func subscriptionCredentialPath(req brokerRequest, environmentName, relativeDefa
 		if err != nil {
 			return "", fmt.Errorf("locate subscription credentials: %w", err)
 		}
-		path = filepath.Join(home, relativeDefault)
+		path = relativeDefault
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(home, path)
+		}
 	}
 	if !filepath.IsAbs(path) {
 		return "", fmt.Errorf("%s must name an absolute file", environmentName)
@@ -735,6 +921,19 @@ func startCredentialProxy(harness, authMode, providerCredential, upstreamOverrid
 		return nil, err
 	}
 	token := hex.EncodeToString(tokenBytes)
+	if harness == "codex" && authMode == authSubswapper {
+		// Codex parses external auth as an ID token. These synthetic claims
+		// describe only this broker capability; no provider sees this token.
+		claims, err := json.Marshal(map[string]any{
+			"iss": "https://megapowers.invalid", "sub": "megapowers-eval", "email": "evaluation@localhost",
+			"iat": time.Now().Unix(), "exp": time.Now().Add(maximumRun + time.Minute).Unix(),
+			"https://api.openai.com/auth": map[string]string{"chatgpt_account_id": "megapowers-eval", "chatgpt_user_id": "megapowers-eval", "chatgpt_plan_type": "pro"},
+		})
+		if err != nil {
+			return nil, err
+		}
+		token = base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`)) + "." + base64.RawURLEncoding.EncodeToString(claims) + "." + base64.RawURLEncoding.EncodeToString(tokenBytes)
+	}
 	network := "tcp"
 	address := "127.0.0.1:0"
 	baseURL := ""
@@ -776,6 +975,9 @@ func startCredentialProxy(harness, authMode, providerCredential, upstreamOverrid
 		}
 		target := *base
 		target.Path = singleJoiningSlash(base.Path, r.URL.Path)
+		if authMode == authSubswapper && harness == "codex" {
+			target.Path = "/backend-api/codex" + strings.TrimPrefix(r.URL.Path, "/v1")
+		}
 		target.RawQuery = r.URL.RawQuery
 		body := http.MaxBytesReader(w, r.Body, traceLimit)
 		upstreamRequest, err := http.NewRequestWithContext(r.Context(), http.MethodPost, target.String(), body)
@@ -784,7 +986,7 @@ func startCredentialProxy(harness, authMode, providerCredential, upstreamOverrid
 			return
 		}
 		copyAllowedRequestHeaders(upstreamRequest.Header, r.Header)
-		if harness == "claude" && authMode == authSubscription {
+		if harness == "claude" && (authMode == authSubscription || authMode == authSubswapper) {
 			upstreamRequest.Header.Del("X-Api-Key")
 			upstreamRequest.Header.Set("Authorization", "Bearer "+providerCredential)
 			ensureHeaderToken(upstreamRequest.Header, "Anthropic-Beta", "oauth-2025-04-20")
@@ -1011,7 +1213,7 @@ func copyHeaders(destination, source http.Header) {
 
 func copyAllowedRequestHeaders(destination, source http.Header) {
 	for _, key := range []string{
-		"Accept", "Content-Type", "User-Agent", "Anthropic-Version", "Anthropic-Beta",
+		"Accept", "Content-Type", "Content-Encoding", "User-Agent", "Anthropic-Version", "Anthropic-Beta",
 		"OpenAI-Beta", "OpenAI-Organization", "OpenAI-Project",
 	} {
 		for _, value := range source.Values(key) {
@@ -1026,7 +1228,7 @@ func removeHopHeaders(header http.Header) {
 	}
 }
 
-func runHarness(ctx context.Context, req brokerRequest, binary string, auth authentication, proxy *credentialProxy) (harnessRun, error) {
+func runHarness(ctx context.Context, req brokerRequest, binary string, auth authentication, proxy *credentialProxy, brokerDirectory string, receipts *receiptCollector) (harnessRun, error) {
 	versionResult, err := runHarnessUtility(ctx, req, binary, []string{"--version"}, minimalEnvironment(req.ActorHome), false)
 	if err != nil {
 		return harnessRun{}, fmt.Errorf("read %s version: %w", req.Harness, err)
@@ -1042,6 +1244,7 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 	var args []string
 	var environment []string
 	var input []byte
+	var claudeFrames [][]byte
 	var inventory []string
 	insideBinary := "/opt/megapowers/" + req.Harness
 	if req.Harness == "claude" {
@@ -1056,32 +1259,45 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 		if req.Arm == "treatment" {
 			args = append(args, "--plugin-dir", req.PluginRepo)
 		}
+		if len(req.FollowupTasks) > 0 {
+			args = append(args, "--input-format", "stream-json")
+		}
 		authEnvironment := map[string]string{
 			"ANTHROPIC_BASE_URL":                       proxy.base,
 			"CLAUDE_CONFIG_DIR":                        filepath.Join(req.ActorHome, ".claude"),
 			"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB":         "1",
 			"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
 		}
-		if auth.mode == authSubscription {
+		if auth.mode == authSubscription || auth.mode == authSubswapper {
 			authEnvironment["CLAUDE_CODE_OAUTH_TOKEN"] = proxy.token
+			if auth.mode == authSubswapper {
+				authEnvironment["_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL"] = "1"
+			}
 		} else {
 			authEnvironment["ANTHROPIC_API_KEY"] = proxy.token
 		}
 		environment = actorEnvironment(req, authEnvironment)
-		input = []byte(req.Task)
+		if len(req.FollowupTasks) > 0 {
+			claudeFrames, err = claudeStreamingFrames(append([]string{req.Task}, req.FollowupTasks...))
+			if err != nil {
+				return harnessRun{}, err
+			}
+		} else {
+			input = []byte(req.Task)
+		}
 	} else {
 		codexHome, installedPlugin, observedInventory, err := prepareCodexHome(ctx, req, binary)
 		if err != nil {
 			return harnessRun{}, err
 		}
 		inventory = observedInventory
-		if auth.mode == authSubscription {
+		if auth.mode == authSubscription || auth.mode == authSubswapper {
 			effectMonitor, err := startProtectedEffectMonitor(req.Project)
 			if err != nil {
 				return harnessRun{}, err
 			}
 			defer effectMonitor.close()
-			result, err := runCodexAppServer(ctx, req, binary, codexHome, auth)
+			result, err := runCodexAppServer(ctx, req, binary, codexHome, auth, brokerDirectory)
 			if err != nil && !result.timedOut {
 				return harnessRun{}, err
 			}
@@ -1093,7 +1309,15 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 				trace = trace[:traceLimit]
 				result.rc = 125
 			}
-			response, events, complete := normalizeTrace(req.Harness, trace, result.rc)
+			sealedReceipts, sealErr := receipts.seal()
+			if sealErr != nil {
+				return harnessRun{}, sealErr
+			}
+			trace, err = appendTrustedExecutionReceipts(trace, sealedReceipts)
+			if err != nil {
+				return harnessRun{}, err
+			}
+			response, events, complete := normalizeTraceTurns(req.Harness, trace, result.rc, len(req.FollowupTasks)+1)
 			if !complete {
 				dumpDiagnosticTrace(os.Getenv("MEGAPOWERS_BROKER_TRACE_DUMP"), "codex-incomplete-trace", trace)
 			}
@@ -1139,7 +1363,12 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 		return harnessRun{}, err
 	}
 	defer effectMonitor.close()
-	result, err := runProcess(ctx, "bwrap", sandboxArgs, req.Project, environment, input)
+	var result processResult
+	if len(claudeFrames) > 0 {
+		result, err = runClaudeStreamingProcess(ctx, "bwrap", sandboxArgs, req.Project, environment, claudeFrames)
+	} else {
+		result, err = runProcess(ctx, "bwrap", sandboxArgs, req.Project, environment, input)
+	}
 	if err != nil && !result.timedOut {
 		return harnessRun{}, fmt.Errorf("run isolated %s: %w: %s", req.Harness, err, redact(strings.TrimSpace(string(result.stderr)), []string{proxy.token}))
 	}
@@ -1150,6 +1379,14 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 	if len(trace) > traceLimit {
 		trace = trace[:traceLimit]
 		result.rc = 125
+	}
+	sealedReceipts, sealErr := receipts.seal()
+	if sealErr != nil {
+		return harnessRun{}, sealErr
+	}
+	trace, err = appendTrustedExecutionReceipts(trace, sealedReceipts)
+	if err != nil {
+		return harnessRun{}, err
 	}
 	var catalog *skillsCatalog
 	if req.Harness == "claude" {
@@ -1166,7 +1403,7 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 		// is not observable on the API-key fallback path.
 		catalog = &skillsCatalog{Rendered: false, Skills: []string{}, Source: catalogSourceUnavailable}
 	}
-	response, events, complete := normalizeTrace(req.Harness, trace, result.rc)
+	response, events, complete := normalizeTraceTurns(req.Harness, trace, result.rc, len(req.FollowupTasks)+1)
 	if !complete {
 		dumpDiagnosticTrace(os.Getenv("MEGAPOWERS_BROKER_TRACE_DUMP"), "claude-incomplete-trace", trace)
 	}
@@ -1184,12 +1421,41 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 	return harnessRun{version: version, response: response, trace: trace, events: events, rc: result.rc, duration: result.duration, secrets: secrets, inventory: inventory, catalog: catalog}, nil
 }
 
+func claudeStreamingInput(tasks []string) ([]byte, error) {
+	frames, err := claudeStreamingFrames(tasks)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.Join(frames, nil), nil
+}
+
+func claudeStreamingFrames(tasks []string) ([][]byte, error) {
+	frames := make([][]byte, 0, len(tasks))
+	for _, task := range tasks {
+		var encoded bytes.Buffer
+		encoder := json.NewEncoder(&encoded)
+		encoder.SetEscapeHTML(false)
+		frame := map[string]any{
+			"type": "user",
+			"message": map[string]any{
+				"role":    "user",
+				"content": []any{map[string]any{"type": "text", "text": task}},
+			},
+		}
+		if err := encoder.Encode(frame); err != nil {
+			return nil, err
+		}
+		frames = append(frames, append([]byte(nil), encoded.Bytes()...))
+	}
+	return frames, nil
+}
+
 type appServerOutput struct {
 	object map[string]any
 	raw    []byte
 }
 
-func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome string, auth authentication) (result processResult, runErr error) {
+func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome string, auth authentication, brokerDirectory string) (result processResult, runErr error) {
 	secrets := []string{auth.credential, auth.accountID}
 	defer func() {
 		result.stdout = []byte(redact(string(result.stdout), secrets))
@@ -1200,20 +1466,37 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 		}
 	}()
 	started := time.Now()
-	proxyDirectory, err := newPrivateSocketDirectory()
-	if err != nil {
-		return processResult{rc: 125, duration: time.Since(started)}, fmt.Errorf("create Codex egress proxy directory: %w", err)
+	proxySocket := filepath.Join(brokerDirectory, "codex-egress.sock")
+	if auth.mode == authSubswapper {
+		egress, err := startCredentialProxy("codex", auth.mode, auth.credential, auth.upstream, proxySocket)
+		if err != nil {
+			return processResult{rc: 125, duration: time.Since(started)}, errors.New("start Codex Subswapper bridge")
+		}
+		defer egress.close()
+		// Only this per-actor capability crosses the app-server stdin boundary.
+		// Subswapper's shared placeholder remains in the host-side proxy.
+		auth.credential = egress.token
+		auth.accountID = "megapowers-eval"
+		secrets = append(secrets, egress.token)
+	} else {
+		egress, err := startRestrictedConnectProxy(proxySocket, map[string]bool{"chatgpt.com:443": true})
+		if err != nil {
+			return processResult{rc: 125, duration: time.Since(started)}, fmt.Errorf("start Codex egress proxy: %w", err)
+		}
+		defer egress.close()
 	}
-	defer os.RemoveAll(proxyDirectory)
-	proxySocket := filepath.Join(proxyDirectory, "codex-egress.sock")
-	egress, err := startRestrictedConnectProxy(proxySocket, map[string]bool{"chatgpt.com:443": true})
-	if err != nil {
-		return processResult{rc: 125, duration: time.Since(started)}, fmt.Errorf("start Codex egress proxy: %w", err)
-	}
-	defer egress.close()
-	sandboxArgs, err := codexAppServerSandboxArgs(req, binary, proxyDirectory)
+	sandboxArgs, err := codexAppServerSandboxArgs(req, binary, brokerDirectory)
 	if err != nil {
 		return processResult{rc: 125, duration: time.Since(started)}, err
+	}
+	if auth.mode == authSubswapper {
+		sandboxArgs = append(sandboxArgs,
+			"-c", `model_provider="megapowers_subswapper"`,
+			"-c", `model_providers.megapowers_subswapper.name="OpenAI"`,
+			"-c", `model_providers.megapowers_subswapper.base_url="http://`+actorBridgeAddress+`/v1"`,
+			"-c", `model_providers.megapowers_subswapper.wire_api="responses"`,
+			"-c", `model_providers.megapowers_subswapper.requires_openai_auth=true`,
+			"-c", `model_providers.megapowers_subswapper.supports_websockets=false`)
 	}
 	cmd := exec.Command("bwrap", sandboxArgs...)
 	cmd.Dir = req.Project
@@ -1244,10 +1527,12 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 		return processResult{rc: 125, duration: time.Since(started)}, err
 	}
 	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
 	messages := make(chan appServerOutput)
 	scanErrors := make(chan error, 1)
+	scanDone := make(chan struct{})
+	scanContext, cancelScan := context.WithCancel(ctx)
 	go func() {
+		defer close(scanDone)
 		defer close(messages)
 		scanner := bufio.NewScanner(stdout)
 		scanner.Buffer(make([]byte, 64<<10), 8<<20)
@@ -1255,12 +1540,21 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 			raw := append([]byte(nil), scanner.Bytes()...)
 			var object map[string]any
 			if err := json.Unmarshal(raw, &object); err != nil {
-				scanErrors <- errors.New("Codex app-server emitted invalid JSON")
+				scanErrors <- errors.New("codex app-server emitted invalid JSON")
 				return
 			}
-			messages <- appServerOutput{object: object, raw: raw}
+			select {
+			case messages <- appServerOutput{object: object, raw: raw}:
+			case <-scanContext.Done():
+				return
+			}
 		}
 		scanErrors <- scanner.Err()
+	}()
+	go func() {
+		// Wait closes StdoutPipe, so drain final frames before reaping the process.
+		<-scanDone
+		done <- cmd.Wait()
 	}()
 
 	stopped := false
@@ -1269,6 +1563,7 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 			return
 		}
 		stopped = true
+		cancelScan()
 		_ = stdin.Close()
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		select {
@@ -1326,7 +1621,7 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 						}
 					default:
 					}
-					return appServerOutput{}, errors.New("Codex app-server closed before turn completion")
+					return appServerOutput{}, errors.New("codex app-server closed before turn completion")
 				}
 				if _, request := output.object["id"]; request {
 					if _, hasMethod := output.object["method"]; hasMethod {
@@ -1340,9 +1635,6 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 					return appServerOutput{}, err
 				}
 				return output, nil
-			case err := <-done:
-				stopped = true
-				return appServerOutput{}, fmt.Errorf("Codex app-server exited before turn completion: %w", operationalError(err))
 			case <-ctx.Done():
 				return appServerOutput{}, ctx.Err()
 			}
@@ -1359,14 +1651,19 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 				continue
 			}
 			if !jsonIDEquals(responseID, id) {
-				return nil, errors.New("Codex app-server returned an unexpected response id")
+				return nil, errors.New("codex app-server returned an unexpected response id")
 			}
 			if _, failed := output.object["error"]; failed {
-				return nil, errors.New("Codex app-server rejected a broker protocol request")
+				detail, _ := output.object["error"].(map[string]any)
+				message := redact(firstString(detail, "message"), secrets)
+				if len(message) > 1024 {
+					message = message[:1024]
+				}
+				return nil, fmt.Errorf("codex app-server rejected broker request %d: %s", id, message)
 			}
 			result, ok := output.object["result"].(map[string]any)
 			if !ok {
-				return nil, errors.New("Codex app-server response is missing a result")
+				return nil, errors.New("codex app-server response is missing a result")
 			}
 			return result, nil
 		}
@@ -1401,7 +1698,7 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 	// (observed with codex-cli 0.152.0). The disposable home is deleted by
 	// the runner, so nothing persists beyond the run.
 	threadResult, err := sendRequest(3, "thread/start", map[string]any{
-		"model": req.Model, "cwd": req.Project, "approvalPolicy": "never", "sandbox": "danger-full-access", "ephemeral": false, "environments": []any{},
+		"model": req.Model, "cwd": req.Project, "approvalPolicy": "never", "sandbox": "danger-full-access", "ephemeral": false,
 		"config": map[string]any{"shell_environment_policy": map[string]any{"inherit": "none"}},
 	})
 	if err != nil {
@@ -1410,37 +1707,45 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 	thread, _ := threadResult["thread"].(map[string]any)
 	threadID := firstString(thread, "id")
 	if threadID == "" {
-		return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, errors.New("Codex app-server did not return a thread id")
+		return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, errors.New("codex app-server did not return a thread id")
 	}
-	turnParams := map[string]any{"threadId": threadID, "input": []any{map[string]any{"type": "text", "text": req.Task}}, "environments": []any{}}
-	if req.Effort != "" {
-		turnParams["effort"] = req.Effort
-	}
-	if _, err := sendRequest(4, "turn/start", turnParams); err != nil {
-		return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, err
-	}
-	for {
-		output, err := next()
-		if err != nil {
-			timedOut := errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
-			rc := 125
-			if timedOut {
-				rc = 124
+	// Omission selects the sandbox's local environment. Empty environments
+	// disable native tools in current app-server builds. Follow-ups reuse this
+	// exact root thread and share the request's one total context deadline.
+	tasks := append([]string{req.Task}, req.FollowupTasks...)
+	for index, task := range tasks {
+		turnParams := map[string]any{"threadId": threadID, "input": []any{map[string]any{"type": "text", "text": task}}}
+		if req.Effort != "" {
+			turnParams["effort"] = req.Effort
+		}
+		if _, err := sendRequest(4+index, "turn/start", turnParams); err != nil {
+			return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, err
+		}
+		for {
+			output, err := next()
+			if err != nil {
+				timedOut := errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
+				rc := 125
+				if timedOut {
+					rc = 124
+				}
+				return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: rc, duration: time.Since(started), timedOut: timedOut}, err
 			}
-			return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: rc, duration: time.Since(started), timedOut: timedOut}, err
+			if firstString(output.object, "method") != "turn/completed" {
+				continue
+			}
+			params, _ := output.object["params"].(map[string]any)
+			if firstString(params, "threadId") != threadID {
+				continue
+			}
+			turn, _ := params["turn"].(map[string]any)
+			if lowerString(turn["status"]) != "completed" {
+				return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, nil
+			}
+			break
 		}
-		if firstString(output.object, "method") != "turn/completed" {
-			continue
-		}
-		params, _ := output.object["params"].(map[string]any)
-		turn, _ := params["turn"].(map[string]any)
-		status := lowerString(turn["status"])
-		rc := 0
-		if status != "completed" {
-			rc = 125
-		}
-		return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: rc, duration: time.Since(started)}, nil
 	}
+	return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: 0, duration: time.Since(started)}, nil
 }
 
 func jsonIDEquals(value any, want int) bool {
@@ -1472,6 +1777,14 @@ func codexAppServerSandboxArgs(req brokerRequest, binary, proxyDirectory string)
 	insideBroker := "/opt/megapowers/broker"
 	args := sandboxBase(false)
 	args = append(args, "--dir", "/opt", "--dir", "/opt/megapowers", "--ro-bind", binary, insideBinary, "--ro-bind", brokerBinary, insideBroker)
+	args, err = appendReceiptInstrumentation(args, brokerBinary)
+	if err != nil {
+		return nil, err
+	}
+	args, err = appendCodexCompanion(args, binary)
+	if err != nil {
+		return nil, err
+	}
 	args = appendMount(args, req.ActorHome, false)
 	args = appendMount(args, req.Project, false)
 	args = append(args, "--dir", actorBrokerPath, "--ro-bind", proxyDirectory, actorBrokerPath)
@@ -1600,6 +1913,13 @@ func runHarnessUtility(ctx context.Context, req brokerRequest, binary string, co
 	insideBinary := "/opt/megapowers/harness-utility"
 	args := sandboxBase(false)
 	args = append(args, "--dir", "/opt", "--dir", "/opt/megapowers", "--ro-bind", binary, insideBinary)
+	if req.Harness == "codex" {
+		var err error
+		args, err = appendCodexCompanion(args, binary)
+		if err != nil {
+			return processResult{}, err
+		}
+	}
 	args = appendMount(args, req.ActorHome, !writableHome)
 	args = appendMount(args, req.Project, true)
 	if req.PluginRepo != "" {
@@ -1626,10 +1946,10 @@ func observedClaudeInventory(trace []byte, req brokerRequest) ([]string, error) 
 		initCount++
 		plugins, ok := object["plugins"].([]any)
 		if !ok {
-			return nil, errors.New("Claude system/init does not contain a plugin inventory")
+			return nil, errors.New("claude system/init does not contain a plugin inventory")
 		}
 		if collectionHasValues(object["plugin_errors"]) {
-			return nil, errors.New("Claude system/init reports plugin errors")
+			return nil, errors.New("claude system/init reports plugin errors")
 		}
 		current, err := validateClaudeInventory(plugins, req)
 		if err != nil {
@@ -1640,14 +1960,14 @@ func observedClaudeInventory(trace []byte, req brokerRequest) ([]string, error) 
 			continue
 		}
 		if len(current) != len(inventory) || (len(current) == 1 && current[0] != inventory[0]) {
-			return nil, errors.New("Claude repeated system/init reports inconsistent plugin inventories")
+			return nil, errors.New("claude repeated system/init reports inconsistent plugin inventories")
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("read Claude init event: %w", err)
 	}
 	if initCount == 0 {
-		return nil, errors.New("Claude trace does not contain a system/init event")
+		return nil, errors.New("claude trace does not contain a system/init event")
 	}
 	return inventory, nil
 }
@@ -1655,24 +1975,24 @@ func observedClaudeInventory(trace []byte, req brokerRequest) ([]string, error) 
 func validateClaudeInventory(plugins []any, req brokerRequest) ([]string, error) {
 	if req.Arm == "control" {
 		if len(plugins) != 0 {
-			return nil, errors.New("Claude control loaded a plugin")
+			return nil, errors.New("claude control loaded a plugin")
 		}
 		return []string{}, nil
 	}
 	if len(plugins) != 1 {
-		return nil, fmt.Errorf("Claude treatment loaded %d plugins; require exactly one", len(plugins))
+		return nil, fmt.Errorf("claude treatment loaded %d plugins; require exactly one", len(plugins))
 	}
 	plugin, ok := plugins[0].(map[string]any)
 	if !ok || firstString(plugin, "name") != "megapowers" {
-		return nil, errors.New("Claude treatment did not load the Megapowers candidate")
+		return nil, errors.New("claude treatment did not load the Megapowers candidate")
 	}
 	pluginPath := firstString(plugin, "path")
 	if pluginPath == "" || filepath.Clean(pluginPath) != req.PluginRepo {
-		return nil, errors.New("Claude loaded Megapowers from an unexpected path")
+		return nil, errors.New("claude loaded Megapowers from an unexpected path")
 	}
 	resolved, err := filepath.EvalSymlinks(pluginPath)
 	if err != nil || filepath.Clean(resolved) != req.PluginRepo {
-		return nil, errors.New("Claude loaded Megapowers through a non-canonical path")
+		return nil, errors.New("claude loaded Megapowers through a non-canonical path")
 	}
 	return []string{"megapowers"}, nil
 }
@@ -1703,7 +2023,7 @@ func writeClaudeSettings(req brokerRequest) (string, error) {
 			// masquerading as actor behavior; Bubblewrap remains the
 			// authoritative filesystem boundary for every write.
 			"defaultMode": "acceptEdits",
-			"allow":       []string{"Agent", "Task", "Skill", "Edit", "Write", "MultiEdit", "NotebookEdit"},
+			"allow":       []string{"Agent", "Task", "Skill", "Read", "Glob", "Grep", "Bash", "Edit", "Write", "MultiEdit", "NotebookEdit"},
 			"deny":        []string{"WebFetch", "WebSearch", "Read(~/.claude/.credentials.json)"},
 		},
 		"sandbox": map[string]any{
@@ -1716,8 +2036,10 @@ func writeClaudeSettings(req brokerRequest) (string, error) {
 				"envVars": []any{map[string]any{"name": "CLAUDE_CODE_OAUTH_TOKEN", "mode": "deny"}, map[string]any{"name": "ANTHROPIC_API_KEY", "mode": "deny"}},
 			},
 			"network": map[string]any{
-				"allowedDomains":   []string{},
-				"allowUnixSockets": []string{},
+				"allowedDomains": []string{},
+				// Linux seccomp cannot allow one socket path. The outer
+				// Bubblewrap boundary exposes only this run's broker sockets.
+				"allowAllUnixSockets": true,
 			},
 		},
 		"disableAllHooks": false,
@@ -1828,10 +2150,10 @@ func codexInstalledPath(content []byte, home string) (string, error) {
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return "", errors.New("Codex plugin install result has trailing data")
+		return "", errors.New("codex plugin install result has trailing data")
 	}
 	if result.PluginID != "megapowers@megapowers-eval" || result.InstalledPath == "" {
-		return "", errors.New("Codex plugin install result does not identify the Megapowers cache")
+		return "", errors.New("codex plugin install result does not identify the Megapowers cache")
 	}
 	installedPath, err := canonicalDirectory(result.InstalledPath)
 	if err != nil {
@@ -1839,7 +2161,7 @@ func codexInstalledPath(content []byte, home string) (string, error) {
 	}
 	cacheRoot := filepath.Join(home, "plugins", "cache")
 	if !strings.HasPrefix(installedPath, cacheRoot+string(filepath.Separator)) {
-		return "", errors.New("Codex installedPath is outside the disposable plugin cache")
+		return "", errors.New("codex installedPath is outside the disposable plugin cache")
 	}
 	return installedPath, nil
 }
@@ -1937,11 +2259,11 @@ func observedCodexInventory(content []byte, arm string) ([]string, error) {
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return nil, errors.New("Codex plugin inventory has trailing data")
+		return nil, errors.New("codex plugin inventory has trailing data")
 	}
 	if arm == "control" {
 		if len(inventory.Installed) != 0 {
-			return nil, errors.New("Codex control has an installed plugin")
+			return nil, errors.New("codex control has an installed plugin")
 		}
 		return []string{}, nil
 	}
@@ -1952,7 +2274,7 @@ func observedCodexInventory(content []byte, arm string) ([]string, error) {
 		}
 	}
 	if matches != 1 || len(inventory.Installed) != 1 {
-		return nil, errors.New("Codex plugin inventory is not exactly one enabled Megapowers candidate")
+		return nil, errors.New("codex plugin inventory is not exactly one enabled Megapowers candidate")
 	}
 	return []string{"megapowers"}, nil
 }
@@ -2187,7 +2509,7 @@ func actorEnvironment(req brokerRequest, additions map[string]string) []string {
 		"XDG_CONFIG_HOME":     filepath.Join(req.ActorHome, ".config"),
 		"XDG_CACHE_HOME":      filepath.Join(req.ActorHome, ".cache"),
 		"XDG_DATA_HOME":       filepath.Join(req.ActorHome, ".local", "share"),
-		"PATH":                "/opt/megapowers-runtime/go/bin:/usr/bin:/bin",
+		"PATH":                "/opt/megapowers-receipt/bin:/opt/megapowers-runtime/go/bin:/usr/bin:/bin",
 		"TMPDIR":              "/tmp",
 		"LANG":                "C.UTF-8",
 		"LC_ALL":              "C.UTF-8",
@@ -2235,6 +2557,16 @@ func actorSandboxArgs(req brokerRequest, binary, insideBinary string, commandArg
 	insideBroker := "/opt/megapowers/broker"
 	args := sandboxBase(false)
 	args = append(args, "--dir", "/opt", "--dir", "/opt/megapowers", "--ro-bind", binary, insideBinary, "--ro-bind", brokerBinary, insideBroker)
+	args, err = appendReceiptInstrumentation(args, brokerBinary)
+	if err != nil {
+		return nil, err
+	}
+	if req.Harness == "codex" {
+		args, err = appendCodexCompanion(args, binary)
+		if err != nil {
+			return nil, err
+		}
+	}
 	args = appendMount(args, req.ActorHome, false)
 	args = appendMount(args, req.Project, false)
 	args = append(args, "--dir", actorBrokerPath, "--ro-bind", filepath.Dir(proxySocket), actorBrokerPath)
@@ -2250,6 +2582,71 @@ func actorSandboxArgs(req brokerRequest, binary, insideBinary string, commandArg
 	}
 	args = append(args, "--chdir", req.Project, "--", insideBroker, "--actor-bridge", filepath.Join(actorBrokerPath, filepath.Base(proxySocket)), insideBinary)
 	args = append(args, commandArgs...)
+	return args, nil
+}
+
+func appendCodexCompanion(args []string, binary string) ([]string, error) {
+	path := filepath.Join(filepath.Dir(binary), "codex-code-mode-host")
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return args, nil
+	}
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return nil, errors.New("codex code-mode companion must be a regular executable")
+	}
+	// Mount only the companion from the selected CLI distribution, not its
+	// installation directory or the operator's configuration.
+	return append(args, "--ro-bind", path, "/opt/megapowers/codex-code-mode-host"), nil
+}
+
+func appendReceiptInstrumentation(args []string, brokerBinary string) ([]string, error) {
+	bash, err := filepath.EvalSymlinks("/usr/bin/bash")
+	if err != nil {
+		return nil, errors.New("receipt instrumentation requires /usr/bin/bash")
+	}
+	sh, err := filepath.EvalSymlinks("/usr/bin/sh")
+	if err != nil {
+		return nil, errors.New("receipt instrumentation requires /usr/bin/sh")
+	}
+	goBinary, err := filepath.EvalSymlinks("/usr/local/go/bin/go")
+	if err != nil {
+		return nil, errors.New("receipt instrumentation requires /usr/local/go/bin/go")
+	}
+	args = append(args,
+		"--dir", "/opt/megapowers-receipt",
+		"--dir", "/opt/megapowers-receipt/bin",
+		"--dir", "/opt/megapowers-receipt/real",
+		"--ro-bind", bash, "/opt/megapowers-receipt/real/bash",
+		"--ro-bind", sh, "/opt/megapowers-receipt/real/sh",
+		"--ro-bind", goBinary, "/opt/megapowers-receipt/real/go",
+	)
+	names := []string{"go", "bash", "sh", "dash"}
+	for _, optional := range []struct {
+		path  string
+		names []string
+	}{
+		{"/usr/bin/python3", []string{"python3"}},
+		{"/usr/bin/pytest", []string{"pytest", "py.test"}},
+		{"/usr/bin/npm", []string{"npm"}},
+		{"/usr/bin/cargo", []string{"cargo"}},
+	} {
+		if info, statErr := os.Stat(optional.path); statErr == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+			names = append(names, optional.names...)
+		}
+	}
+	for _, name := range names {
+		args = append(args, "--ro-bind", brokerBinary, filepath.Join("/opt/megapowers-receipt/bin", name))
+	}
+	// Absolute Bash and /bin/sh shebangs still pass through the wrapper. The
+	// original interpreters remain read-only at separate delegate paths.
+	args = append(args, "--ro-bind", brokerBinary, "/usr/bin/bash")
+	if filepath.Base(sh) == "dash" {
+		args = append(args, "--ro-bind", brokerBinary, "/usr/bin/dash")
+	}
+	// Claude's login-shell snapshot can put the mounted Go runtime before the
+	// wrapper directory. Overlay its absolute launcher so either PATH order is
+	// instrumented; the original launcher remains read-only at its separate path.
+	args = append(args, "--ro-bind", brokerBinary, "/opt/megapowers-runtime/go/bin/go")
 	return args, nil
 }
 
@@ -2358,6 +2755,284 @@ func runProcess(ctx context.Context, binary string, args []string, directory str
 	}
 }
 
+type claudeFollowupGate struct {
+	mu                 sync.Mutex
+	capture            *limitedBuffer
+	partial            []byte
+	total              int
+	segments           int
+	awaitingRoot       bool
+	rootSeen           bool
+	readySignaled      bool
+	failed             bool
+	activeTasks        map[string]bool
+	seenTasks          map[string]bool
+	forwardPermissions int
+	openForwarded      int
+	ready              chan struct{}
+	failure            chan struct{}
+}
+
+func newClaudeFollowupGate(capture *limitedBuffer) *claudeFollowupGate {
+	return &claudeFollowupGate{
+		capture:     capture,
+		activeTasks: make(map[string]bool),
+		seenTasks:   make(map[string]bool),
+		ready:       make(chan struct{}, 1),
+		failure:     make(chan struct{}),
+	}
+}
+
+func (g *claudeFollowupGate) Write(content []byte) (int, error) {
+	original := len(content)
+	_, _ = g.capture.Write(content)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.failed {
+		return original, nil
+	}
+	g.total += len(content)
+	if g.total > traceLimit {
+		g.failLocked()
+		return original, nil
+	}
+	g.partial = append(g.partial, content...)
+	for {
+		end := bytes.IndexByte(g.partial, '\n')
+		if end < 0 {
+			if len(g.partial) > 8<<20 {
+				g.failLocked()
+			}
+			return original, nil
+		}
+		line := bytes.TrimSpace(g.partial[:end])
+		g.partial = g.partial[end+1:]
+		if len(line) == 0 {
+			continue
+		}
+		var object map[string]any
+		if json.Unmarshal(line, &object) != nil {
+			g.failLocked()
+			return original, nil
+		}
+		g.observeLocked(object)
+		if g.failed {
+			return original, nil
+		}
+	}
+}
+
+func (g *claudeFollowupGate) observeLocked(object map[string]any) {
+	typeName := lowerString(object["type"])
+	subtype := lowerString(object["subtype"])
+	if typeName == "system" {
+		switch subtype {
+		case "init":
+			if g.segments == 0 {
+				g.segments = 1
+			} else if g.forwardPermissions > 0 {
+				g.forwardPermissions--
+				g.openForwarded++
+			}
+		case "task_started":
+			if lowerString(object["task_type"]) != "local_agent" {
+				break
+			}
+			taskID := firstString(object, "task_id")
+			if taskID == "" || g.seenTasks[taskID] {
+				g.failLocked()
+				return
+			}
+			g.seenTasks[taskID] = true
+			g.activeTasks[taskID] = true
+		case "task_notification":
+			taskID := firstString(object, "task_id")
+			if !g.activeTasks[taskID] {
+				if taskID != "" && g.seenTasks[taskID] {
+					g.failLocked()
+				}
+				break
+			}
+			delete(g.activeTasks, taskID)
+			if status, ok := object["status"].(string); ok && strings.EqualFold(status, "completed") {
+				g.forwardPermissions++
+			}
+		}
+	}
+	if typeName == "result" {
+		_, hasResult := object["result"].(string)
+		isError, hasStatus := object["is_error"].(bool)
+		wellFormed := g.segments > 0 && hasResult && hasStatus && !isError
+		origin, originPresent := object["origin"]
+		if originPresent {
+			originObject, ok := origin.(map[string]any)
+			if !ok || lowerString(originObject["kind"]) != "task-notification" || !wellFormed || g.openForwarded == 0 {
+				g.failLocked()
+				return
+			}
+			g.openForwarded--
+		} else if !wellFormed {
+			g.failLocked()
+			return
+		} else if g.awaitingRoot {
+			g.awaitingRoot = false
+			g.rootSeen = true
+		} else {
+			// Forwarded segments can emit additional origin-less inner
+			// results. Only the first successful origin-less result after a
+			// user frame can satisfy that frame's root gate.
+			if !g.rootSeen && g.openForwarded == 0 {
+				g.failLocked()
+				return
+			}
+		}
+	}
+	g.signalReadyLocked()
+}
+
+func (g *claudeFollowupGate) beginTurn() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.failed || g.awaitingRoot || g.rootSeen {
+		return false
+	}
+	g.awaitingRoot = true
+	return true
+}
+
+func (g *claudeFollowupGate) signalReadyLocked() {
+	// A completed foreground Agent can emit a task notification without a
+	// forwarded segment. The permission authorizes a later init; it is not
+	// outstanding work until that init opens a segment.
+	ready := g.rootSeen && len(g.activeTasks) == 0 && g.openForwarded == 0
+	if !ready {
+		g.readySignaled = false
+		return
+	}
+	if g.readySignaled {
+		return
+	}
+	g.readySignaled = true
+	select {
+	case g.ready <- struct{}{}:
+	default:
+	}
+}
+
+func (g *claudeFollowupGate) claimReady() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.failed || !g.rootSeen || len(g.activeTasks) != 0 || g.openForwarded != 0 {
+		return false
+	}
+	g.rootSeen = false
+	g.readySignaled = false
+	g.forwardPermissions = 0
+	return true
+}
+
+func (g *claudeFollowupGate) failLocked() {
+	if g.failed {
+		return
+	}
+	g.failed = true
+	close(g.failure)
+}
+
+func runClaudeStreamingProcess(ctx context.Context, binary string, args []string, directory string, environment []string, frames [][]byte) (processResult, error) {
+	started := time.Now()
+	if len(frames) == 0 {
+		return processResult{rc: 125}, errors.New("claude streaming input has no frames")
+	}
+	cmd := exec.Command(binary, args...)
+	cmd.Dir = directory
+	cmd.Env = environment
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return processResult{rc: 125, duration: time.Since(started)}, err
+	}
+	var stdout, stderr limitedBuffer
+	stdout.limit = traceLimit + 1
+	stderr.limit = 1 << 20
+	gate := newClaudeFollowupGate(&stdout)
+	cmd.Stdout = gate
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return processResult{rc: 125, duration: time.Since(started)}, err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	result := func(waitErr error) (processResult, error) {
+		return processResult{stdout: stdout.Bytes(), stderr: stderr.Bytes(), rc: exitCode(waitErr), duration: time.Since(started)}, operationalError(waitErr)
+	}
+	stop := func() error {
+		_ = stdin.Close()
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		select {
+		case waitErr := <-done:
+			return waitErr
+		case <-time.After(500 * time.Millisecond):
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			return <-done
+		}
+	}
+	for index, frame := range frames {
+		if index > 0 {
+			for {
+				select {
+				case <-gate.ready:
+					if gate.claimReady() {
+						goto writeFrame
+					}
+				case <-gate.failure:
+					_ = stop()
+					return processResult{stdout: stdout.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, nil
+				case waitErr := <-done:
+					_ = stdin.Close()
+					return result(waitErr)
+				case <-ctx.Done():
+					_ = stop()
+					return processResult{stdout: stdout.Bytes(), stderr: stderr.Bytes(), rc: 124, duration: time.Since(started), timedOut: true}, ctx.Err()
+				}
+			}
+		}
+	writeFrame:
+		if !gate.beginTurn() {
+			_ = stop()
+			return processResult{stdout: stdout.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, nil
+		}
+		writeDone := make(chan error, 1)
+		go func(content []byte) {
+			_, writeErr := io.Copy(stdin, bytes.NewReader(content))
+			writeDone <- writeErr
+		}(frame)
+		select {
+		case writeErr := <-writeDone:
+			if writeErr != nil {
+				_ = stop()
+				return processResult{stdout: stdout.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, nil
+			}
+		case waitErr := <-done:
+			_ = stdin.Close()
+			return result(waitErr)
+		case <-ctx.Done():
+			_ = stop()
+			return processResult{stdout: stdout.Bytes(), stderr: stderr.Bytes(), rc: 124, duration: time.Since(started), timedOut: true}, ctx.Err()
+		}
+	}
+	_ = stdin.Close()
+	select {
+	case waitErr := <-done:
+		return result(waitErr)
+	case <-ctx.Done():
+		_ = stop()
+		return processResult{stdout: stdout.Bytes(), stderr: stderr.Bytes(), rc: 124, duration: time.Since(started), timedOut: true}, ctx.Err()
+	}
+}
+
 type limitedBuffer struct {
 	mu     sync.Mutex
 	buffer bytes.Buffer
@@ -2390,6 +3065,9 @@ func exitCode(err error) int {
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
+		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			return 128 + int(status.Signal())
+		}
 		return exitErr.ExitCode()
 	}
 	return 125
@@ -2404,6 +3082,13 @@ func operationalError(err error) error {
 }
 
 func normalizeTrace(harness string, trace []byte, processRC int) (string, []actorEvent, bool) {
+	return normalizeTraceTurns(harness, trace, processRC, 1)
+}
+
+func normalizeTraceTurns(harness string, trace []byte, processRC, expectedRootTurns int) (string, []actorEvent, bool) {
+	if expectedRootTurns < 1 {
+		return "", nil, false
+	}
 	scanner := bufio.NewScanner(bytes.NewReader(trace))
 	scanner.Buffer(make([]byte, 64<<10), 8<<20)
 	response := ""
@@ -2412,6 +3097,8 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 	valid := len(bytes.TrimSpace(trace)) > 0
 	claudeSegments := 0
 	claudeMainResultSeen := false
+	claudeAwaitingRootResult := false
+	claudeRootResults := 0
 	claudeOpenForwarded := 0
 	claudeBatchedForwarding := false
 	claudeForwardPermissions := 0
@@ -2419,6 +3106,10 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 	seenClaudeTools := make(map[string]bool)
 	claudeAgentTasks := make(map[string]bool)
 	seenClaudeAgentTasks := make(map[string]bool)
+	codexRootThreadID := ""
+	receiptSequence := 0
+	receiptSeen := false
+	receiptEvents := make([]actorEvent, 0)
 	for scanner.Scan() {
 		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
@@ -2427,6 +3118,19 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 		var object map[string]any
 		if err := json.Unmarshal(line, &object); err != nil {
 			valid = false
+			continue
+		}
+		if firstString(object, "method") == "broker/executionReceipt" {
+			receiptSeen = true
+			receipt, ok := decodeExecutionReceipt(object)
+			if !ok || receipt.Sequence <= receiptSequence {
+				valid = false
+				continue
+			}
+			receiptSequence = receipt.Sequence
+			if receipt.OracleMatch && receipt.StateStable {
+				receiptEvents = append(receiptEvents, actorEvent{Kind: "test", Path: receipt.Command, RC: receipt.ExitCode})
+			}
 			continue
 		}
 		var claudeLifecycleEvents []actorEvent
@@ -2449,6 +3153,11 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 					isForwardedResult = lowerString(origin["kind"]) == "task-notification"
 				}
 			}
+			rootContinuation := terminal && claudeRootResults < expectedRootTurns && claudeOpenForwarded == 0
+			if rootContinuation {
+				terminal = false
+				claudeAwaitingRootResult = true
+			}
 			if terminal && !(isInit && claudeForwardPermissions > 0) && !(isForwardedResult && claudeOpenForwarded > 0) {
 				valid = false
 				continue
@@ -2464,7 +3173,10 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 				}
 			}
 			if isInit {
-				if claudeSegments > 0 {
+				if claudeSegments == 0 {
+					claudeAwaitingRootResult = true
+				}
+				if claudeSegments > 0 && !rootContinuation {
 					if claudeForwardPermissions == 0 {
 						valid = false
 					} else {
@@ -2475,7 +3187,9 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 					}
 					claudeOpenForwarded++
 				}
-				claudeSegments++
+				if !rootContinuation {
+					claudeSegments++
+				}
 				terminal = false
 			}
 			if object["type"] == "result" {
@@ -2506,18 +3220,22 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 				case originPresent:
 					valid = false
 					terminal = false
-				case !claudeMainResultSeen:
+				case claudeAwaitingRootResult:
 					if !wellFormed {
 						valid = false
 						terminal = false
 						continue
 					}
 					claudeMainResultSeen = true
+					claudeAwaitingRootResult = false
+					claudeRootResults++
 					response = value
 					terminal = true
-				case claudeSegments > 1:
+				case claudeOpenForwarded > 0 && claudeSegments > 1:
 					// An origin-less inner result inside a forwarded segment
 					// carries no terminal meaning.
+					terminal = false
+				case claudeSegments > 1:
 					terminal = false
 				default:
 					valid = false
@@ -2525,14 +3243,22 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 				}
 			}
 		} else {
+			params, _ := object["params"].(map[string]any)
+			if firstString(object, "method") == "thread/started" && codexRootThreadID == "" {
+				thread, _ := params["thread"].(map[string]any)
+				if thread["parentThreadId"] == nil {
+					codexRootThreadID = firstString(thread, "id")
+				}
+			}
+			rootItem := codexRootThreadID == "" || firstString(params, "threadId") == codexRootThreadID
 			if object["type"] == "turn.completed" {
 				terminal = true
 			}
-			if firstString(object, "method") == "turn/completed" {
+			if firstString(object, "method") == "turn/completed" && rootItem {
 				terminal = true
 			}
 			item := codexTraceItem(object)
-			if lowerString(item["type"]) == "agent_message" || lowerString(item["type"]) == "agentmessage" {
+			if rootItem && (lowerString(item["type"]) == "agent_message" || lowerString(item["type"]) == "agentmessage") {
 				if text, ok := item["text"].(string); ok {
 					response = text
 				}
@@ -2558,11 +3284,20 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 	if harness == "claude" {
 		events = reconcileClaudeSpawns(events)
 	}
+	if receiptSeen {
+		withoutNativeTests := events[:0]
+		for _, event := range events {
+			if event.Kind != "test" {
+				withoutNativeTests = append(withoutNativeTests, event)
+			}
+		}
+		events = append(withoutNativeTests, receiptEvents...)
+	}
 	events = promoteSkillReads(events)
 	events = deduplicateEvents(events)
 	complete := valid && terminal && processRC == 0
 	if harness == "claude" {
-		complete = complete && claudeSegments > 0 && claudeMainResultSeen && claudeOpenForwarded == 0
+		complete = complete && claudeSegments > 0 && claudeMainResultSeen && claudeRootResults == expectedRootTurns && claudeOpenForwarded == 0
 	}
 	if complete {
 		events = append(events, actorEvent{Kind: "trace_complete", RC: 0})
@@ -2571,6 +3306,796 @@ func normalizeTrace(harness string, trace []byte, processRC int) (string, []acto
 		events[i].Step = i + 1
 	}
 	return response, events, complete
+}
+
+func decodeExecutionReceipt(object map[string]any) (testExecutionReceipt, bool) {
+	params, ok := object["params"].(map[string]any)
+	if !ok {
+		return testExecutionReceipt{}, false
+	}
+	content, err := json.Marshal(params)
+	if err != nil {
+		return testExecutionReceipt{}, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	var receipt testExecutionReceipt
+	if decoder.Decode(&receipt) != nil || receipt.SchemaVersion != "1" || receipt.Sequence < 1 || receipt.StartedStep < 1 || receipt.CompletedStep <= receipt.StartedStep || !recognizedReceiptCommand(receipt.Command) || receipt.ExitCode < 0 || receipt.ExitCode > 255 || !validReceiptDigest(receipt.InvocationDigest) {
+		return testExecutionReceipt{}, false
+	}
+	for _, state := range []receiptFileState{receipt.Before, receipt.After} {
+		if state.Complete && !validReceiptDigest(state.Digest) {
+			return testExecutionReceipt{}, false
+		}
+		if !state.Complete && (state.Digest != "" || len(state.ChangedFiles) != 0) {
+			return testExecutionReceipt{}, false
+		}
+		if !sort.StringsAreSorted(state.ChangedFiles) {
+			return testExecutionReceipt{}, false
+		}
+		for index, path := range state.ChangedFiles {
+			if path == "" || filepath.IsAbs(path) || path != filepath.ToSlash(filepath.Clean(path)) || (index > 0 && path == state.ChangedFiles[index-1]) {
+				return testExecutionReceipt{}, false
+			}
+		}
+	}
+	stable := receipt.Before.Complete && receipt.After.Complete && receipt.Before.Digest == receipt.After.Digest
+	if receipt.StateStable != stable {
+		return testExecutionReceipt{}, false
+	}
+	return receipt, true
+}
+
+func validReceiptDigest(digest string) bool {
+	if len(digest) != len("sha256:")+sha256.Size*2 || !strings.HasPrefix(digest, "sha256:") {
+		return false
+	}
+	_, err := hex.DecodeString(strings.TrimPrefix(digest, "sha256:"))
+	return err == nil
+}
+
+func recognizedReceiptCommand(command string) bool {
+	switch command {
+	case "go test", "npm test", "cargo test", "pytest", "scripts/validate.sh":
+		return true
+	default:
+		return false
+	}
+}
+
+func receiptCommand(executable string, args []string) string {
+	name := strings.ToLower(filepath.Base(executable))
+	switch name {
+	case "go":
+		for index := 0; index < len(args); index++ {
+			argument := args[index]
+			if argument == "-C" && index+1 < len(args) {
+				index++
+				continue
+			}
+			if strings.HasPrefix(argument, "-") {
+				continue
+			}
+			if argument == "test" {
+				return "go test"
+			}
+			return ""
+		}
+	case "npm", "cargo":
+		for _, argument := range args {
+			if strings.HasPrefix(argument, "-") {
+				continue
+			}
+			if argument == "test" {
+				return name + " test"
+			}
+			return ""
+		}
+	case "pytest", "py.test":
+		return "pytest"
+	case "python", "python3":
+		for index := 0; index+1 < len(args); index++ {
+			if args[index] == "-m" && (args[index+1] == "pytest" || args[index+1] == "py.test") {
+				return "pytest"
+			}
+		}
+	case "bash", "sh", "dash":
+		for _, argument := range args {
+			if strings.Contains(argument, "c") && strings.HasPrefix(argument, "-") {
+				return ""
+			}
+			if strings.HasPrefix(argument, "-") {
+				continue
+			}
+			path := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(argument)), "./")
+			if path == "scripts/validate.sh" || strings.HasSuffix(path, "/scripts/validate.sh") {
+				return "scripts/validate.sh"
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
+func receiptInvocationMatchesOracle(command string, arguments, oracle []string, singlePackage bool) bool {
+	if len(oracle) == 0 || receiptCommand(oracle[0], oracle[1:]) != command {
+		return false
+	}
+	expected := oracle[1:]
+	if equalReceiptArguments(arguments, expected) {
+		return true
+	}
+	if command != "go test" {
+		return false
+	}
+	testIndex := -1
+	for index, argument := range arguments {
+		if argument == "test" {
+			testIndex = index
+			break
+		}
+	}
+	if testIndex < 0 {
+		return false
+	}
+	filtered := make([]string, 0, len(arguments))
+	seenRun := false
+	seenCount := false
+	seenVerbose := false
+	for index := 0; index < len(arguments); index++ {
+		argument := arguments[index]
+		if index <= testIndex {
+			filtered = append(filtered, argument)
+			continue
+		}
+		switch {
+		case argument == "-run":
+			if seenRun || index+1 >= len(arguments) || !validReceiptRunPattern(arguments[index+1]) {
+				return false
+			}
+			seenRun = true
+			index++
+		case strings.HasPrefix(argument, "-run="):
+			if seenRun || !validReceiptRunPattern(strings.TrimPrefix(argument, "-run=")) {
+				return false
+			}
+			seenRun = true
+		case argument == "-count":
+			if seenCount || index+1 >= len(arguments) || !validReceiptTestCount(arguments[index+1]) {
+				return false
+			}
+			seenCount = true
+			index++
+		case strings.HasPrefix(argument, "-count="):
+			if seenCount || !validReceiptTestCount(strings.TrimPrefix(argument, "-count=")) {
+				return false
+			}
+			seenCount = true
+		case argument == "-v" || argument == "-v=true":
+			if seenVerbose {
+				return false
+			}
+			seenVerbose = true
+		default:
+			filtered = append(filtered, argument)
+		}
+	}
+	if (seenRun || seenCount || seenVerbose) && equalReceiptArguments(filtered, expected) {
+		return true
+	}
+	if !singlePackage || !equalReceiptArguments(expected, []string{"test", "./..."}) {
+		return false
+	}
+	return equalReceiptArguments(filtered, []string{"test"}) || equalReceiptArguments(filtered, []string{"test", "."})
+}
+
+func receiptSnapshotIsSingleGoPackage(snapshot receiptProjectSnapshot) bool {
+	if !snapshot.complete || !strings.HasPrefix(snapshot.files["go.mod"], "file:") {
+		return false
+	}
+	rootPackage := false
+	for path, content := range snapshot.files {
+		if !strings.HasSuffix(path, ".go") || !strings.HasPrefix(content, "file:") {
+			continue
+		}
+		if strings.ContainsRune(path, '/') {
+			return false
+		}
+		rootPackage = true
+	}
+	return rootPackage
+}
+
+func validReceiptRunPattern(pattern string) bool {
+	if pattern == "" || len(pattern) > receiptMaximumPath {
+		return false
+	}
+	_, err := regexp.Compile(pattern)
+	return err == nil
+}
+
+func validReceiptTestCount(value string) bool {
+	count, err := strconv.Atoi(value)
+	return err == nil && count >= 1 && count <= 10
+}
+
+func equalReceiptArguments(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func validReceiptArguments(arguments []string) bool {
+	if len(arguments) > receiptMaximumArgs {
+		return false
+	}
+	total := 0
+	for _, argument := range arguments {
+		if len(argument) > receiptMaximumArg || strings.ContainsRune(argument, 0) {
+			return false
+		}
+		total += len(argument)
+		if total > receiptMaximumArgv {
+			return false
+		}
+	}
+	return true
+}
+
+func receiptInvocationDigest(command string, arguments []string) string {
+	hasher := sha256.New()
+	_, _ = io.WriteString(hasher, command)
+	for _, argument := range arguments {
+		_, _ = hasher.Write([]byte{0})
+		_, _ = io.WriteString(hasher, argument)
+	}
+	return "sha256:" + hex.EncodeToString(hasher.Sum(nil))
+}
+
+func snapshotReceiptProject(root string) receiptProjectSnapshot {
+	rooted, err := os.OpenRoot(root)
+	if err != nil {
+		return receiptProjectSnapshot{complete: false, files: map[string]string{}}
+	}
+	defer rooted.Close()
+
+	snapshot := receiptProjectSnapshot{complete: true, files: make(map[string]string)}
+	count := 0
+	var total int64
+	type pendingDirectory struct {
+		path string
+		info fs.FileInfo
+	}
+	rootDirectory, rootInfo, err := openReceiptSnapshotEntry(rooted, ".", true)
+	if err != nil {
+		return receiptProjectSnapshot{complete: false, files: map[string]string{}}
+	}
+	if err := rootDirectory.Close(); err != nil {
+		return receiptProjectSnapshot{complete: false, files: map[string]string{}}
+	}
+	pending := []pendingDirectory{{path: ".", info: rootInfo}}
+	for len(pending) > 0 && err == nil {
+		directory := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		var opened *os.File
+		opened, rootInfo, err = openReceiptSnapshotEntry(rooted, directory.path, true)
+		if err != nil || !os.SameFile(directory.info, rootInfo) {
+			if opened != nil {
+				_ = opened.Close()
+			}
+			err = errors.New("receipt directory changed during snapshot")
+			break
+		}
+		for err == nil {
+			var entries []os.DirEntry
+			entries, err = opened.ReadDir(128)
+			if errors.Is(err, io.EOF) {
+				err = nil
+				break
+			}
+			if err != nil || len(entries) == 0 {
+				if err == nil {
+					err = errors.New("receipt directory returned an empty page")
+				}
+				break
+			}
+			for _, entry := range entries {
+				name := entry.Name()
+				if name == "" || name == "." || name == ".." || strings.ContainsRune(name, '/') {
+					err = errors.New("receipt path is invalid")
+					break
+				}
+				relative := name
+				if directory.path != "." {
+					relative = directory.path + "/" + name
+				}
+				if len(relative) > receiptMaximumPath {
+					err = errors.New("receipt path bound exceeded")
+					break
+				}
+				count++
+				if count > receiptMaximumEntries {
+					err = errors.New("receipt entry bound exceeded")
+					break
+				}
+				info, lstatErr := rooted.Lstat(relative)
+				if lstatErr != nil {
+					err = lstatErr
+					break
+				}
+				first := strings.SplitN(relative, "/", 2)[0]
+				if info.IsDir() {
+					if first == ".git" || first == ".actor-cache" || first == "node_modules" || first == "target" {
+						continue
+					}
+					pending = append(pending, pendingDirectory{path: relative, info: info})
+					continue
+				}
+				if info.Mode()&os.ModeSymlink != 0 {
+					target, readlinkErr := rooted.Readlink(relative)
+					verified, verifyErr := rooted.Lstat(relative)
+					if readlinkErr != nil || verifyErr != nil || !os.SameFile(info, verified) || len(target) > receiptMaximumPath {
+						err = errors.New("receipt symlink changed or exceeded its bound")
+						break
+					}
+					snapshot.files[relative] = "symlink:" + target
+					continue
+				}
+				if !info.Mode().IsRegular() {
+					err = errors.New("receipt content is not regular")
+					break
+				}
+				file, openedInfo, openErr := openReceiptSnapshotEntry(rooted, relative, false)
+				if openErr != nil || !os.SameFile(info, openedInfo) || openedInfo.Size() < 0 || openedInfo.Size() > receiptMaximumFile || total+openedInfo.Size() > receiptMaximumBytes {
+					if file != nil {
+						_ = file.Close()
+					}
+					err = errors.New("receipt content changed or exceeded its bound")
+					break
+				}
+				hasher := sha256.New()
+				copied, copyErr := io.Copy(hasher, io.LimitReader(file, receiptMaximumFile+1))
+				finalInfo, statErr := file.Stat()
+				closeErr := file.Close()
+				verified, verifyErr := rooted.Lstat(relative)
+				if copyErr != nil || statErr != nil || closeErr != nil || verifyErr != nil || copied != openedInfo.Size() || finalInfo.Size() != openedInfo.Size() || finalInfo.ModTime() != openedInfo.ModTime() || !os.SameFile(openedInfo, finalInfo) || !os.SameFile(openedInfo, verified) {
+					err = errors.New("receipt file changed during snapshot")
+					break
+				}
+				total += openedInfo.Size()
+				snapshot.files[relative] = "file:" + hex.EncodeToString(hasher.Sum(nil))
+			}
+		}
+		finalDirectory, finalInfo, verifyErr := openReceiptSnapshotEntry(rooted, directory.path, true)
+		if finalDirectory != nil {
+			_ = finalDirectory.Close()
+		}
+		closeErr := opened.Close()
+		if err == nil && (verifyErr != nil || closeErr != nil || !os.SameFile(rootInfo, finalInfo)) {
+			err = errors.New("receipt directory changed during snapshot")
+		}
+	}
+	if err != nil {
+		return receiptProjectSnapshot{complete: false, files: map[string]string{}}
+	}
+	paths := make([]string, 0, len(snapshot.files))
+	for path := range snapshot.files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	hasher := sha256.New()
+	for _, path := range paths {
+		_, _ = io.WriteString(hasher, path)
+		_, _ = hasher.Write([]byte{0})
+		_, _ = io.WriteString(hasher, snapshot.files[path])
+		_, _ = hasher.Write([]byte{0})
+	}
+	snapshot.digest = "sha256:" + hex.EncodeToString(hasher.Sum(nil))
+	return snapshot
+}
+
+func openReceiptSnapshotEntry(root *os.Root, relative string, directory bool) (*os.File, fs.FileInfo, error) {
+	flags := os.O_RDONLY | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+	if directory {
+		flags |= syscall.O_DIRECTORY
+	}
+	file, err := root.OpenFile(relative, flags, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := file.Stat()
+	if err != nil || (directory && !info.IsDir()) || (!directory && !info.Mode().IsRegular()) {
+		_ = file.Close()
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, errors.New("receipt entry has an unexpected type")
+	}
+	return file, info, nil
+}
+
+func receiptFileStateSince(root string, baseline receiptProjectSnapshot) receiptFileState {
+	return receiptFileStateFromSnapshots(baseline, snapshotReceiptProject(root))
+}
+
+func receiptFileStateFromSnapshots(baseline, current receiptProjectSnapshot) receiptFileState {
+	if !baseline.complete || !current.complete {
+		return receiptFileState{Complete: false, ChangedFiles: []string{}}
+	}
+	changed := make([]string, 0)
+	seen := make(map[string]bool, len(baseline.files)+len(current.files))
+	for path := range baseline.files {
+		seen[path] = true
+	}
+	for path := range current.files {
+		seen[path] = true
+	}
+	for path := range seen {
+		if baseline.files[path] != current.files[path] {
+			changed = append(changed, path)
+		}
+	}
+	sort.Strings(changed)
+	return receiptFileState{Complete: true, Digest: current.digest, ChangedFiles: changed}
+}
+
+func appendTrustedExecutionReceipts(trace []byte, receipts []testExecutionReceipt) ([]byte, error) {
+	for _, line := range bytes.Split(trace, []byte{'\n'}) {
+		var object map[string]any
+		if json.Unmarshal(bytes.TrimSpace(line), &object) == nil && firstString(object, "method") == "broker/executionReceipt" {
+			return nil, errors.New("actor trace used the reserved broker receipt method")
+		}
+	}
+	result := append([]byte(nil), trace...)
+	if len(result) > 0 && result[len(result)-1] != '\n' {
+		result = append(result, '\n')
+	}
+	for _, receipt := range receipts {
+		line, err := json.Marshal(map[string]any{"method": "broker/executionReceipt", "params": receipt})
+		if err != nil {
+			return nil, err
+		}
+		if len(result)+len(line)+1 > traceLimit {
+			return nil, errors.New("execution receipts exceed the trace bound")
+		}
+		result = append(result, line...)
+		result = append(result, '\n')
+	}
+	return result, nil
+}
+
+func startReceiptCollector(project, socket string, oracle []string) (*receiptCollector, error) {
+	if err := validateSocketPath(socket); err != nil {
+		return nil, err
+	}
+	baseline := snapshotReceiptProject(project)
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
+	if err != nil {
+		return nil, err
+	}
+	collector := &receiptCollector{
+		listener:    listener,
+		project:     project,
+		oracle:      append([]string(nil), oracle...),
+		baseline:    baseline,
+		connections: make(map[*net.UnixConn]bool),
+		records:     make([]testExecutionReceipt, 0),
+		serveDone:   make(chan struct{}),
+	}
+	go collector.serve()
+	return collector, nil
+}
+
+func (c *receiptCollector) serve() {
+	defer close(c.serveDone)
+	for {
+		connection, err := c.listener.AcceptUnix()
+		if err != nil {
+			return
+		}
+		c.wg.Add(1)
+		c.mu.Lock()
+		c.connections[connection] = true
+		c.mu.Unlock()
+		go c.handle(connection)
+	}
+}
+
+func (c *receiptCollector) handle(connection *net.UnixConn) {
+	defer c.wg.Done()
+	active := false
+	defer func() {
+		c.mu.Lock()
+		if active {
+			c.activeRuns--
+		}
+		delete(c.connections, connection)
+		c.mu.Unlock()
+		_ = connection.Close()
+	}()
+	_ = connection.SetDeadline(time.Now().Add(30 * time.Second))
+	decoder := json.NewDecoder(io.LimitReader(connection, 16<<10))
+	decoder.DisallowUnknownFields()
+	encoder := json.NewEncoder(connection)
+	var start receiptClientMessage
+	if decoder.Decode(&start) != nil || start.SchemaVersion != "1" || start.Action != "start" || !recognizedReceiptCommand(start.Command) || !validReceiptArguments(start.Arguments) || start.ID != 0 || start.ExitCode != nil {
+		_ = encoder.Encode(receiptServerMessage{Accepted: false})
+		return
+	}
+	peerPID, peerOK := receiptPeerIsWrapper(connection, start.Command, start.Arguments)
+	if !peerOK {
+		_ = encoder.Encode(receiptServerMessage{Accepted: false})
+		return
+	}
+	c.mu.Lock()
+	if c.sealed || c.nextID >= receiptMaximumRuns {
+		c.mu.Unlock()
+		_ = encoder.Encode(receiptServerMessage{Accepted: false})
+		return
+	}
+	c.activeRuns++
+	active = true
+	c.nextID++
+	id := c.nextID
+	c.nextStep++
+	startedStep := c.nextStep
+	beforeSnapshot := snapshotReceiptProject(c.project)
+	before := receiptFileStateFromSnapshots(c.baseline, beforeSnapshot)
+	oracleMatch := receiptPeerCWDMatchesProject(peerPID, c.project) && receiptInvocationMatchesOracle(start.Command, start.Arguments, c.oracle, receiptSnapshotIsSingleGoPackage(beforeSnapshot))
+	invocationDigest := receiptInvocationDigest(start.Command, start.Arguments)
+	c.mu.Unlock()
+	if encoder.Encode(receiptServerMessage{Accepted: true, ID: id}) != nil {
+		return
+	}
+	_ = connection.SetDeadline(time.Now().Add(maximumRun))
+	var finish receiptClientMessage
+	if decoder.Decode(&finish) != nil || finish.SchemaVersion != "1" || finish.Action != "finish" || finish.ID != id || finish.Command != "" || len(finish.Arguments) != 0 || finish.ExitCode == nil || *finish.ExitCode < 0 || *finish.ExitCode > 255 {
+		return
+	}
+	c.mu.Lock()
+	c.nextStep++
+	completedStep := c.nextStep
+	after := receiptFileStateSince(c.project, c.baseline)
+	receipt := testExecutionReceipt{
+		SchemaVersion:    "1",
+		Sequence:         len(c.records) + 1,
+		StartedStep:      startedStep,
+		CompletedStep:    completedStep,
+		Command:          start.Command,
+		ExitCode:         *finish.ExitCode,
+		OracleMatch:      oracleMatch,
+		InvocationDigest: invocationDigest,
+		StateStable:      before.Complete && after.Complete && before.Digest == after.Digest,
+		Before:           before,
+		After:            after,
+	}
+	c.records = append(c.records, receipt)
+	c.activeRuns--
+	active = false
+	c.mu.Unlock()
+	_ = connection.SetDeadline(time.Now().Add(30 * time.Second))
+	_ = encoder.Encode(receiptServerMessage{Accepted: true, ID: id})
+}
+
+func receiptPeerIsWrapper(connection *net.UnixConn, command string, claimedArguments []string) (int, bool) {
+	raw, err := connection.SyscallConn()
+	if err != nil {
+		return 0, false
+	}
+	var credentials *syscall.Ucred
+	var controlErr error
+	if err := raw.Control(func(fd uintptr) {
+		credentials, controlErr = syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
+	}); err != nil || controlErr != nil || credentials == nil || credentials.Pid <= 0 {
+		return 0, false
+	}
+	peer, err := os.Stat(fmt.Sprintf("/proc/%d/exe", credentials.Pid))
+	if err != nil {
+		return 0, false
+	}
+	selfPath, err := os.Executable()
+	if err != nil {
+		return 0, false
+	}
+	self, err := os.Stat(selfPath)
+	if err != nil || !os.SameFile(peer, self) {
+		return 0, false
+	}
+	cmdlineFile, err := os.Open(fmt.Sprintf("/proc/%d/cmdline", credentials.Pid))
+	if err != nil {
+		return 0, false
+	}
+	cmdline, readErr := io.ReadAll(io.LimitReader(cmdlineFile, 16<<10+1))
+	closeErr := cmdlineFile.Close()
+	if readErr != nil || closeErr != nil || len(cmdline) == 0 || len(cmdline) > 16<<10 {
+		return 0, false
+	}
+	arguments := bytes.Split(cmdline, []byte{0})
+	for _, argument := range arguments[1:] {
+		if string(argument) == "--actor-bridge" {
+			return 0, false
+		}
+	}
+	role := strings.ToLower(filepath.Base(string(arguments[0])))
+	if strings.HasSuffix(strings.ToLower(filepath.Base(selfPath)), ".test") && strings.HasSuffix(role, ".test") {
+		return int(credentials.Pid), true
+	}
+	roleMatches := false
+	switch command {
+	case "go test":
+		roleMatches = role == "go"
+	case "npm test":
+		roleMatches = role == "npm"
+	case "cargo test":
+		roleMatches = role == "cargo"
+	case "pytest":
+		roleMatches = role == "pytest" || role == "py.test" || role == "python3"
+	case "scripts/validate.sh":
+		roleMatches = role == "bash" || role == "sh" || role == "dash"
+	}
+	if !roleMatches || len(arguments) < 2 || len(arguments[len(arguments)-1]) != 0 {
+		return 0, false
+	}
+	observedArguments := make([]string, 0, len(arguments)-2)
+	for _, argument := range arguments[1 : len(arguments)-1] {
+		observedArguments = append(observedArguments, string(argument))
+	}
+	if !equalReceiptArguments(observedArguments, claimedArguments) {
+		return 0, false
+	}
+	return int(credentials.Pid), true
+}
+
+func receiptPeerCWDMatchesProject(pid int, project string) bool {
+	cwd, err := os.Stat(fmt.Sprintf("/proc/%d/cwd", pid))
+	if err != nil {
+		return false
+	}
+	root, err := os.Stat(project)
+	return err == nil && os.SameFile(cwd, root)
+}
+
+func (c *receiptCollector) receipts() []testExecutionReceipt {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]testExecutionReceipt(nil), c.records...)
+}
+
+func (c *receiptCollector) seal() ([]testExecutionReceipt, error) {
+	c.mu.Lock()
+	c.sealed = true
+	c.mu.Unlock()
+	c.stopAccepting()
+	<-c.serveDone
+	c.mu.Lock()
+	active := c.activeRuns
+	c.mu.Unlock()
+	c.closeConnections()
+	c.wg.Wait()
+	if active > 0 {
+		return nil, fmt.Errorf("execution receipt collector sealed with %d active command(s)", active)
+	}
+	return c.receipts(), nil
+}
+
+func (c *receiptCollector) stopAccepting() {
+	c.stopOnce.Do(func() { _ = c.listener.Close() })
+}
+
+func (c *receiptCollector) closeConnections() {
+	c.mu.Lock()
+	connections := make([]*net.UnixConn, 0, len(c.connections))
+	for connection := range c.connections {
+		connections = append(connections, connection)
+	}
+	c.mu.Unlock()
+	for _, connection := range connections {
+		_ = connection.Close()
+	}
+}
+
+func (c *receiptCollector) close() {
+	c.mu.Lock()
+	c.sealed = true
+	c.mu.Unlock()
+	c.stopAccepting()
+	<-c.serveDone
+	c.closeConnections()
+	c.wg.Wait()
+	_ = os.Remove(c.listener.Addr().String())
+}
+
+func runReceiptWrappedExecutable(real string, args []string, command, socket string) int {
+	var connection *net.UnixConn
+	var decoder *json.Decoder
+	var encoder *json.Encoder
+	receiptID := 0
+	if command != "" {
+		connected, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: socket, Net: "unix"})
+		if err == nil {
+			connection = connected
+			decoder = json.NewDecoder(connection)
+			encoder = json.NewEncoder(connection)
+			_ = connection.SetDeadline(time.Now().Add(30 * time.Second))
+			if encoder.Encode(receiptClientMessage{SchemaVersion: "1", Action: "start", Command: command, Arguments: append([]string(nil), args...)}) == nil {
+				var response receiptServerMessage
+				if decoder.Decode(&response) == nil && response.Accepted {
+					receiptID = response.ID
+				}
+			}
+		}
+	}
+	child := exec.Command(real, args...)
+	child.Env = receiptChildEnvironment(os.Environ(), real, command)
+	child.Stdin = os.Stdin
+	child.Stdout = os.Stdout
+	child.Stderr = os.Stderr
+	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	rc := 125
+	if err := child.Start(); err == nil {
+		done := make(chan error, 1)
+		go func() { done <- child.Wait() }()
+		select {
+		case err := <-done:
+			rc = exitCode(err)
+		case received := <-signals:
+			forwarded, ok := received.(syscall.Signal)
+			if ok {
+				_ = syscall.Kill(-child.Process.Pid, forwarded)
+			}
+			select {
+			case err := <-done:
+				rc = exitCode(err)
+			case <-time.After(500 * time.Millisecond):
+				_ = syscall.Kill(-child.Process.Pid, syscall.SIGKILL)
+				rc = exitCode(<-done)
+			}
+		}
+	}
+	if rc < 0 || rc > 255 {
+		rc = 125
+	}
+	if connection != nil {
+		if receiptID > 0 {
+			_ = connection.SetDeadline(time.Now().Add(30 * time.Second))
+			if encoder.Encode(receiptClientMessage{SchemaVersion: "1", Action: "finish", ID: receiptID, ExitCode: &rc}) == nil {
+				var response receiptServerMessage
+				_ = decoder.Decode(&response)
+			}
+		}
+		_ = connection.Close()
+	}
+	return rc
+}
+
+func receiptChildEnvironment(environment []string, real, command string) []string {
+	goRuntime := real == "/opt/megapowers-receipt/real/go"
+	goTest := command == "go test"
+	if !goRuntime && !goTest {
+		return environment
+	}
+	result := make([]string, 0, len(environment)+2)
+	for _, entry := range environment {
+		key, _, _ := strings.Cut(entry, "=")
+		if key == "GOROOT" || goTest && (key == "GOFLAGS" || key == "GOENV") {
+			continue
+		}
+		result = append(result, entry)
+	}
+	result = append(result, "GOROOT=/opt/megapowers-runtime/go")
+	if goTest {
+		result = append(result, "GOENV=off")
+	}
+	return result
 }
 
 type pendingTool struct {
@@ -2606,6 +4131,21 @@ func normalizeObject(harness string, object map[string]any) []actorEvent {
 	}
 	path := firstString(target, "path", "agent_id", "task_name", "id", "name")
 	switch typeName {
+	case "subagentactivity":
+		// Native activity items have no status field. Their kind carries the
+		// lifecycle result, and the thread ID also matches legacy tool calls.
+		path := firstString(target, "agentThreadId")
+		if path == "" || firstString(target, "agentPath") == "" {
+			break
+		}
+		switch lowerString(target["kind"]) {
+		case "started":
+			events = append(events, actorEvent{Kind: "agent_spawn", Path: path, RC: 0})
+		case "completed":
+			events = append(events, actorEvent{Kind: "agent_complete", Path: path, RC: 0})
+		case "interrupted":
+			events = append(events, actorEvent{Kind: "agent_complete", Path: path, RC: 1})
+		}
 	case "subagent_start", "collab_agent_spawn_end", "agent_spawn":
 		events = append(events, actorEvent{Kind: "agent_spawn", Path: path, RC: rc})
 	case "subagent_stop", "collab_agent_complete", "agent_complete":
@@ -2847,7 +4387,7 @@ func classifyCommand(command string, rc int) []actorEvent {
 
 func normalizedCommandSegments(command string) ([][]string, bool) {
 	command = strings.TrimSpace(command)
-	for _, prefix := range []string{"/bin/bash -lc ", "bash -lc ", "/bin/sh -lc ", "sh -lc "} {
+	for _, prefix := range []string{"/usr/bin/bash -lc ", "/bin/bash -lc ", "bash -lc ", "/usr/bin/sh -lc ", "/bin/sh -lc ", "sh -lc "} {
 		if !strings.HasPrefix(command, prefix) {
 			continue
 		}
@@ -3408,7 +4948,7 @@ func selftestClaudeSubscriptionIsolation() error {
 		return err
 	}
 	if !bytes.Contains(settingsContent, []byte("CLAUDE_CODE_OAUTH_TOKEN")) || !bytes.Contains(settingsContent, []byte(".credentials.json")) {
-		return errors.New("Claude settings do not protect credential paths and environment")
+		return errors.New("claude settings do not protect credential paths and environment")
 	}
 	var settingsDocument struct {
 		Permissions struct {
@@ -3423,8 +4963,8 @@ func selftestClaudeSubscriptionIsolation() error {
 	for _, tool := range settingsDocument.Permissions.Allow {
 		allowed[tool] = true
 	}
-	if settingsDocument.Permissions.DefaultMode != "acceptEdits" || len(allowed) != 7 || !allowed["Agent"] || !allowed["Task"] || !allowed["Skill"] || !allowed["Edit"] || !allowed["Write"] || !allowed["MultiEdit"] || !allowed["NotebookEdit"] {
-		return errors.New("Claude settings do not allow isolated edits, skills, and native delegation")
+	if settingsDocument.Permissions.DefaultMode != "acceptEdits" || len(allowed) != 11 || !allowed["Agent"] || !allowed["Task"] || !allowed["Skill"] || !allowed["Read"] || !allowed["Glob"] || !allowed["Grep"] || !allowed["Bash"] || !allowed["Edit"] || !allowed["Write"] || !allowed["MultiEdit"] || !allowed["NotebookEdit"] {
+		return errors.New("claude settings do not allow isolated reads, commands, edits, skills, and native delegation")
 	}
 	return nil
 }
@@ -3452,7 +4992,7 @@ func selftestCodexExternalAuth() error {
 	req.Harness = "codex"
 	auth, err := resolveAuthentication(req)
 	if err != nil || auth.credential != accessToken || auth.accountID != "account-selftest" {
-		return errors.New("Codex subscription auth was not parsed")
+		return errors.New("codex subscription auth was not parsed")
 	}
 	if err := os.Mkdir(filepath.Join(req.ActorHome, ".codex"), 0o700); err != nil {
 		return err
@@ -3467,7 +5007,7 @@ func selftestCodexExternalAuth() error {
 	environment := actorEnvironment(req, map[string]string{"CODEX_HOME": filepath.Join(req.ActorHome, ".codex")})
 	joined := strings.Join(args, "\n") + "\n" + strings.Join(environment, "\n")
 	if strings.Contains(joined, accessToken) || strings.Contains(joined, authPath) || strings.Contains(joined, auth.accountID) {
-		return errors.New("Codex subscription material entered arguments or environment")
+		return errors.New("codex subscription material entered arguments or environment")
 	}
 	leaked := false
 	err = filepath.WalkDir(req.ActorHome, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -3482,7 +5022,7 @@ func selftestCodexExternalAuth() error {
 		return nil
 	})
 	if err != nil || leaked {
-		return errors.New("Codex subscription material was persisted in actor state")
+		return errors.New("codex subscription material was persisted in actor state")
 	}
 	fake := filepath.Join(paths.root, "fake-codex-app-server")
 	script := `#!/bin/sh
@@ -3509,12 +5049,12 @@ sleep 2
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	result, err := runCodexAppServer(ctx, req, fake, filepath.Join(req.ActorHome, ".codex"), auth)
+	result, err := runCodexAppServer(ctx, req, fake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root)
 	if err != nil || result.rc != 0 || result.timedOut {
 		return fmt.Errorf("mock Codex app-server run rc=%d: %w: %s", result.rc, err, result.stderr)
 	}
 	if bytes.Contains(result.stdout, []byte(accessToken)) || bytes.Contains(result.stderr, []byte(accessToken)) {
-		return errors.New("Codex app-server trace exposed the subscription token")
+		return errors.New("codex app-server trace exposed the subscription token")
 	}
 	response, events, complete := normalizeTrace("codex", result.stdout, result.rc)
 	if response != "subscription result" || !complete || len(events) != 1 || events[0].Kind != "trace_complete" {
@@ -3525,9 +5065,9 @@ sleep 2
 	if err := os.WriteFile(leakingFake, []byte(leakingScript), 0o700); err != nil {
 		return err
 	}
-	leakingResult, leakingErr := runCodexAppServer(ctx, req, leakingFake, filepath.Join(req.ActorHome, ".codex"), auth)
+	leakingResult, leakingErr := runCodexAppServer(ctx, req, leakingFake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root)
 	if leakingErr == nil || bytes.Contains(leakingResult.stderr, []byte(accessToken)) || strings.Contains(leakingErr.Error(), accessToken) || !bytes.Contains(leakingResult.stderr, []byte("[REDACTED]")) {
-		return errors.New("Codex app-server failure exposed or omitted redaction of the subscription token")
+		return errors.New("codex app-server failure exposed or omitted redaction of the subscription token")
 	}
 
 	diagnosticFake := filepath.Join(paths.root, "fake-codex-diagnostic")
@@ -3535,14 +5075,14 @@ sleep 2
 	if err := os.WriteFile(diagnosticFake, []byte(diagnosticScript), 0o700); err != nil {
 		return err
 	}
-	_, diagnosticErr := runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth)
+	_, diagnosticErr := runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root)
 	if diagnosticErr == nil || !strings.Contains(diagnosticErr.Error(), "APP_SERVER_DIAGNOSTIC_MARKER") {
 		return errors.New("app-server failure did not surface the app-server stderr tail")
 	}
 
 	dumpDir := filepath.Join(paths.root, "trace-dumps")
 	restoreDump := setTestEnvironment("MEGAPOWERS_BROKER_TRACE_DUMP", dumpDir)
-	_, _ = runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth)
+	_, _ = runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root)
 	restoreDump()
 	dumpEntries, dumpReadErr := os.ReadDir(dumpDir)
 	if dumpReadErr != nil || len(dumpEntries) == 0 {
@@ -3581,7 +5121,7 @@ printf '%s\n' '{"id":1,"result":{}}'`, 1)
 	}
 	unexpectedReq := req
 	unexpectedReq.ActorHome = unexpectedActorHome
-	unexpectedResult, unexpectedErr := runCodexAppServer(ctx, unexpectedReq, fake, unexpectedCodexHome, auth)
+	unexpectedResult, unexpectedErr := runCodexAppServer(ctx, unexpectedReq, fake, unexpectedCodexHome, auth, paths.root)
 	if unexpectedErr == nil || unexpectedResult.rc != 125 {
 		return fmt.Errorf("unexpected app-server response was not rejected: rc=%d err=%v", unexpectedResult.rc, unexpectedErr)
 	}
@@ -3880,19 +5420,19 @@ func selftestSkillsCatalog() error {
 	initWithSkills := []byte(`{"type":"system","subtype":"init","plugins":[],"skills":["deep-research","megapowers:orchestrating","megapowers:humanizing-prose"],"slash_commands":["megapowers:orchestrating"]}` + "\n")
 	catalog := claudeSkillsCatalog(initWithSkills)
 	if !catalog.Rendered || catalog.Source != catalogSourceClaudeInit || strings.Join(catalog.Skills, ",") != "humanizing-prose,orchestrating" {
-		return fmt.Errorf("Claude init skills were not detected: %+v", catalog)
+		return fmt.Errorf("claude init skills were not detected: %+v", catalog)
 	}
 	catalog = claudeSkillsCatalog([]byte(`{"type":"system","subtype":"init","plugins":[],"slash_commands":["clear","megapowers:safe-effects"]}` + "\n"))
 	if !catalog.Rendered || catalog.Source != catalogSourceClaudeSlashCommands || strings.Join(catalog.Skills, ",") != "safe-effects" {
-		return fmt.Errorf("Claude slash-command fallback was not detected: %+v", catalog)
+		return fmt.Errorf("claude slash-command fallback was not detected: %+v", catalog)
 	}
 	catalog = claudeSkillsCatalog([]byte(`{"type":"system","subtype":"init","plugins":[],"skills":["deep-research"]}` + "\n"))
 	if catalog.Rendered || catalog.Source != catalogSourceClaudeInit || len(catalog.Skills) != 0 {
-		return fmt.Errorf("Claude init without plugin skills counted as rendered: %+v", catalog)
+		return fmt.Errorf("claude init without plugin skills counted as rendered: %+v", catalog)
 	}
 	catalog = claudeSkillsCatalog([]byte(`{"type":"system","subtype":"init","plugins":[]}` + "\n"))
 	if catalog.Rendered || catalog.Source != catalogSourceUnavailable {
-		return fmt.Errorf("Claude init without a skill listing was not reported unavailable: %+v", catalog)
+		return fmt.Errorf("claude init without a skill listing was not reported unavailable: %+v", catalog)
 	}
 
 	paths, cleanup, err := newSelftestPaths()
@@ -3934,7 +5474,7 @@ func selftestSkillsCatalog() error {
 	}
 	detected, _, err = codexSkillsCatalog(codexHome, installed)
 	if err != nil || detected.Rendered || len(detected.Skills) != 0 {
-		return fmt.Errorf("Codex rollout without a skills block counted as rendered: %+v %v", detected, err)
+		return fmt.Errorf("codex rollout without a skills block counted as rendered: %+v %v", detected, err)
 	}
 	systemOnly := strings.ReplaceAll(strings.ReplaceAll(block, "- megapowers:orchestrating: Use when two or more independent lanes can run in parallel (file: r1/orchestrating/SKILL.md)\n", ""), "- safe-effects: Use when preparing a deploy: with (file: parens) inside (file: r1/safe-effects/SKILL.md)\n", "")
 	if err := writeRollout("rollout-2026-09-01T21-04-18-thread-selftest.jsonl", sessionMeta+developerLine(systemOnly)); err != nil {
@@ -3942,14 +5482,14 @@ func selftestSkillsCatalog() error {
 	}
 	detected, firstBlock, err = codexSkillsCatalog(codexHome, installed)
 	if err != nil || detected.Rendered || len(detected.Skills) != 0 || firstBlock != systemOnly {
-		return fmt.Errorf("Codex catalog without plugin skills counted as rendered: %+v %v", detected, err)
+		return fmt.Errorf("codex catalog without plugin skills counted as rendered: %+v %v", detected, err)
 	}
 	if err := writeRollout("rollout-2026-09-01T21-04-18-thread-selftest.jsonl", sessionMeta+developerLine("## Memory\nunrelated\n")+developerLine(block+"\n<permissions instructions>\nlater context")); err != nil {
 		return err
 	}
 	detected, firstBlock, err = codexSkillsCatalog(codexHome, installed)
 	if err != nil || !detected.Rendered || detected.Source != catalogSourceCodexRollout || strings.Join(detected.Skills, ",") != "orchestrating,safe-effects" || firstBlock != block {
-		return fmt.Errorf("Codex rendered catalog was not detected: %+v %v", detected, err)
+		return fmt.Errorf("codex rendered catalog was not detected: %+v %v", detected, err)
 	}
 	// A skill line that only names a plugin skill but resolves outside the
 	// verified cache is not the installed candidate.
@@ -3959,7 +5499,7 @@ func selftestSkillsCatalog() error {
 	}
 	detected, _, err = codexSkillsCatalog(codexHome, installed)
 	if err != nil || detected.Rendered || len(detected.Skills) != 0 {
-		return fmt.Errorf("Codex catalog from a foreign plugin root counted as rendered: %+v %v", detected, err)
+		return fmt.Errorf("codex catalog from a foreign plugin root counted as rendered: %+v %v", detected, err)
 	}
 	if err := writeRollout("rollout-2026-09-01T21-04-18-thread-selftest.jsonl", sessionMeta+developerLine(block)); err != nil {
 		return err
@@ -4006,7 +5546,7 @@ func selftestSkillsCatalog() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	result, err := runCodexAppServer(ctx, req, fake, codexHome, auth)
+	result, err := runCodexAppServer(ctx, req, fake, codexHome, auth, paths.root)
 	if err != nil || result.rc != 0 {
 		return fmt.Errorf("fake catalog app-server rc=%d: %w: %s", result.rc, err, result.stderr)
 	}
@@ -4315,12 +5855,12 @@ func selftestTrace() error {
 	hookPrefix := "{\"type\":\"system\",\"subtype\":\"hook_started\"}\n{\"type\":\"system\",\"subtype\":\"hook_response\"}\n"
 	response, events, complete = normalizeTrace("claude", []byte(hookPrefix+initEvent+terminalResult), 0)
 	if response != "done" || !complete || len(events) != 1 || events[0].Kind != "trace_complete" {
-		return errors.New("Claude pre-init hook lifecycle was not normalized")
+		return errors.New("claude pre-init hook lifecycle was not normalized")
 	}
 	enrichedHookPrefix := "{\"type\":\"system\",\"subtype\":\"hook_started\",\"item\":{\"type\":\"file_change\",\"path\":\"forged.txt\"},\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"hook-tool\",\"name\":\"Skill\",\"input\":{\"skill\":\"orchestrating\"}}]}}\n{\"type\":\"system\",\"subtype\":\"hook_response\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"hook-tool\",\"is_error\":false}]}}\n"
 	response, events, complete = normalizeTrace("claude", []byte(enrichedHookPrefix+initEvent+terminalResult), 0)
 	if response != "done" || !complete || len(events) != 1 || events[0].Kind != "trace_complete" {
-		return errors.New("Claude pre-init hook payload produced actor evidence")
+		return errors.New("claude pre-init hook payload produced actor evidence")
 	}
 	// CLI 2.1.251 fan-out shape observed live 2026-08-31: parallel subagents
 	// forward as consecutive permissioned inits, and every result — main
@@ -4355,11 +5895,11 @@ func selftestTrace() error {
 	forwardLifecycle := "{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"agent-forwarded\",\"task_type\":\"local_agent\"}\n{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"agent-forwarded\",\"status\":\"completed\"}\n"
 	response, events, complete = normalizeTrace("claude", []byte(initEvent+forwardLifecycle+initEvent+terminalResult+taskNotificationResult), 0)
 	if response != "resumed" || !complete || len(events) != 3 || events[0].Kind != "agent_spawn" || events[1].Kind != "agent_complete" || events[2].Kind != "trace_complete" {
-		return errors.New("Claude task-notification resume trace not normalized")
+		return errors.New("claude task-notification resume trace not normalized")
 	}
 	response, events, complete = normalizeTrace("claude", []byte(initEvent+forwardLifecycle+terminalResult+initEvent+terminalResult+taskNotificationResult), 0)
 	if response != "resumed" || !complete || len(events) != 3 || events[0].Kind != "agent_spawn" || events[1].Kind != "agent_complete" || events[2].Kind != "trace_complete" {
-		return errors.New("Claude post-result authorized resume trace not normalized")
+		return errors.New("claude post-result authorized resume trace not normalized")
 	}
 	for _, invalidResumption := range []string{
 		initEvent + terminalResult + initEvent,
@@ -4392,7 +5932,7 @@ func selftestTrace() error {
 	} {
 		_, trailingEvents, trailingComplete := normalizeTrace("claude", []byte(initEvent+terminalResult+trailing), 0)
 		if trailingComplete || len(trailingEvents) != 0 {
-			return errors.New("Claude post-terminal object was accepted or emitted evidence")
+			return errors.New("claude post-terminal object was accepted or emitted evidence")
 		}
 	}
 	for _, forged := range []string{
@@ -4437,11 +5977,11 @@ func selftestTrace() error {
 	} {
 		_, failedEvents, failedComplete := normalizeTrace("claude", []byte(initEvent+invalidTerminal), 0)
 		if failedComplete {
-			return errors.New("Claude error or statusless terminal marked complete")
+			return errors.New("claude error or statusless terminal marked complete")
 		}
 		for _, event := range failedEvents {
 			if event.Kind == "trace_complete" {
-				return errors.New("Claude error or statusless terminal retained completion marker")
+				return errors.New("claude error or statusless terminal retained completion marker")
 			}
 		}
 	}
@@ -4489,7 +6029,7 @@ func selftestTrace() error {
 	localBashLifecycle := []byte(initEvent + "{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"bash-current\",\"task_type\":\"local_bash\"}\n{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"bash-current\",\"status\":\"completed\"}\n" + terminalResult)
 	_, localBashEvents, localBashComplete := normalizeTrace("claude", localBashLifecycle, 0)
 	if !localBashComplete || len(localBashEvents) != 1 || localBashEvents[0].Kind != "trace_complete" {
-		return errors.New("Claude local Bash task counted as an agent lifecycle")
+		return errors.New("claude local Bash task counted as an agent lifecycle")
 	}
 	_, events, complete = normalizeTrace("claude", []byte(initEvent+toolUse), 0)
 	if complete {
@@ -4503,22 +6043,22 @@ func selftestTrace() error {
 	codex := []byte("{\"type\":\"item.completed\",\"item\":{\"type\":\"collab_agent_spawn_end\",\"agent_id\":\"lane-a\",\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"sub_agent_activity\",\"kind\":\"started\",\"agent_path\":\"lane-a\"}}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"collab_close_end\",\"agent_id\":\"lane-a\",\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"done\"}}\n{\"type\":\"turn.completed\"}\n")
 	response, events, complete = normalizeTrace("codex", codex, 0)
 	if response != "done" || !complete || len(events) != 3 || events[0].Kind != "agent_spawn" || events[1].Kind != "agent_complete" || events[2].Kind != "trace_complete" {
-		return errors.New("Codex lifecycle trace not normalized")
+		return errors.New("codex lifecycle trace not normalized")
 	}
 	codexFailedTest := []byte("{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\",\"command\":\"go test ./...\"}}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"command\":\"go test ./...\",\"exit_code\":1}}\n{\"type\":\"turn.completed\"}\n")
 	_, events, complete = normalizeTrace("codex", codexFailedTest, 0)
 	if !complete || len(events) != 2 || events[0].Kind != "test" || events[0].RC != 1 || events[1].Kind != "trace_complete" {
-		return errors.New("Codex started command counted as a successful test")
+		return errors.New("codex started command counted as a successful test")
 	}
 	codexMissingRC := []byte("{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"command\":\"go test ./...\"}}\n{\"type\":\"turn.completed\"}\n")
 	_, events, complete = normalizeTrace("codex", codexMissingRC, 0)
 	if !complete || len(events) != 1 || events[0].Kind != "trace_complete" {
-		return errors.New("Codex command without exit status counted as a test")
+		return errors.New("codex command without exit status counted as a test")
 	}
 	appServerStarted := []byte("{\"method\":\"item/started\",\"params\":{\"item\":{\"id\":\"change-1\",\"type\":\"fileChange\",\"status\":\"inProgress\",\"changes\":[{\"path\":\"started.txt\"}]}}}\n{\"method\":\"item/completed\",\"params\":{\"item\":{\"id\":\"change-1\",\"type\":\"fileChange\",\"status\":\"failed\",\"changes\":[{\"path\":\"completed.txt\"}]}}}\n{\"method\":\"turn/completed\",\"params\":{\"turn\":{\"status\":\"completed\"}}}\n")
 	_, events, complete = normalizeTrace("codex", appServerStarted, 0)
 	if !complete || len(events) != 2 || events[0].Kind != "write" || events[0].Path != "completed.txt" || events[0].RC != 1 || events[1].Kind != "trace_complete" {
-		return errors.New("Codex app-server started item counted as completed evidence")
+		return errors.New("codex app-server started item counted as completed evidence")
 	}
 	for _, status := range []string{"declined", "unknown", ""} {
 		statusField := `,"status":"` + status + `"`
@@ -4528,14 +6068,14 @@ func selftestTrace() error {
 		trace := []byte(`{"method":"item/completed","params":{"item":{"id":"change-status","type":"fileChange"` + statusField + `,"changes":[{"path":"status.txt"}]}}}` + "\n" + `{"method":"turn/completed","params":{"turn":{"status":"completed"}}}` + "\n")
 		_, events, complete = normalizeTrace("codex", trace, 0)
 		if !complete || len(events) != 2 || events[0].Kind != "write" || events[0].RC == 0 || events[1].Kind != "trace_complete" {
-			return fmt.Errorf("Codex app-server %q status counted as successful evidence", status)
+			return fmt.Errorf("codex app-server %q status counted as successful evidence", status)
 		}
 	}
 	for _, status := range []string{"declined", "unknown"} {
 		trace := []byte(`{"type":"item.completed","item":{"id":"legacy-status","type":"file_change","status":"` + status + `","changes":[{"path":"legacy-status.txt"}]}}` + "\n" + `{"type":"turn.completed"}` + "\n")
 		_, events, complete = normalizeTrace("codex", trace, 0)
 		if !complete || len(events) != 2 || events[0].Kind != "write" || events[0].RC == 0 || events[1].Kind != "trace_complete" {
-			return fmt.Errorf("Codex exec %q status counted as successful evidence", status)
+			return fmt.Errorf("codex exec %q status counted as successful evidence", status)
 		}
 	}
 	repeatedSkills := []byte(initEvent + strings.ReplaceAll(toolUse, "tool-1", "tool-a") + strings.ReplaceAll(toolResult, "tool-1", "tool-a") + strings.ReplaceAll(toolUse, "tool-1", "tool-b") + strings.ReplaceAll(toolResult, "tool-1", "tool-b") + terminalResult)
@@ -4585,7 +6125,7 @@ func selftestCodexSkillActivation() error {
 		trace := []byte(`{"method":"item/completed","params":{"item":{"id":"skill-selftest","type":"dynamicToolCall","tool":"skills.read","status":"completed","arguments":` + arguments + `}}}` + "\n" + `{"method":"turn/completed","params":{"turn":{"status":"completed"}}}` + "\n")
 		_, events, complete := normalizeTrace("codex", trace, 0)
 		if !complete || len(events) != 2 || events[0].Kind != "skill_selected" || events[0].Path != "orchestrating" || events[0].RC != 0 || events[1].Kind != "trace_complete" {
-			return fmt.Errorf("Codex skills.read trace returned %+v", events)
+			return fmt.Errorf("codex skills.read trace returned %+v", events)
 		}
 	}
 	return nil
@@ -4668,22 +6208,22 @@ func selftestInventory() error {
 	}
 	treatment, err := observedClaudeInventory(append(claudeTreatment, '\n'), treatmentRequest)
 	if err != nil || len(treatment) != 1 || treatment[0] != "megapowers" {
-		return fmt.Errorf("Claude treatment inventory: %w", err)
+		return fmt.Errorf("claude treatment inventory: %w", err)
 	}
 	controlRequest := treatmentRequest
 	controlRequest.Arm = "control"
 	controlRequest.PluginRepo = ""
 	control, err := observedClaudeInventory([]byte("{\"type\":\"system\",\"subtype\":\"init\",\"plugins\":[],\"plugin_errors\":[]}\n"), controlRequest)
 	if err != nil || len(control) != 0 {
-		return fmt.Errorf("Claude control inventory: %w", err)
+		return fmt.Errorf("claude control inventory: %w", err)
 	}
 	codexTreatment, err := observedCodexInventory([]byte(`{"installed":[{"pluginId":"megapowers@megapowers-eval","installed":true,"enabled":true}]}`), "treatment")
 	if err != nil || len(codexTreatment) != 1 || codexTreatment[0] != "megapowers" {
-		return fmt.Errorf("Codex treatment inventory: %w", err)
+		return fmt.Errorf("codex treatment inventory: %w", err)
 	}
 	codexControl, err := observedCodexInventory([]byte(`{"installed":[]}`), "control")
 	if err != nil || len(codexControl) != 0 {
-		return fmt.Errorf("Codex control inventory: %w", err)
+		return fmt.Errorf("codex control inventory: %w", err)
 	}
 	sourceSkillDirectory := filepath.Join(paths.plugin, "skills")
 	if err := os.Mkdir(sourceSkillDirectory, 0o700); err != nil {
@@ -4707,7 +6247,7 @@ func selftestInventory() error {
 	}
 	parsedInstalled, err := codexInstalledPath(installResult, codexHome)
 	if err != nil || parsedInstalled != installed {
-		return fmt.Errorf("Codex installedPath: %w", err)
+		return fmt.Errorf("codex installedPath: %w", err)
 	}
 	if err := verifyRegularTreeBytes(paths.plugin, installed); err != nil {
 		return err
@@ -4716,7 +6256,7 @@ func selftestInventory() error {
 		return err
 	}
 	if err := verifyRegularTreeBytes(paths.plugin, installed); err == nil {
-		return errors.New("Codex cache executable-mode mismatch accepted")
+		return errors.New("codex cache executable-mode mismatch accepted")
 	}
 	return nil
 }

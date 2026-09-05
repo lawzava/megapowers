@@ -1,12 +1,15 @@
 ---
 name: evidence-research
-description: Use when a decision needs evidence beyond the repository, including current product research, historical rationale, cross-system incident history, or contested reports.
-when_to_use: Trigger phrases: investigate whether, research, look up, compare options, why did we do X, what changed upstream, is X supported, double-check these claims. Frames the question and classifies evidence; fetch pages with the harness web or firecrawl tools inside it.
+description: Use to research a decision that needs evidence beyond the repository, such as current upstream behavior, historical rationale, cross-system incidents, or contested claims. Do not use for repository-only code tracing or a summary of provided material.
+when_to_use: "Trigger phrases: investigate disputed claims, compare current upstream options, why did we do X, what changed outside this repository, what evidence would settle this decision."
 metadata:
   short-description: Question framing and evidence classification beyond the repo
 ---
 
 # Evidence Research
+
+Keep repository-only code tracing and summaries of already provided material in
+the ordinary task flow.
 
 Define the exact question, decision, time boundary, and stopping rule. Start
 from the code or artifact anchor. Use repository and Git history before broader

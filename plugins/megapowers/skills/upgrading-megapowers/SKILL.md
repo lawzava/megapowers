@@ -1,7 +1,7 @@
 ---
 name: upgrading-megapowers
 description: Use when asked to update, upgrade, refresh, reinstall, or migrate Megapowers, check for a newer release, or repair stale installed plugin state.
-when_to_use: Trigger phrases: update megapowers, upgrade the plugin, is there a newer release, reinstall megapowers, stale plugin cache, plugin path not found.
+when_to_use: "Trigger phrases: update megapowers, upgrade the plugin, is there a newer release, reinstall megapowers, stale plugin cache, plugin path not found."
 metadata:
   short-description: Inventory, approve, and verify a Megapowers upgrade
 ---

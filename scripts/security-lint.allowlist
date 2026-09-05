@@ -5,9 +5,3 @@
 # Historical text preserves old command examples for auditability.
 CHANGELOG.md
 evals/RESULTS.md
-
-# These fixtures contain the attack-shaped strings the guard and scanner must
-# classify. Production hook and skill files remain scanned.
-plugins/megapowers/hooks/tests/deny-destructive.test.sh
-plugins/megapowers/hooks/tests/codex-deny-destructive.test.sh
-scripts/tests/security-lint.test.sh

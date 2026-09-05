@@ -2,6 +2,51 @@
   "schema_version": "1",
   "cases": [
     {
+      "id": "writing-agent-instructions-verbatim",
+      "kind": "verbatim",
+      "expected": "writing-agent-instructions",
+      "prompt": "Write a reusable skill for reviewing database migrations. Keep its trigger specific and its guidance short. Produce the skill locally without installing dependencies.",
+      "provenance": "authored 2026-09-05 for the instruction-authoring workflow"
+    },
+    {
+      "id": "writing-agent-instructions-paraphrase",
+      "kind": "paraphrase",
+      "expected": "writing-agent-instructions",
+      "prompt": "Our root AGENTS.md repeats tool settings and nests rules for every package. Improve its scope and move only the API-specific guidance into api/AGENTS.md.",
+      "files": { "AGENTS.md": "Run go test ./.... Use gofmt. In api/, preserve JSON field names. Always be helpful.\n", "api/handler.go": "package api\n\ntype Response struct { Name string `json:\"name\"` }\n" },
+      "provenance": "authored 2026-09-05; scoped instructions and removal of redundant rules"
+    },
+    {
+      "id": "writing-agent-instructions-buried",
+      "kind": "buried",
+      "expected": "writing-agent-instructions",
+      "prompt": "First tell me the module name. Then create project instructions shared by Codex and Claude. Keep a single source of truth and document only the observed test command.",
+      "files": { "go.mod": "module example.com/fixture\n\ngo 1.24\n", "value.go": "package fixture\n\nfunc Value() int { return 1 }\n", "value_test.go": "package fixture\n\nimport \"testing\"\n\nfunc TestValue(t *testing.T) { if Value() != 1 { t.Fatal(\"value\") } }\n" },
+      "provenance": "authored 2026-09-05; shared project instructions with observed oracle"
+    },
+    {
+      "id": "writing-agent-instructions-near-miss",
+      "kind": "near-miss",
+      "prompt": "How many lines are in AGENTS.md? Answer with the number only. Change nothing.",
+      "files": { "AGENTS.md": "Use gofmt.\nRun go test ./....\n" },
+      "provenance": "authored 2026-09-05; counting an instruction file is not authoring it"
+    },
+    {
+      "id": "memory-hygiene-explicit",
+      "kind": "explicit",
+      "expected": "memory-hygiene",
+      "prompt": "Use $megapowers:memory-hygiene to inspect memory/MEMORY.md against the repository. Report stale facts only; change no memory.",
+      "files": { "memory/MEMORY.md": "The module uses Go 1.20.\n", "go.mod": "module example.com/fixture\n\ngo 1.24\n" },
+      "provenance": "authored 2026-09-05; explicit invocation remains available on both harnesses"
+    },
+    {
+      "id": "memory-hygiene-implicit",
+      "kind": "near-miss",
+      "prompt": "Check memory/MEMORY.md for stale facts against go.mod. Report them without making edits.",
+      "files": { "memory/MEMORY.md": "The module uses Go 1.20.\n", "go.mod": "module example.com/fixture\n\ngo 1.24\n" },
+      "provenance": "authored 2026-09-05; an implicit request must not select the explicit-only memory skill"
+    },
+    {
       "id": "autonomous-run-verbatim",
       "kind": "verbatim",
       "expected": "autonomous-run",

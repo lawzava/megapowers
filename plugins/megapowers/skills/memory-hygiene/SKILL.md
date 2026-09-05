@@ -1,7 +1,7 @@
 ---
 name: memory-hygiene
 description: Use when auditing, pruning, correcting, refreshing, or automatically applying approved evidence-based cleanup to native harness memory.
-when_to_use: Trigger phrases: audit memory, prune stale memories, fix a wrong memory, refresh memory facts, clean up what you remember.
+when_to_use: "Trigger phrases: audit memory, prune stale memories, fix a wrong memory, refresh memory facts, clean up what you remember."
 disable-model-invocation: true
 metadata:
   short-description: Evidence-based audit and cleanup of harness memory

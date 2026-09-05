@@ -7,7 +7,8 @@ One native-first workflow plugin for current Claude Code and Codex.
 - `skills/`: task-level skills for orchestration, structured interviews,
   research, design, implementation with language-specific code judgment,
   debugging, verification, effects, durable runs, independent review, memory
-  hygiene, MCP setup, prose, and safe upgrades. `skills/catalog.json` records stable or experimental maturity
+  hygiene, MCP setup, prose, safe upgrades, and writing agent instructions.
+  `skills/catalog.json` records stable or experimental maturity
   outside portable skill frontmatter.
 - `output-styles/`: the shared source for direct, concise technical replies.
 - `hooks/`: a Codex startup hook for the shared style and one
@@ -18,11 +19,13 @@ One native-first workflow plugin for current Claude Code and Codex.
 The plugin uses native harness planning, agents, goals, permissions, memory,
 worktrees, and browser tools. It ships no model router or orchestration daemon.
 
-Claude Code applies the output style automatically while the plugin is enabled.
-It preserves the built-in coding instructions and overrides a manually selected
-output style. The trusted Codex startup hook adds the same style as developer
+Select `Megapowers` in Claude Code's `/config` output-style picker. It preserves
+the built-in coding instructions and respects another selected style.
+The trusted Codex startup hook adds the same style as developer
 context without changing user config. Codex requires review and trust before it
-runs plugin hooks. Both adapters apply only to the main conversation; ordinary
+runs plugin hooks. Set `MEGAPOWERS_OUTPUT_STYLE=off` before launching Codex to
+omit the style. Hooks use Go with a locally cached executable. Both style
+adapters apply only to the main conversation; ordinary
 subagents do not inherit them.
 
 ## Install

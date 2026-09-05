@@ -1,14 +1,12 @@
-#!/usr/bin/env bash
-# security-lint.sh - implementation is security-lint.go.
-set -euo pipefail
-dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MEGAPOWERS_ROOT="$(cd "$dir/.." && pwd)"
-export MEGAPOWERS_ROOT
-cache="${GOCACHE:-${TMPDIR:-/tmp}/megapowers-gocache}"
-if ! mkdir -p "$cache" 2>/dev/null || [[ ! -w $cache ]]; then
-  cache="${TMPDIR:-/tmp}/megapowers-gocache"
-  mkdir -p "$cache" || { echo "security-lint: no writable Go cache" >&2; exit 2; }
-fi
-export GOCACHE="$cache"
-command -v go >/dev/null || { echo "security-lint: go is required" >&2; exit 2; }
-exec go run "$dir/security-lint.go" "$@"
+#!/bin/sh
+# Compatibility entrypoint. Security policy lives in Go.
+set -eu
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
+export MEGAPOWERS_ROOT="$repo_root"
+MEGAPOWERS_CALLER_CWD=$(pwd -P)
+export MEGAPOWERS_CALLER_CWD
+export GOCACHE=${GOCACHE:-${TMPDIR:-/tmp}/megapowers-gocache}
+mkdir -p "$GOCACHE"
+cd "$repo_root"
+exec go run "$repo_root/scripts/cmd/security-lint" "$@"

@@ -1,7 +1,7 @@
 ---
 name: safe-effects
 description: Use when preparing a deploy, message, charge, migration, destructive query, DNS change, external API write, or any action with a real-world side effect.
-when_to_use: Trigger phrases: deploy, push to production, send the message or email, run the migration, delete rows, change DNS, call the payment API, post the comment, publish, logout or delete the account. Any command whose effect leaves this machine.
+when_to_use: "Trigger phrases: deploy, push to production, send the message or email, run the migration, delete rows, change DNS, call the payment API, post the comment, publish, logout or delete the account. Any command whose effect leaves this machine."
 metadata:
   short-description: Authority and read-back for real-world side effects
 ---

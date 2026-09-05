@@ -755,22 +755,22 @@ func parseRawDiff(raw []byte) ([]rawDiff, error) {
 		parts = parts[:len(parts)-1]
 	}
 	if len(parts)%2 != 0 {
-		return nil, errors.New("Git returned malformed raw diff metadata")
+		return nil, errors.New("git returned malformed raw diff metadata")
 	}
 	result := make([]rawDiff, 0, len(parts)/2)
 	for i := 0; i < len(parts); i += 2 {
 		header := string(parts[i])
 		pathBytes := parts[i+1]
 		if !strings.HasPrefix(header, ":") || !utf8.Valid(pathBytes) {
-			return nil, errors.New("Git returned unsupported diff metadata or non-UTF-8 path")
+			return nil, errors.New("git returned unsupported diff metadata or non-UTF-8 path")
 		}
 		fields := strings.Fields(strings.TrimPrefix(header, ":"))
 		if len(fields) != 5 {
-			return nil, errors.New("Git returned malformed raw diff header")
+			return nil, errors.New("git returned malformed raw diff header")
 		}
 		status := fields[4]
 		if strings.HasPrefix(status, "R") || strings.HasPrefix(status, "C") {
-			return nil, errors.New("Git unexpectedly returned rename metadata")
+			return nil, errors.New("git unexpectedly returned rename metadata")
 		}
 		path := filepath.ToSlash(string(pathBytes))
 		result = append(result, rawDiff{
@@ -806,7 +806,7 @@ func readBlob(root, oid, path string) ([]byte, error) {
 	}
 	size, err := strconv.ParseInt(strings.TrimSpace(string(sizeRaw)), 10, 64)
 	if err != nil || size < 0 {
-		return nil, fmt.Errorf("Git returned invalid object size for %s", path)
+		return nil, fmt.Errorf("git returned invalid object size for %s", path)
 	}
 	if size > maxFileBytes {
 		return nil, fmt.Errorf("file exceeds %d-byte size limit in commit range: %s", maxFileBytes, path)
