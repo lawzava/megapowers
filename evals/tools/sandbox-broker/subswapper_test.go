@@ -52,6 +52,38 @@ func slicesContain(values []string, want string) bool {
 	return false
 }
 
+func requireBrokerBubblewrap(t *testing.T) {
+	t.Helper()
+	binary, err := exec.LookPath("bwrap")
+	if err != nil {
+		t.Skip("bubblewrap executable is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	args := []string{
+		"--die-with-parent", "--new-session", "--unshare-ipc", "--unshare-pid", "--unshare-uts", "--unshare-cgroup-try", "--unshare-net", "--cap-drop", "ALL",
+		"--ro-bind", "/", "/", "--", "/usr/bin/true",
+	}
+	result, runErr := runProcess(ctx, binary, args, "/", minimalEnvironment("/tmp"), nil)
+	if result.timedOut {
+		t.Skip("bubblewrap capability probe timed out while creating the broker's required isolated namespaces, including --unshare-net")
+	}
+	if runErr == nil && result.rc == 0 {
+		return
+	}
+	detail := strings.TrimSpace(string(result.stderr))
+	if newline := strings.IndexByte(detail, '\n'); newline >= 0 {
+		detail = detail[:newline]
+	}
+	if len(detail) > 240 {
+		detail = detail[:240]
+	}
+	if detail == "" {
+		detail = "no diagnostic output"
+	}
+	t.Skipf("bubblewrap cannot create the broker's required isolated namespaces, including --unshare-net (rc=%d): %s", result.rc, detail)
+}
+
 func fakeClaudeFollowupGate() int {
 	reader := bufio.NewReader(os.Stdin)
 	first, err := reader.ReadBytes('\n')
@@ -207,20 +239,24 @@ func fakeSubswapperAppServer() int {
 }
 
 func TestSubswapperCodexAppServer(t *testing.T) {
+	requireBrokerBubblewrap(t)
 	testSubswapperCodexAppServer(t, "")
 }
 
 func TestCodexExitDrainsStdout(t *testing.T) {
+	requireBrokerBubblewrap(t)
 	for range 20 {
 		testSubswapperCodexAppServer(t, "exit-immediately")
 	}
 }
 
 func TestCodexWaitsForRootTurn(t *testing.T) {
+	requireBrokerBubblewrap(t)
 	testSubswapperCodexAppServer(t, "child-completes-first")
 }
 
 func TestCodexFollowupsReuseRootThread(t *testing.T) {
+	requireBrokerBubblewrap(t)
 	result := testSubswapperCodexAppServer(t, "followups")
 	response, events, complete := normalizeTrace("codex", result.stdout, result.rc)
 	if !complete || response != "turn-3" || len(events) != 1 || events[0].Kind != "trace_complete" {
@@ -260,6 +296,7 @@ func TestClaudeFollowupsUseOneStreamingConversation(t *testing.T) {
 }
 
 func TestClaudeFollowupInputWaitsForRootAndForwardedWork(t *testing.T) {
+	requireBrokerBubblewrap(t)
 	paths, cleanup, err := newSelftestPaths()
 	if err != nil {
 		t.Fatal(err)
@@ -295,9 +332,13 @@ func TestClaudeFollowupInputWaitsForRootAndForwardedWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	run, err := runHarness(ctx, req, binary, authentication{mode: authSubswapper, credential: "host-only-capability", upstream: upstream.URL}, proxy, brokerDirectory, receipts)
+	run, err := runHarness(ctx, req, binary, authentication{mode: authSubswapper, credential: "host-only-capability", upstream: upstream.URL}, proxy, brokerDirectory, receipts, toolchain)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,6 +624,10 @@ func testSubswapperCodexAppServer(t *testing.T, model string) processResult {
 	if err != nil {
 		t.Fatal(err)
 	}
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	brokerDirectory, err := newPrivateSocketDirectory()
@@ -590,7 +635,7 @@ func testSubswapperCodexAppServer(t *testing.T, model string) processResult {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(brokerDirectory)
-	result, err := runCodexAppServer(ctx, req, binary, filepath.Join(req.ActorHome, ".codex"), authentication{mode: "subswapper", credential: secret, accountID: "subswapper-proxy", upstream: upstream.URL}, brokerDirectory)
+	result, err := runCodexAppServer(ctx, req, binary, filepath.Join(req.ActorHome, ".codex"), authentication{mode: "subswapper", credential: secret, accountID: "subswapper-proxy", upstream: upstream.URL}, brokerDirectory, toolchain)
 	if err != nil || result.rc != 0 {
 		t.Fatalf("isolated app-server bridge failed: %v, rc=%d", err, result.rc)
 	}
@@ -624,12 +669,114 @@ func TestCodexCompanionMount(t *testing.T) {
 	if err := os.WriteFile(companion, []byte("fake"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	args, err := codexAppServerSandboxArgs(req, binary, paths.root)
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := codexAppServerSandboxArgs(req, binary, paths.root, toolchain)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(strings.Join(args, "\n"), "--ro-bind\n"+companion+"\n/opt/megapowers/codex-code-mode-host\n") {
 		t.Fatal("Codex companion is missing from the read-only runtime")
+	}
+}
+
+func TestCodexSandboxUsesActiveGoToolchain(t *testing.T) {
+	paths, cleanup, err := newSelftestPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	req := validSelftestRequest(paths)
+	req.Harness = "codex"
+	binary := filepath.Join(paths.root, "codex")
+	if err := os.WriteFile(binary, []byte("fake"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	goRoot := filepath.Join(t.TempDir(), "alternate-go")
+	goBinary := filepath.Join(goRoot, "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBinary), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nif [ \"$1\" = env ] && [ \"$2\" = GOROOT ]; then\n  printf '%s\\n' " + strconv.Quote(goRoot) + "\n  exit 0\nfi\nexit 64\n"
+	if err := os.WriteFile(goBinary, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Dir(goBinary))
+	t.Setenv("HOME", filepath.Dir(goRoot))
+
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := codexAppServerSandboxArgs(req, binary, paths.root, toolchain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, "\n")
+	for _, mount := range []string{
+		"--ro-bind\n" + goRoot + "\n/opt/megapowers-runtime/go\n",
+		"--ro-bind\n" + goBinary + "\n/opt/megapowers-receipt/real/go\n",
+	} {
+		if !strings.Contains(joined, mount) {
+			t.Fatalf("active Go toolchain mount is missing: %q", mount)
+		}
+	}
+	if strings.Contains(joined, "/usr/local/go") {
+		t.Fatal("sandbox retained the fixed /usr/local/go toolchain path")
+	}
+}
+
+func TestCodexSandboxRejectsActorControlledGoToolchain(t *testing.T) {
+	paths, cleanup, err := newSelftestPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	req := validSelftestRequest(paths)
+	req.Harness = "codex"
+	binary := filepath.Join(paths.root, "codex")
+	if err := os.WriteFile(binary, []byte("fake"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	goRoot := filepath.Join(req.Project, "actor-go")
+	goBinary := filepath.Join(goRoot, "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBinary), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nif [ \"$1\" = env ] && [ \"$2\" = GOROOT ]; then\n  printf '%s\\n' " + strconv.Quote(goRoot) + "\n  exit 0\nfi\nexit 64\n"
+	if err := os.WriteFile(goBinary, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Dir(goBinary))
+
+	if _, err := resolveHostGoToolchain(req); err == nil {
+		t.Fatal("actor-controlled Go toolchain was accepted as a host runtime")
+	}
+}
+
+func TestCodexSandboxRejectsGoRootContainingHostHome(t *testing.T) {
+	paths, cleanup, err := newSelftestPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	req := validSelftestRequest(paths)
+	hostHome := t.TempDir()
+	goBinary := filepath.Join(hostHome, "bin", "go")
+	if err := os.MkdirAll(filepath.Dir(goBinary), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nif [ \"$1\" = env ] && [ \"$2\" = GOROOT ]; then\n  printf '%s\\n' " + strconv.Quote(hostHome) + "\n  exit 0\nfi\nexit 64\n"
+	if err := os.WriteFile(goBinary, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", hostHome)
+	t.Setenv("PATH", filepath.Dir(goBinary))
+
+	if _, err := resolveHostGoToolchain(req); err == nil {
+		t.Fatal("Go root containing the host home was accepted as a runtime mount")
 	}
 }
 
@@ -1157,9 +1304,7 @@ func TestReceiptWrapperForwardsTermination(t *testing.T) {
 }
 
 func TestReceiptInstrumentationObservesNestedCompoundFailure(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bubblewrap is unavailable")
-	}
+	requireBrokerBubblewrap(t)
 	root := t.TempDir()
 	for name, content := range map[string]string{
 		"go.mod":             "module receipt-selftest\n\ngo 1.25.0\n",
@@ -1184,13 +1329,17 @@ func TestReceiptInstrumentationObservesNestedCompoundFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args, err := appendReceiptInstrumentation(sandboxBase(false), broker)
+	req := brokerRequest{Project: root, ActorHome: t.TempDir()}
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := appendReceiptInstrumentation(sandboxBase(false), broker, toolchain)
 	if err != nil {
 		t.Fatal(err)
 	}
 	args = appendMount(args, root, false)
 	args = append(args, "--dir", actorBrokerPath, "--ro-bind", socketDirectory, actorBrokerPath, "--chdir", root, "--", "/usr/bin/bash", "-lc", "go test ./...; exit 0")
-	req := brokerRequest{Project: root, ActorHome: t.TempDir()}
 	result, err := runProcess(context.Background(), "bwrap", args, root, actorEnvironment(req, nil), nil)
 	if err != nil || result.rc != 0 {
 		t.Fatalf("compound wrapper failed: err=%v rc=%d stderr=%s", err, result.rc, result.stderr)
@@ -1202,9 +1351,7 @@ func TestReceiptInstrumentationObservesNestedCompoundFailure(t *testing.T) {
 }
 
 func TestReceiptInstrumentationObservesRuntimeGoPath(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bubblewrap is unavailable")
-	}
+	requireBrokerBubblewrap(t)
 	root := t.TempDir()
 	for name, content := range map[string]string{
 		"go.mod":             "module receipt-runtime-path\n\ngo 1.25.0\n",
@@ -1229,13 +1376,17 @@ func TestReceiptInstrumentationObservesRuntimeGoPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args, err := appendReceiptInstrumentation(sandboxBase(false), broker)
+	req := brokerRequest{Project: root, ActorHome: t.TempDir()}
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := appendReceiptInstrumentation(sandboxBase(false), broker, toolchain)
 	if err != nil {
 		t.Fatal(err)
 	}
 	args = appendMount(args, root, false)
 	args = append(args, "--dir", actorBrokerPath, "--ro-bind", socketDirectory, actorBrokerPath, "--chdir", root, "--", "/usr/bin/bash", "-lc", "/opt/megapowers-runtime/go/bin/go test ./...; exit 0")
-	req := brokerRequest{Project: root, ActorHome: t.TempDir()}
 	result, err := runProcess(context.Background(), "bwrap", args, root, actorEnvironment(req, nil), nil)
 	if err != nil || result.rc != 0 {
 		t.Fatalf("runtime-path command failed: err=%v rc=%d stderr=%s", err, result.rc, result.stderr)
@@ -1247,9 +1398,7 @@ func TestReceiptInstrumentationObservesRuntimeGoPath(t *testing.T) {
 }
 
 func TestReceiptInstrumentationPreservesNonTestGoBuild(t *testing.T) {
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bubblewrap is unavailable")
-	}
+	requireBrokerBubblewrap(t)
 	root := t.TempDir()
 	for name, content := range map[string]string{
 		"go.mod":  "module example.com/receipt-build\n\ngo 1.25.0\n",
@@ -1263,13 +1412,17 @@ func TestReceiptInstrumentationPreservesNonTestGoBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args, err := appendReceiptInstrumentation(sandboxBase(false), broker)
+	req := brokerRequest{Project: root, ActorHome: t.TempDir()}
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := appendReceiptInstrumentation(sandboxBase(false), broker, toolchain)
 	if err != nil {
 		t.Fatal(err)
 	}
 	args = appendMount(args, root, false)
 	args = append(args, "--chdir", root, "--", "/opt/megapowers-runtime/go/bin/go", "build", "-o", "session-hook", ".")
-	req := brokerRequest{Project: root, ActorHome: t.TempDir()}
 	result, err := runProcess(context.Background(), "bwrap", args, root, actorEnvironment(req, nil), nil)
 	if err != nil || result.rc != 0 {
 		t.Fatalf("instrumented non-test Go command failed: err=%v rc=%d stdout=%s stderr=%s", err, result.rc, result.stdout, result.stderr)

@@ -470,13 +470,12 @@ func samePaths(got, want []string) bool {
 }
 
 func pathsOverlap(a, b string) bool {
-	a = filepath.Clean(a)
-	b = filepath.Clean(b)
-	contains := func(parent, child string) bool {
-		relative, err := filepath.Rel(parent, child)
-		return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
-	}
-	return contains(a, b) || contains(b, a)
+	return pathContains(a, b) || pathContains(b, a)
+}
+
+func pathContains(parent, child string) bool {
+	relative, err := filepath.Rel(filepath.Clean(parent), filepath.Clean(child))
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func execute(ctx context.Context, req brokerRequest) (brokerResponse, error) {
@@ -485,6 +484,10 @@ func execute(ctx context.Context, req brokerRequest) (brokerResponse, error) {
 	}
 	if _, err := exec.LookPath("bwrap"); err != nil {
 		return brokerResponse{}, errors.New("bubblewrap is required")
+	}
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		return brokerResponse{}, err
 	}
 	binary, err := harnessBinary(req.Harness)
 	if err != nil {
@@ -517,7 +520,7 @@ func execute(ctx context.Context, req brokerRequest) (brokerResponse, error) {
 		defer proxy.close()
 	}
 
-	run, err := runHarness(ctx, req, binary, auth, proxy, brokerDirectory, receiptCollector)
+	run, err := runHarness(ctx, req, binary, auth, proxy, brokerDirectory, receiptCollector, toolchain)
 	if err != nil {
 		return brokerResponse{}, err
 	}
@@ -536,7 +539,7 @@ func execute(ctx context.Context, req brokerRequest) (brokerResponse, error) {
 	if len(req.OracleCommand) > 0 {
 		rc := 124
 		if ctx.Err() == nil {
-			result, oracleErr := runOracle(ctx, req)
+			result, oracleErr := runOracle(ctx, req, toolchain)
 			if oracleErr != nil {
 				return brokerResponse{}, oracleErr
 			}
@@ -1228,7 +1231,7 @@ func removeHopHeaders(header http.Header) {
 	}
 }
 
-func runHarness(ctx context.Context, req brokerRequest, binary string, auth authentication, proxy *credentialProxy, brokerDirectory string, receipts *receiptCollector) (harnessRun, error) {
+func runHarness(ctx context.Context, req brokerRequest, binary string, auth authentication, proxy *credentialProxy, brokerDirectory string, receipts *receiptCollector, toolchain hostGoToolchain) (harnessRun, error) {
 	versionResult, err := runHarnessUtility(ctx, req, binary, []string{"--version"}, minimalEnvironment(req.ActorHome), false)
 	if err != nil {
 		return harnessRun{}, fmt.Errorf("read %s version: %w", req.Harness, err)
@@ -1297,7 +1300,7 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 				return harnessRun{}, err
 			}
 			defer effectMonitor.close()
-			result, err := runCodexAppServer(ctx, req, binary, codexHome, auth, brokerDirectory)
+			result, err := runCodexAppServer(ctx, req, binary, codexHome, auth, brokerDirectory, toolchain)
 			if err != nil && !result.timedOut {
 				return harnessRun{}, err
 			}
@@ -1354,7 +1357,7 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 		input = []byte(req.Task)
 	}
 
-	sandboxArgs, err := actorSandboxArgs(req, binary, insideBinary, args, proxy.socket)
+	sandboxArgs, err := actorSandboxArgs(req, binary, insideBinary, args, proxy.socket, toolchain)
 	if err != nil {
 		return harnessRun{}, err
 	}
@@ -1455,7 +1458,7 @@ type appServerOutput struct {
 	raw    []byte
 }
 
-func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome string, auth authentication, brokerDirectory string) (result processResult, runErr error) {
+func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome string, auth authentication, brokerDirectory string, toolchain hostGoToolchain) (result processResult, runErr error) {
 	secrets := []string{auth.credential, auth.accountID}
 	defer func() {
 		result.stdout = []byte(redact(string(result.stdout), secrets))
@@ -1485,7 +1488,7 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 		}
 		defer egress.close()
 	}
-	sandboxArgs, err := codexAppServerSandboxArgs(req, binary, brokerDirectory)
+	sandboxArgs, err := codexAppServerSandboxArgs(req, binary, brokerDirectory, toolchain)
 	if err != nil {
 		return processResult{rc: 125, duration: time.Since(started)}, err
 	}
@@ -1764,7 +1767,7 @@ func codexAppServerRequestAllowed(method string) bool {
 	return method == "account/chatgptAuthTokens/refresh"
 }
 
-func codexAppServerSandboxArgs(req brokerRequest, binary, proxyDirectory string) ([]string, error) {
+func codexAppServerSandboxArgs(req brokerRequest, binary, proxyDirectory string, toolchain hostGoToolchain) ([]string, error) {
 	insideBinary := "/opt/megapowers/codex"
 	brokerBinary, err := os.Executable()
 	if err != nil {
@@ -1777,7 +1780,7 @@ func codexAppServerSandboxArgs(req brokerRequest, binary, proxyDirectory string)
 	insideBroker := "/opt/megapowers/broker"
 	args := sandboxBase(false)
 	args = append(args, "--dir", "/opt", "--dir", "/opt/megapowers", "--ro-bind", binary, insideBinary, "--ro-bind", brokerBinary, insideBroker)
-	args, err = appendReceiptInstrumentation(args, brokerBinary)
+	args, err = appendReceiptInstrumentation(args, brokerBinary, toolchain)
 	if err != nil {
 		return nil, err
 	}
@@ -2545,7 +2548,7 @@ func environmentList(values map[string]string) []string {
 	return result
 }
 
-func actorSandboxArgs(req brokerRequest, binary, insideBinary string, commandArgs []string, proxySocket string) ([]string, error) {
+func actorSandboxArgs(req brokerRequest, binary, insideBinary string, commandArgs []string, proxySocket string, toolchain hostGoToolchain) ([]string, error) {
 	brokerBinary, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -2557,7 +2560,7 @@ func actorSandboxArgs(req brokerRequest, binary, insideBinary string, commandArg
 	insideBroker := "/opt/megapowers/broker"
 	args := sandboxBase(false)
 	args = append(args, "--dir", "/opt", "--dir", "/opt/megapowers", "--ro-bind", binary, insideBinary, "--ro-bind", brokerBinary, insideBroker)
-	args, err = appendReceiptInstrumentation(args, brokerBinary)
+	args, err = appendReceiptInstrumentation(args, brokerBinary, toolchain)
 	if err != nil {
 		return nil, err
 	}
@@ -2599,7 +2602,91 @@ func appendCodexCompanion(args []string, binary string) ([]string, error) {
 	return append(args, "--ro-bind", path, "/opt/megapowers/codex-code-mode-host"), nil
 }
 
-func appendReceiptInstrumentation(args []string, brokerBinary string) ([]string, error) {
+type hostGoToolchain struct {
+	binary string
+	root   string
+}
+
+func resolveHostGoToolchain(req brokerRequest) (hostGoToolchain, error) {
+	goBinary, err := exec.LookPath("go")
+	if err != nil || !filepath.IsAbs(goBinary) {
+		return hostGoToolchain{}, errors.New("active host Go executable is unavailable")
+	}
+	goBinary, err = filepath.EvalSymlinks(filepath.Clean(goBinary))
+	if err != nil {
+		return hostGoToolchain{}, errors.New("resolve active host Go executable")
+	}
+	goInfo, err := os.Lstat(goBinary)
+	if err != nil || !goInfo.Mode().IsRegular() || goInfo.Mode().Perm()&0o111 == 0 {
+		return hostGoToolchain{}, errors.New("active host Go executable must be a regular executable")
+	}
+
+	queryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	command := exec.CommandContext(queryCtx, goBinary, "env", "GOROOT")
+	command.Env = []string{"GOENV=off", "GOTOOLCHAIN=local", "HOME=/tmp", "LANG=C.UTF-8", "LC_ALL=C.UTF-8", "PATH=/usr/bin:/bin"}
+	var stdout, stderr limitedBuffer
+	stdout.limit = 4097
+	stderr.limit = 4097
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	if err := command.Run(); err != nil {
+		if queryCtx.Err() != nil {
+			return hostGoToolchain{}, errors.New("active host Go root query timed out")
+		}
+		return hostGoToolchain{}, errors.New("active host Go root query failed")
+	}
+	rootOutput := stdout.Bytes()
+	if len(rootOutput) == 0 || len(rootOutput) > 4096 || bytes.ContainsAny(rootOutput, "\x00\r") {
+		return hostGoToolchain{}, errors.New("active host Go root query returned an invalid path")
+	}
+	goRoot := strings.TrimSuffix(string(rootOutput), "\n")
+	if strings.Contains(goRoot, "\n") || !filepath.IsAbs(goRoot) {
+		return hostGoToolchain{}, errors.New("active host Go root query returned an invalid path")
+	}
+	goRoot, err = filepath.EvalSymlinks(filepath.Clean(goRoot))
+	if err != nil {
+		return hostGoToolchain{}, errors.New("resolve active host Go root")
+	}
+	rootInfo, err := os.Lstat(goRoot)
+	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
+		return hostGoToolchain{}, errors.New("active host Go root must be a real directory")
+	}
+	if filepath.Dir(goRoot) == string(filepath.Separator) {
+		return hostGoToolchain{}, errors.New("active host Go root is too broad")
+	}
+	hostHome, err := os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(hostHome) {
+		return hostGoToolchain{}, errors.New("host home is unavailable for Go root validation")
+	}
+	hostHome, err = filepath.EvalSymlinks(filepath.Clean(hostHome))
+	if err != nil {
+		return hostGoToolchain{}, errors.New("resolve host home for Go root validation")
+	}
+	if pathContains(goRoot, hostHome) {
+		return hostGoToolchain{}, errors.New("active host Go root contains the host home")
+	}
+	for _, visible := range append([]string{req.Project, req.ActorHome, req.PluginRepo}, req.TaskWriteRoots...) {
+		if visible != "" && pathsOverlap(goRoot, visible) {
+			return hostGoToolchain{}, errors.New("active host Go root overlaps actor-controlled state")
+		}
+	}
+	rootBinary, err := filepath.EvalSymlinks(filepath.Join(goRoot, "bin", "go"))
+	if err != nil {
+		return hostGoToolchain{}, errors.New("active host Go root has no canonical Go executable")
+	}
+	rootGoInfo, err := os.Lstat(rootBinary)
+	if err != nil || !rootGoInfo.Mode().IsRegular() || rootGoInfo.Mode().Perm()&0o111 == 0 || !os.SameFile(goInfo, rootGoInfo) {
+		return hostGoToolchain{}, errors.New("active host Go executable does not match its root")
+	}
+	return hostGoToolchain{binary: goBinary, root: goRoot}, nil
+}
+
+func appendGoToolchain(args []string, toolchain hostGoToolchain) []string {
+	return append(args, "--ro-bind", toolchain.root, "/opt/megapowers-runtime/go")
+}
+
+func appendReceiptInstrumentation(args []string, brokerBinary string, toolchain hostGoToolchain) ([]string, error) {
 	bash, err := filepath.EvalSymlinks("/usr/bin/bash")
 	if err != nil {
 		return nil, errors.New("receipt instrumentation requires /usr/bin/bash")
@@ -2608,17 +2695,14 @@ func appendReceiptInstrumentation(args []string, brokerBinary string) ([]string,
 	if err != nil {
 		return nil, errors.New("receipt instrumentation requires /usr/bin/sh")
 	}
-	goBinary, err := filepath.EvalSymlinks("/usr/local/go/bin/go")
-	if err != nil {
-		return nil, errors.New("receipt instrumentation requires /usr/local/go/bin/go")
-	}
+	args = appendGoToolchain(args, toolchain)
 	args = append(args,
 		"--dir", "/opt/megapowers-receipt",
 		"--dir", "/opt/megapowers-receipt/bin",
 		"--dir", "/opt/megapowers-receipt/real",
 		"--ro-bind", bash, "/opt/megapowers-receipt/real/bash",
 		"--ro-bind", sh, "/opt/megapowers-receipt/real/sh",
-		"--ro-bind", goBinary, "/opt/megapowers-receipt/real/go",
+		"--ro-bind", toolchain.binary, "/opt/megapowers-receipt/real/go",
 	)
 	names := []string{"go", "bash", "sh", "dash"}
 	for _, optional := range []struct {
@@ -2659,7 +2743,7 @@ func sandboxBase(network bool) []string {
 		"--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64", "--symlink", "usr/sbin", "/sbin",
 		"--dir", "/etc", "--ro-bind-try", "/etc/ssl", "/etc/ssl", "--ro-bind-try", "/etc/ca-certificates", "/etc/ca-certificates",
 		"--ro-bind-try", "/etc/resolv.conf", "/etc/resolv.conf", "--ro-bind-try", "/etc/hosts", "/etc/hosts", "--ro-bind-try", "/etc/nsswitch.conf", "/etc/nsswitch.conf", "--ro-bind-try", "/etc/localtime", "/etc/localtime",
-		"--dir", "/opt", "--dir", "/opt/megapowers-runtime", "--dir", "/opt/megapowers-runtime/go", "--ro-bind-try", "/usr/local/go", "/opt/megapowers-runtime/go",
+		"--dir", "/opt", "--dir", "/opt/megapowers-runtime", "--dir", "/opt/megapowers-runtime/go",
 		"--dir", "/tmp", "--tmpfs", "/tmp", "--dir", "/run", "--tmpfs", "/run",
 	}
 	if !network {
@@ -2694,8 +2778,9 @@ func pathParents(path string) []string {
 	return parents
 }
 
-func runOracle(ctx context.Context, req brokerRequest) (processResult, error) {
+func runOracle(ctx context.Context, req brokerRequest, toolchain hostGoToolchain) (processResult, error) {
 	args := sandboxBase(false)
+	args = appendGoToolchain(args, toolchain)
 	emptyHome, err := os.MkdirTemp(req.ActorHome, ".oracle-home-")
 	if err != nil {
 		return processResult{}, err
@@ -4990,6 +5075,10 @@ func selftestCodexExternalAuth() error {
 	defer restoreMode()
 	req := validSelftestRequest(paths)
 	req.Harness = "codex"
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		return err
+	}
 	auth, err := resolveAuthentication(req)
 	if err != nil || auth.credential != accessToken || auth.accountID != "account-selftest" {
 		return errors.New("codex subscription auth was not parsed")
@@ -5000,7 +5089,7 @@ func selftestCodexExternalAuth() error {
 	if err := os.Mkdir(filepath.Join(req.ActorHome, "codex-marketplace"), 0o700); err != nil {
 		return err
 	}
-	args, err := codexAppServerSandboxArgs(req, "/usr/bin/true", filepath.Dir(selftestProxySocket(req.ActorHome)))
+	args, err := codexAppServerSandboxArgs(req, "/usr/bin/true", filepath.Dir(selftestProxySocket(req.ActorHome)), toolchain)
 	if err != nil {
 		return err
 	}
@@ -5049,7 +5138,7 @@ sleep 2
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	result, err := runCodexAppServer(ctx, req, fake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root)
+	result, err := runCodexAppServer(ctx, req, fake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root, toolchain)
 	if err != nil || result.rc != 0 || result.timedOut {
 		return fmt.Errorf("mock Codex app-server run rc=%d: %w: %s", result.rc, err, result.stderr)
 	}
@@ -5065,7 +5154,7 @@ sleep 2
 	if err := os.WriteFile(leakingFake, []byte(leakingScript), 0o700); err != nil {
 		return err
 	}
-	leakingResult, leakingErr := runCodexAppServer(ctx, req, leakingFake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root)
+	leakingResult, leakingErr := runCodexAppServer(ctx, req, leakingFake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root, toolchain)
 	if leakingErr == nil || bytes.Contains(leakingResult.stderr, []byte(accessToken)) || strings.Contains(leakingErr.Error(), accessToken) || !bytes.Contains(leakingResult.stderr, []byte("[REDACTED]")) {
 		return errors.New("codex app-server failure exposed or omitted redaction of the subscription token")
 	}
@@ -5075,14 +5164,14 @@ sleep 2
 	if err := os.WriteFile(diagnosticFake, []byte(diagnosticScript), 0o700); err != nil {
 		return err
 	}
-	_, diagnosticErr := runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root)
+	_, diagnosticErr := runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root, toolchain)
 	if diagnosticErr == nil || !strings.Contains(diagnosticErr.Error(), "APP_SERVER_DIAGNOSTIC_MARKER") {
 		return errors.New("app-server failure did not surface the app-server stderr tail")
 	}
 
 	dumpDir := filepath.Join(paths.root, "trace-dumps")
 	restoreDump := setTestEnvironment("MEGAPOWERS_BROKER_TRACE_DUMP", dumpDir)
-	_, _ = runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root)
+	_, _ = runCodexAppServer(ctx, req, diagnosticFake, filepath.Join(req.ActorHome, ".codex"), auth, paths.root, toolchain)
 	restoreDump()
 	dumpEntries, dumpReadErr := os.ReadDir(dumpDir)
 	if dumpReadErr != nil || len(dumpEntries) == 0 {
@@ -5121,7 +5210,7 @@ printf '%s\n' '{"id":1,"result":{}}'`, 1)
 	}
 	unexpectedReq := req
 	unexpectedReq.ActorHome = unexpectedActorHome
-	unexpectedResult, unexpectedErr := runCodexAppServer(ctx, unexpectedReq, fake, unexpectedCodexHome, auth, paths.root)
+	unexpectedResult, unexpectedErr := runCodexAppServer(ctx, unexpectedReq, fake, unexpectedCodexHome, auth, paths.root, toolchain)
 	if unexpectedErr == nil || unexpectedResult.rc != 125 {
 		return fmt.Errorf("unexpected app-server response was not rejected: rc=%d err=%v", unexpectedResult.rc, unexpectedErr)
 	}
@@ -5153,13 +5242,17 @@ func selftestCodexHomeWritable() error {
 	defer cleanup()
 	req := validSelftestRequest(paths)
 	req.Harness = "codex"
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		return err
+	}
 	if err := os.Mkdir(filepath.Join(req.ActorHome, ".codex"), 0o700); err != nil {
 		return err
 	}
 	if err := os.Mkdir(filepath.Join(req.ActorHome, "codex-marketplace"), 0o700); err != nil {
 		return err
 	}
-	args, err := codexAppServerSandboxArgs(req, "/usr/bin/true", filepath.Dir(selftestProxySocket(req.ActorHome)))
+	args, err := codexAppServerSandboxArgs(req, "/usr/bin/true", filepath.Dir(selftestProxySocket(req.ActorHome)), toolchain)
 	if err != nil {
 		return err
 	}
@@ -5520,6 +5613,10 @@ func selftestSkillsCatalog() error {
 	auth := authentication{mode: authSubscription, credential: accessToken, accountID: "account-selftest"}
 	req := validSelftestRequest(paths)
 	req.Harness = "codex"
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		return err
+	}
 	if err := os.RemoveAll(filepath.Join(codexHome, "sessions")); err != nil {
 		return err
 	}
@@ -5546,7 +5643,7 @@ func selftestSkillsCatalog() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	result, err := runCodexAppServer(ctx, req, fake, codexHome, auth, paths.root)
+	result, err := runCodexAppServer(ctx, req, fake, codexHome, auth, paths.root, toolchain)
 	if err != nil || result.rc != 0 {
 		return fmt.Errorf("fake catalog app-server rc=%d: %w: %s", result.rc, err, result.stderr)
 	}
@@ -5696,6 +5793,10 @@ func selftestMountModes() error {
 	defer cleanup()
 	req := validSelftestRequest(paths)
 	req.Harness = "codex"
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		return err
+	}
 	proxySocket := selftestProxySocket(req.ActorHome)
 	proxyDirectory := filepath.Dir(proxySocket)
 	if err := os.Mkdir(proxyDirectory, 0o700); err != nil {
@@ -5714,7 +5815,7 @@ func selftestMountModes() error {
 		return err
 	}
 	command := fmt.Sprintf("touch %q && ! touch %q && ! touch %q && ! chmod 700 %q && ! touch %q", filepath.Join(req.Project, "written"), filepath.Join(req.PluginRepo, "forbidden"), filepath.Join(codexHome, "forbidden"), registry, filepath.Join(marketplace, "forbidden"))
-	args, err := actorSandboxArgs(req, "/usr/bin/bash", "/opt/megapowers/codex", []string{"-c", command}, proxySocket)
+	args, err := actorSandboxArgs(req, "/usr/bin/bash", "/opt/megapowers/codex", []string{"-c", command}, proxySocket, toolchain)
 	if err != nil {
 		return err
 	}
@@ -5741,6 +5842,10 @@ func selftestActorNetwork() error {
 	defer listener.Close()
 	port := listener.Addr().(*net.TCPAddr).Port
 	req := validSelftestRequest(paths)
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		return err
+	}
 	proxySocket := selftestProxySocket(req.ActorHome)
 	proxyDirectory := filepath.Dir(proxySocket)
 	if err := os.Mkdir(proxyDirectory, 0o700); err != nil {
@@ -5758,7 +5863,7 @@ func selftestActorNetwork() error {
 	}
 	defer proxy.close()
 	command := fmt.Sprintf("! timeout 1 bash -c 'echo test >/dev/tcp/127.0.0.1/%d' && ! unlink %q && curl --fail --silent --show-error -X POST -H \"X-Api-Key: ${ANTHROPIC_API_KEY}\" -d '{}' \"${ANTHROPIC_BASE_URL}/v1/messages\" >/dev/null", port, filepath.Join(actorBrokerPath, filepath.Base(proxySocket)))
-	args, err := actorSandboxArgs(req, "/usr/bin/bash", "/opt/megapowers/claude", []string{"-c", command}, proxySocket)
+	args, err := actorSandboxArgs(req, "/usr/bin/bash", "/opt/megapowers/claude", []string{"-c", command}, proxySocket, toolchain)
 	if err != nil {
 		return err
 	}
@@ -6177,9 +6282,13 @@ func selftestOracle() error {
 	command := fmt.Sprintf("test -z \"${OPENAI_API_KEY-}\" && ! timeout 1 bash -c 'echo test >/dev/tcp/127.0.0.1/%d'", port)
 	req := validSelftestRequest(paths)
 	req.OracleCommand = []string{"/usr/bin/bash", "-c", command}
+	toolchain, err := resolveHostGoToolchain(req)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	result, err := runOracle(ctx, req)
+	result, err := runOracle(ctx, req, toolchain)
 	if err != nil || result.rc != 0 {
 		return fmt.Errorf("oracle probe rc=%d: %w: %s", result.rc, err, result.stderr)
 	}
