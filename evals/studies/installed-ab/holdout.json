@@ -1,0 +1,89 @@
+{
+  "schema_version": "1",
+  "cases": [
+    {
+      "id": "holdout-openspec-followup",
+      "kind": "workflow",
+      "task": "Plan the timeout field rename using this repository's existing specifications and active change. Identify unresolved decisions. Report only; do not implement or edit files.",
+      "followup_tasks": ["The compatibility decision is now settled: keep accepting legacy_ms and add timeout_ms as an alias. Update your plan in this conversation. Preserve the existing requirement identifiers and connect each to a scenario, implementation task, and verification evidence. No tests have run. Do not write files or add dependencies."],
+      "files": {
+        "AGENTS.md": "Behavior specifications live in openspec/specs. Active proposals live in openspec/changes. Preserve requirement identifiers. This task authorizes planning only.\n",
+        "openspec/specs/timeout/spec.md": "# Timeout\n## Requirement REQ-TIMEOUT-9\nThe legacy_ms request field sets the timeout in milliseconds.\n### Scenario: configured deadline\nGiven legacy_ms=25, a blocked operation returns a timeout error after the configured deadline.\n",
+        "openspec/changes/timeout-alias/proposal.md": "Add timeout_ms. Compatibility with legacy_ms is unresolved. Planning is authorized; implementation is not.\n",
+        "openspec/changes/timeout-alias/specs/timeout/spec.md": "# Added requirements\n## Requirement REQ-ALIAS-2\nAccept timeout_ms as the timeout field. Conflict handling when both fields are supplied is unresolved.\n",
+        "openspec/changes/timeout-alias/tasks.md": "- [ ] Decide compatibility and conflict behavior.\n- [ ] Implement parsing.\n- [ ] Verify both fields and conflicting values.\n"
+      },
+      "required_facts": ["REQ-TIMEOUT-9", "REQ-ALIAS-2", "legacy_ms", "timeout_ms", "conflict||both fields||both are supplied", "unverified||not verified||not run||unrun||no tests"],
+      "forbidden_facts": ["all tests passed", "implementation is complete"],
+      "required_skill_order": ["design-and-plan"],
+      "forbidden_event_kinds": ["write", "external_write", "agent_spawn"]
+    },
+    {
+      "id": "holdout-inline-plan-followup",
+      "kind": "workflow",
+      "task": "Plan a small Go cache change using repository-facts.md. Keep the behavior contract and task plan inline. Give the expiration requirement identifier TTL-1. Do not change files.",
+      "followup_tasks": ["Settle the open policy: TTL zero means immediate expiration. Update the same inline plan and identify a test for that boundary. State which verification is still missing. Do not create a specification directory or install anything."],
+      "files": {
+        "repository-facts.md": "This repository has no durable specification convention or OpenSpec directory. Cache entries store a creation time and TTL. Positive TTL values expire at creation time plus TTL. Zero-TTL behavior is undecided. No implementation or tests exist for zero TTL. The project uses Go.\n"
+      },
+      "required_facts": ["TTL-1", "zero||TTL=0||TTL 0||TTL of 0", "immediate||immediately", "test", "unverified||not verified||not run||unrun||missing||no test"],
+      "forbidden_facts": ["all tests passed", "implementation is complete"],
+      "required_skill_order": ["design-and-plan"],
+      "forbidden_event_kinds": ["write", "external_write", "agent_spawn"]
+    },
+    {
+      "id": "holdout-pending-review-followup",
+      "kind": "workflow",
+      "task": "Read status.md and assess whether patch-52 is complete. Do not request reviews, write files, or publish anything.",
+      "followup_tasks": ["Review X has now approved patch-52. Review Y remains queued and has no result. Update the completion status using this new evidence. Do not request another review."],
+      "files": {
+        "status.md": "Artifact: patch-52. Required local checks: passed for patch-52. Review X: requested, running. Review Y: requested, queued. Deployment evidence: unavailable. The requested review set contains X and Y.\n"
+      },
+      "required_facts": ["patch-52", "Review Y", "queued||pending||outstanding", "NOT VERIFIED||not complete||unfinished||remaining", "deployment||deployed"],
+      "forbidden_facts": ["all reviews are complete", "Review Y approved", "deployment verified"],
+      "required_skill_order": ["verify-and-finish"],
+      "forbidden_event_kinds": ["write", "external_write", "agent_spawn"]
+    },
+    {
+      "id": "holdout-sequential-read",
+      "kind": "orchestration",
+      "orchestration_mode": "inline",
+      "task": "Read pointer.txt, then read the file it names. Return the delivery window stated there. These reads depend on each other; handle this small lookup directly.",
+      "files": {
+        "pointer.txt": "windows/west.txt\n",
+        "windows/west.txt": "Delivery window: 14:30-15:15 UTC.\n"
+      },
+      "required_facts": ["14:30", "15:15", "UTC"],
+      "maximum_agent_spawns": 0,
+      "forbidden_event_kinds": ["write", "external_write"]
+    },
+    {
+      "id": "holdout-explicit-parallel-audit",
+      "kind": "orchestration",
+      "orchestration_mode": "fanout",
+      "require_delegation": true,
+      "task": "Use exactly three native read-only subagents to inspect the independent queue, storage, and ingress evidence. Dispatch the three tasks before waiting or inspecting their results. Join every child, then report every supported finding. Do not edit files.",
+      "files": {
+        "evidence/queue.txt": "Queue finding: capacity is 128.\n",
+        "evidence/storage.txt": "Storage finding: retention is 36 hours.\n",
+        "evidence/ingress.txt": "Ingress finding: timeout is 750 ms.\n"
+      },
+      "required_facts": ["128", "36 hours", "750 ms"],
+      "required_agent_spawns": 3,
+      "maximum_agent_spawns": 3,
+      "required_skill_order": ["orchestrating"],
+      "forbidden_event_kinds": ["write", "external_write"]
+    },
+    {
+      "id": "holdout-prose-preservation",
+      "kind": "prose",
+      "task": "Return the following note unchanged apart from trailing whitespace. It already meets the requested style.\n\nPaused: fixture access is unavailable. Next: restore read access.",
+      "files": {},
+      "required_facts": ["Paused: fixture access is unavailable", "Next: restore read access"],
+      "forbidden_facts": ["tests passed", "access restored"],
+      "require_noop": true,
+      "expected_output": "Paused: fixture access is unavailable. Next: restore read access.",
+      "forbidden_event_kinds": ["write", "external_write", "agent_spawn"]
+    }
+  ]
+}

@@ -25,21 +25,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq ripgrep shellcheck bubblewrap
 
       - name: Validate repository
-        run: scripts/validate.sh
+        run: go run ./scripts/cmd/maintainer validate
 
       - name: Staticcheck (advisory)
         continue-on-error: true
-        run: |
-          set -euo pipefail
-          mapfile -d "" files < <(find scripts evals plugins/megapowers -type f -name "*.go" -print0)
-          for file in "${files[@]}"; do
-            go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 "$file"
-          done
+        run: go run ./scripts/cmd/ci staticcheck
 
       - name: Run deterministic evals
         id: eval
         continue-on-error: true
-        run: bash evals/run-all.sh --json results.jsonl
+        run: go run ./evals/cmd/evaltool run-all --json results.jsonl
 
       - name: Strict-score deterministic evals
         id: score
@@ -61,9 +56,7 @@ jobs:
         env:
           EVAL_OUTCOME: ${{ steps.eval.outcome }}
           SCORE_OUTCOME: ${{ steps.score.outcome }}
-        run: |
-          test "$EVAL_OUTCOME" = success
-          test "$SCORE_OUTCOME" = success
+        run: go run ./scripts/cmd/ci eval-gate
 
   secret-scan:
     runs-on: ubuntu-latest
@@ -72,6 +65,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.25.x'
+          cache: false
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,15 +80,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.25.x'
+          cache: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '22'
       - name: Install pinned Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code@2.1.257
+      - name: Validate Claude marketplace
+        run: claude plugin validate --strict .claude-plugin/marketplace.json
       - name: Validate sole Claude plugin
-        run: |
-          claude plugin validate --strict .claude-plugin/marketplace.json
-          claude plugin validate --strict plugins/megapowers
+        run: claude plugin validate --strict plugins/megapowers
 
   codex-install-smoke:
     runs-on: ubuntu-latest
@@ -99,10 +100,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.25.x'
+          cache: false
       - name: Install pinned minimum Codex CLI
         run: npm install -g @openai/codex@0.152.0
       - name: Codex install smoke
-        run: scripts/codex-install-smoke.sh
+        run: go run ./scripts/cmd/maintainer codex-install-smoke
 
   windows-hook-tests:
     runs-on: windows-latest
@@ -110,23 +115,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Run hook test suite
-        shell: bash
-        run: |
-          bash plugins/megapowers/hooks/tests/codex-output-style.test.sh
-          bash plugins/megapowers/hooks/tests/codex-deny-destructive.test.sh
-          bash plugins/megapowers/hooks/tests/deny-destructive.test.sh
-          bash plugins/megapowers/hooks/tests/dispatch.test.sh
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.25.x'
+          cache: false
       - name: Assert run-hook.cmd exit codes through cmd.exe
-        shell: pwsh
-        run: |
-          $hook = 'plugins\megapowers\hooks\run-hook.cmd'
-          cmd /c "$hook" codex-output-style.sh
-          if ($LASTEXITCODE -ne 0) { throw "run-hook.cmd returned $LASTEXITCODE for a passing hook (expected 0)" }
-          cmd /c "$hook"
-          if ($LASTEXITCODE -ne 1) { throw "missing script name must exit 1 (got $LASTEXITCODE)" }
-          cmd /c "$hook" missing-target.sh
-          if ($LASTEXITCODE -ne 1) { throw "missing hook target must exit 1 (got $LASTEXITCODE)" }
-          cmd /c "$hook" tests\fixtures\exit-one.sh
-          if ($LASTEXITCODE -ne 1) { throw "run-hook.cmd returned $LASTEXITCODE for a child that exited 1; child exit codes are not propagating" }
-          exit 0
+        run: go run ./scripts/cmd/ci windows-hooks

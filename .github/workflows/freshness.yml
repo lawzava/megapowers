@@ -21,8 +21,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.25.x'
+          cache: false
       - name: Harness support reviewed within 30 days
-        run: scripts/check-freshness.sh
+        run: go run ./scripts/cmd/check-freshness
 
   latest-install-smoke:
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '23 3 * * *'
@@ -31,6 +35,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.25.x'
+          cache: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '22'
@@ -38,9 +46,9 @@ jobs:
         run: |
           npm install -g @anthropic-ai/claude-code@latest
           npm install -g @openai/codex@latest
+      - name: Validate Claude marketplace
+        run: claude plugin validate --strict .claude-plugin/marketplace.json
       - name: Validate sole Claude plugin
-        run: |
-          claude plugin validate --strict .claude-plugin/marketplace.json
-          claude plugin validate --strict plugins/megapowers
+        run: claude plugin validate --strict plugins/megapowers
       - name: Codex install smoke on current stable
-        run: scripts/codex-install-smoke.sh
+        run: go run ./scripts/cmd/maintainer codex-install-smoke

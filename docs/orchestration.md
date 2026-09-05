@@ -133,6 +133,12 @@ Same-provider agents provide parallelism and context separation. They do not
 provide vendor independence. Use the trusted review path only when another
 provider materially reduces residual risk.
 
+Set the review scope and correction-round budget before dispatch. Track queued
+and running review requests until completion or confirmed cancellation. Target
+follow-up reviews at fixes and affected boundaries. Repeat a full review only
+when new evidence or changes justify it. A budget limit leaves unresolved
+findings open; an approval does not settle another pending review.
+
 ## Keep durable runs small
 
 Prefer the harness's native goal and wait mechanisms. Add ignored

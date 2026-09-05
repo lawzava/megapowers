@@ -1,57 +1,62 @@
 ---
 name: design-and-plan
-description: Use when behavior or an interface needs a specification, requirements need tradeoffs, or approved work needs a multi-step plan.
-when_to_use: Trigger phrases: write a spec, plan the implementation, how should we build this, break it into steps, requirements, tradeoffs, architecture for a new feature or interface.
+description: Use to specify non-trivial behavior or interfaces, resolve requirements or tradeoffs, or produce a multi-step implementation plan. Do not use for a mechanical edit, routine status update, or execution of a settled plan.
+when_to_use: "Trigger phrases: write a spec, plan the implementation, define requirements, compare design tradeoffs, architecture for a new feature or interface."
 metadata:
   short-description: Specification, tradeoffs, and executable plan before building
 ---
 
 # Design and Plan
 
-Resolve repository facts before user-owned decisions.
+Keep a mechanical edit, routine status update, or settled implementation path
+inline unless it exposes a new requirement or material tradeoff.
 
 ## Understand the system
 
 Read repository instructions and relevant code. Establish entry points,
-callers, blast radius, the nearest convention-setting sibling, existing test
-coverage, the one safety fact that could make a small change unsafe, and what
-was not read and why it cannot affect the decision.
+callers, blast radius, the nearest convention-setting sibling, test coverage,
+and any unread area that could change the decision.
 
-Separate factual prerequisites from preference, policy, and other user-owned
-decisions. Ask dependency-frontier questions only after repository facts are
-resolved. Present competing sketches only for a high-impact, underconstrained,
-or hard-to-reverse design. Recommend one and state its tradeoff.
+Resolve factual prerequisites before preference or policy questions. Present
+competing sketches only for a high-impact, underconstrained, or hard-to-reverse
+design. Recommend one and state its tradeoff.
 
-For multi-phase work, mark facts that later evidence may overturn and map each
-blocker to the work it prevents. Model domain terms when repeated state branches,
-synchronized booleans, or ambiguous names obscure one concept. Do not force a
-glossary or ADR. Persistent documentation requires approval.
+Mark assumptions and blockers. Model a domain term when repeated state branches
+or synchronized booleans obscure one concept. Do not force a glossary or ADR.
 
 ## Specify observable behavior
 
-For a non-trivial change to observable behavior, write a proportional behavior
-contract before the implementation plan. State intent, scope, and non-goals.
-Keep requirements independent from implementation. Give each requirement
+For a non-trivial behavior change, state intent, scope, non-goals, and
+implementation-independent requirements before the plan. Give each requirement
 concrete scenarios and an acceptance oracle.
 
-Describe behavior changes as Added, Modified, or Removed deltas. First reconcile
-existing specifications with code and tests; a stale specification is not
-evidence of current behavior. After verification, update an existing
-repository-owned behavior specification. Do not create a durable artifact
-without repository convention or user approval.
+Map each requirement ID to scenarios, implementation tasks, and evidence.
+Include relevant failure and boundary cases. Separate proposed, implemented,
+and verified behavior; completed planning artifacts prove only planning.
 
-Use plain Markdown. Do not require a CLI, package, fixed directory, generated
-command, or archive. Skip durable specification and plan artifacts for a small
-reversible change with clear scope, risks, and oracle.
+Describe behavior as Added, Modified, or Removed deltas. Reconcile existing
+specifications with code and tests; a stale specification is not evidence.
+
+Before choosing a format, inspect repository instructions and files for
+baseline requirements and an active change. Detect them independently; a prompt
+that mentions OpenSpec does not establish a repository convention. Use the
+existing specification system and read whichever artifacts exist. Preserve its
+requirement IDs and format. After verification, reconcile deltas into the
+baseline. Archive only under an existing convention and authority.
+
+Without an existing specification system, keep proportional requirements and
+their evidence map inline unless repository convention or the user requires a
+durable artifact. Do not create new directories or scaffolding. Do not run or
+add an OpenSpec CLI or Node dependency. Use plain Markdown and skip a durable
+plan for a small reversible change with clear scope, risks, and oracle.
 
 ## Produce an executable handoff
 
 Name the outcome, owned files, interfaces, error behavior, acceptance criteria,
-dependencies, and exact verification commands. Map every criterion to its
-implementation target and local or external oracle. Divide work into the
-smallest independently testable tasks. Start each behavior task with a failing
-test, then minimal implementation and verification. Keep tasks sequential unless
-ownership is disjoint and neither result can reshape the other.
+dependencies, and exact verification commands. Map each criterion to an
+implementation target and local or external oracle. Start behavior tasks with a
+failing test. Keep tasks sequential unless ownership is disjoint and neither
+result can reshape the other.
 
 Do not add speculative options, placeholder steps, unrelated cleanup, or commit
 steps without commit authority. Re-read the plan for missing criteria,

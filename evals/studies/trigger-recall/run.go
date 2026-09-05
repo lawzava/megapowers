@@ -42,6 +42,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/lawzava/megapowers/internal/strictjson"
 )
 
 const (
@@ -52,7 +54,7 @@ const (
 	defaultActorTimeout     = 5 * time.Minute
 )
 
-var validKinds = map[string]bool{"verbatim": true, "paraphrase": true, "buried": true, "near-miss": true, "no-skill": true}
+var validKinds = map[string]bool{"verbatim": true, "paraphrase": true, "buried": true, "near-miss": true, "no-skill": true, "explicit": true}
 
 var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$`)
 
@@ -326,16 +328,22 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	unselectable, err := loadUnselectableSkills(root, catalog)
-	if err != nil {
-		fatal(err)
-	}
 	cases, gates, err := loadConfiguration(*casesPath, *gatesPath)
 	if err != nil {
 		fatal(err)
 	}
-	if err := validateConfiguration(cases, gates, catalog, unselectable); err != nil {
-		fatal(err)
+	harnesses := []string{*harness}
+	if *validateConfig && *harness == "" {
+		harnesses = []string{"claude", "codex"}
+	}
+	for _, name := range harnesses {
+		unselectable, err := loadUnselectableSkills(root, catalog, name)
+		if err != nil {
+			fatal(err)
+		}
+		if err := validateConfiguration(cases, gates, catalog, unselectable); err != nil {
+			fatal(fmt.Errorf("%s: %w", name, err))
+		}
 	}
 	if *validateConfig {
 		fmt.Println("trigger-recall configuration: valid")
@@ -413,19 +421,7 @@ func locateRoot(explicit string) (string, error) {
 }
 
 func decodeStrict(path string, target any) error {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(content))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return fmt.Errorf("%s: trailing data", path)
-	}
-	return nil
+	return strictjson.ReadFile(path, target)
 }
 
 func loadCatalog(root string) (map[string]bool, error) {
@@ -445,23 +441,82 @@ func loadCatalog(root string) (map[string]bool, error) {
 
 var disableModelInvocationPattern = regexp.MustCompile(`(?m)^disable-model-invocation:\s*true\s*$`)
 
-// loadUnselectableSkills reads each shipped SKILL.md frontmatter and returns
-// the skills whose `disable-model-invocation: true` keeps the model from
-// selecting them. They stay in the catalog for precision accounting but
-// cannot carry recall probes.
-func loadUnselectableSkills(root string, catalog map[string]bool) (map[string]bool, error) {
+// Explicit-only skills stay in precision and explicit-invocation accounting.
+// Only each harness's native policy can exempt a skill from implicit recall.
+func loadUnselectableSkills(root string, catalog map[string]bool, harness string) (map[string]bool, error) {
+	if harness != "claude" && harness != "codex" {
+		return nil, errors.New("--harness must be claude or codex")
+	}
 	unselectable := make(map[string]bool)
 	for name := range catalog {
-		content, err := os.ReadFile(filepath.Join(root, "plugins", "megapowers", "skills", name, "SKILL.md"))
+		dir := filepath.Join(root, "plugins", "megapowers", "skills", name)
+		content, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
 		if err != nil {
 			return nil, err
 		}
-		frontmatter := frontmatterOf(string(content))
-		if disableModelInvocationPattern.MatchString(frontmatter) {
-			unselectable[name] = true
+		if harness == "claude" {
+			unselectable[name] = disableModelInvocationPattern.MatchString(frontmatterOf(string(content)))
+			continue
 		}
+		policy, err := os.ReadFile(filepath.Join(dir, "agents", "openai.yaml"))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		disabled, err := codexExplicitOnly(string(policy))
+		if err != nil {
+			return nil, fmt.Errorf("%s/agents/openai.yaml: %w", name, err)
+		}
+		unselectable[name] = disabled
 	}
 	return unselectable, nil
+}
+
+// The shipped policy uses a block mapping. Reject unsupported spellings instead
+// of silently treating an ambiguous policy as an exemption from recall tests.
+func codexExplicitOnly(content string) (bool, error) {
+	inPolicy, seenPolicy, seenValue, disabled := false, false, false, false
+	for _, raw := range strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n") {
+		line := strings.TrimSpace(strings.SplitN(raw, "#", 2)[0])
+		if line == "" {
+			continue
+		}
+		if raw[0] != ' ' && raw[0] != '\t' {
+			inPolicy = line == "policy:"
+			if strings.HasPrefix(line, "policy:") && !inPolicy {
+				return false, errors.New("policy must use a block mapping")
+			}
+			if inPolicy {
+				if seenPolicy {
+					return false, errors.New("duplicate policy")
+				}
+				seenPolicy = true
+			}
+			continue
+		}
+		if !inPolicy {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) != "allow_implicit_invocation" {
+			return false, errors.New("unsupported invocation policy field")
+		}
+		if seenValue {
+			return false, errors.New("duplicate allow_implicit_invocation")
+		}
+		seenValue = true
+		switch strings.TrimSpace(parts[1]) {
+		case "false":
+			disabled = true
+		case "true":
+			disabled = false
+		default:
+			return false, errors.New("allow_implicit_invocation must be a boolean")
+		}
+	}
+	return disabled, nil
 }
 
 func frontmatterOf(content string) string {
@@ -522,6 +577,9 @@ func validateCases(cases casesFile, catalog map[string]bool) error {
 		if c.Kind == "no-skill" && c.Expected != "" {
 			return fmt.Errorf("no-skill case %q must not expect a selection", c.ID)
 		}
+		if c.Kind == "explicit" && (c.Expected == "" || !strings.Contains(c.Prompt, "megapowers:"+c.Expected)) {
+			return fmt.Errorf("explicit case %q must name its expected megapowers skill", c.ID)
+		}
 		for _, allowed := range c.Allowed {
 			if !catalog[allowed] {
 				return fmt.Errorf("case %q allows unknown skill %q", c.ID, allowed)
@@ -546,9 +604,9 @@ func validateConfiguration(cases casesFile, gates gatesFile, catalog, unselectab
 	recallProbes := make(map[string]int)
 	noSkillProbes := 0
 	for _, c := range cases.Cases {
-		if c.Expected != "" {
+		if c.Expected != "" && c.Kind != "explicit" {
 			if unselectable[c.Expected] {
-				return fmt.Errorf("case %q expects %q, which sets disable-model-invocation and cannot be selected", c.ID, c.Expected)
+				return fmt.Errorf("case %q expects %q, whose native policy disables implicit invocation", c.ID, c.Expected)
 			}
 			recallProbes[c.Expected]++
 		}
@@ -671,10 +729,12 @@ func evaluateProbe(c probeCase, events []actorEvent, catalog map[string]bool) (m
 		verdict = "pass"
 	}
 	metrics := map[string]float64{
-		"activation_success":    boolMetric(pass),
-		"expected_selected":     boolMetric(expectedSelected),
-		"unexpected_selections": float64(unexpected),
-		"selection_attempts":    float64(attempts),
+		"activation_success":        boolMetric(pass),
+		"explicit_invocation_probe": boolMetric(c.Kind == "explicit"),
+		"implicit_recall_probe":     boolMetric(c.Expected != "" && c.Kind != "explicit"),
+		"expected_selected":         boolMetric(expectedSelected),
+		"unexpected_selections":     float64(unexpected),
+		"selection_attempts":        float64(attempts),
 	}
 	return metrics, verdict
 }
@@ -1761,7 +1821,7 @@ func runSelftest() error {
 	probeUnselectable := exemptCorpus
 	probeUnselectable.Cases = append(append([]probeCase(nil), exemptCorpus.Cases...), probeCase{ID: "memory-hygiene-verbatim", Kind: "verbatim", Expected: "memory-hygiene", Prompt: "p", Provenance: "selftest"})
 	probeErr := validateConfiguration(probeUnselectable, exemptGates, catalog, unselectable)
-	check("unselectable skills are exempt from recall probe minimums", exemptErr == nil && strictErr != nil && strings.Contains(strictErr.Error(), `"memory-hygiene" has 0 recall probes`) && probeErr != nil && strings.Contains(probeErr.Error(), "disable-model-invocation"))
+	check("unselectable skills are exempt from recall probe minimums", exemptErr == nil && strictErr != nil && strings.Contains(strictErr.Error(), `"memory-hygiene" has 0 recall probes`) && probeErr != nil && strings.Contains(probeErr.Error(), "disables implicit invocation"))
 	check("frontmatter flag detection reads only the frontmatter", disableModelInvocationPattern.MatchString(frontmatterOf("---\nname: x\ndisable-model-invocation: true\n---\n# body\n")) && !disableModelInvocationPattern.MatchString(frontmatterOf("---\nname: x\n---\n# body\ndisable-model-invocation: true\n")))
 	scopedGates := enforceGates
 	scopedGates.EnforceHarnesses = []string{"claude"}

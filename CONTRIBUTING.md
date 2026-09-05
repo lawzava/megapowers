@@ -17,7 +17,7 @@ Then match evidence to the change:
 | Change | Required evidence |
 |---|---|
 | Hook, tool, manifest, or runner behavior | A failing regression first, then the focused test and full deterministic gate |
-| New or changed agent guidance | Add a failing deterministic regression first; use installed-plugin A/B when real-agent comparison would inform the change |
+| New or changed agent guidance | Reproduce the missing behavior or inspect the deficient contract; use task outcomes and installed-plugin A/B when comparison would inform the change |
 | Removed or compressed guidance | Deterministic gate, plus evidence for any published behavior the removed text carried |
 | Editorial text | Link, reference, and deterministic checks only |
 | Eval oracle | Mutation proof that the oracle rejects a deliberately wrong artifact |
@@ -39,13 +39,18 @@ A runner selftest proves mechanics only. It is not behavioral evidence.
 ## Code and prose
 
 - Follow repository instructions and neighboring conventions.
-- New glue is Go standard library. Harness-required hook entrypoints remain
-  shell.
+- Deterministic glue and tests use Go standard library. Shell entrypoints only
+  launch Go commands or the cached hook executable. Use `go test ./...` for
+  package tests and `scripts/validate.sh` for the canonical gate.
 - Add or change behavior test-first. Keep hooks bounded and directly tested.
 - Human-facing prose leads with the outcome, preserves source facts, and omits
   unsupported claims and session history.
 - Keep commits conventional and focused. Do not add attribution or session
   trailers.
+
+Use `writing-agent-instructions` when authoring skills or scoped project
+instructions. Keep trigger terms in `description`, quote frontmatter values
+that contain colons, and compare task outcomes separately from skill selection.
 
 ## Evaluation
 

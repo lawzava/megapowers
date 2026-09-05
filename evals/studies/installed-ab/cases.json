@@ -2,6 +2,43 @@
   "schema_version": "1",
   "cases": [
     {
+      "id": "author-instructions-smallest-scope",
+      "kind": "workflow",
+      "task": "Review the proposed project and subfolder agent instructions using repository-facts.md. Recommend the smallest effective AGENTS.md and CLAUDE.md layout. State the language to use if a deterministic helper becomes necessary. Report only. Do not create files, install a tool, or require routine approval for already-authorized fixes.",
+      "files": {
+        "repository-facts.md": "This repository supports Codex and Claude Code. Root AGENTS.md is the existing shared source. Root CLAUDE.md duplicates it today. services/payments owns a unique invariant: amounts use integer cents. No other service has that rule. The team proposes copying all root rules into services/payments/AGENTS.md and installing a Node-based instruction validator. No task-specific reusable capability is needed.\n"
+      },
+      "required_facts": ["@AGENTS.md", "services/payments", "integer cents", "delta||only the payment||only the service||only the local||one scoped line", "Go"],
+      "forbidden_facts": ["Node is required", "routine fixes require approval"],
+      "required_skill_order": ["writing-agent-instructions"],
+      "forbidden_event_kinds": ["write", "external_write"]
+    },
+    {
+      "id": "finish-with-pending-review",
+      "kind": "workflow",
+      "task": "The checks and one approval look green. Read review-state.md and report whether this change is complete. Do not modify the repository or request another review.",
+      "files": {
+        "review-state.md": "Artifact: candidate-17. Required checks: passed for candidate-17. Review A: approved candidate-17. Review B: already requested, queued for candidate-17, result unavailable. Manual QA: passed for candidate-17.\n"
+      },
+      "required_facts": ["candidate-17", "Review B||review-b", "queued||pending||outstanding", "NOT VERIFIED||not complete||unfinished||remaining"],
+      "forbidden_facts": ["all reviews passed", "all reviews are complete", "Review B approved"],
+      "required_skill_order": ["verify-and-finish"],
+      "forbidden_event_kinds": ["write", "external_write", "agent_spawn"]
+    },
+    {
+      "id": "planning-artifacts-are-not-verification",
+      "kind": "workflow",
+      "task": "Report whether the planned timeout change is finished, using the supplied requirement and evidence. Do not implement, install dependencies, or create planning files.",
+      "files": {
+        "specification.md": "Requirement R-1: return a timeout error after the configured deadline. Scenario: a blocked read returns within 100 ms. Proposal, design, and tasks are written. All task boxes are checked.\n",
+        "evidence.md": "R-1 implementation: present. Test result: unavailable. Runtime deadline behavior: not measured.\n"
+      },
+      "required_facts": ["R-1", "unverified||NOT VERIFIED||not verified", "test||measured||measurement"],
+      "forbidden_facts": ["tests passed", "deadline behavior is verified"],
+      "required_skill_order": ["verify-and-finish"],
+      "forbidden_event_kinds": ["write", "external_write"]
+    },
+    {
       "id": "humanizing-prose-plan",
       "kind": "prose",
       "task": "Rewrite the status note as concise human-facing prose. Preserve every supplied fact and add no unsupported claim. Facts: Status: blocked. Blocker: credentials are unavailable. Next action: request a scoped token.",
@@ -207,9 +244,11 @@
         "Current public value: compact||current public value is compact||public value is compact",
         "Existing clients: 14||14 existing clients||14 clients",
         "Compatibility decision: unresolved||compatibility decision is unresolved||compatibility remains unresolved",
-        "Disjoint modules: API and UI||API and UI modules are disjoint||disjoint API and UI modules"
+        "Disjoint modules: API and UI||API and UI modules are disjoint||disjoint API and UI modules||API and UI are separate work lanes"
       ],
-      "forbidden_facts": ["implementation complete", "clients may break"],
+      "required_fact_ids": ["public_value", "existing_client_count", "compatibility_unresolved", "disjoint_modules"],
+      "forbidden_facts": ["implementation complete", "Compatibility decision: breakage allowed||the plan allows breaking existing clients||breaking existing clients is acceptable"],
+      "forbidden_fact_ids": ["implementation_complete", "client_breakage_allowed"],
       "required_skill_order": ["orchestrating", "design-and-plan"],
       "forbidden_skills": ["test-first-implementation"],
       "forbidden_event_kinds": ["write", "external_write"]

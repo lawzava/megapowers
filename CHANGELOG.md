@@ -5,6 +5,56 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.29.0 - 2026-09-05
+
+This release adds instruction-authoring guidance, improves skill discovery and
+native orchestration, and moves deterministic repository tooling to Go.
+
+### Added
+
+- `writing-agent-instructions` covers skill triggers, progressive disclosure,
+  scoped `AGENTS.md` and `CLAUDE.md` files, harness differences, and behavioral
+  validation. Shared guidance requires Go for deterministic helpers.
+- A shared startup reminder reaches both supported harnesses independently
+  of the optional output style.
+- Installed A/B studies support case filters, frozen held-out cases, native
+  conversation follow-ups, and private redacted failure diagnostics.
+
+### Changed
+
+- Planning reuses existing OpenSpec baselines and active changes, preserves
+  requirement identifiers, and maps requirements to verification evidence.
+  Projects without OpenSpec use inline plans without added dependencies.
+- Orchestration guidance specifies consecutive native dispatch, bounded
+  ownership, useful lead work, terminal joins, and visible failures.
+- Skill triggers distinguish planning, research, completion, and verified
+  no-ops. Completion guidance keeps pending reviews open.
+- Hooks, maintenance commands, CI helpers, and deterministic test logic use Go.
+  Thin shell and command-file launchers preserve supported entrypoints.
+- A/B results separate artifact, workflow, and task outcomes from exact skill
+  activation. Natural delegation remains diagnostic unless explicitly required.
+
+### Fixed
+
+- Claude follow-ups wait for the prior root turn and actual delegated work,
+  without waiting for unused forwarding permissions.
+- TDD grading requires trusted broker receipts bound to commands and stable
+  file snapshots, plus a final isolated oracle. Native event claims cannot
+  substitute for execution proof.
+- Hook guards cover mixed-case PowerShell removal commands and catastrophic
+  wildcard targets. Cold builds use the private cache when `GOCACHE` is unset.
+- Instruction references remain readable in isolated Claude evaluations.
+  Codex explicit-only skill policy uses `agents/openai.yaml`.
+
+### Verification
+
+- The pre-release candidate completed 1,080 valid A/B trials through Subswapper.
+  Held-out task passes increased from 50/60 to 60/60 for Codex and from 52/60
+  to 53/60 for Claude. Neither harness passes the full benchmark; see
+  [evaluation evidence](./evals/RESULTS.md) for metric definitions and limits.
+- Staticcheck is clean. Repository validation covers both strict Claude plugin
+  validators; CI also checks the Windows launcher and installed Codex plugin.
+
 ## 0.28.0 - 2026-09-02
 
 The plugin no longer names any model or provider. Independent review runs the

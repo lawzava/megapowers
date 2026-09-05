@@ -1,6 +1,6 @@
 # Security
 
-megapowers is not a security boundary. It installs model instructions, shell
+megapowers is not a security boundary. It installs model instructions, Go
 hooks, and an optional external-review tool into the agent's permission context.
 Review the exact revision before installing it.
 

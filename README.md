@@ -6,7 +6,7 @@
 
 megapowers is exactly one plugin for current Claude Code and Codex. It adds
 task-level skills (the inventory lives in `plugins/megapowers/skills/catalog.json`),
-one shared default communication style, and a small destructive-command
+one shared communication style, and a small destructive-command
 tripwire. It does not replace native agents, plans, goals,
 permissions, worktrees, memory, or browser tools.
 
@@ -56,6 +56,7 @@ the full body loads only when selected.
 | Upgrade Megapowers without changing its source, scope, pins, or local edits | `upgrading-megapowers` |
 | Research current facts, historical rationale, or contested evidence | `evidence-research` |
 | Configure, debug, or verify an MCP server connection | `mcp-setup` |
+| Write effective skills and project or subfolder instructions | `writing-agent-instructions` |
 
 Repository instructions, existing code, and configured project tools remain
 authoritative. See [docs/orchestration.md](./docs/orchestration.md) for the
@@ -69,19 +70,20 @@ agent access or authority.
 
 ## What installs
 
-- Fifteen portable `SKILL.md` directories. `skills/catalog.json` marks
-  maturity; `evidence-research`, `grill-me`, `mcp-setup`, and `memory-hygiene`
-  start as experimental.
-- One shared style for direct, concise technical replies: a forced Claude Code
+- Task skills and their maturity listed in `skills/catalog.json`.
+- One shared style for direct, concise technical replies: a selectable Claude Code
   output style and a trusted Codex startup hook.
-- One `PreToolUse` shell hook for obvious catastrophic commands.
+- One `PreToolUse` Go hook for obvious catastrophic commands.
 - One Go standard-library independent-review tool, loaded only with that skill.
 
-Claude Code applies the style while the plugin is enabled. It preserves Claude
-Code's built-in software-engineering instructions, but the plugin default
-overrides a manually selected output style. Codex adds the same style as
-developer context at session startup and after compaction once the user trusts
-the bundled hooks. Neither adapter changes global user configuration.
+Select `Megapowers` through Claude Code's `/config` output-style picker. It
+preserves built-in coding instructions and respects another selected style.
+Codex adds the same style as developer context at session startup and after
+compaction once the user trusts
+the bundled hooks. Set `MEGAPOWERS_OUTPUT_STYLE=off` before launching Codex to
+omit the style while keeping the guard and shared skill-loading reminder.
+Neither adapter changes global user
+configuration. Hooks require Go and cache their compiled executable locally.
 
 Claude Code and Codex receive the same high-confidence denials. Reversible risk
 remains with each harness's own permission system. The hook is an accident
@@ -95,8 +97,8 @@ Four evidence classes are kept separate:
 1. `scripts/validate.sh` and `evals/run-all.sh` run bounded deterministic
    regressions and runner selftests. They prove repository mechanics, not agent
    quality.
-2. Trigger recall measures trace-proven skill selection. It gates skill-text
-   changes on Claude and remains report-only on Codex.
+2. Trigger recall measures trace-proven skill selection. Its configured gates
+   enforce Claude study results and report Codex results without enforcement.
 3. The optional installed-plugin A/B study compares this checkout with an empty
    control under Claude Code and Codex through a hash-pinned isolation broker.
    It reports treatment reliability and paired control outcomes; it does not

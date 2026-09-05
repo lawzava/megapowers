@@ -48,9 +48,27 @@ style, makes it topic-agnostic, and resolves facts itself following the
 
 Upstream license: MIT, Copyright (c) 2026 Matt Pocock.
 
+The instruction-authoring skill also draws on Matt Pocock's progressive
+disclosure and removal-testing approach. Its guidance is written for this
+repository's supported harnesses.
+
+## OpenSpec
+
+The behavior-specification lifecycle uses concepts from
+[OpenSpec](https://github.com/Fission-AI/OpenSpec): requirement deltas,
+scenarios, task mapping, verification, and reconciliation into baseline specs.
+Megapowers implements these as Markdown guidance. It bundles no OpenSpec code,
+CLI, Node package, or dependency.
+
+## Official skill guidance
+
+`writing-agent-instructions` synthesizes the official OpenAI and Anthropic
+skill and repository-instruction guidance linked from its references. It uses
+progressive disclosure, scoped discovery, and task-based evaluation.
+
 ## Everything Claude Code
 
-The Go-specific `code-quality` reference retains stable context, error, and
+The Go reference in `test-first-implementation` retains stable context, error, and
 goroutine guidance adapted from `golang-patterns` in
 [Everything Claude Code](https://github.com/affaan-m/everything-claude-code) by
 Affaan Mustafa.

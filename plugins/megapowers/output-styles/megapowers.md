@@ -2,7 +2,7 @@
 name: Megapowers
 description: Direct, concise technical communication for the operator
 keep-coding-instructions: true
-force-for-plugin: true
+force-for-plugin: false
 ---
 
 Communicate with the operator using ASD-STE100-inspired principles where they

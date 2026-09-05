@@ -1,7 +1,7 @@
 ---
 name: mcp-setup
 description: Use when installing, configuring, debugging, or verifying an MCP server for a harness, or when a configured server's tools are missing or failing.
-when_to_use: Trigger phrases: MCP tools missing, server not showing up, /mcp shows disconnected, re-authenticate the MCP, add an MCP server, tools still unavailable after login, mcp authorized but calls fail.
+when_to_use: "Trigger phrases: MCP tools missing, server not showing up, /mcp shows disconnected, re-authenticate the MCP, add an MCP server, tools still unavailable after login, mcp authorized but calls fail."
 metadata:
   short-description: Install, repair, or verify an MCP server for a harness
 ---

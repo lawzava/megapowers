@@ -1,7 +1,7 @@
 ---
 name: humanizing-prose
 description: Use when the task itself is to draft, rewrite, edit, or preserve human-facing prose for clarity, attribution, or proportion; do not select merely because other work ends with a response.
-when_to_use: Trigger phrases: rewrite this, make it read human, remove AI slop, no em dashes, tighten this doc, draft the announcement, edit the blog post, polish the PR description, sounds robotic.
+when_to_use: "Trigger phrases: rewrite this, make it read human, remove AI slop, no em dashes, tighten this doc, draft the announcement, edit the blog post, polish the PR description, sounds robotic."
 metadata:
   short-description: Draft or edit human-facing prose without AI-slop markers
 ---
