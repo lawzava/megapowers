@@ -44,6 +44,30 @@ func command(t *testing.T, dir string, env []string, name string, args ...string
 	return "", 125
 }
 
+func requireBrokerBubblewrap(t *testing.T, repo string) {
+	t.Helper()
+	if _, err := exec.LookPath("bwrap"); err != nil {
+		t.Skip("bubblewrap executable is unavailable")
+	}
+	output, code := command(t, repo, nil, "bwrap",
+		"--die-with-parent", "--new-session", "--unshare-ipc", "--unshare-pid", "--unshare-uts", "--unshare-cgroup-try", "--unshare-net", "--cap-drop", "ALL",
+		"--ro-bind", "/", "/", "--", "/usr/bin/true")
+	if code == 0 {
+		return
+	}
+	detail := strings.TrimSpace(output)
+	if newline := strings.IndexByte(detail, '\n'); newline >= 0 {
+		detail = detail[:newline]
+	}
+	if len(detail) > 240 {
+		detail = detail[:240]
+	}
+	if detail == "" {
+		detail = "no diagnostic output"
+	}
+	t.Skipf("bubblewrap cannot create the broker's required isolated namespaces, including --unshare-net (rc=%d): %s", code, detail)
+}
+
 func read(t *testing.T, root, rel string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
@@ -342,9 +366,7 @@ func TestBrokerContract(t *testing.T) {
 			t.Errorf("broker lacks %s", required)
 		}
 	}
-	if _, err := exec.LookPath("bwrap"); err != nil {
-		t.Skip("bwrap unavailable")
-	}
+	requireBrokerBubblewrap(t, repo)
 	output, code := command(t, repo, []string{"TMPDIR=" + t.TempDir()}, "go", "run", "./evals/tools/sandbox-broker", "--selftest")
 	if code != 0 || !strings.Contains(output, "sandbox broker selftest: PASS") {
 		t.Fatalf("broker selftest failed (%d): %s", code, output)

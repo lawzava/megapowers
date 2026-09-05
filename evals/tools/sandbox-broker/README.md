@@ -27,7 +27,14 @@ Codex's API-key fallback uses single-shot `codex exec`; it rejects
 The broker uses Bubblewrap as the outer filesystem and process boundary.
 The actor sees its disposable home, current project, the host's read-only `/usr` runtime, and the treatment plugin only.
 The host operating-system runtime is therefore part of the trusted computing base.
-The broker hides `/usr/local`; when required, it exposes only the resolved Go toolchain at `/opt/megapowers-runtime/go`.
+The broker hides `/usr/local`; when required, it exposes only the active host Go
+toolchain at `/opt/megapowers-runtime/go`. Before actor startup it resolves
+`go` from the broker's `PATH`, queries that exact executable for `GOROOT` with
+`GOTOOLCHAIN=local`, and requires `GOROOT/bin/go` to be the same regular
+executable. The bounded query cannot download another toolchain. A top-level
+root or one overlapping the project, actor home, plugin, or a task write root
+is rejected. The validated root supplies both the runtime mount and receipt
+delegate, so CI and local installations need not use `/usr/local/go`.
 Codex's adjacent `codex-code-mode-host`, when installed, is mounted read-only
 beside the isolated CLI. No parent installation directory is exposed.
 Claude and API-key actors receive a new network namespace with no host or internet route.
@@ -246,6 +253,11 @@ completion, skills catalog detection and non-detection for both harnesses
 oracle isolation, redaction, and inventory parsing. The Go package tests add
 same-thread follow-up, gated same-process Claude follow-up, and nested
 compound-command receipt coverage.
+Integration tests first execute Bubblewrap with the broker's required process
+and network namespace flags, including `--unshare-net`. They skip with the
+capability probe's bounded diagnostic when the host kernel or Bubblewrap setup
+cannot provide that isolation; production runs still fail closed and never
+remove network isolation.
 
 The broker emits `trace_complete` only after a valid terminal harness event and exit code `0`.
 Claude tool events count only after their matching `tool_result` event.

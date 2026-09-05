@@ -4,10 +4,20 @@
 [extend]
 useDefault = true
 
-[[allowlists]]
-description = "Checked-in release signing public key"
+# The pinned CI action uses Gitleaks 8.24, before global [[allowlists]].
+[allowlist]
+description = "Checked-in release signing public key and fingerprint"
 paths = ['''\.github/release-signing-key\.asc$''']
-
-[[allowlists]]
-description = "Release signing key fingerprint pinned in the release workflow"
 regexes = ['''C91B6252A576AEA45DE467D1D75C64FBF43F6479''']
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Exact synthetic credentials used to test review diagnostic redaction"
+condition = "AND"
+paths = ['''^scripts/contracts/review_regression_test\.go$''']
+regexes = [
+  '''^sk-abcdefghijklmnopqrstuvwxyz123456$''',
+  '''^eyJhbGciOiJIUzI1NiJ9\.sensitive\.signature$''',
+]
