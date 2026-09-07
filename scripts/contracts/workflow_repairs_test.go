@@ -203,6 +203,56 @@ func TestFinishContractSupportsNoopWithoutWeakeningOpenWork(t *testing.T) {
 	}
 }
 
+// These checks preserve instruction boundaries, not model behavior or code quality.
+func TestSimplificationGuidanceContracts(t *testing.T) {
+	root := repoRoot(t)
+	tests := []struct {
+		skill string
+		rules map[string]string
+	}{
+		{
+			skill: "design-and-plan",
+			rules: map[string]string{
+				"reuse before custom design":            `before[^.]*custom[^.]*existing code[^.]*standard library[^.]*native platform[^.]*installed dependenc`,
+				"requirements constrain simplification": `simpl[^.]*preserv[^.]*requirement`,
+				"no speculative work":                   `defer[^.]*speculative[^.]*preserv[^.]*requested`,
+			},
+		},
+		{
+			skill: "test-first-implementation",
+			rules: map[string]string{
+				"reuse before writing":              `before[^.]*custom code[^.]*existing code[^.]*standard library[^.]*native platform[^.]*installed dependenc`,
+				"equivalence before brevity":        `preserv[^.]*contract[^.]*validation[^.]*error handling[^.]*security[^.]*accessibility[^.]*tests`,
+				"line count is not the goal":        `do not[^.]*line count`,
+				"known limit and revisit condition": `known limit[^.]*comment[^.]*revisit`,
+				"test-first preserved":              `production code follows a failing test`,
+				"local conventions preserved":       `match local idioms, package boundaries, and public contracts`,
+			},
+		},
+		{
+			skill: "systematic-debugging",
+			rules: map[string]string{
+				"shared cause investigated":   `inspect[^.]*callers[^.]*shared[^.]*invariant`,
+				"sibling regression coverage": `regression[^.]*sibling[^.]*same cause`,
+				"scope remains bounded":       `avoid[^.]*unrelated[^.]*cleanup`,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.skill, func(t *testing.T) {
+			document := strings.ToLower(strings.Join(strings.Fields(read(t, root, "plugins/megapowers/skills/"+test.skill+"/SKILL.md")), " "))
+			for label, rule := range test.rules {
+				if !regexp.MustCompile(rule).MatchString(document) {
+					t.Errorf("missing %s", label)
+				}
+			}
+			for _, excluded := range []string{"shortest working diff wins", "one runnable check", "active every response", "ponytail:"} {
+				requireAbsent(t, document, excluded, "import boundary")
+			}
+		})
+	}
+}
+
 func writeFixtureFile(t *testing.T, root, rel, body string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(rel))
