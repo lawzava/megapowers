@@ -5,6 +5,18 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.29.1 - 2026-09-07
+
+### Changed
+
+- Planning and implementation check existing code, standard libraries, native
+  platform features, and installed dependencies before custom solutions.
+- Simplification preserves requirements, public contracts, validation,
+  data-loss error handling, security, accessibility, and required tests.
+  Known limits include conditions for revisiting them.
+- Debugging inspects shared callers and covers sibling paths affected by the
+  same cause. Ponytail is credited for the adapted guidance.
+
 ## 0.29.0 - 2026-09-05
 
 This release adds instruction-authoring guidance, improves skill discovery and
