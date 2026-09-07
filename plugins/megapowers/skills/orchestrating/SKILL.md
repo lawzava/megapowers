@@ -27,6 +27,15 @@ active harness's call shape. One bounded output-only lane may use one
 fresh-context child returning `verdict`, `evidence`, `uncertainty`, and `next`.
 Keep bulky raw payloads in an artifact.
 
+Prefer scoped searches, selected fields, and native summary options. Preserve
+source and diff context needed for correctness. Keep small results inline without
+artifacts.
+
+For verbose checks, save complete stdout and stderr in scratch storage.
+Preserve command exit status independently of pipelines. Report command, exit
+status, available result counts, relevant diagnostics, and artifact path.
+Disclose filtering and truncation, including saved output.
+
 Route unknown causes through `systematic-debugging`, unresolved contracts
 through `design-and-plan`, external evidence through `evidence-research`,
 cross-provider risk through `independent-review`, and effects through

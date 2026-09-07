@@ -71,6 +71,16 @@ requirement, testing, and scope boundaries.
 
 Upstream license: MIT, Copyright (c) 2026 DietrichGebert.
 
+## RTK
+
+Output handling in `orchestrating`, `systematic-debugging`, and
+`verify-and-finish` draws on [RTK](https://github.com/rtk-ai/rtk), reviewed at
+`v0.48.0` (`fde0a8f185945556f51718de0f4c430bb62b3df6`). The adapted concepts are
+reducing command output and retaining raw diagnostics for recovery. Megapowers
+expresses these as skill guidance. No RTK text or code was copied.
+
+Upstream license: Apache-2.0.
+
 ## Official skill guidance
 
 `writing-agent-instructions` synthesizes the official OpenAI and Anthropic
