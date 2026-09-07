@@ -8,14 +8,19 @@ metadata:
 
 # Design and Plan
 
-Keep a mechanical edit, routine status update, or settled implementation path
-inline unless it exposes a new requirement or material tradeoff.
+Keep mechanical edits, status updates, and settled plans inline unless
+requirements or material tradeoffs change.
 
 ## Understand the system
 
 Read repository instructions and relevant code. Establish entry points,
 callers, blast radius, the nearest convention-setting sibling, test coverage,
 and any unread area that could change the decision.
+
+Before custom design, check existing code, the standard library, native platform
+features, and installed dependencies. Simplify while preserving requirements
+and conventions. Defer speculative needs while preserving requested behavior
+and acceptance criteria.
 
 Resolve factual prerequisites before preference or policy questions. Present
 competing sketches only for a high-impact, underconstrained, or hard-to-reverse
@@ -30,9 +35,9 @@ For a non-trivial behavior change, state intent, scope, non-goals, and
 implementation-independent requirements before the plan. Give each requirement
 concrete scenarios and an acceptance oracle.
 
-Map each requirement ID to scenarios, implementation tasks, and evidence.
-Include relevant failure and boundary cases. Separate proposed, implemented,
-and verified behavior; completed planning artifacts prove only planning.
+Map each requirement ID to scenarios, implementation tasks, and evidence,
+including failure and boundary cases. Separate proposed, implemented, and
+verified behavior; plans prove only planning.
 
 Describe behavior as Added, Modified, or Removed deltas. Reconcile existing
 specifications with code and tests; a stale specification is not evidence.
@@ -58,6 +63,6 @@ implementation target and local or external oracle. Start behavior tasks with a
 failing test. Keep tasks sequential unless ownership is disjoint and neither
 result can reshape the other.
 
-Do not add speculative options, placeholder steps, unrelated cleanup, or commit
-steps without commit authority. Re-read the plan for missing criteria,
-inconsistent names, and unresolved assumptions before execution.
+Exclude speculative options, placeholders, unrelated cleanup, and unauthorized
+commit steps. Before execution, check for missing criteria, inconsistent names,
+and unresolved assumptions.

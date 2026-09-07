@@ -60,6 +60,17 @@ scenarios, task mapping, verification, and reconciliation into baseline specs.
 Megapowers implements these as Markdown guidance. It bundles no OpenSpec code,
 CLI, Node package, or dependency.
 
+## Ponytail
+
+Planning, implementation, and debugging guidance draws on
+[Ponytail](https://github.com/DietrichGebert/ponytail) by DietrichGebert,
+reviewed at `356918eba965ee1eac64bd3a7f0dd02108350de5`. The adapted concepts are
+reuse before custom implementation, checking shared callers, and documenting
+known limits with conditions for revisiting them. Megapowers retains its
+requirement, testing, and scope boundaries.
+
+Upstream license: MIT, Copyright (c) 2026 DietrichGebert.
+
 ## Official skill guidance
 
 `writing-agent-instructions` synthesizes the official OpenAI and Anthropic
