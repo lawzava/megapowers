@@ -253,6 +253,55 @@ func TestSimplificationGuidanceContracts(t *testing.T) {
 	}
 }
 
+// These checks preserve evidence requirements in prose; they do not measure agent behavior or token savings.
+func TestOutputEvidenceGuidanceContracts(t *testing.T) {
+	root := repoRoot(t)
+	tests := []struct {
+		skill string
+		rules map[string]string
+	}{
+		{
+			skill: "orchestrating",
+			rules: map[string]string{
+				"reduce at the source":      `prefer[^.]*scoped searches[^.]*selected fields[^.]*native summary`,
+				"preserve review context":   `preserve[^.]*source[^.]*diff[^.]*correctness`,
+				"recover verbose output":    `verbose checks[^.]*complete stdout and stderr[^.]*scratch`,
+				"preserve original status":  `preserve[^.]*command[^.]*exit status[^.]*pipeline`,
+				"inspectable summary":       `report[^.]*command[^.]*exit status[^.]*available result counts[^.]*diagnostics[^.]*artifact path`,
+				"disclose omitted evidence": `disclose[^.]*filtering[^.]*truncation[^.]*saved output`,
+				"small result stays inline": `keep[^.]*small results[^.]*inline[^.]*artifact`,
+			},
+		},
+		{
+			skill: "systematic-debugging",
+			rules: map[string]string{
+				"retrieve before diagnosis":          `if[^.]*(filtered|truncated)[^.]*retrieve[^.]*raw[^.]*before[^.]*diagnos`,
+				"missing evidence stays unknown":     `unavailable[^.]*incomplete[^.]*inconclusive`,
+				"bounded recovery":                   `recover[^.]*missing[^.]*bounded[^.]*read`,
+				"recovery grants no retry authority": `do not repeat[^.]*side effect[^.]*recover[^.]*output`,
+			},
+		},
+		{
+			skill: "verify-and-finish",
+			rules: map[string]string{
+				"original status and evidence":  `check[^.]*original[^.]*exit status[^.]*raw evidence[^.]*claim`,
+				"hidden failure cannot pass":    `summary[^.]*cannot establish success[^.]*hidden failures`,
+				"incomplete proof remains open": `missing or truncated[^.]*unverified[^.]*recover`,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.skill, func(t *testing.T) {
+			document := strings.ToLower(strings.Join(strings.Fields(read(t, root, "plugins/megapowers/skills/"+test.skill+"/SKILL.md")), " "))
+			for label, rule := range test.rules {
+				if !regexp.MustCompile(rule).MatchString(document) {
+					t.Errorf("missing %s", label)
+				}
+			}
+		})
+	}
+}
+
 func writeFixtureFile(t *testing.T, root, rel, body string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(rel))

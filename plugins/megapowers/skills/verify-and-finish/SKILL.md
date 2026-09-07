@@ -19,6 +19,11 @@ against the current artifact, read the whole result, and state only what it
 proves. A focused test does not prove the full suite; artifact inspection does
 not prove runtime behavior.
 
+Check the original command's exit status and the raw evidence supporting each
+claim. A filtered summary alone cannot establish success or rule out hidden
+failures. Missing or truncated evidence needed for a claim leaves it unverified
+until recovered.
+
 Label artifact inspection and inference instead of presenting either as an
 executed check. Bind stale-prone results to the artifact identity and commit.
 Separate declared configuration from effective runtime behavior.

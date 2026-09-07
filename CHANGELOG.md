@@ -5,6 +5,17 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.29.2 - 2026-09-07
+
+### Changed
+
+- Orchestration prefers scoped searches, selected fields, and native summaries.
+  Verbose checks retain raw output, original exit status, and recovery paths.
+- Debugging retrieves omitted diagnostics before drawing conclusions.
+  Verification keeps claims open when required evidence is missing or truncated.
+- Output guidance draws on RTK concepts without adding a dependency or command
+  rewriting hook. Token savings and model behavior remain unmeasured.
+
 ## 0.29.1 - 2026-09-07
 
 ### Changed

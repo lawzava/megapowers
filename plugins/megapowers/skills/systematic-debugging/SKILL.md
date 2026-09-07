@@ -17,6 +17,11 @@ working path, and inspect recent changes without assuming they are causal. For
 flakiness, identify nondeterministic input, timing, shared state, or resource
 contention instead of retrying until green.
 
+If output is filtered or truncated, retrieve the relevant raw diagnostics before
+diagnosing the failure. If raw evidence remains unavailable or incomplete, treat
+the diagnosis as inconclusive. Recover missing context through bounded reads.
+Do not repeat a side effect solely to recover output.
+
 Before choosing the fix location, inspect callers of the implicated code and
 identify whether they depend on a shared invariant. Add regression coverage for
 sibling paths affected by the same cause, including paths absent from the
