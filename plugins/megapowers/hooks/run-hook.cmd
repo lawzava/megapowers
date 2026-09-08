@@ -21,7 +21,7 @@ if not defined PROCESSOR_ARCHITECTURE (
     echo megapowers hook: cannot resolve Windows architecture 1>&2
     exit /b 1
 )
-set "RUNNER=%CACHE_DIR%\megapowers-hook-b8ae5a54608e71f6-windows-%PROCESSOR_ARCHITECTURE%.exe"
+set "RUNNER=%CACHE_DIR%\megapowers-hook-af5b8db7897df8c4-windows-%PROCESSOR_ARCHITECTURE%.exe"
 
 if exist "%CACHE_DIR%" (
     fsutil reparsepoint query "%CACHE_DIR%" >nul 2>nul
@@ -158,7 +158,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-runner="$cache_dir/megapowers-hook-b8ae5a54608e71f6-$platform_os-$platform_arch"
+runner="$cache_dir/megapowers-hook-af5b8db7897df8c4-$platform_os-$platform_arch"
 if [ -L "$runner" ]; then
   printf 'megapowers hook: refusing symlink cached runner: %s\n' "$runner" >&2
   exit 1

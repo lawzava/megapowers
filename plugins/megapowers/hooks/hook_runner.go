@@ -62,7 +62,7 @@ func runSessionStart(getenv getenvFunc, input io.Reader, output, errors io.Write
 		return 1
 	}
 	// Workflow guidance remains active when the operator disables prose styling.
-	if _, err := io.WriteString(output, skillLoadingReminder); err != nil {
+	if _, err := io.WriteString(output, skillLoadingReminder+helperCodeGuidance); err != nil {
 		fmt.Fprintln(errors, "megapowers session start: cannot emit workflow guidance")
 		return 1
 	}
