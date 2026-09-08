@@ -5,6 +5,16 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.29.3 - 2026-09-08
+
+### Changed
+
+- Shared startup guidance requires Go for new helper code, including temporary
+  scripts, one-off commands, data processing, and file-editing automation.
+- Both Claude Code and Codex receive the rule even when output styling is off.
+  Direct edits use native editing tools. The rule guides agents without blocking
+  interpreters; model compliance remains unmeasured.
+
 ## 0.29.2 - 2026-09-07
 
 ### Changed

@@ -61,8 +61,11 @@ The adapter does not edit `~/.codex/config.toml` or `AGENTS.md`.
 Set `MEGAPOWERS_OUTPUT_STYLE=off` before launching Codex to suppress style
 injection without disabling the guard.
 
-The same `SessionStart` command gives both harnesses a short reminder to load
-applicable skills. This workflow guidance does not depend on the selected style
+The same `SessionStart` command tells both harnesses to load applicable skills
+and write new helper code in Go, including temporary scripts, one-off commands,
+data processing, and file-editing automation. It directs agents to use native
+editing tools for direct edits. This is instruction guidance, not an interpreter
+block. This workflow guidance does not depend on the selected style
 or `MEGAPOWERS_OUTPUT_STYLE`. Disabling the plugin removes its hooks and skills.
 
 Both paths affect the main conversation only. They do not change ordinary

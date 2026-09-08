@@ -81,7 +81,9 @@ preserves built-in coding instructions and respects another selected style.
 Codex adds the same style as developer context at session startup and after
 compaction once the user trusts
 the bundled hooks. Set `MEGAPOWERS_OUTPUT_STYLE=off` before launching Codex to
-omit the style while keeping the guard and shared skill-loading reminder.
+omit the style while keeping the guard and shared workflow guidance. Both
+harnesses receive instructions to write new helper code in Go, including
+temporary scripts and one-off commands, and use native tools for direct edits.
 Neither adapter changes global user
 configuration. Hooks require Go and cache their compiled executable locally.
 
