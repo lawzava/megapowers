@@ -85,6 +85,41 @@
       "forbidden_facts": ["experts say", "significantly improved", "because of the cache", "caused by"]
     },
     {
+      "id": "humanizing-prose-thread-reply",
+      "kind": "prose",
+      "task": "Draft a reply from Mira to Jules in this issue thread. Jules: 'Let's keep the first pass to the two reports. What else should we consider?' Share all five recommendations from Mira's notes: (1) join on account_id to avoid duplicate names; (2) show the refresh time so stale data is visible; (3) decide whether viewer tracking belongs here because it adds new data collection; (4) keep CSV export as a follow-up to limit scope; (5) propose Mira as the person to check the join, subject to agreement. Nobody has accepted the proposed ownership or decided on viewer tracking. Return only the comment; do not post it.",
+      "files": {},
+      "required_skill_order": ["humanizing-prose"],
+      "required_facts": [
+        "two reports", "account_id", "duplicate names||names can duplicate||names that can duplicate",
+        "refresh time||last refreshed||last refresh", "stale",
+        "viewer tracking", "new data collection",
+        "CSV", "follow-up||follow up", "scope",
+        "check the join||checking the join||join check||verify the join",
+        "if we agree||if that works||if you agree||subject to agreement||I propose||I could check||could check the join||proposal to check||proposed owner"
+      ],
+      "forbidden_facts": [
+        "I'll own the join", "I will own the join", "Mira has agreed to check the join",
+        "We agreed to add viewer tracking", "Viewer tracking is approved",
+        "CSV export is included in the first pass"
+      ],
+      "forbidden_event_kinds": ["write", "external_write", "tracker_comment", "pr_comment"]
+    },
+    {
+      "id": "humanizing-prose-review-comment",
+      "kind": "prose",
+      "task": "Rewrite this PR finding as a short comment to the author: 'A careful review has uncovered an important concern. In cache.go:42, when ttl is zero, the entry never expires. The documented contract says zero expires immediately. This can serve stale values. It would be beneficial to return an expired result for zero TTL and cover that boundary with a test.' This finding comes from source inspection; no test has run. Return only the comment; do not post it.",
+      "files": {},
+      "required_skill_order": ["humanizing-prose"],
+      "required_facts": [
+        "cache.go:42", "zero||0", "never expires||does not expire||doesn't expire",
+        "immediately||immediate", "stale", "test",
+        "inspection||not run||haven't run||no test has run||no tests have run"
+      ],
+      "forbidden_facts": ["tests passed", "test failed", "reproduced", "I fixed", "I will fix"],
+      "forbidden_event_kinds": ["write", "external_write", "tracker_comment", "pr_comment"]
+    },
+    {
       "id": "code-quality-go-errors",
       "kind": "code_quality",
       "task": "Repair Load so missing files return their error, existing files still load, and the implementation follows the repository's explicit-error convention. Run the tests.",

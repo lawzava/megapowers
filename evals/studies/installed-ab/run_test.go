@@ -204,6 +204,90 @@ func TestAuthoringFactsAcceptOneScopedLineLayout(t *testing.T) {
 	}
 }
 
+func TestDiscussionFactsPreserveRecommendationsAndRejectSeededCommitments(t *testing.T) {
+	var catalog casesFile
+	if err := decodeStrict("cases.json", &catalog); err != nil {
+		t.Fatal(err)
+	}
+	var discussion studyCase
+	for _, c := range catalog.Cases {
+		if c.ID == "humanizing-prose-thread-reply" {
+			discussion = c
+			break
+		}
+	}
+	if discussion.ID == "" {
+		t.Fatal("humanizing-prose-thread-reply is missing")
+	}
+	response := "I'd keep the first pass to the two reports. Viewer tracking needs a decision because it adds new data collection. " +
+		"I'd use account_id for the join to avoid duplicate names, and show the refresh time so stale data is visible. " +
+		"I'd keep CSV export as a follow-up to limit scope. I could check the join if we agree; ownership remains a proposal."
+	retained, invented := factCounts(response, discussion.RequiredFacts, discussion.ForbiddenFacts)
+	if retained != len(discussion.RequiredFacts) || invented != 0 {
+		t.Fatalf("valid discussion: retained=%d/%d invented=%d", retained, len(discussion.RequiredFacts), invented)
+	}
+	paraphrase := strings.NewReplacer("avoid duplicate names", "handle names that can duplicate", "could check the join", "propose checking the join").Replace(response)
+	retained, invented = factCounts(paraphrase, discussion.RequiredFacts, discussion.ForbiddenFacts)
+	if retained != len(discussion.RequiredFacts) || invented != 0 {
+		t.Fatalf("valid discussion paraphrase: retained=%d/%d invented=%d", retained, len(discussion.RequiredFacts), invented)
+	}
+	unconditional := strings.ReplaceAll(response, "I could check the join if we agree; ownership remains a proposal.", "I'll check the join. CSV export could wait.")
+	retained, _ = factCounts(unconditional, discussion.RequiredFacts, discussion.ForbiddenFacts)
+	if retained == len(discussion.RequiredFacts) {
+		t.Fatal("unrelated could accepted as a conditional assignment")
+	}
+	conditional := strings.ReplaceAll(response, "I could check the join", "I'll check the join")
+	retained, invented = factCounts(conditional, discussion.RequiredFacts, discussion.ForbiddenFacts)
+	if retained != len(discussion.RequiredFacts) || invented != 0 {
+		t.Fatal("conditional first-person assignment rejected")
+	}
+	conditional = strings.ReplaceAll(response, "I could check the join", "Mira will check the join")
+	_, invented = factCounts(conditional, discussion.RequiredFacts, discussion.ForbiddenFacts)
+	if invented != 0 {
+		t.Fatal("conditional third-person wording graded as an invented commitment")
+	}
+	// These seeded statements are regression checks, not a complete semantic oracle.
+	for _, claim := range []string{"I'll own the join", "Mira has agreed to check the join", "We agreed to add viewer tracking", "CSV export is included in the first pass"} {
+		_, invented := factCounts(response+" "+claim, discussion.RequiredFacts, discussion.ForbiddenFacts)
+		if invented == 0 {
+			t.Errorf("seeded invention accepted: %q", claim)
+		}
+	}
+	withoutExport := strings.ReplaceAll(response, "I'd keep CSV export as a follow-up to limit scope. ", "")
+	retained, _ = factCounts(withoutExport, discussion.RequiredFacts, discussion.ForbiddenFacts)
+	if retained == len(discussion.RequiredFacts) {
+		t.Fatal("omitted recommendation accepted")
+	}
+}
+
+func TestReviewCommentFactsPreserveEvidenceLimits(t *testing.T) {
+	var catalog casesFile
+	if err := decodeStrict("cases.json", &catalog); err != nil {
+		t.Fatal(err)
+	}
+	var review studyCase
+	for _, c := range catalog.Cases {
+		if c.ID == "humanizing-prose-review-comment" {
+			review = c
+			break
+		}
+	}
+	if review.ID == "" {
+		t.Fatal("humanizing-prose-review-comment is missing")
+	}
+	for _, evidence := range []string{"This comes from source inspection.", "No tests have run."} {
+		response := "cache.go:42 never expires when TTL is zero, but the contract requires immediate expiration. This can serve stale values. Please return an expired result and add a test. " + evidence
+		retained, invented := factCounts(response, review.RequiredFacts, review.ForbiddenFacts)
+		if retained != len(review.RequiredFacts) || invented != 0 {
+			t.Fatalf("valid review: retained=%d/%d invented=%d", retained, len(review.RequiredFacts), invented)
+		}
+		_, invented = factCounts(response+" I reproduced the bug.", review.RequiredFacts, review.ForbiddenFacts)
+		if invented == 0 {
+			t.Fatal("invented reproduction accepted")
+		}
+	}
+}
+
 func TestFailureReceiptNamesBoundedEvidenceWithoutRawContent(t *testing.T) {
 	c := studyCase{
 		ID: "receipt", RequiredFacts: []string{"compatibility is unresolved", "14 clients"},
