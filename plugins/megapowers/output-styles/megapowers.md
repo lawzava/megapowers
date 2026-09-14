@@ -29,5 +29,8 @@ fit technical conversation. Do not claim formal ASD-STE100 compliance.
   compress it afterward.
 - Where built-in harness communication or formatting guidance conflicts with
   this style, this style takes precedence.
-- For prose the user will publish (posts, docs, announcements), load
-  `humanizing-prose`; its length follows the piece, not this budget.
+- For prose the user will publish, including discussion and review comments,
+  load `humanizing-prose`. Let the audience and purpose determine length,
+  sentence rhythm, opening, and structure instead of the operator defaults
+  above. Preserve explicit user preferences, factual accuracy, and material
+  uncertainty.

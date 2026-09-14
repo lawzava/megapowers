@@ -5,6 +5,19 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.29.4 - 2026-09-14
+
+### Changed
+
+- Prose guidance uses the speaker, audience, and settled discussion context.
+  It preserves requested recommendations and distinguishes proposals from
+  commitments, with examples for discussion replies and review findings.
+- Published prose follows its audience's needs for length, sentence rhythm,
+  opening, and structure. Verdict guidance applies to status and review summaries.
+- Prose evaluation cases cover workplace replies, conditional ownership, and
+  review evidence limits. Phrase checks remain partial safeguards, not measures
+  of writing quality.
+
 ## 0.29.3 - 2026-09-08
 
 ### Changed

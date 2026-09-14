@@ -25,7 +25,7 @@ go run evals/studies/installed-ab/run.go --run --credentialed \
 ```
 
 For a diagnostic pilot, use `--paired-runs 1 --actor-timeout 5m`. The current
-21-case catalog runs 42 executions per harness. Run Claude and Codex in parallel
+23-case catalog runs 46 executions per harness. Run Claude and Codex in parallel
 with separate output directories. One pair cannot satisfy study acceptance or
 establish efficacy. Compare `outcome_success` across arms; report treatment
 activation failures separately. To route both harnesses through Subswapper,
@@ -161,6 +161,12 @@ change activation grading.
 
 Prose gates require all seeded facts, zero seeded inventions, and exact no-op
 behavior for text that is already direct, ignoring trailing whitespace only.
+The discussion and review cases cover requested recommendations, proposed
+ownership, and evidence limits. Their phrase checks are partial safeguards;
+they do not establish semantic completeness or whether colleagues would send
+the result. Inspect those qualities separately when comparing instruction
+revisions. Such comparisons are diagnostics, not this installed-versus-empty
+study or a release gate.
 Code-quality gates require passing task tests, fewer seeded defects, and no
 repository convention regression. The TDD case requires a test edit and
 observed red test run before the implementation edit. The runner reads the

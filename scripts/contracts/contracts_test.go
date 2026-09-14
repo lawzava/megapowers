@@ -243,6 +243,19 @@ func TestOutputStyleContract(t *testing.T) {
 	requireContains(t, read(t, root, "docs/harness-support.md"), "MEGAPOWERS_OUTPUT_STYLE=off", "Codex output style opt-out")
 }
 
+func TestHumanizingProseDiscussionScope(t *testing.T) {
+	root := repoRoot(t)
+	skill := read(t, root, "plugins/megapowers/skills/humanizing-prose/SKILL.md")
+	for _, marker := range []string{"speaker, recipient, purpose", "every recommendation", "Keep proposals, questions, decisions, and commitments distinct.", "For a status update or review summary"} {
+		requireContains(t, skill, marker, "discussion contract")
+	}
+	// A comment's destination cannot decide whether it is a verdict or a discussion.
+	requireAbsent(t, skill, "For an authorized review, PR comment, or issue update, publish only", "discussion scope")
+	style := read(t, root, "plugins/megapowers/output-styles/megapowers.md")
+	requireContains(t, style, "sentence rhythm, opening, and structure", "publication scope")
+	requireAbsent(t, style, "its length follows the piece, not this budget", "length-only publication exception")
+}
+
 func TestSkillContracts(t *testing.T) {
 	root := repoRoot(t)
 	names := catalogNames(t, root)
