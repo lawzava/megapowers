@@ -2,8 +2,8 @@ package contracts
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -33,12 +33,10 @@ func TestGitleaksConfigScopesFixtureExceptions(t *testing.T) {
 					t.Fatal(err)
 				}
 				if path == mutate {
-					// Generate a scanner probe with no provider or account behind it.
-					var probe [48]byte
-					if _, err := rand.Read(probe[:]); err != nil {
-						t.Fatal(err)
-					}
-					content = append(content, []byte("\nvar serviceAPIKey = \""+base64.RawURLEncoding.EncodeToString(probe[:])+"\"\n")...)
+					// A public seed has no account behind it. Its fixed hex digest avoids
+					// random base64 collisions with the scanner's allowlisted words.
+					probe := sha256.Sum256([]byte("megapowers public scanner scope fixture"))
+					content = append(content, []byte("\nvar serviceAPIKey = \""+hex.EncodeToString(probe[:])+"\"\n")...)
 				}
 				target := filepath.Join(fixture, path)
 				if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {

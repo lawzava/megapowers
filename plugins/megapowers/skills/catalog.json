@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "skills": [
-    { "name": "autonomous-run", "status": "stable" },
+    { "name": "autonomous-run", "status": "experimental" },
     { "name": "design-and-plan", "status": "stable" },
     { "name": "evidence-research", "status": "experimental" },
     { "name": "grill-me", "status": "experimental" },

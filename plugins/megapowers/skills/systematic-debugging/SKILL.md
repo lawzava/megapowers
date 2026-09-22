@@ -27,10 +27,11 @@ identify whether they depend on a shared invariant. Add regression coverage for
 sibling paths affected by the same cause, including paths absent from the
 report. Fix the invariant where it belongs; avoid unrelated caller cleanup.
 
-Treat the execution environment as a suspect. When a sandbox, permission
-layer, or harness restriction can explain the failure, re-run the probe
-outside that restriction before declaring a tool, service, or dependency
-broken.
+Preserve the child exit status. Distinguish launcher or filesystem access,
+authentication, quota, and provider failures. When a sandbox, permission layer,
+or harness restriction could explain the failure, verify outside that
+restriction before declaring the dependency broken. A working session does not
+prove a separate launch path is healthy.
 
 State one evidence-backed hypothesis and test the cheapest decisive prediction
 while changing one variable. A failed hypothesis is evidence; update the model

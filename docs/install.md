@@ -69,6 +69,22 @@ that discovery channel when testing the installed plugin in an isolated home.
 Keep the links as the canonical development entrypoints. Do not edit installed
 caches or global configuration to hide a duplicate during an unrelated task.
 
+For a deliberate Codex setup using the installed release in this checkout,
+disable each repository skill path through native configuration:
+
+```toml
+[[skills.config]]
+path = "/absolute/path/to/megapowers/.agents/skills/orchestrating/SKILL.md"
+enabled = false
+```
+
+Use one entry per repository skill. Keep the installed plugin enabled so its
+hooks remain available. Verify the exact path with native `skills/list` before
+expanding the exclusions: the repository entry must be disabled and the installed
+entry enabled. Verify hook trust with `hooks/list`. Exclude only the intended
+checkout; a candidate run must load source through its own isolated plugin
+installation. Removing these entries restores repository discovery.
+
 ## Pin a release
 
 A local immutable checkout makes the selected source explicit for either

@@ -5,6 +5,29 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.29.5 - 2026-09-22
+
+### Fixed
+
+- Autonomous runs preserve authority across compaction and defer lifecycle
+  transitions to current native tool contracts. The skill is experimental until
+  executed recovery tests qualify it.
+- Workflow guidance distinguishes launcher failures, checks paid-batch targets,
+  bounds waits, and gives shared instructions one writer.
+- Evaluation activation requires successful skill membership. Incidental read
+  order remains diagnostic; task, safety, and execution-order checks stay required.
+- Secret-scanner contract tests use a deterministic generated probe. Random
+  base64 probes could contain words excluded by the scanner's own allowlist.
+
+### Added
+
+- Optional trace-derived usage counters with explicit availability and snapshot
+  scope. Missing counters remain unknown and do not enter paired outcome means.
+- A bounded native Claude evaluation suite for formatting, launcher diagnosis,
+  and simulated goal authority. It uses deterministic graders and local reports.
+- Native Codex skill exclusions documented for deliberate installed-plugin
+  testing in a source checkout, with separate hook verification.
+
 ## 0.29.4 - 2026-09-14
 
 ### Changed

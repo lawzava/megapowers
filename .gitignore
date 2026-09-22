@@ -35,3 +35,6 @@ evals/studies/**/.mcp.json
 # Linked git worktrees created for isolated feature work.
 .worktrees/
 /results/
+
+# Native plugin eval reports contain prompts and traces; keep them local.
+plugins/megapowers/evals/results/

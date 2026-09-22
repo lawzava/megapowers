@@ -125,9 +125,11 @@ Parallel ownership must be disjoint. Keep shared interfaces and dependent tasks
 sequential. The lead remains the single writer for integration and Git, reads
 the returned artifacts, resolves conflicts, and reruns the real oracle.
 
-Continue lead work while agents run. Then use one longest supported wait and
-avoid short polling. Batch eligible agents before waiting. Do not accept serial
-spawn-complete interleaving as parallel fan-out.
+Continue lead work while agents run. Then prefer completion events or
+asynchronous waits within tool deadlines and the required update cadence;
+avoid repeated reads of unchanged status and retain a final readback. Batch
+eligible agents before waiting. Do not accept serial spawn-complete
+interleaving as parallel fan-out.
 
 Same-provider agents provide parallelism and context separation. They do not
 provide vendor independence. Use the trusted review path only when another
@@ -141,7 +143,9 @@ findings open; an approval does not settle another pending review.
 
 ## Keep durable runs small
 
-Prefer the harness's native goal and wait mechanisms. Add ignored
+Prefer the harness's native goal and wait mechanisms and follow their current
+tool contracts for status changes, budgets, and continuation. `autonomous-run`
+is experimental pending executed runtime resume and compaction proof. Add ignored
 `.megapowers/run/<id>/` files only when work must resume after context or process
 loss under a currently approved autonomous goal:
 
@@ -153,8 +157,12 @@ loss under a currently approved autonomous goal:
 
 Update durable state at real transitions, not every turn. On resume, reconcile
 repository, worktree, branch, HEAD, runtime, and external state before acting.
-Stop on missing or contradictory evidence. A handoff or harness switch does not
-inherit prior authority. A journal proves only what its oracle proved.
+Report unresolved blockers and stop affected work on missing evidence or a
+workspace mismatch. Use read-only inspection to resolve uncertainty. Compaction
+does not revoke existing authority. Verify scope and authority after a crash,
+handoff, or harness change; native goals do not transfer automatically across
+harnesses. Portable checkpoint labels do not change native goal status. A journal
+proves only what its oracle proved.
 
 ## Stop rules
 

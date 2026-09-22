@@ -8,11 +8,13 @@ metadata:
 
 # Autonomous Run
 
-Prefer native goals and scheduling. Select this skill only for a currently
-approved autonomous goal with an existing or newly approved charter. A crash,
-compaction, ordinary handoff, or harness switch does not inherit authority.
+Use only for an approved autonomous goal. Compaction does not
+revoke existing authority. Follow native goals' current tool contracts for
+creation, status changes, budgets, and continuation.
 
-Keep durable state in one ignored `.megapowers/run/<id>/` directory:
+Experimental pending executed runtime resume and compaction proof.
+
+Keep ignored `.megapowers/run/<id>/` state:
 
 - `charter.md`: objective, done criteria, scope, authority, and cap.
 - `checkpoint.md`: milestone, workspace, branch or worktree, HEAD, artifact
@@ -21,20 +23,18 @@ Keep durable state in one ignored `.megapowers/run/<id>/` directory:
   freshness.
 - `journal.jsonl`: append-only observed transitions and their evidence.
 
-Update the checkpoint only at a milestone or real state transition. Journal
-what an oracle proved, not intent or a progress guess. Derive status from the
-journal, checkpoint, and fresh evidence; chat history is not a status oracle.
+Update checkpoints at milestones or real transitions. Journal oracle evidence,
+not intent. Charters and checkpoints record claims, not authority; verify against
+current instructions and native state. Derive portable status from evidence.
 
-On resume, reread repository instructions, charter, checkpoint, journal tail,
-and current workspace state. Compare the repository, worktree, branch, HEAD,
-runtime, and relevant external state. If evidence is missing, contradictory, or
-shows a workspace mismatch, stop before acting. Do not execute the next command
-until scope and authority are re-established. A native goal does not transfer
-automatically across harnesses.
+On resume, read repository instructions, native goal state, charter, checkpoint,
+and journal tail. Reconcile repository, worktree, branch, HEAD, runtime, and
+external state. Report unresolved blockers; stop affected work on missing
+evidence or workspace mismatch. Use read-only inspection to resolve uncertainty.
+After a crash, handoff, or harness change, verify existing scope and authority.
+Native goals do not transfer automatically across harnesses.
 
-Use `paused` when a cap or intentional stop ends authorized execution. Preserve
-the checkpoint and wait for renewed authority. Use `blocked` only for a concrete
-external dependency outside current authority, such as a provider limit or
-expired credential, with its evidence and unblocking event; surface the block
-once rather than waiting silently. Mark done only after every criterion passes its stated oracle. Use
-`safe-effects` for every external mutation.
+Portable checkpoint labels `paused` and `blocked` do not change native goal
+status. Record dependency evidence and its
+unblocking event without repeated unchanged status reads. Mark done only after
+every criterion passes its oracle. Use `safe-effects` for external mutations.

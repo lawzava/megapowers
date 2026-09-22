@@ -501,21 +501,21 @@ func TestExplicitOrchestrationDispatchRemainsHardGate(t *testing.T) {
 	}
 }
 
-func TestSkillSequenceCollapsesRepeatedAdjacentFollowupActivation(t *testing.T) {
+func TestSkillMembershipAllowsRepeatedAndReversedActivation(t *testing.T) {
 	events := []actorEvent{
 		{Kind: "skill_selected", Path: "design-and-plan", RC: 0, Step: 1},
 		{Kind: "skill_selected", Path: "design-and-plan", RC: 0, Step: 9},
 	}
-	ordered, unexpected := skillSelectionEvidence(events, []string{"design-and-plan"}, nil)
-	if !ordered || unexpected != 0 {
-		t.Fatalf("legitimate follow-up activation failed exact sequence: ordered=%t unexpected=%d", ordered, unexpected)
+	present, unexpected := skillSelectionEvidence(events, []string{"design-and-plan"}, nil)
+	if !present || unexpected != 0 {
+		t.Fatalf("legitimate follow-up activation failed membership: present=%t unexpected=%d", present, unexpected)
 	}
 	reversed, _ := skillSelectionEvidence([]actorEvent{
 		{Kind: "skill_selected", Path: "verify-and-finish", RC: 0},
 		{Kind: "skill_selected", Path: "design-and-plan", RC: 0},
 	}, []string{"design-and-plan", "verify-and-finish"}, nil)
-	if reversed {
-		t.Fatal("collapsing repeated activation accepted reversed distinct skills")
+	if !reversed {
+		t.Fatal("required skill membership rejected reversed instruction reads")
 	}
 }
 

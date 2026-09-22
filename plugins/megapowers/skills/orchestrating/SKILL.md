@@ -15,11 +15,10 @@ boundaries, ownership, and oracle before dispatch.
 Invoking this skill explicitly authorizes native agents for matching lanes. Use
 one to three direct children with fresh, bounded context by default.
 
-For two or more independent lanes whose results cannot reshape one another,
-issue native spawn calls consecutively. Do not inspect output, wait, or begin
-deep lane work between spawns. After dispatch, continue useful lead-owned work
-that is independent of the lanes. Track every returned identity and later join
-each until it completes, fails, or its cancellation is confirmed.
+For independent lanes whose results cannot reshape one another, issue native
+spawn calls consecutively without intervening inspection or waits. Continue
+independent lead work, then join every returned identity until completion,
+failure, or confirmed cancellation.
 
 Before dispatch, read
 [native dispatch examples](references/native-dispatch.md) and use only the
@@ -43,8 +42,8 @@ cross-provider risk through `independent-review`, and effects through
 
 Preflight tools, authentication, permissions, and write authority. Brief the
 outcome, bounded and disjoint ownership, constraints, oracle, prohibited scope,
-return condition, and nested-delegation limit. Shared writes and Git stay
-lead-owned.
+return condition, and nested-delegation limit. Shared guidance has one writer;
+shared writes and Git stay lead-owned.
 
 For non-trivial routing, honor an operator-selected access workflow, including
 an approved external route, before native ranking. Otherwise read
@@ -57,9 +56,10 @@ review until terminal or cancellation is confirmed. Target follow-ups at fixes
 and affected boundaries. A spent budget leaves unresolved findings open; it
 never converts them into approval.
 
-Failures must remain visible in the report; use successful evidence without
-requiring every child to succeed. After useful lead work, prefer one long
-event-driven wait over short polling. Join all identities before synthesis.
+Report failures and retain successful evidence. Prefer completion events or
+asynchronous waits within tool deadlines and required update cadence. Avoid
+foreground sleeps beyond those limits and repeated reads of unchanged status;
+keep a final readback. Join all identities before synthesis.
 After a scope or context change, scan again and use delta-only follow-ups.
 
 Ordinary handoffs use inline inspection plus `verify-and-finish`; only a

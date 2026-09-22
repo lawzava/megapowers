@@ -26,6 +26,9 @@ exists. After a retry or crash, reconcile prior attempts before acting again.
 Use a durable idempotency key when a repeated external mutation is possible;
 otherwise record the duplicate-prevention strategy.
 
+Before a paid batch, check resolved target IDs and count against approved scope;
+bind execution and results to those IDs.
+
 Proceed only inside the approved boundary. Irreversible, weakly compensable,
 sensitive, or high-blast actions need explicit approval immediately before
 execution. Starting an automated or autonomous run never broadens that
