@@ -109,10 +109,15 @@ capture is partial.
 A workflow activation is `skill_selected` with the unprefixed skill directory
 in `path`. Emit it only from trace-proven activation, never by inferring from
 the task or response. Treatment prose, orchestration, and workflow verdicts
-require the exact declared skill sequence with no forbidden or failed
-selection. Consecutive successful reads of the same skill collapse to one
-selection so a follow-up turn may legitimately reactivate it; distinct skills
-must retain their declared order. Control verdicts evaluate the same task outcome and process gates
+require every declared skill to be read successfully, with no extra, forbidden,
+or failed selection. Repeated successful reads are allowed in any order.
+`required_skill_order` and `require_skill_order` retain their configuration names
+for compatibility; the activation gate uses membership. `skill_membership`
+reports required coverage, while `skill_order` retains the former sequence
+check as a diagnostic. Failure receipts retain the full bounded selection
+sequence. Task execution,
+TDD, dispatch, and safety gates still enforce their own requirements.
+Control verdicts evaluate the same task outcome and process gates
 without requiring unavailable plugin activation; their activation metrics stay
 diagnostic. Workflow gates also check required events, forbidden attempts,
 facts, trace completeness, and any configured executable oracle.
@@ -133,6 +138,37 @@ negation heuristics. Every row also publishes sanitized action, write, test, and
 selection attempt counts. Orchestration rows record whether `orchestrating` was
 selected, so future failures distinguish activation from dispatch behavior
 without publishing prompts or traces.
+
+Every result keeps the configured model and effort in `harness`, and measured
+actor duration in `duration_ms`. `duration_ms_known` is one only when the
+published duration is positive after conversion to milliseconds. Token telemetry is diagnostic harness-reported
+metadata. `usage_input_cached_tokens`, `usage_input_uncached_tokens`, and
+`usage_output_tokens` appear only when known; each has a corresponding
+`_known` metric that is explicitly zero when missing or invalid. Missing counts
+are never replaced with zero, and no price or bill estimate is inferred.
+`usage_trace_complete` is one only when the nonempty captured trace parses
+completely as JSON records within the broker's 8 MiB per-record bound. An absent,
+malformed, or scanner-truncated trace sets it to zero and leaves every usage count unknown. This is parsing coverage,
+not proof of a completed actor task or complete provider billing.
+`usage_source_codex_root_thread` identifies the latest root thread cumulative
+snapshot; `usage_source_codex_latest_turn` identifies the latest exec turn;
+`usage_source_claude_latest_root_result` identifies the latest root result.
+These source metrics are one when their snapshot is present. Forwarded Claude
+results and Codex child-thread snapshots are excluded. A later relevant event
+without usage clears the earlier snapshot and makes those counters unknown.
+Snapshots are not summed,
+so latest-turn/result scopes must not be compared as whole-run usage. Claude
+uncached input includes reported cache-creation input; Codex uncached input is
+reported total input minus cached input. Configured model/effort are not claims
+of independently observed provider settings. Unknown metadata stays unknown,
+including for selftest actors; these fields do not affect grading.
+The strict scorer validates binary diagnostic flags, mutually exclusive
+sources, duration availability, and each counter's availability flag. A selected
+source requires a completely parsed trace, and counts require one source.
+Only the three optional counters are excluded from
+metric-set parity; task metrics and fixed diagnostic flags retain strict
+parity. These efficiency diagnostics are excluded from printed paired means.
+Inspect counters with their scope in individual result rows.
 
 The shareable output contains only `publish/results.jsonl` and
 `publish/manifest.json`. An interrupted run may also retain the private resume

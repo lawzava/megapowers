@@ -250,6 +250,41 @@ func validateRow(row resultRow) error {
 			return fmt.Errorf("metric %q is not finite", name)
 		}
 	}
+	sources := 0.0
+	for _, name := range []string{"duration_ms_known", "usage_trace_complete", "usage_source_codex_root_thread", "usage_source_codex_latest_turn", "usage_source_claude_latest_root_result"} {
+		value, exists := row.Metrics[name]
+		if exists && value != 0 && value != 1 {
+			return fmt.Errorf("diagnostic %q must be binary", name)
+		}
+		if name != "duration_ms_known" && name != "usage_trace_complete" {
+			sources += value
+		}
+	}
+	if sources > 1 {
+		return errors.New("usage source diagnostics must be mutually exclusive")
+	}
+	if known, exists := row.Metrics["duration_ms_known"]; exists && known != boolFloat(row.DurationMS > 0) {
+		return errors.New("duration_ms_known must agree with positive duration_ms")
+	}
+	if sources == 1 && row.Metrics["usage_trace_complete"] != 1 {
+		return errors.New("usage source requires a completely parsed trace")
+	}
+	for _, name := range []string{"usage_input_cached_tokens", "usage_input_uncached_tokens", "usage_output_tokens"} {
+		count, hasCount := row.Metrics[name]
+		known, hasKnown := row.Metrics[name+"_known"]
+		if !hasCount && !hasKnown {
+			continue // Historical rows do not carry usage diagnostics.
+		}
+		if !hasKnown || (known != 0 && known != 1) || hasCount != (known == 1) {
+			return fmt.Errorf("diagnostic %q must match its binary known flag", name)
+		}
+		if hasCount && (count < 0 || count > 1<<53 || count != math.Trunc(count)) {
+			return fmt.Errorf("diagnostic %q must be a nonnegative integer token count", name)
+		}
+		if hasCount && (sources != 1 || row.Metrics["usage_trace_complete"] != 1) {
+			return fmt.Errorf("diagnostic %q requires one source and a completely parsed trace", name)
+		}
+	}
 	if row.Study == installedABStudy && row.EvidenceClass == "behavioral" {
 		outcome, hasOutcome := row.Metrics["outcome_success"]
 		if !hasOutcome || (outcome != 0 && outcome != 1) {
@@ -640,10 +675,38 @@ func minInt(a, b int) int {
 func metricSignature(metrics map[string]float64) string {
 	names := make([]string, 0, len(metrics))
 	for name := range metrics {
+		if optionalUsageCounter(name) {
+			continue
+		}
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	return strings.Join(names, "\x00")
+}
+
+// These counters have explicit availability flags and potentially different
+// snapshot scopes. They are per-result diagnostics, not paired outcome metrics.
+func optionalUsageCounter(name string) bool {
+	switch name {
+	case "usage_input_cached_tokens", "usage_input_uncached_tokens", "usage_output_tokens":
+		return true
+	default:
+		return false
+	}
+}
+
+func efficiencyDiagnostic(name string) bool {
+	if optionalUsageCounter(name) {
+		return true
+	}
+	switch name {
+	case "duration_ms_known", "usage_trace_complete",
+		"usage_input_cached_tokens_known", "usage_input_uncached_tokens_known", "usage_output_tokens_known",
+		"usage_source_codex_root_thread", "usage_source_codex_latest_turn", "usage_source_claude_latest_root_result":
+		return true
+	default:
+		return false
+	}
 }
 
 func printableKey(key string) string {
@@ -894,6 +957,9 @@ func printScorecard(rows []resultRow) {
 			cell := behavioral[key]
 			names := make([]string, 0, len(cell.metrics["treatment"]))
 			for name := range cell.metrics["treatment"] {
+				if efficiencyDiagnostic(name) {
+					continue
+				}
 				names = append(names, name)
 			}
 			sort.Strings(names)

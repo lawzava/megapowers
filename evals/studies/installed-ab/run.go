@@ -1235,6 +1235,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 			}
 			row.Verdict = "harness_error"
 			row.Metrics = map[string]float64{"artifact_success": 0, "workflow_success": 0, "outcome_success": 0, "task_success": 0}
+			attachEfficiencyMetrics(row.Metrics, result)
 			attachEvidenceArtifacts(&row)
 			rows = append(rows, row)
 			manifest.Arms = append(manifest.Arms, armEvidence)
@@ -1686,11 +1687,106 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 	metrics["workflow_success"] = boolMetric(workflowPass)
 	metrics["outcome_success"] = boolMetric(outcomePass)
 	metrics["skill_contract_required"] = boolMetric(arm == "treatment" && requiresSkillContract)
+	if len(c.RequiredSkillOrder) > 0 {
+		present, _ := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
+		ordered, _ := skillReadOrderEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
+		metrics["skill_membership"] = boolMetric(present)
+		metrics["skill_order"] = boolMetric(ordered)
+	}
 	metrics["task_success"] = boolMetric(pass)
+	attachEfficiencyMetrics(metrics, result)
 	if pass {
 		return metrics, "pass", nil
 	}
 	return metrics, "fail", nil
+}
+
+// Usage is diagnostic harness-reported metadata, not a billing ledger. Preserve
+// the latest root snapshot rather than summing cumulative or forwarded results.
+func attachEfficiencyMetrics(metrics map[string]float64, result actorResult) {
+	metrics["duration_ms_known"] = boolMetric(result.Duration.Milliseconds() > 0)
+	metrics["usage_trace_complete"] = 0
+	for _, source := range []string{"codex_root_thread", "codex_latest_turn", "claude_latest_root_result"} {
+		metrics["usage_source_"+source] = 0
+	}
+	for _, name := range []string{"input_cached_tokens", "input_uncached_tokens", "output_tokens"} {
+		metrics["usage_"+name+"_known"] = 0
+	}
+	var usage map[string]any
+	rootThread, source := "", ""
+	scanner := bufio.NewScanner(bytes.NewReader(result.Trace))
+	// Match the broker's 8 MiB per-record scanner cap. An oversized record
+	// invalidates usage parsing rather than preserving an earlier snapshot.
+	scanner.Buffer(make([]byte, 64<<10), 8<<20)
+	for scanner.Scan() {
+		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
+			continue
+		}
+		var object map[string]any
+		if json.Unmarshal(scanner.Bytes(), &object) != nil || object == nil {
+			return
+		}
+		params, _ := object["params"].(map[string]any)
+		switch {
+		case object["method"] == "thread/started":
+			thread, _ := params["thread"].(map[string]any)
+			if rootThread == "" && thread["parentThreadId"] == nil {
+				rootThread, _ = thread["id"].(string)
+			}
+		case object["method"] == "thread/tokenUsage/updated":
+			if rootThread != "" && params["threadId"] == rootThread {
+				tokens, _ := params["tokenUsage"].(map[string]any)
+				usage, _ = tokens["total"].(map[string]any)
+				source = "codex_root_thread"
+			}
+		case object["type"] == "turn.completed":
+			usage, _ = object["usage"].(map[string]any)
+			source = "codex_latest_turn"
+		case object["type"] == "result" && object["origin"] == nil:
+			usage, _ = object["usage"].(map[string]any)
+			source = "claude_latest_root_result"
+		}
+	}
+	if scanner.Err() != nil {
+		return
+	}
+	metrics["usage_trace_complete"] = boolMetric(len(bytes.TrimSpace(result.Trace)) > 0)
+	// A recognized result or usage event lacking usage replaces earlier metadata;
+	// it is unknown, not permission to reuse an older complete snapshot.
+	if usage == nil {
+		return
+	}
+	metrics["usage_source_"+source] = 1
+	inputKey, cachedKey, outputKey := "input_tokens", "cached_input_tokens", "output_tokens"
+	if source == "codex_root_thread" {
+		inputKey, cachedKey, outputKey = "inputTokens", "cachedInputTokens", "outputTokens"
+	} else if source == "claude_latest_root_result" {
+		cachedKey = "cache_read_input_tokens"
+	}
+	count := func(key string) (float64, bool) {
+		value, ok := usage[key].(float64)
+		return value, ok && value >= 0 && value <= 1<<53 && value == float64(int64(value))
+	}
+	record := func(name string, value float64, known bool) {
+		if known && value <= 1<<53 {
+			metrics["usage_"+name] = value
+			metrics["usage_"+name+"_known"] = 1
+		}
+	}
+	input, inputKnown := count(inputKey)
+	cached, cachedKnown := count(cachedKey)
+	output, outputKnown := count(outputKey)
+	if source == "claude_latest_root_result" {
+		created, createdKnown := count("cache_creation_input_tokens")
+		record("input_uncached_tokens", input+created, inputKnown && createdKnown)
+	} else {
+		if inputKnown && cachedKnown && cached > input {
+			inputKnown, cachedKnown = false, false
+		}
+		record("input_uncached_tokens", input-cached, inputKnown && cachedKnown)
+	}
+	record("input_cached_tokens", cached, cachedKnown)
+	record("output_tokens", output, outputKnown)
 }
 
 func forbiddenSkillSelections(events []actorEvent, forbidden []string) int {
@@ -1784,6 +1880,33 @@ func caseOracle(ctx context.Context, project string, command []string, result ac
 }
 
 func skillSelectionEvidence(events []actorEvent, required, forbidden []string) (bool, int) {
+	requiredSet := make(map[string]bool, len(required))
+	for _, skill := range required {
+		requiredSet[skill] = true
+	}
+	forbiddenSet := make(map[string]bool, len(forbidden))
+	for _, skill := range forbidden {
+		forbiddenSet[skill] = true
+	}
+	seen := make(map[string]bool)
+	unexpected := 0
+	for _, event := range events {
+		if event.Kind != "skill_selected" {
+			continue
+		}
+		if !requiredSet[event.Path] || forbiddenSet[event.Path] || event.RC != 0 {
+			unexpected++
+		}
+		if event.RC == 0 && requiredSet[event.Path] {
+			seen[event.Path] = true
+		}
+	}
+	return len(seen) == len(requiredSet), unexpected
+}
+
+// Read order is diagnostic. Task dependencies are graded by the task's own
+// execution, dispatch, and safety oracles, not by when instructions were read.
+func skillReadOrderEvidence(events []actorEvent, required, forbidden []string) (bool, int) {
 	requiredSet := make(map[string]bool, len(required))
 	for _, skill := range required {
 		requiredSet[skill] = true
@@ -3821,7 +3944,7 @@ func runSelftest() error {
 		events []actorEvent
 	}{
 		{name: "a missing skill", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "test"}, {Kind: "trace_complete"}}},
-		{name: "reversed skill order", events: []actorEvent{{Kind: "skill_selected", Path: "verify-and-finish"}, {Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "test"}, {Kind: "trace_complete"}}},
+		{name: "a failed required read", events: []actorEvent{{Kind: "skill_selected", Path: "verify-and-finish", RC: 1}, {Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "test"}, {Kind: "trace_complete"}}},
 		{name: "a forbidden skill", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "skill_selected", Path: "test-first-implementation", RC: 1}, {Kind: "skill_selected", Path: "verify-and-finish"}, {Kind: "test"}, {Kind: "trace_complete"}}},
 		{name: "an unlisted extra skill", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "skill_selected", Path: "code-quality"}, {Kind: "skill_selected", Path: "verify-and-finish"}, {Kind: "test"}, {Kind: "trace_complete"}}},
 		{name: "a missing required event", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "skill_selected", Path: "verify-and-finish"}, {Kind: "trace_complete"}}},

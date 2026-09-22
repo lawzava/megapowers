@@ -17,6 +17,9 @@ Servers register at session start. After any configuration change, restart the
 session before expecting new tools. A tool missing from a live session is not
 evidence of a broken server.
 
+A narrow discovery miss does not prove capability absence; check the configured
+server and supported discovery path.
+
 Match the authentication flow to the execution mode. Browser OAuth completes
 only in an interactive session; a headless or non-interactive session cannot
 finish the grant. Provision a token, complete the grant interactively
@@ -33,5 +36,6 @@ or socket files; re-run the probe outside the sandbox before concluding
 failure.
 
 On failure, report the harness, scope, configuration path, server name,
-transport, authentication mode, and the exact error. Stop and report rather
-than editing credentials you cannot verify.
+transport, authentication mode, exit status, and raw error. Use
+`systematic-debugging` to distinguish launcher, authentication, quota, and
+provider failures. Do not edit credentials you cannot verify.
