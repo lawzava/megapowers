@@ -5,6 +5,19 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.30.2 - 2026-09-26
+
+### Changed
+
+- `autonomous-run` names the early stops to avoid while work is owed (a
+  summary that announces the next step, an offer to continue, a decision list
+  that blocks nothing, a milestone report), treats a text-only turn as a
+  report, and caps automatic continuations at two or three per item. Source:
+  Anthropic's "Prompting Claude Opus 5.5" guide, unattended agentic runs.
+- `orchestrating` briefs carry an advisory time budget, with a hard timeout
+  where one is needed. Source: the same guide, time signals for multiagent
+  harnesses.
+
 ## 0.30.1 - 2026-09-26
 
 ### Changed
