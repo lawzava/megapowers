@@ -9,8 +9,9 @@ Review the exact revision before installing it.
 | Component | Reads | Writes | Network |
 |---|---|---|---|
 | Skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
-| Codex output-style hook | Bundled static style | Developer context on standard output | None |
-| Destructive-command hook | Proposed shell command from hook input | Hook decision on standard output | None |
+| Session and subagent start hooks | Bundled static style and reminder text | Developer context on standard output | None |
+| Destructive-command hook | Proposed shell command from hook input | Hook decision, or non-blocking reminder context, on standard output | None |
+| Doctor command | Plugin manifest, hook registration, Go version, the Claude `outputStyle` setting value | Standard output only | None |
 | Memory-audit tool | One explicit audit manifest | Standard output only | None |
 | Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | One operator-named reviewer command after approval |
 
@@ -27,7 +28,12 @@ boundary and verifies every target by readback.
 ## Destructive-command guard
 
 The hook catches a narrow set of obvious catastrophic commands. It uses
-command-string parsing for precision, not evasion resistance.
+command-string parsing for precision, not evasion resistance. The parser looks
+through compound shapes an agent writes by accident, such as a subshell, a
+brace group, an `if` or function body, and wrappers named by absolute path
+(`/usr/bin/env rm`, `/usr/bin/sudo rm`). It does not deny a read-only
+`wipefs` (no `-a`, or `-n`/`--no-act`), a `blkdiscard --dry-run`, or a
+`find` under home that carries a name or path filter before `-delete`.
 
 One matcher covers the Bash and PowerShell tools, and both receive the same
 high-confidence denials: the PowerShell tool hands over the same
@@ -54,7 +60,10 @@ Allowed by design (reversible, scoped, or owned by the harness permission
 system):
 
 - Scoped deletes and cleanup: `rm -rf ./dist`, `/tmp/app/*`,
-  `/etc/nginx/conf.d/*`, `~/.cache/foo`, `~alice/Code/build`.
+  `/etc/nginx/conf.d/*`, `~/.cache/foo`, `~alice/Code/build`, and filtered
+  finds such as `find ~ -name '*.pyc' -delete`.
+- Read-only disk inspection: `wipefs /dev/sda`, `wipefs -n /dev/sda`,
+  `blkdiscard --dry-run /dev/sda`.
 - Reversible version-control operations (`git reset --hard`, `git clean -fdx`,
   `git push --force`), cloud and cluster deletions (`terraform destroy`,
   `kubectl delete pods --all`, `aws s3 rb`), and container cleanup
@@ -143,8 +152,8 @@ Before installation:
 
 ## Credentials and artifacts
 
-Installed A/B and PR replay never copy credentials into actor-visible homes or
-launch a provider directly. Real runs require a reviewed, hash-pinned broker
+The installed-plugin A/B study never copies credentials into actor-visible
+homes or launches a provider directly. Real runs require a reviewed, hash-pinned broker
 that owns authentication outside an attested OS isolation boundary. A missing,
 mismatched, or overbroad attestation fails closed. Publish bundles contain only
 sanitized result rows and manifests, not credentials, raw prompts, responses,

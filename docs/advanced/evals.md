@@ -1,6 +1,6 @@
 # Evaluation and release evidence
 
-Megapowers separates four evidence layers. A passing check in one layer does
+Megapowers separates three evidence layers. A passing check in one layer does
 not prove another layer.
 
 | Layer | Evidence | Release role |
@@ -8,7 +8,9 @@ not prove another layer.
 | Deterministic regressions | Repository mechanics without model credentials | Required PR gate |
 | Trigger recall | Trace-proven skill selection | Enforced for Claude; report-only for Codex |
 | Installed-plugin A/B | Treatment reliability with paired control outcomes | Optional diagnostic |
-| PR replay | Hidden-oracle correctness on pinned historical work | Disabled pending broker schema `2`; report-only |
+
+The documentation freshness check (`scripts/check-freshness.sh`) is a
+maintainer check outside the PR gate.
 
 ## Deterministic gate
 
@@ -33,11 +35,10 @@ Each study README is authoritative for its commands and boundaries:
   probe corpus, gates, isolation, and sanitized outputs.
 - [Installed-plugin A/B](../../evals/studies/installed-ab/README.md) defines its
   paired schedule, acceptance rules, resume contract, and broker requirements.
-- [PR replay](../../evals/studies/pr-replay/README.md) defines its private case
-  manifest and hidden-oracle verdict. Credentialed runs remain disabled.
-- [Session observability](../../evals/studies/session-observability/README.md)
-  defines the maintainer-only aggregate diagnostic.
+- [Native Claude smoke evaluations](../../plugins/megapowers/evals/README.md)
+  run three bounded cases through `claude plugin eval`.
 
+Published numbers live in [evals/RESULTS.md](../../evals/RESULTS.md).
 Selftests and deterministic contracts do not produce behavioral evidence.
 Credentialed studies publish only their sanitized `publish/manifest.json` and
 `publish/results.jsonl`. Do not share raw homes, repositories, prompts,
@@ -51,5 +52,5 @@ responses, transcripts, credentials, or absolute paths.
 4. Create the signed tag and publish the GitHub release.
 5. Run exact-tag fresh-install smoke against the public tag.
 
-Installed A/B and PR replay remain outside the release gate. Post-publish smoke
-proves delivery from the public ref, not agent quality.
+Installed A/B remains outside the release gate. Post-publish smoke proves
+delivery from the public ref, not agent quality.

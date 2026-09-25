@@ -4,17 +4,16 @@
 [![Latest tag](https://img.shields.io/github/v/tag/lawzava/megapowers?label=release)](https://github.com/lawzava/megapowers/tags)
 [![License](https://img.shields.io/github/license/lawzava/megapowers)](./LICENSE)
 
-megapowers is exactly one plugin for current Claude Code and Codex. It adds
-task-level skills (the inventory lives in `plugins/megapowers/skills/catalog.json`),
-one shared communication style, and a small destructive-command
-tripwire. It does not replace native agents, plans, goals,
-permissions, worktrees, memory, or browser tools.
+megapowers is exactly one plugin for Claude Code and Codex: 16 task skills,
+one concise output style, a destructive-command tripwire, and a doctor that
+tells you why something did not fire.
 
-The plugin is deliberately small. There is no model router, session catalog,
-formatter, status line, custom scheduler, hosted service, or compatibility
-layer for other harnesses.
+It is native-first. It uses each harness's own agents, goals, permissions,
+worktrees, and memory. It ships no scheduler, model router, daemon, formatter,
+or status line. The always-loaded cost is about 1.5k tokens per session on
+each harness; skill bodies load only when selected.
 
-## Install
+## Install in 30 seconds
 
 Claude Code:
 
@@ -30,108 +29,207 @@ codex plugin marketplace add lawzava/megapowers --ref release
 codex plugin add megapowers@megapowers
 ```
 
-Start a fresh session after installation. The `release` branch only moves to
-signed release tags, so marketplace refreshes never install unreleased `main`
-state. Full update, verification, pinning, and uninstall instructions are in
-[docs/install.md](./docs/install.md).
+Both registrations track the `release` branch, which only fast-forwards to
+signed release tags, so marketplace refreshes never install unreleased `main`.
+Start a fresh session after installing. Hooks need Go 1.25 or newer on `PATH`;
+they compile once into a local cache. Codex asks you to review and trust the
+plugin hooks before it runs them, and asks again when a release changes them,
+because trust is recorded against the hook's hash. Pinning, scopes, and
+uninstall are in [docs/install.md](./docs/install.md).
 
-## The workflow
+## What you get
 
-Use the smallest skill that matches the task. Skill descriptions stay visible;
-the full body loads only when selected.
+Every skill has a short trigger description that stays visible; the full text
+loads only when the skill is selected. Repository instructions and project
+tools stay authoritative; skills fill gaps.
 
-| Need | Skill |
-|---|---|
-| Choose between inline work, native agents, a durable run, or review | `orchestrating` |
-| Specify behavior, resolve requirements, and write an executable plan | `design-and-plan` |
-| Stress-test a plan, decision, or idea through a round-based interview | `grill-me` |
-| Change behavior with a verified red, green, refactor loop and language-specific code judgment | `test-first-implementation` |
-| Find a root cause before fixing a bug or flaky test | `systematic-debugging` |
-| Prove completion, handoff, commit, merge, or release claims | `verify-and-finish` |
-| Preview and authorize a real-world side effect | `safe-effects` |
-| Preserve honest state across long or interrupted work | `autonomous-run` |
-| Send an explicit artifact to a different provider for adversarial review | `independent-review` |
-| Audit memory and automatically apply one approved evidence-based cleanup | `memory-hygiene` |
-| Draft, rewrite, edit, or preserve prose without dropping or inventing facts | `humanizing-prose` |
-| Upgrade Megapowers without changing its source, scope, pins, or local edits | `upgrading-megapowers` |
-| Research current facts, historical rationale, or contested evidence | `evidence-research` |
-| Configure, debug, or verify an MCP server connection | `mcp-setup` |
-| Write effective skills and project or subfolder instructions | `writing-agent-instructions` |
+| Skill | Fires when | What it does |
+|---|---|---|
+| `orchestrating` | Two or more independent lanes, an output-only lane, or a handoff needs coordination | Routes work to native agents with disjoint ownership and a bounded return contract |
+| `design-and-plan` | Non-trivial behavior or an interface needs a spec, tradeoffs, or a multi-step plan | Writes requirements, resolves tradeoffs, and produces an executable plan |
+| `grill-me` | You ask to be grilled or want a plan or idea stress-tested | Runs a round-based interview before any action |
+| `test-first-implementation` | Adding or changing behavior, fixing a confirmed bug, refactoring | Red, green, refactor with verified failing and passing runs |
+| `systematic-debugging` | A bug, flaky test, incident, or regression has an unknown cause | Finds the root cause before editing |
+| `verify-and-finish` | Before claiming done, committing, merging, publishing, deploying, or handing off | Re-runs the real oracle and reports honest status |
+| `safe-effects` | Before a deploy, message, charge, migration, destructive query, DNS change, or external write | Confirms authority for the exact target and reads the result back |
+| `autonomous-run` | An approved goal must continue unattended across steps, resets, or sessions | Keeps state honest across long or interrupted work; experimental |
+| `independent-review` | Security, auth, billing, concurrency, or data-integrity work needs a second opinion | Sends one explicit artifact to a different provider after a disclosure step |
+| `evidence-research` | A decision needs evidence beyond the repository | Frames the question and classifies sources before concluding |
+| `humanizing-prose` | The task is to draft, rewrite, or edit human-facing prose | Removes machine-prose markers without dropping or inventing facts |
+| `writing-agent-instructions` | Creating or revising a skill, `AGENTS.md`, or `CLAUDE.md` | Trigger design, progressive disclosure, and behavioral validation |
+| `mcp-setup` | Installing, configuring, or repairing an MCP server, or its tools are missing | Diagnoses the configured server and discovery path |
+| `memory-hygiene` | You ask to audit, prune, or fix harness memory (explicit invocation only) | Validates provenance and dates with a Go tool, then applies one approved cleanup |
+| `upgrading-megapowers` | You ask to update, reinstall, or repair the plugin | Inventories the install and asks once for the exact writes |
+| `megapowers-doctor` | Something did not fire, the style looks off, or a hook errored | Runs a deterministic Go check and explains the result |
 
-Repository instructions, existing code, and configured project tools remain
-authoritative. See [docs/orchestration.md](./docs/orchestration.md) for the
-native-first task shapes and execution map. It adds no scheduler or agent
-runtime.
+Skill maturity is recorded in
+[`plugins/megapowers/skills/catalog.json`](./plugins/megapowers/skills/catalog.json).
+Task-shape routing is in [docs/orchestration.md](./docs/orchestration.md).
 
-For non-trivial delegation, `orchestrating` can read one optional personal
-capability registry from `~/.config/megapowers/agent-capabilities.md`. The file
-stays outside the plugin and supplies advisory choices only; it creates no
-agent access or authority.
+## Turn on the style
+
+The style keeps the built-in coding instructions. It asks for the answer
+first, 100 prose words by default and 250 unless you ask for depth, one short
+line of intent before long work, brief progress lines during long tool chains,
+and no em dashes.
+
+Claude Code: the style is optional and is off until you select it. Choose the
+plugin-qualified value `megapowers:Megapowers` in `/config` under Output style,
+or run `/output-style megapowers:Megapowers`. The resulting setting is
+`"outputStyle": "megapowers:Megapowers"`. The bare value `Megapowers` does not
+resolve to the plugin style; transcripts of sessions configured that way show
+no style attached. `megapowers-doctor` reports the value in effect.
+
+Codex: the trusted Codex startup hook (`SessionStart`) adds the same text as
+developer context on startup, resume, clear, and compaction. The Codex hooks reference
+(retrieved 2026-09-25) states that `SessionStart` hooks matching
+`source: "compact"` run before the next model request; the plugin's hook has no
+source matcher, so it matches every source. Set `MEGAPOWERS_OUTPUT_STYLE=off`
+before launching Codex to omit the style while keeping the guard.
+
+On both harnesses the style applies to the main conversation. Subagents get the
+shorter report contract described below.
 
 ## What installs
 
-- Task skills and their maturity listed in `skills/catalog.json`.
-- One shared style for direct, concise technical replies: a selectable Claude Code
-  output style and a trusted Codex startup hook.
-- One `PreToolUse` Go hook for obvious catastrophic commands.
-- One Go standard-library independent-review tool, loaded only with that skill.
+- 16 skills under `skills/`, listed in `skills/catalog.json`.
+- One output style, `output-styles/megapowers.md`, shared by both harnesses.
+- Go hooks on three events, compiled once into a local cache:
+  - `SessionStart`: a reminder to load a matching skill before acting, plus the
+    style on Codex.
+  - `SubagentStart`: the same reminder and a compact report contract for
+    subagents: lead with the result, cite `file:line` or command evidence, no
+    padding, no em dashes.
+  - `PreToolUse` on Bash and PowerShell: denies a narrow set of catastrophic
+    commands, and adds a non-blocking reminder to load `verify-and-finish`
+    before `git commit`, `git push`, and `gh pr create`, or `safe-effects`
+    before publish and deploy commands. The reminder never blocks.
+- Two Go standard-library tools that load only with their skill: the
+  memory-audit validator for `memory-hygiene` and the review packager for
+  `independent-review`.
+- A `doctor` command behind `megapowers-doctor`.
 
-Select `Megapowers` through Claude Code's `/config` output-style picker. It
-preserves built-in coding instructions and respects another selected style.
-Codex adds the same style as developer context at session startup and after
-compaction once the user trusts
-the bundled hooks. Set `MEGAPOWERS_OUTPUT_STYLE=off` before launching Codex to
-omit the style while keeping the guard and shared workflow guidance. Both
-harnesses receive instructions to write new helper code in Go, including
-temporary scripts and one-off commands, and use native tools for direct edits.
-Neither adapter changes global user
-configuration. Hooks require Go and cache their compiled executable locally.
+Neither adapter edits global user configuration. The plugin supplies no
+model, provider, or agent configuration. For non-trivial delegation,
+`orchestrating` can read an optional personal registry at
+`~/.config/megapowers/agent-capabilities.md`; it is advisory and grants no
+access.
 
-Claude Code and Codex receive the same high-confidence denials. Reversible risk
-remains with each harness's own permission system. The hook is an accident
-tripwire, not a sandbox. Read
-[SECURITY.md](./SECURITY.md) before trusting the plugin.
+## Footprint
+
+Per session, outside this repository, the style, startup hook text, and skill
+catalog cost about 1,470 tokens on Claude Code and about 1,510 on Codex
+(word-count estimate from installed session text, 2026-09-25). Each skill body
+is 274 to 468 words and loads only when triggered. The style shortens replies
+(in one operator's September 2026 Codex sessions, styled final messages had a
+median of 70 words and em dashes in 0.6 percent, against 36 percent without
+the style), but it is not a compression feature and makes no cost claim.
 
 ## Evidence
 
-Four evidence classes are kept separate:
+Numbers below are from [evals/RESULTS.md](./evals/RESULTS.md), an
+installed-plugin A/B study completed 2026-09-05: 1,080 valid trials over 27
+cases, ten balanced control/treatment pairs per case per harness. Codex ran
+`gpt-6-astra` on CLI `0.153.3`; Claude ran `claude-fable-5-1` on Claude Code
+`2.1.258`; both at high effort. The control had no plugin.
 
-1. `scripts/validate.sh` and `evals/run-all.sh` run bounded deterministic
-   regressions and runner selftests. They prove repository mechanics, not agent
-   quality.
-2. Trigger recall measures trace-proven skill selection. Its configured gates
-   enforce Claude study results and report Codex results without enforcement.
-3. The optional installed-plugin A/B study compares this checkout with an empty
-   control under Claude Code and Codex through a hash-pinned isolation broker.
-   It reports treatment reliability and paired control outcomes; it does not
-   gate releases or claim that the plugin improves general model capability.
-4. PR replay uses hidden correctness tests against pinned historical changes.
-   Credentialed execution is disabled pending broker schema `2`; the study is
-   report-only.
+| Development checks (18 cases) | Codex control | Codex + megapowers | Claude control | Claude + megapowers |
+|---|---:|---:|---:|---:|
+| Task outcome | 85/180 | 106/180 | 89/180 | 101/180 |
+| Workflow | 163/180 | 170/180 | 164/180 | 169/180 |
+| Required activation profile | n/a | 77/150 | n/a | 83/150 |
 
-No current-candidate behavioral result is claimed from selftests. Historical
-measurements, including null results and their limitations, remain in
-[evals/RESULTS-archive.md](./evals/RESULTS-archive.md). Current protocols and gates are in
-[evals/README.md](./evals/README.md) and
+| Held-out checks (6 cases, frozen before the run) | Codex control | Codex + megapowers | Claude control | Claude + megapowers |
+|---|---:|---:|---:|---:|
+| Task outcome | 50/60 | 60/60 | 52/60 | 53/60 |
+
+The instruction-authoring case moved from 0/10 to 10/10 on Codex and 0/10 to
+9/10 on Claude. Codex's pending-review case moved from 0/10 to 10/10. The
+separate autonomy/continuity diagnostics did not pass (Codex 0/30 to 0/30,
+Claude 1/30 to 0/30). Activation is scored apart from outcome: all ten Claude
+pending-review replies passed task checks but omitted `verify-and-finish`.
+
+Caveats, stated in the same file: the study precedes the `0.29.0` version
+stamp, neither harness passes the full benchmark, and the results do not
+establish general model superiority. The 2026-09-02 Codex trigger-recall run
+reported 0/117 implicit recall despite a rendered catalog
+([trigger-recall README](./evals/studies/trigger-recall/README.md)); Codex
+trigger gates stay report-only. `scripts/validate.sh` and `evals/run-all.sh`
+prove repository mechanics, not agent quality. Protocols are in
 [docs/advanced/evals.md](./docs/advanced/evals.md).
+
+## How it compares
+
+Facts below were checked on 2026-09-25. Install counts on skills.sh are
+self-reported by that site.
+
+| | megapowers | [obra/superpowers](https://github.com/obra/superpowers) | [mattpocock/skills](https://github.com/mattpocock/skills) |
+|---|---|---|---|
+| Harnesses | Claude Code and Codex, one plugin, shared hook code | 16 listed, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
+| Distribution | This repository's marketplace only | Listed in the official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
+| Shape | 16 skills, one style, three hooks, a doctor | 14 skills including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
+| Published measurements | The A/B table above, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
+
+What superpowers does better: official marketplace listings on both sides,
+a much longer harness list, release notes that quote probe counts per change,
+a diagnostics skill since v6.4.1 (2026-09-19), and commercial support. What
+mattpocock/skills does better: frictionless distribution through skills.sh,
+and small single-purpose skills that are easy to adopt one at a time;
+`grill-me` there is a user-invoked pointer skill, which matches the Claude
+Code docs' advice for skills that over-trigger.
+
+What megapowers does differently: both harnesses from one plugin with the
+same Go hook code; calm trigger descriptions instead of emphatic "you must"
+language, which Anthropic's current prompting guidance and OpenAI's
+2026-09-11 skills post both warn causes over-triggering; non-blocking
+reminders that load the verification and side-effect skills at the moment a
+commit, push, or deploy runs; a cross-provider `independent-review` path with
+a disclosure step; `safe-effects` for outward effects; a memory validator;
+and a doctor.
+
+## Troubleshooting
+
+Ask for `megapowers-doctor` first: `/megapowers:megapowers-doctor` on Claude
+Code, or the skill name after `$` as it appears in the Codex skills list. It
+runs `run-hook.cmd doctor` and reports the plugin version and root, the
+harness, the Go toolchain version against the cached runner, the Claude
+`outputStyle` value in effect, whether the hooks are registered, and how to
+see whether a skill fired in your transcripts. Then:
+
+- Style not applied on Claude Code: the setting must read
+  `megapowers:Megapowers`, not `Megapowers`.
+- Hooks silent on Codex: trust the plugin hooks when prompted; a release that
+  changed them prompts again.
+- Hook error mentioning Go: install Go 1.25 or newer, or clear the cached
+  runner the doctor names.
+- Wrong plugin version after an upgrade: use `upgrading-megapowers`, which
+  compares the marketplace head with the approved release tag before writing.
 
 ## Limits
 
-- Skills are instructions, not enforcement. Model and harness behavior can
-  change.
-- The communication style applies to the main conversation, not ordinary
-  subagents, and it cannot suppress tool-result rendering. Codex skips the
-  adapter until the user trusts the plugin hooks.
-- The destructive guard matches a narrow set of command strings. OS sandboxing
-  and least privilege remain the real boundary.
-- Independent review discloses approved source content to the selected provider.
-  It rejects common secret patterns, not every possible secret.
-- Real-agent studies require credentials, spend, and a reviewed broker that
-  keeps credentials and hidden state outside the actor's OS boundary. Their
-  selftests do not substitute for a credentialed run.
-- Only current Claude Code and Codex are supported. Exact structural and
-  behavioral evidence boundaries are in
+- Skills are instructions, not enforcement. Model and harness behavior change.
+- The style cannot suppress tool-result rendering. Codex skips the hooks until
+  you trust them.
+- The destructive guard matches a narrow set of command strings, including
+  compound commands and absolute-path wrappers. OS sandboxing and least
+  privilege remain the real boundary. See [SECURITY.md](./SECURITY.md).
+- Independent review discloses approved source content to the selected
+  provider. It rejects common secret patterns, not every possible secret.
+- Credentialed studies need spend and a reviewed broker. Their selftests do
+  not substitute for a run.
+- Only current Claude Code and Codex are supported. Exact boundaries are in
   [docs/harness-support.md](./docs/harness-support.md).
+
+## Documentation
+
+- [Install, pin, update, uninstall](./docs/install.md)
+- [Harness support and freshness](./docs/harness-support.md)
+- [Orchestration and task shapes](./docs/orchestration.md)
+- [Independent review workflow](./docs/advanced/independent-review.md)
+- [Evaluation and release evidence](./docs/advanced/evals.md)
+- [Verification maps](./docs/advanced/verification-maps.md)
+- [Security policy](./SECURITY.md), [Contributing](./CONTRIBUTING.md),
+  [Changelog](./CHANGELOG.md)
 
 ## Develop
 
@@ -141,11 +239,8 @@ bash evals/run-all.sh --json results.jsonl
 ```
 
 The deterministic suite fails on malformed, incomplete, indeterminate,
-timed-out, or harness-error results. Contributions that change behavioral
-guidance need deterministic regression coverage. Credentialed installed-plugin
-A/B remains optional diagnostic evidence. See [CONTRIBUTING.md](./CONTRIBUTING.md).
-The repository-local verification-map pilot is documented in
-[docs/advanced/verification-maps.md](./docs/advanced/verification-maps.md).
+timed-out, or harness-error results. Changes to behavioral guidance need
+deterministic regression coverage. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License and origin
 
