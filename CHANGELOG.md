@@ -5,6 +5,64 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.30.0 - 2026-09-26
+
+### Added
+
+- `megapowers-doctor` skill and `run-hook.cmd doctor` command. The command
+  reports plugin version and root, harness, Go toolchain against the cached
+  runner, the Claude Code `outputStyle` value, and registered hook events.
+- `SubagentStart` hook on both harnesses. Subagents receive the skill-loading
+  reminder and a compact report contract; the contract honors
+  `MEGAPOWERS_OUTPUT_STYLE=off`.
+- Non-blocking `PreToolUse` context before `git commit`, `git push`,
+  `gh pr create`, `gh pr merge`, and `gh release create` names
+  `verify-and-finish`; publish, deploy, and mutating API commands name
+  `safe-effects`. It never sets a permission decision and emits once per
+  session per skill.
+- Plugin eval cases for commit-and-PR and deploy requests with Skill-tool
+  graders.
+
+### Fixed
+
+- The hook runner cache key includes the Go version, and the launcher refuses
+  to build with Go older than 1.25. A runner built by an old Go could fail
+  every hook call until the cache was deleted.
+- The destructive-command guard catches commands inside subshells, braces,
+  conditionals, and functions; absolute-path wrappers such as
+  `/usr/bin/env rm`; escaped quotes; home dotglobs; `>|`, `tee`, and `mv` onto
+  block devices; numeric world-writable `chmod -R`; and PowerShell payloads.
+  It no longer blocks read-only `wipefs` and `blkdiscard --dry-run`, filtered
+  `find ~ -name ... -delete`, or non-recursive backgrounded functions.
+- Docs state the exact Claude Code style value, `megapowers:Megapowers`. The
+  bare `Megapowers` value does not resolve and left the style off.
+- `maintainer validate` no longer fails on a calendar; freshness stays in the
+  scheduled job and the release gate.
+- The sandbox broker honors `TMPDIR`. Socket tests skip with a reason when the
+  environment denies Unix sockets or the path exceeds the platform limit.
+- Scripts reuse the user's Go build cache and fall back to `TMPDIR` only when
+  it is unwritable.
+
+### Changed
+
+- The shipped plugin no longer tells every session to write helper code in
+  Go. That rule is this repository's policy and stays in `AGENTS.md`.
+- The output style permits one intent line before long work and brief progress
+  lines during long tool chains. Final-answer limits and the em-dash ban stay.
+- `mcp-setup` stops after one failed re-authentication per server and reports
+  the exact error and user action. `independent-review` declares the exact
+  payload once and reuses that declaration for approval.
+- Skills drop duplicated repository policy and incident-specific lines;
+  OpenSpec guidance moves to a reference loaded only when `openspec/` exists.
+- README rewritten with install, skill table, style activation, evidence, and
+  comparison sections.
+
+### Removed
+
+- The PR replay and session-observability studies, and 24 thin `*.test.sh`
+  launchers. Wording-pinning contract tests are replaced by required-fact
+  checks.
+
 ## 0.29.5 - 2026-09-22
 
 ### Fixed
