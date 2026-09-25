@@ -6,6 +6,7 @@ if "%~1"=="" (
     echo megapowers hook: cannot run hook: missing hook name 1>&2
     exit /b 1
 )
+set "HOOK_NAME=%~1"
 
 set "HOOK_DIR=%~dp0"
 set "PLUGIN_DIR=%HOOK_DIR%.."
@@ -13,13 +14,13 @@ set "CACHE_BASE=%MEGAPOWERS_HOOK_CACHE%"
 if not defined CACHE_BASE set "CACHE_BASE=%LOCALAPPDATA%"
 if not defined CACHE_BASE if defined USERPROFILE set "CACHE_BASE=%USERPROFILE%\.cache"
 if not defined CACHE_BASE (
-    echo megapowers hook: cannot resolve a private cache directory 1>&2
-    exit /b 1
+    set "REASON=cannot resolve a private cache directory"
+    goto fail
 )
 set "CACHE_DIR=%CACHE_BASE%\megapowers-hooks"
 if not defined PROCESSOR_ARCHITECTURE (
-    echo megapowers hook: cannot resolve Windows architecture 1>&2
-    exit /b 1
+    set "REASON=cannot resolve Windows architecture"
+    goto fail
 )
 set "GO111MODULE=off"
 set "GOTOOLCHAIN=local"
@@ -46,35 +47,35 @@ if defined GO_KEY (
 )
 if not defined RUNNER (
     if defined GO_FOUND (
-        echo megapowers hook: cannot build hook runner: cannot read Go version ^(go env GOVERSION failed^) 1>&2
+        set "REASON=cannot build hook runner: cannot read Go version (go env GOVERSION failed)"
     ) else (
-        echo megapowers hook: cannot build hook runner: Go 1.25 or newer is required 1>&2
+        set "REASON=cannot build hook runner: Go 1.25 or newer is required"
     )
-    exit /b 1
+    goto fail
 )
 
 if exist "%CACHE_DIR%" (
     fsutil reparsepoint query "%CACHE_DIR%" >nul 2>nul
     if not errorlevel 1 (
-        echo megapowers hook: refusing symlink hook cache: %CACHE_DIR% 1>&2
-        exit /b 1
+        set "REASON=refusing symlink hook cache: %CACHE_DIR%"
+        goto fail
     )
 )
 if not exist "%CACHE_DIR%" mkdir "%CACHE_DIR%" >nul 2>nul
 if not exist "%CACHE_DIR%" (
-    echo megapowers hook: cannot create hook cache: %CACHE_DIR% 1>&2
-    exit /b 1
+    set "REASON=cannot create hook cache: %CACHE_DIR%"
+    goto fail
 )
 if exist "%RUNNER%" (
     fsutil reparsepoint query "%RUNNER%" >nul 2>nul
     if not errorlevel 1 (
-        echo megapowers hook: refusing symlink cached runner: %RUNNER% 1>&2
-        exit /b 1
+        set "REASON=refusing symlink cached runner: %RUNNER%"
+        goto fail
     )
 )
 if exist "%RUNNER%\" (
-    echo megapowers hook: cached runner is not a file: %RUNNER% 1>&2
-    exit /b 1
+    set "REASON=cached runner is not a file: %RUNNER%"
+    goto fail
 )
 
 if not exist "%RUNNER%" (
@@ -89,8 +90,8 @@ if not exist "%RUNNER%" (
     if !GO_MAJOR! GTR 1 set "GO_OK=1"
     if !GO_MAJOR! EQU 1 if !GO_MINOR! GEQ 25 set "GO_OK=1"
     if not defined GO_OK (
-        echo megapowers hook: cannot build hook runner: Go 1.25 or newer is required ^(found !GO_KEY!^) 1>&2
-        exit /b 1
+        set "REASON=cannot build hook runner: Go 1.25 or newer is required (found !GO_KEY!)"
+        goto fail
     )
     if not defined GOCACHE (
         set "GO_DEFAULT_CACHE="
@@ -102,8 +103,8 @@ if not exist "%RUNNER%" (
     go build -trimpath -o "!TMP_RUNNER!" "%HOOK_DIR%hook_runner.go" "%HOOK_DIR%deny_destructive.go" "%HOOK_DIR%output_style.go" "%HOOK_DIR%gate_context.go" "%HOOK_DIR%doctor.go"
     if errorlevel 1 (
         del /q "!TMP_RUNNER!" >nul 2>nul
-        echo megapowers hook: cannot build cached hook runner 1>&2
-        exit /b 1
+        set "REASON=cannot build cached hook runner"
+        goto fail
     )
     move /y "!TMP_RUNNER!" "%RUNNER%" >nul
     if errorlevel 1 (
@@ -111,8 +112,8 @@ if not exist "%RUNNER%" (
             del /q "!TMP_RUNNER!" >nul 2>nul
         ) else (
             del /q "!TMP_RUNNER!" >nul 2>nul
-            echo megapowers hook: cannot install cached hook runner 1>&2
-            exit /b 1
+            set "REASON=cannot install cached hook runner"
+            goto fail
         )
     )
 )
@@ -122,6 +123,20 @@ set "MEGAPOWERS_HOOK_CACHE_DIR=%CACHE_DIR%"
 "%RUNNER%" %*
 set "RC=!errorlevel!"
 exit /b !RC!
+
+:fail
+rem A launcher failure never blocks the tool call: the guard hooks warn the
+rem user through systemMessage and exit 0; doctor keeps a hard failure.
+echo megapowers hook: !REASON! 1>&2
+if /i "%HOOK_NAME%"=="deny-destructive" goto warn
+if /i "%HOOK_NAME%"=="session-start" goto warn
+if /i "%HOOK_NAME%"=="subagent-start" exit /b 0
+exit /b 1
+:warn
+set "JSON_REASON=!REASON:\=\\!"
+set JSON_REASON=!JSON_REASON:"=\"!
+echo {"systemMessage":"megapowers: destructive-command guard is inactive (!JSON_REASON!). Run megapowers-doctor for the fix."}
+exit /b 0
 CMDBLOCK
 
 set -u
@@ -133,27 +148,46 @@ if [ "$#" -ne 1 ]; then
 fi
 hook_name="$1"
 
-hook_dir="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)" || {
-  printf 'megapowers hook: cannot resolve hook directory\n' >&2
+# json_escape quotes a short message for a JSON string using only shell
+# builtins, so it works under a PATH without sed or awk.
+json_escape() {
+  remaining="$1"
+  escaped=""
+  while [ -n "$remaining" ]; do
+    char="${remaining%"${remaining#?}"}"
+    remaining="${remaining#?}"
+    case "$char" in
+      \\) escaped="$escaped\\\\" ;;
+      \") escaped="$escaped\\\"" ;;
+      *) escaped="$escaped$char" ;;
+    esac
+  done
+  printf '%s' "$escaped"
+}
+
+# fail reports a launcher failure. The guard hooks must never block a tool
+# call because the launcher itself broke: they warn the user via
+# systemMessage and exit 0. subagent-start stays silent; doctor fails hard.
+fail() {
+  printf 'megapowers hook: %s\n' "$1" >&2
+  case "$hook_name" in
+    deny-destructive|session-start)
+      printf '{"systemMessage":"megapowers: destructive-command guard is inactive (%s). Run megapowers-doctor for the fix."}\n' "$(json_escape "$1")"
+      exit 0
+      ;;
+    subagent-start)
+      exit 0
+      ;;
+  esac
   exit 1
 }
-plugin_dir="$(CDPATH='' cd -- "$hook_dir/.." && pwd)" || {
-  printf 'megapowers hook: cannot resolve plugin directory\n' >&2
-  exit 1
-}
-platform_os="$(uname -s)" || {
-  printf 'megapowers hook: cannot resolve operating system\n' >&2
-  exit 1
-}
-platform_arch="$(uname -m)" || {
-  printf 'megapowers hook: cannot resolve architecture\n' >&2
-  exit 1
-}
+
+hook_dir="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)" || fail "cannot resolve hook directory"
+plugin_dir="$(CDPATH='' cd -- "$hook_dir/.." && pwd)" || fail "cannot resolve plugin directory"
+platform_os="$(uname -s)" || fail "cannot resolve operating system"
+platform_arch="$(uname -m)" || fail "cannot resolve architecture"
 case "$platform_os:$platform_arch" in
-  *[!A-Za-z0-9_.:-]*)
-    printf 'megapowers hook: unsafe platform identifier\n' >&2
-    exit 1
-    ;;
+  *[!A-Za-z0-9_.:-]*) fail "unsafe platform identifier" ;;
 esac
 
 # The Go version is part of the cache key: a toolchain upgrade rebuilds the
@@ -191,36 +225,24 @@ elif [ -n "${HOME:-}" ]; then
   cache_base="$HOME/.cache"
 else
   scratch_root="${TMPDIR:-/tmp}"
-  cache_dir="$(mktemp -d "$scratch_root/megapowers-hooks.XXXXXX")" || {
-    printf 'megapowers hook: cannot create private temporary hook cache\n' >&2
-    exit 1
-  }
+  cache_dir="$(mktemp -d "$scratch_root/megapowers-hooks.XXXXXX")" || fail "cannot create private temporary hook cache"
   ephemeral_cache=1
 fi
 
 if [ "$ephemeral_cache" -eq 0 ]; then
   cache_dir="$cache_base/megapowers-hooks"
   if [ -L "$cache_dir" ]; then
-    printf 'megapowers hook: refusing symlink hook cache: %s\n' "$cache_dir" >&2
-    exit 1
+    fail "refusing symlink hook cache: $cache_dir"
   fi
   if [ -e "$cache_dir" ] && [ ! -d "$cache_dir" ]; then
-    printf 'megapowers hook: hook cache is not a directory: %s\n' "$cache_dir" >&2
-    exit 1
+    fail "hook cache is not a directory: $cache_dir"
   fi
-  mkdir -p -- "$cache_dir" || {
-    printf 'megapowers hook: cannot create hook cache: %s\n' "$cache_dir" >&2
-    exit 1
-  }
+  mkdir -p -- "$cache_dir" || fail "cannot create hook cache: $cache_dir"
   if [ -L "$cache_dir" ]; then
-    printf 'megapowers hook: refusing symlink hook cache: %s\n' "$cache_dir" >&2
-    exit 1
+    fail "refusing symlink hook cache: $cache_dir"
   fi
 fi
-chmod 700 "$cache_dir" || {
-  printf 'megapowers hook: cannot secure hook cache: %s\n' "$cache_dir" >&2
-  exit 1
-}
+chmod 700 "$cache_dir" || fail "cannot secure hook cache: $cache_dir"
 
 cleanup() {
   [ "$ephemeral_cache" -eq 1 ] && rm -rf -- "$cache_dir"
@@ -242,26 +264,21 @@ else
   done
   if [ -z "$runner" ]; then
     if [ "$go_found" -eq 1 ]; then
-      printf 'megapowers hook: cannot build hook runner: cannot read Go version (go env GOVERSION failed)\n' >&2
-    else
-      printf 'megapowers hook: cannot build hook runner: Go 1.25 or newer is required\n' >&2
+      fail "cannot build hook runner: cannot read Go version (go env GOVERSION failed)"
     fi
-    exit 1
+    fail "cannot build hook runner: Go 1.25 or newer is required"
   fi
 fi
 if [ -L "$runner" ]; then
-  printf 'megapowers hook: refusing symlink cached runner: %s\n' "$runner" >&2
-  exit 1
+  fail "refusing symlink cached runner: $runner"
 fi
 if [ -e "$runner" ] && { [ ! -f "$runner" ] || [ ! -x "$runner" ]; }; then
-  printf 'megapowers hook: cached runner is not an executable file: %s\n' "$runner" >&2
-  exit 1
+  fail "cached runner is not an executable file: $runner"
 fi
 
 if [ ! -x "$runner" ]; then
   if ! go_supported "$go_key"; then
-    printf 'megapowers hook: cannot build hook runner: Go 1.25 or newer is required (found %s)\n' "$go_key" >&2
-    exit 1
+    fail "cannot build hook runner: Go 1.25 or newer is required (found $go_key)"
   fi
   # Prefer the user's normal Go build cache so a cold build reuses the
   # compiled standard library; fall back to a private cache only when the
@@ -282,20 +299,15 @@ if [ ! -x "$runner" ]; then
     "$hook_dir/hook_runner.go" "$hook_dir/deny_destructive.go" "$hook_dir/output_style.go" \
     "$hook_dir/gate_context.go" "$hook_dir/doctor.go"; then
     rm -f -- "$tmp_runner"
-    printf 'megapowers hook: cannot build cached hook runner\n' >&2
-    exit 1
+    fail "cannot build cached hook runner"
   fi
   if ! mv -f -- "$tmp_runner" "$runner"; then
     rm -f -- "$tmp_runner"
     if [ ! -x "$runner" ] || [ -L "$runner" ]; then
-      printf 'megapowers hook: cannot install cached hook runner\n' >&2
-      exit 1
+      fail "cannot install cached hook runner"
     fi
   fi
-  chmod 700 "$runner" || {
-    printf 'megapowers hook: cannot secure cached hook runner\n' >&2
-    exit 1
-  }
+  chmod 700 "$runner" || fail "cannot secure cached hook runner"
 fi
 
 export MEGAPOWERS_PLUGIN_ROOT="$plugin_dir" MEGAPOWERS_HOOK_CACHE_DIR="$cache_dir"

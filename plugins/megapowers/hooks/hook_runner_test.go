@@ -269,10 +269,7 @@ func TestLauncherRejectsSymlinkCache(t *testing.T) {
 	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
 	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
 	cmd.Env = append(os.Environ(), "MEGAPOWERS_HOOK_CACHE="+base)
-	output, err := cmd.CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "refusing symlink hook cache") {
-		t.Fatalf("launcher error = %v, output = %q, want symlink rejection", err, output)
-	}
+	expectLauncherWarning(t, cmd, "refusing symlink hook cache: "+filepath.Join(base, "megapowers-hooks"))
 }
 
 func TestLauncherRejectsSymlinkRunner(t *testing.T) {
@@ -289,10 +286,7 @@ func TestLauncherRejectsSymlinkRunner(t *testing.T) {
 	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
 	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
 	cmd.Env = append(os.Environ(), "MEGAPOWERS_HOOK_CACHE="+base)
-	output, err := cmd.CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "refusing symlink cached runner") {
-		t.Fatalf("launcher error = %v, output = %q, want runner symlink rejection", err, output)
-	}
+	expectLauncherWarning(t, cmd, "refusing symlink cached runner: "+runner)
 }
 
 func TestLauncherHandlesPluginPathWithSpaces(t *testing.T) {
@@ -380,10 +374,7 @@ func TestLauncherRefusesToBuildWithUnsupportedGo(t *testing.T) {
 	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
 	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
 	cmd.Env = append(environmentWithout("PATH", "MEGAPOWERS_HOOK_CACHE"), "PATH="+binDir+":"+os.Getenv("PATH"), "MEGAPOWERS_HOOK_CACHE="+cache)
-	output, err := cmd.CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "Go 1.25 or newer is required") || !strings.Contains(string(output), "go1.24.3") || strings.Contains(string(output), "must not run") {
-		t.Fatalf("launcher error = %v, output = %q, want explicit refusal naming the found version", err, output)
-	}
+	expectLauncherWarning(t, cmd, "cannot build hook runner: Go 1.25 or newer is required (found go1.24.3)")
 	if binaries, _ := filepath.Glob(filepath.Join(cache, "megapowers-hooks", "megapowers-hook-*")); len(binaries) != 0 {
 		t.Fatalf("launcher cached a runner from an unsupported Go: %v", binaries)
 	}
@@ -499,10 +490,7 @@ func TestLauncherExplainsUnreadableGoVersion(t *testing.T) {
 	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
 	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
 	cmd.Env = append(environmentWithout("PATH", "MEGAPOWERS_HOOK_CACHE"), "PATH="+binDir+":"+os.Getenv("PATH"), "MEGAPOWERS_HOOK_CACHE="+t.TempDir())
-	output, err := cmd.CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "cannot read Go version") || strings.Contains(string(output), "1.25 or newer is required") {
-		t.Fatalf("launcher error = %v, output = %q, want a version-read failure, not a version requirement", err, output)
-	}
+	expectLauncherWarning(t, cmd, "cannot build hook runner: cannot read Go version (go env GOVERSION failed)")
 }
 
 func TestLauncherDoctorSubcommand(t *testing.T) {
@@ -588,30 +576,6 @@ func runnerSourceHash(t *testing.T) string {
 	return fmt.Sprintf("%x", hash.Sum(nil))[:16]
 }
 
-func TestLauncherFailsClearlyWithoutGoOrCache(t *testing.T) {
-	binDir := t.TempDir()
-	for _, name := range []string{"chmod", "dirname", "mkdir", "uname"} {
-		path, err := exec.LookPath(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink(path, filepath.Join(binDir, name)); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	cmd := exec.Command("/bin/bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
-	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
-	cmd.Env = []string{
-		"PATH=" + binDir,
-		"MEGAPOWERS_HOOK_CACHE=" + t.TempDir(),
-	}
-	output, err := cmd.CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "Go 1.25 or newer is required") {
-		t.Fatalf("launcher error = %v, output = %q, want explicit Go requirement", err, output)
-	}
-}
-
 func commandOutput(t *testing.T, name string, args ...string) string {
 	t.Helper()
 	output, err := exec.Command(name, args...).Output()
@@ -643,4 +607,86 @@ func environmentWithout(keys ...string) []string {
 		}
 	}
 	return result
+}
+
+// expectLauncherWarning asserts the non-blocking failure contract: exit 0,
+// stdout holds exactly one JSON object whose only key is systemMessage naming
+// the reason, and stderr still carries the diagnostic.
+func expectLauncherWarning(t *testing.T, cmd *exec.Cmd, reason string) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("launcher must exit 0 on its own failure: %v\nstdout=%q\nstderr=%q", err, stdout.String(), stderr.String())
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil || strings.Count(strings.TrimSpace(stdout.String()), "\n") != 0 {
+		t.Fatalf("stdout must be one JSON object: %v\n%q", err, stdout.String())
+	}
+	message, _ := parsed["systemMessage"].(string)
+	want := "megapowers: destructive-command guard is inactive (" + reason + "). Run megapowers-doctor for the fix."
+	if len(parsed) != 1 || message != want {
+		t.Fatalf("systemMessage = %q (keys %d), want %q", message, len(parsed), want)
+	}
+	if strings.Contains(stdout.String(), "permissionDecision") {
+		t.Fatalf("warning must not carry a permission decision: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "megapowers hook: "+reason) {
+		t.Fatalf("stderr lost the diagnostic: %q", stderr.String())
+	}
+}
+
+func noGoLauncher(t *testing.T, hook string) *exec.Cmd {
+	t.Helper()
+	binDir := t.TempDir()
+	for _, name := range []string{"chmod", "dirname", "mkdir", "uname"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(path, filepath.Join(binDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("/bin/bash", filepath.Join(packageDir(t), "run-hook.cmd"), hook)
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	cmd.Env = []string{"PATH=" + binDir, "MEGAPOWERS_HOOK_CACHE=" + t.TempDir()}
+	return cmd
+}
+
+func TestLauncherWarnsWithoutGoOrCache(t *testing.T) {
+	for _, hook := range []string{"deny-destructive", "session-start"} {
+		t.Run(hook, func(t *testing.T) {
+			expectLauncherWarning(t, noGoLauncher(t, hook), "cannot build hook runner: Go 1.25 or newer is required")
+		})
+	}
+}
+
+func TestLauncherSubagentStartStaysSilentWithoutGoOrCache(t *testing.T) {
+	output, err := noGoLauncher(t, "subagent-start").Output()
+	if err != nil || len(output) != 0 {
+		t.Fatalf("subagent-start on launcher failure: err=%v stdout=%q, want silent exit 0", err, output)
+	}
+}
+
+func TestLauncherDoctorStillFailsWithoutGoOrCache(t *testing.T) {
+	output, err := noGoLauncher(t, "doctor").CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "Go 1.25 or newer is required") || strings.Contains(string(output), "systemMessage") {
+		t.Fatalf("doctor keeps a hard failure: err=%v output=%q", err, output)
+	}
+}
+
+func TestLauncherWarnsOnBuildFailure(t *testing.T) {
+	binDir := t.TempDir()
+	fakeGo := "#!/bin/sh\n" +
+		"if [ \"$1\" = env ] && [ \"$2\" = GOVERSION ]; then echo go1.25.0; exit 0; fi\n" +
+		"if [ \"$1\" = env ] && [ \"$2\" = GOCACHE ]; then echo off; exit 0; fi\n" +
+		"echo 'compile exploded' >&2; exit 2\n"
+	if err := os.WriteFile(filepath.Join(binDir, "go"), []byte(fakeGo), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	cmd.Env = append(environmentWithout("PATH", "MEGAPOWERS_HOOK_CACHE"), "PATH="+binDir+":"+os.Getenv("PATH"), "MEGAPOWERS_HOOK_CACHE="+t.TempDir())
+	expectLauncherWarning(t, cmd, "cannot build cached hook runner")
 }
