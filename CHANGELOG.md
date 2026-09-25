@@ -5,6 +5,15 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.30.1 - 2026-09-26
+
+### Changed
+
+- When the hook launcher cannot run the guard, for example without Go 1.25 or
+  with an unusable cache, it shows a `systemMessage` warning that names the
+  reason and `megapowers-doctor` instead of a generic hook error. The command
+  still runs.
+
 ## 0.30.0 - 2026-09-26
 
 ### Added
