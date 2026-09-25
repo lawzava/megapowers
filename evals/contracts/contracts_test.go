@@ -68,6 +68,42 @@ func requireBrokerBubblewrap(t *testing.T, repo string) {
 	t.Skipf("bubblewrap cannot create the broker's required isolated namespaces, including --unshare-net (rc=%d): %s", code, detail)
 }
 
+// shortSubprocessTMPDIR returns an isolated, short-path scratch directory
+// under os.TempDir() (honoring the ambient TMPDIR) for a subprocess that
+// creates Unix sockets. t.TempDir()'s nested "TestName<random>/NNN" layout
+// easily exceeds the ~100-byte AF_UNIX sun_path bound when the ambient
+// TMPDIR is itself long, so this avoids that extra nesting instead of
+// compounding it.
+func shortSubprocessTMPDIR(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "mpc-")
+	if err != nil {
+		t.Skipf("cannot create a short subprocess TMPDIR: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+// skipOnKnownSandboxDenial distinguishes a subprocess failure caused by this
+// host's Unix-socket sandboxing (a sandbox that denies socket() with EPERM,
+// or a TMPDIR too long for a Unix socket even in the shortest layout) from a
+// real regression in the tool under test.
+func skipOnKnownSandboxDenial(t *testing.T, label, output string, code int) {
+	t.Helper()
+	if code == 0 {
+		return
+	}
+	lower := strings.ToLower(output)
+	switch {
+	case strings.Contains(lower, "operation not permitted"):
+		t.Skipf("%s: environment denies creating a Unix socket (EPERM): %s", label, output)
+	case strings.Contains(lower, "unix-socket safety bound"):
+		t.Skipf("%s: TMPDIR is too long for a Unix socket even in the shortest layout: %s", label, output)
+	default:
+		t.Fatalf("%s failed (%d): %s", label, code, output)
+	}
+}
+
 func read(t *testing.T, root, rel string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
@@ -138,6 +174,18 @@ func TestRunAllReporting(t *testing.T) {
 	rows := filepath.Join(t.TempDir(), "results.jsonl")
 	output, code := command(t, repo, nil, "go", "run", "./evals/cmd/evaltool", "run-all", "--json", rows)
 	if code != 0 {
+		// run-all only records a pass/fail verdict per selftest (plus a trace
+		// hash) and drops the raw subprocess output, so an environment-caused
+		// failure (long TMPDIR, sandboxed socket() EPERM) is indistinguishable
+		// from a real regression at this level. If installed-ab is the sole
+		// failure, reproduce it directly to recover diagnosable output before
+		// deciding whether to skip.
+		if strings.Contains(output, "failed: installed-ab-runner-selftest\n") {
+			diag, diagCode := command(t, repo, []string{"TMPDIR=" + shortSubprocessTMPDIR(t)}, "go", "run", "./evals/studies/installed-ab", "--selftest")
+			if diagCode != 0 {
+				skipOnKnownSandboxDenial(t, "installed-ab selftest (reproduced after run-all failure)", diag, diagCode)
+			}
+		}
 		t.Fatalf("deterministic suite failed: %s", output)
 	}
 	data, err := os.ReadFile(rows)
@@ -158,10 +206,10 @@ func TestRunAllReporting(t *testing.T) {
 		}
 		ids[row["case_id"].(string)] = true
 	}
-	if len(decoded) != 6 || len(ids) != 6 {
-		t.Errorf("run-all emitted %d rows and %d unique ids, want 6", len(decoded), len(ids))
+	if len(decoded) != 4 || len(ids) != 4 {
+		t.Errorf("run-all emitted %d rows and %d unique ids, want 4", len(decoded), len(ids))
 	}
-	if !regexp.MustCompile(`== evals: 6 passed, 0 failed, 0 indeterminate, 0 harness errors ==`).MatchString(output) {
+	if !regexp.MustCompile(`== evals: 4 passed, 0 failed, 0 indeterminate, 0 harness errors ==`).MatchString(output) {
 		t.Errorf("unexpected summary:\n%s", output)
 	}
 	if score, code := command(t, repo, nil, "go", "run", "./evals/score.go", "--strict", rows); code != 0 || !strings.Contains(score, "## Deterministic regressions") {
@@ -316,7 +364,7 @@ func TestScoreActivation(t *testing.T) {
 
 func TestSubprocessBounds(t *testing.T) {
 	repo := root(t)
-	for _, rel := range []string{"evals/studies/pr-replay/replay.go", "evals/studies/installed-ab/run.go", "evals/studies/trigger-recall/run.go"} {
+	for _, rel := range []string{"evals/studies/installed-ab/run.go", "evals/studies/trigger-recall/run.go"} {
 		body := read(t, repo, rel)
 		for _, marker := range []string{"WaitDelay", "10485760"} {
 			if !strings.Contains(body, marker) {
@@ -333,14 +381,15 @@ func TestStudyRunnerContracts(t *testing.T) {
 		config           []string
 	}{
 		{"installed-ab", "./evals/studies/installed-ab", "installed-ab selftest: PASS", []string{"--validate-config", "--cases", "evals/studies/installed-ab/cases.json", "--gates", "evals/studies/installed-ab/gates.json"}},
-		{"pr-replay", "./evals/studies/pr-replay", "pr-replay selftest: PASS", []string{"--validate-config", "--cases", "evals/studies/pr-replay/cases.json"}},
-		{"session-observability", "./evals/studies/session-observability", "session-observability selftest: PASS", nil},
 		{"trigger-recall", "./evals/studies/trigger-recall", "trigger-recall selftest: PASS", []string{"--validate-config", "--cases", "evals/studies/trigger-recall/cases.json", "--gates", "evals/studies/trigger-recall/gates.json"}},
 	}
 	for _, runner := range runners {
 		t.Run(runner.name, func(t *testing.T) {
-			output, code := command(t, repo, []string{"TMPDIR=" + t.TempDir()}, "go", "run", runner.path, "--selftest")
-			if code != 0 || !strings.Contains(output, runner.pass) {
+			output, code := command(t, repo, []string{"TMPDIR=" + shortSubprocessTMPDIR(t)}, "go", "run", runner.path, "--selftest")
+			if code != 0 {
+				skipOnKnownSandboxDenial(t, runner.name+" selftest", output, code)
+			}
+			if !strings.Contains(output, runner.pass) {
 				t.Fatalf("selftest failed (%d): %s", code, output)
 			}
 			if runner.config != nil {
@@ -367,8 +416,11 @@ func TestBrokerContract(t *testing.T) {
 		}
 	}
 	requireBrokerBubblewrap(t, repo)
-	output, code := command(t, repo, []string{"TMPDIR=" + t.TempDir()}, "go", "run", "./evals/tools/sandbox-broker", "--selftest")
-	if code != 0 || !strings.Contains(output, "sandbox broker selftest: PASS") {
+	output, code := command(t, repo, []string{"TMPDIR=" + shortSubprocessTMPDIR(t)}, "go", "run", "./evals/tools/sandbox-broker", "--selftest")
+	if code != 0 {
+		skipOnKnownSandboxDenial(t, "broker selftest", output, code)
+	}
+	if !strings.Contains(output, "sandbox broker selftest: PASS") {
 		t.Fatalf("broker selftest failed (%d): %s", code, output)
 	}
 }
@@ -432,7 +484,7 @@ func TestTriggerRecallCorpusPolicy(t *testing.T) {
 
 func TestRunnerSourcesExcludeCredentialCopying(t *testing.T) {
 	repo := root(t)
-	for _, rel := range []string{"evals/studies/installed-ab/run.go", "evals/studies/pr-replay/replay.go", "evals/studies/trigger-recall/run.go", "scripts/internal/maintain/install_smoke.go"} {
+	for _, rel := range []string{"evals/studies/installed-ab/run.go", "evals/studies/trigger-recall/run.go", "scripts/internal/maintain/install_smoke.go"} {
 		body := read(t, repo, rel)
 		for _, forbidden := range []string{".credentials.json", "auth.json", "copyCredential", "dangerously-skip-permissions"} {
 			if strings.Contains(body, forbidden) {

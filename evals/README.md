@@ -1,6 +1,6 @@
 # megapowers evals
 
-The eval stack answers four different questions. Do not promote evidence from
+The eval stack answers three different questions. Do not promote evidence from
 one layer into another.
 
 | Layer | Question | Credentials | Release role |
@@ -8,15 +8,9 @@ one layer into another.
 | Deterministic regressions | Do manifests, hooks, tools, schemas, and runners work? | No | Required PR gate |
 | Trigger recall | Does the shipped trigger surface activate the right skill, and only it? | Yes | Enforced for Claude; report-only for Codex |
 | Installed-plugin A/B | Does this exact plugin revision change target behavior? | Yes | Optional diagnostic evidence |
-| PR replay | Can the installed plugin improve hidden-test correctness on pinned real changes? | Yes | Report-only |
 
 Exact-tag install smoke runs after publication and proves delivery from the
 public ref. It is a delivery check, not behavioral evidence.
-
-The maintainer-only session observability study accepts explicit normalized
-files and emits content-minimized aggregate diagnostics. It is neither a shipped
-skill nor release evidence. See
-[`studies/session-observability/`](./studies/session-observability/).
 
 ## Deterministic regressions
 
@@ -81,21 +75,11 @@ outcomes; it does not gate releases or establish general model improvement. The
 [`installed-plugin A/B` study](./studies/installed-ab/README.md) owns its
 commands, cases, thresholds, resume rules, broker contract, and publish boundary.
 
-## PR replay
-
-PR replay starts an actor from a pinned base commit, withholds the historical
-patch and hidden oracle files, then uses the declared correctness command.
-Credentialed execution stays disabled until the runner adopts broker schema
-`2`. PR replay remains report-only. The
-[`PR replay` study](./studies/pr-replay/README.md) owns its command, case schema,
-isolation contract, and verdict rules.
-
 ## Artifact policy
 
 Credentialed studies require a reviewed, hash-pinned broker. The repository's
 [`sandbox broker`](tools/sandbox-broker/README.md) implements schema `2` for
-installed A/B and trigger recall on Linux. PR replay still requires migration
-from schema `1`.
+installed A/B and trigger recall on Linux.
 
 Share only each study's sanitized bundle:
 

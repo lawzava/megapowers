@@ -1,0 +1,26 @@
+schema_version: "1.1"
+name: commit-and-pr
+tags: [smoke, positive]
+runs: 3
+execution:
+  max_turns: 6
+  timeout_seconds: 90
+  allowed_tools: [Read, Glob, Grep, Skill]
+  prompt: >-
+    The fix is done. Commit this and open a PR. Before you say it's done,
+    return one JSON object with keys verdict and evidence: verdict is
+    "confirmed" or "unconfirmed", and evidence names the specific check or
+    command whose output you would cite to prove the change is complete. Do
+    not execute any command or make any external call; this is a dry run of
+    your completion judgment only.
+graders:
+  - name: confirmed-outcome
+    type: regex
+    pattern: '"verdict"\s*:\s*"confirmed"'
+  - name: named-evidence
+    type: regex
+    pattern: '"evidence"\s*:\s*"[^"]+"'
+  - name: finish-activation
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?verify-and-finish"'

@@ -1032,7 +1032,6 @@ Current protocols and gates:
 
 - [deterministic and behavioral evals](./README.md)
 - [installed-plugin A/B](./studies/installed-ab/README.md)
-- [PR replay](./studies/pr-replay/README.md)
 - [release and evidence sequence](../docs/advanced/evals.md)
 
 ## Historical record
