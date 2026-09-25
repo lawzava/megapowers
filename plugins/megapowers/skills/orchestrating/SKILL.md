@@ -42,7 +42,8 @@ cross-provider risk through `independent-review`, and effects through
 
 Preflight tools, authentication, permissions, and write authority. Brief the
 outcome, bounded and disjoint ownership, constraints, oracle, prohibited scope,
-return condition, and nested-delegation limit. Shared guidance has one writer;
+return condition, nested-delegation limit, and an advisory time budget; keep
+a hard timeout where one is needed. Shared guidance has one writer;
 shared writes and Git stay lead-owned.
 
 For non-trivial routing, honor an operator-selected access workflow, including

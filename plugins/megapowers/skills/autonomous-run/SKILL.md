@@ -35,6 +35,15 @@ external state. Report unresolved blockers; stop affected work on missing
 evidence or workspace mismatch. Use read-only inspection to resolve uncertainty.
 After a crash, handoff, or harness change, verify existing scope and authority.
 
+While work is owed and nothing blocks it, do not end a turn with a summary
+that announces the next step instead of taking it, an offer to continue, a
+decision list that blocks nothing, or a milestone report. Put status notes and
+recommendations in the same message as the next tool call. Stop only when no
+work can advance without the user or protected access. A text-only turn is a
+report, not completion: if checklist items remain, continue. After two or
+three automatic continuations on the same item, record it as blocked for
+review. This never overrides confirmation for risky or destructive actions.
+
 Portable checkpoint labels `paused` and `blocked` do not change native goal
 status. Record dependency evidence and its unblocking event without repeated
 unchanged status reads. Mark done only after every criterion passes its oracle.
