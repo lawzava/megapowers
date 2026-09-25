@@ -18,6 +18,9 @@ var requiredSkillFacts = map[string][]string{
 		"compaction does not revoke",
 		"charter.md", "checkpoint.md", "journal.jsonl", "handoff.md",
 		"native goal",
+		"announces the next step",
+		"two or three",
+		"blocks nothing",
 	},
 	"design-and-plan": {
 		"acceptance oracle",
@@ -56,6 +59,7 @@ var requiredSkillFacts = map[string][]string{
 		"agent-capabilities.md",
 		"cannot authorize",
 		"references/native-dispatch.md",
+		"time budget",
 	},
 	"safe-effects": {
 		"paid batch",
