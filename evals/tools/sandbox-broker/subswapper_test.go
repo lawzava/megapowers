@@ -84,6 +84,45 @@ func requireBrokerBubblewrap(t *testing.T) {
 	t.Skipf("bubblewrap cannot create the broker's required isolated namespaces, including --unshare-net (rc=%d): %s", result.rc, detail)
 }
 
+// newTestSocketPath returns a short-path Unix socket location under
+// os.TempDir() (honoring TMPDIR), instead of the caller's t.TempDir(), whose
+// nested "TestName<random>/NNN" layout easily exceeds the ~100-byte
+// AF_UNIX sun_path bound when TMPDIR itself is long. It skips the test with
+// a clear message when even the shortest layout does not fit, rather than
+// failing on an environment limitation.
+func newTestSocketPath(t *testing.T, name string) string {
+	t.Helper()
+	directory, err := newPrivateSocketDirectory()
+	if err != nil {
+		t.Skipf("cannot create a short socket directory under TMPDIR: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	socket := filepath.Join(directory, name)
+	if err := validateSocketPath(socket); err != nil {
+		t.Skipf("TMPDIR is too long for a Unix socket even in the shortest layout: %v", err)
+	}
+	return socket
+}
+
+// skipOnSocketEnvironmentDenial distinguishes an environment that denies
+// creating a Unix socket listener (EPERM, observed under some sandboxes)
+// from a real defect. Call it with the error from starting a Unix listener;
+// it skips the test on EPERM and otherwise fails it.
+func skipOnSocketEnvironmentDenial(t *testing.T, action string, err error) {
+	t.Helper()
+	if err == nil {
+		return
+	}
+	// errors.Is(err, syscall.EPERM) only works while the syscall error is
+	// still wrapped; some callers (e.g. runCodexAppServer) flatten errors to
+	// a redacted string before returning them, so fall back to matching the
+	// EPERM error text those strings still carry.
+	if errors.Is(err, syscall.EPERM) || strings.Contains(err.Error(), syscall.EPERM.Error()) {
+		t.Skipf("environment denies %s (EPERM): %v", action, err)
+	}
+	t.Fatalf("%s: %v", action, err)
+}
+
 func fakeClaudeFollowupGate() int {
 	reader := bufio.NewReader(os.Stdin)
 	first, err := reader.ReadBytes('\n')
@@ -319,14 +358,10 @@ func TestClaudeFollowupInputWaitsForRootAndForwardedWork(t *testing.T) {
 	}))
 	defer upstream.Close()
 	proxy, err := startCredentialProxy("claude", authSubswapper, "host-only-capability", upstream.URL, filepath.Join(brokerDirectory, "proxy.sock"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	skipOnSocketEnvironmentDenial(t, "starting the credential proxy", err)
 	defer proxy.close()
 	receipts, err := startReceiptCollector(req.Project, filepath.Join(brokerDirectory, receiptSocketName), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 	defer receipts.close()
 	binary, err := os.Executable()
 	if err != nil {
@@ -636,8 +671,9 @@ func testSubswapperCodexAppServer(t *testing.T, model string) processResult {
 	}
 	defer os.RemoveAll(brokerDirectory)
 	result, err := runCodexAppServer(ctx, req, binary, filepath.Join(req.ActorHome, ".codex"), authentication{mode: "subswapper", credential: secret, accountID: "subswapper-proxy", upstream: upstream.URL}, brokerDirectory, toolchain)
-	if err != nil || result.rc != 0 {
-		t.Fatalf("isolated app-server bridge failed: %v, rc=%d", err, result.rc)
+	skipOnSocketEnvironmentDenial(t, "starting the isolated app-server bridge", err)
+	if result.rc != 0 {
+		t.Fatalf("isolated app-server bridge failed: rc=%d", result.rc)
 	}
 	select {
 	case ok := <-seen:
@@ -969,11 +1005,9 @@ func TestReceiptCollectorRecordsExecutedExitAndState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "calculator.go"), []byte("package calculator\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	socket := filepath.Join(t.TempDir(), "receipts.sock")
+	socket := newTestSocketPath(t, "receipts.sock")
 	collector, err := startReceiptCollector(root, socket, []string{"go", "test", "./..."})
-	if err != nil {
-		t.Fatal(err)
-	}
+	skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 	defer collector.close()
 	if err := os.WriteFile(filepath.Join(root, "calculator_test.go"), []byte("package calculator\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -990,11 +1024,9 @@ func TestReceiptCollectorRecordsExecutedExitAndState(t *testing.T) {
 
 func TestReceiptCollectorBindsInvocationToOracle(t *testing.T) {
 	root := t.TempDir()
-	socket := filepath.Join(t.TempDir(), "receipts.sock")
+	socket := newTestSocketPath(t, "receipts.sock")
 	collector, err := startReceiptCollector(root, socket, []string{"go", "test", "./..."})
-	if err != nil {
-		t.Fatal(err)
-	}
+	skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 	defer collector.close()
 	previousDirectory, err := os.Getwd()
 	if err != nil {
@@ -1036,9 +1068,7 @@ func TestReceiptCollectorMatchesSinglePackageGoShorthand(t *testing.T) {
 	}
 	defer os.RemoveAll(socketDirectory)
 	collector, err := startReceiptCollector(root, filepath.Join(socketDirectory, "receipts.sock"), []string{"go", "test", "./..."})
-	if err != nil {
-		t.Fatal(err)
-	}
+	skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 	defer collector.close()
 	previousDirectory, err := os.Getwd()
 	if err != nil {
@@ -1084,9 +1114,7 @@ func TestReceiptCollectorMarksConcurrentMutationUnstable(t *testing.T) {
 	}
 	defer os.RemoveAll(socketDirectory)
 	collector, err := startReceiptCollector(root, filepath.Join(socketDirectory, receiptSocketName), []string{"go", "test", "./..."})
-	if err != nil {
-		t.Fatal(err)
-	}
+	skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 	defer collector.close()
 	connection, err := net.DialUnix("unix", nil, collector.listener.Addr().(*net.UnixAddr))
 	if err != nil {
@@ -1120,10 +1148,8 @@ func TestReceiptCollectorMarksConcurrentMutationUnstable(t *testing.T) {
 
 func TestReceiptCollectorSealRejectsActiveCommand(t *testing.T) {
 	root := t.TempDir()
-	collector, err := startReceiptCollector(root, filepath.Join(t.TempDir(), "receipts.sock"), []string{"go", "test", "./..."})
-	if err != nil {
-		t.Fatal(err)
-	}
+	collector, err := startReceiptCollector(root, newTestSocketPath(t, "receipts.sock"), []string{"go", "test", "./..."})
+	skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 	defer collector.close()
 	connection, err := net.DialUnix("unix", nil, collector.listener.Addr().(*net.UnixAddr))
 	if err != nil {
@@ -1161,7 +1187,7 @@ func TestReceiptCollectorCloseSynchronizesAcceptRegistration(t *testing.T) {
 		collector, err := startReceiptCollector(t.TempDir(), filepath.Join(socketDirectory, "r.sock"), []string{"go", "test", "./..."})
 		if err != nil {
 			_ = os.RemoveAll(socketDirectory)
-			t.Fatal(err)
+			skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 		}
 		dialsDone := make(chan struct{})
 		go func() {
@@ -1192,10 +1218,8 @@ func TestReceiptCollectorCloseSynchronizesAcceptRegistration(t *testing.T) {
 
 func TestReceiptCollectorRejectsActorBridgePeer(t *testing.T) {
 	root := t.TempDir()
-	collector, err := startReceiptCollector(root, filepath.Join(t.TempDir(), "receipts.sock"), []string{"go", "test", "./..."})
-	if err != nil {
-		t.Fatal(err)
-	}
+	collector, err := startReceiptCollector(root, newTestSocketPath(t, "receipts.sock"), []string{"go", "test", "./..."})
+	skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 	defer collector.close()
 	ctx, cancel := context.WithCancel(context.Background())
 	bridge := exec.CommandContext(ctx, os.Args[0], "--actor-bridge", collector.listener.Addr().String(), "/bin/sleep", "5")
@@ -1321,9 +1345,7 @@ func TestReceiptInstrumentationObservesNestedCompoundFailure(t *testing.T) {
 	}
 	defer os.RemoveAll(socketDirectory)
 	collector, err := startReceiptCollector(root, filepath.Join(socketDirectory, receiptSocketName), []string{"go", "test", "./..."})
-	if err != nil {
-		t.Fatal(err)
-	}
+	skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 	defer collector.close()
 	broker, err := os.Executable()
 	if err != nil {
@@ -1368,9 +1390,7 @@ func TestReceiptInstrumentationObservesRuntimeGoPath(t *testing.T) {
 	}
 	defer os.RemoveAll(socketDirectory)
 	collector, err := startReceiptCollector(root, filepath.Join(socketDirectory, receiptSocketName), []string{"go", "test", "./..."})
-	if err != nil {
-		t.Fatal(err)
-	}
+	skipOnSocketEnvironmentDenial(t, "starting the receipt collector", err)
 	defer collector.close()
 	broker, err := os.Executable()
 	if err != nil {

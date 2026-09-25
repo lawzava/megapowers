@@ -620,7 +620,7 @@ func hookCommandsUseWrapper(path string) bool {
 		}
 	}
 	walk(value)
-	if len(commands) != 2 {
+	if len(commands) != 3 {
 		return false
 	}
 	for _, cmd := range commands {

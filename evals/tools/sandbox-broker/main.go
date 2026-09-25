@@ -890,7 +890,7 @@ func validateSocketPath(path string) error {
 }
 
 func newPrivateSocketDirectory() (string, error) {
-	directory, err := os.MkdirTemp("/tmp", "mpb-")
+	directory, err := os.MkdirTemp(os.TempDir(), "mpb-")
 	if err != nil {
 		return "", err
 	}
@@ -1473,7 +1473,7 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 	if auth.mode == authSubswapper {
 		egress, err := startCredentialProxy("codex", auth.mode, auth.credential, auth.upstream, proxySocket)
 		if err != nil {
-			return processResult{rc: 125, duration: time.Since(started)}, errors.New("start Codex Subswapper bridge")
+			return processResult{rc: 125, duration: time.Since(started)}, fmt.Errorf("start Codex Subswapper bridge: %w", err)
 		}
 		defer egress.close()
 		// Only this per-actor capability crosses the app-server stdin boundary.
@@ -5192,7 +5192,7 @@ printf '%s\n' '{"id":1,"result":{}}'`, 1)
 	if err := os.WriteFile(fake, []byte(unexpectedScript), 0o700); err != nil {
 		return err
 	}
-	unexpectedRoot, err := os.MkdirTemp("/tmp", "mp-id-")
+	unexpectedRoot, err := os.MkdirTemp(os.TempDir(), "mp-id-")
 	if err != nil {
 		return err
 	}

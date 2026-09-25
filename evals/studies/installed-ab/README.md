@@ -10,7 +10,7 @@ Credential-free validation:
 
 ```bash
 go run evals/studies/installed-ab/run.go --selftest
-bash evals/studies/tests/installed-ab-contract.test.sh
+go test ./evals/contracts -run 'TestStudyRunnerContracts/installed-ab' -count=1
 ```
 
 Real runs are always explicit. They never fall back to a fake actor:
@@ -25,7 +25,11 @@ go run evals/studies/installed-ab/run.go --run --credentialed \
 ```
 
 For a diagnostic pilot, use `--paired-runs 1 --actor-timeout 5m`. The current
-23-case catalog runs 46 executions per harness. Run Claude and Codex in parallel
+`cases.json` catalog has 23 cases and runs 46 executions per harness at
+`--paired-runs 1` (each case executes once as treatment and once as control).
+A separate `holdout.json` catalog holds 6 cases frozen for out-of-sample
+checks; `--cases` selects one committed catalog or the other, never both in
+the same run, so their counts do not add. Run Claude and Codex in parallel
 with separate output directories. One pair cannot satisfy study acceptance or
 establish efficacy. Compare `outcome_success` across arms; report treatment
 activation failures separately. To route both harnesses through Subswapper,

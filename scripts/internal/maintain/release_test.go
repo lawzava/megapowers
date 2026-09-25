@@ -50,7 +50,17 @@ func runFakeMaintainerProcess() int {
 			if os.Getenv("MEGAPOWERS_MAINTAIN_FAIL_SCORE") == "1" {
 				return 1
 			}
+		} else if strings.Contains(joined, "check-freshness") {
+			appendLog("freshness-check")
+		} else if strings.Contains(joined, "security-lint") {
+			appendLog("security-lint")
+		} else if strings.Contains(joined, "vet ./...") {
+			appendLog("vet")
+		} else if strings.Contains(joined, "test ./...") {
+			appendLog("gotest")
 		}
+	case "claude":
+		appendLog("claude")
 	}
 	return 0
 }

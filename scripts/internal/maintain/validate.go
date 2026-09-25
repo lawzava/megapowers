@@ -122,11 +122,12 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 	}
 	run(validation{"Go vet", 2 * time.Minute, []string{"go", "vet", "./..."}})
 	run(validation{"full-tree security lint", 60 * time.Second, []string{"go", "run", "./scripts/cmd/security-lint"}})
-	maxAge := os.Getenv("MEGAPOWERS_FRESHNESS_MAX_AGE_DAYS")
-	if maxAge == "" {
-		maxAge = "30"
-	}
-	run(validation{"freshness metadata", 30 * time.Second, []string{"go", "run", "./scripts/cmd/check-freshness", "--max-age-days", maxAge}})
+	// Freshness (docs/harness-support.md review age) is deliberately not part
+	// of this gate: it ages on a calendar, not on content, and would turn
+	// every PR/CI run red on a schedule unrelated to the change under review.
+	// It stays enforced in the scheduled freshness workflow
+	// (.github/workflows/freshness.yml) and in the release gate (runRelease's
+	// gates list, scripts/check-freshness.sh).
 	run(validation{"Go tests", 10 * time.Minute, []string{"go", "test", "./...", "-count=1"}})
 	if executable("claude") {
 		run(validation{"Claude marketplace strict validation", 90 * time.Second, []string{"claude", "plugin", "validate", "--strict", ".claude-plugin/marketplace.json"}})

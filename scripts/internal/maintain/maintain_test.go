@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -99,7 +100,7 @@ func TestInstalledHookSmokeRunsColdWarmAndDenies(t *testing.T) {
 	if err := os.MkdirAll(hooks, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"run-hook.cmd", "hook_runner.go", "deny_destructive.go", "output_style.go"} {
+	for _, name := range []string{"run-hook.cmd", "hook_runner.go", "deny_destructive.go", "output_style.go", "gate_context.go", "doctor.go"} {
 		data, err := os.ReadFile(filepath.Join(repo, "plugins", "megapowers", "hooks", name))
 		if err != nil {
 			t.Fatal(err)
@@ -238,5 +239,61 @@ func TestDeclaredExplicitOnlyPolicy(t *testing.T) {
 		if err := verifyDeclaredExplicitOnly(path); (err == nil) != tt.ok {
 			t.Errorf("verifyDeclaredExplicitOnly(%q) error=%v, want ok=%v", tt.body, err, tt.ok)
 		}
+	}
+}
+
+// TestEnsureGoCacheTrustsAWritableGoDefault pins M4: ensureGoCache must not
+// force every contributor with a normal, writable GOCACHE onto a cold cache
+// under TMPDIR. It should only fall back when go's own default is unset or
+// unwritable.
+func TestEnsureGoCacheTrustsAWritableGoDefault(t *testing.T) {
+	original, had := os.LookupEnv("GOCACHE")
+	if err := os.Unsetenv("GOCACHE"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if had {
+			os.Setenv("GOCACHE", original)
+		} else {
+			os.Unsetenv("GOCACHE")
+		}
+	})
+	out, err := exec.Command("go", "env", "GOCACHE").Output()
+	if err != nil {
+		t.Skipf("cannot determine go's default GOCACHE: %v", err)
+	}
+	want := strings.TrimSpace(string(out))
+	if want == "" || !goCacheWritable(want) {
+		t.Skip("go's default GOCACHE is not writable in this environment")
+	}
+	if err := ensureGoCache(); err != nil {
+		t.Fatalf("ensureGoCache: %v", err)
+	}
+	// ensureGoCache should leave GOCACHE untouched (still unset) so go
+	// resolves the same writable default itself, rather than forcing every
+	// contributor onto a cold megapowers-gocache under TMPDIR.
+	if got := os.Getenv("GOCACHE"); got != "" {
+		t.Fatalf("ensureGoCache overrode a writable default GOCACHE (go's own default is %q): got %q", want, got)
+	}
+}
+
+func TestGoCacheWritableAcceptsAWritableDirectory(t *testing.T) {
+	if !goCacheWritable(t.TempDir()) {
+		t.Fatal("expected a writable temp directory to be accepted")
+	}
+}
+
+func TestGoCacheWritableRejectsAnUnwritableParent(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission bits are not enforced for root")
+	}
+	parent := t.TempDir()
+	locked := filepath.Join(parent, "locked")
+	if err := os.Mkdir(locked, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(locked, 0o700) })
+	if goCacheWritable(filepath.Join(locked, "gocache")) {
+		t.Fatal("expected an unwritable parent directory to be rejected")
 	}
 }
