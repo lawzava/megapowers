@@ -17,12 +17,12 @@ the skills tool or a direct file read before you act on the task, and follow
 what it says. Do not claim a skill without loading it.
 `
 
-const helperCodeGuidance = `
-# Code language
+const subagentReportContract = `
+# Report contract
 
-Write all new helper code in Go, including temporary scripts, one-off commands,
-data processing, and file-editing automation. Do not use Python or another
-scripting language for convenience. Use native editing tools for direct edits.
+Lead with the result, then the evidence. Cite file:line or the exact command
+and its output for each load-bearing claim. Keep the report to facts, numbers,
+identifiers, caveats, and open risks: no padding, no em dashes.
 `
 
 func outputStyleEnabled(getenv func(string) string) bool {
