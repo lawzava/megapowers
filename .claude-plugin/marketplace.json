@@ -2,14 +2,14 @@
   "$schema": "https://www.schemastore.org/claude-code-marketplace.json",
   "name": "megapowers",
   "owner": { "name": "lawzava" },
-  "description": "A small, native-first workflow plugin for Claude Code and Codex.",
+  "description": "One native-first workflow plugin for Claude Code and Codex.",
   "plugins": [
     {
       "name": "megapowers",
       "source": "./plugins/megapowers",
-      "description": "Task-level workflow skills, a concise default output style, and a high-confidence destructive-command guard.",
+      "description": "16 task skills (plan, TDD, debug, verify, safe effects, cross-provider review, orchestration), a concise optional output style, a destructive-command tripwire, and a doctor for self-diagnosis. Uses native agents, goals, and permissions; about 1.5k always-loaded tokens.",
       "category": "workflow",
-      "tags": ["workflow", "skills", "safety"]
+      "tags": ["workflow", "skills", "safety", "tdd", "debugging", "verification", "orchestration", "codex"]
     }
   ]
 }

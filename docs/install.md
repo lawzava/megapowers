@@ -31,9 +31,14 @@ Start a fresh session. Ask Claude Code to load `humanizing-prose` and summarize
 its preservation rules. This checks discovery and full skill loading without
 claiming broader behavioral quality.
 
-Select `Megapowers` in `/config` under Output style for concise technical replies.
-The style preserves built-in coding instructions. Select another style to opt
-out while keeping the plugin enabled. Start a new session after changing style.
+The output style is optional and off until selected. Select the
+plugin-qualified value `megapowers:Megapowers` in `/config` under Output style,
+or run `/output-style megapowers:Megapowers`. The resulting setting is
+`"outputStyle": "megapowers:Megapowers"`. The bare value `Megapowers` does not
+resolve to the plugin style. The style preserves built-in coding instructions.
+Select another style to opt out while keeping the plugin enabled. Start a new
+session after changing style, then run `/megapowers:megapowers-doctor` to
+confirm the value in effect.
 
 For a project-scoped install, add `--scope project` to both marketplace and
 install commands. For a local user-only install, use `--scope local`.
@@ -53,10 +58,12 @@ codex plugin list --json
 ```
 
 Start a fresh session, then review and trust the plugin hooks when Codex asks.
-Codex skips both hook features until they are trusted. Once trusted, the startup
-hook applies the shared direct, concise style without editing user config.
-Set `MEGAPOWERS_OUTPUT_STYLE=off` in the environment before launching Codex to
-omit the startup style while keeping the destructive-command guard enabled.
+Codex skips every plugin hook until it is trusted, and records trust against
+the hook's current hash, so a release that changes the hooks asks again. Once
+trusted, the startup hook applies the shared direct, concise style as developer
+context without editing user config. Set `MEGAPOWERS_OUTPUT_STYLE=off` in the
+environment before launching Codex to omit the startup style while keeping the
+destructive-command guard and the skill reminders enabled.
 
 Ask Codex to load `humanizing-prose` and summarize its preservation rules. This
 checks skill discovery separately from the startup style.
@@ -115,49 +122,18 @@ and active caches before asking once for the exact writes. A current install is
 a valid no-op. Preserve the channel already in use and read
 [CHANGELOG.md](../CHANGELOG.md) before changing it.
 
-Before approving a floating update, resolve the latest stable tag to its commit
-and compare it with the observed marketplace repository's `release` branch head
-(the default branch only for a registration without a ref). Stop if they
-differ; marketplace refresh follows the branch snapshot and must not install
-unreleased branch state as a stable upgrade. Codex refreshes Git marketplaces
-at startup and prunes superseded plugin caches, so a registration that tracks
-`main` receives unreleased commits and can break sessions that started under
-an older cache path; re-register with `--ref release` if `codex plugin
-marketplace list --json` shows no ref.
-
-Claude Code:
-
-```bash
-claude plugin marketplace update megapowers
-git -C <marketplace-install-location> rev-parse HEAD
-claude plugin update megapowers@megapowers --scope <scope>
-```
-
-Replace `<scope>` with the scope reported by `claude plugin list --json`; do not
-infer or change it during an update. Get `<marketplace-install-location>` from
-`claude plugin marketplace list --json`.
-
-Codex:
-
-```bash
-codex plugin marketplace upgrade megapowers --json
-git -C <marketplace-install-location> rev-parse HEAD
-codex plugin add megapowers@megapowers --json
-```
-
-Marketplace refresh updates Codex's source snapshot; `plugin add` registers the
-new snapshot as the installed cache. Get its marketplace root from
-`codex plugin marketplace list --json`. After either marketplace refresh,
-require the reported `HEAD` to still equal the approved stable commit before
-running `plugin update/add`; otherwise stop with the installed plugin untouched.
-
-Claude's `plugin list --json` reports scope and install path; Codex's reports
-source, enabled state, and version, while its `installedPath` comes from the
-`plugin add --json` result. Compare that exact cache with the target ref. Ignore
-harness-owned `.codex-marketplace-install.json` and `.in_use` markers during
-source-edit and byte-parity checks. Restart before expecting new guidance. Do
-not delete an older cache while a live session may still use it. A pinned local
-checkout changes only when you deliberately replace or update that checkout.
+The exact per-harness refresh and registration commands, the `HEAD` comparison
+against the approved release tag, and the runtime markers to ignore live in one
+place, the skill's
+[channels reference](../plugins/megapowers/skills/upgrading-megapowers/references/channels.md).
+Two rules from it apply to any manual update: a registration without a ref
+tracks `main` and receives unreleased commits, so re-register with `--ref
+release` (Codex) or `@release` (Claude) if the marketplace list shows no ref;
+and after a marketplace refresh, require the reported `HEAD` to equal the
+approved release commit before registering the new snapshot. Restart before
+expecting new guidance. Do not delete an older cache while a live session may
+still use it. A pinned local checkout changes only when you deliberately replace
+or update that checkout.
 
 ## Uninstall
 
@@ -190,3 +166,12 @@ claude plugin validate --strict plugins/megapowers
 These checks validate structure and deterministic regressions. They do not
 measure agent behavior. Optional behavioral studies are described in
 [advanced/evals.md](./advanced/evals.md).
+
+## Diagnose an install
+
+Ask for `megapowers-doctor` (`/megapowers:megapowers-doctor` on Claude Code, or
+the skill name after `$` as the Codex skills list shows it). It runs the
+plugin's deterministic `doctor` command and reports the plugin version and
+root, the harness, the Go toolchain version against the cached runner, the
+Claude `outputStyle` value in effect, whether the hooks are registered, and how
+to check your transcripts for skill loads.

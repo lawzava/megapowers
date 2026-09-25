@@ -58,8 +58,8 @@ The current evidence stack is documented in
 [docs/advanced/evals.md](./docs/advanced/evals.md):
 
 1. deterministic regressions for mechanics;
-2. optional credentialed installed-plugin A/B for comparative behavior;
-3. report-only PR replay for real-project correctness;
+2. trigger recall for trace-proven skill selection;
+3. optional credentialed installed-plugin A/B for comparative behavior;
 4. exact-tag install smoke after publication.
 
 Published rows must identify source, harness, CLI, model, effort, prompt,
@@ -68,11 +68,16 @@ indeterminate, timed-out, or harness-error data fails closed.
 
 ## Release sequence
 
-1. Write the changelog entry and freeze the candidate revision.
+1. Write the changelog entry, set the version, and freeze the candidate
+   revision.
 2. Run deterministic validation.
 3. Run `scripts/release.sh X.Y.Z`; it validates the clean, already-versioned
    candidate without mutating, tagging, or publishing it.
-4. Review the diff, then perform separately authorized tag and publish actions.
-5. Wait for remote CI on the exact revision. The release workflow fast-forwards
-   the `release` branch to the attested tag; installs track that branch.
+4. Review the diff, push the exact revision, and wait for remote CI on it.
+5. With CI green, perform the separately authorized signed tag and GitHub
+   release. The release workflow fast-forwards the `release` branch to the
+   attested tag; installs track that branch.
 6. Run exact-tag install smoke against the public tag.
+
+The same order, with the study boundaries, is in
+[docs/advanced/evals.md](./docs/advanced/evals.md).
