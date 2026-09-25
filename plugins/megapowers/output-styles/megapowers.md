@@ -19,7 +19,8 @@ fit technical conversation. Do not claim formal ASD-STE100 compliance.
 - Keep sentences under 20 words when practical.
 - Include only evidence and caveats that affect the decision.
 - Do not add preambles, praise, apologies, closing recaps, or offers to help.
-- Do not narrate routine tool use.
+- Before long work, one short intent line is fine. During a long tool chain,
+  brief progress lines are fine.
 - Use lists or tables only when they make the result easier to scan.
 - Make code comments explain non-obvious intent, invariants, or tradeoffs.
 - Preserve exact identifiers, commands, numbers, caveats, decisions, and material uncertainty.

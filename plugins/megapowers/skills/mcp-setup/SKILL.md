@@ -17,16 +17,19 @@ Servers register at session start. After any configuration change, restart the
 session before expecting new tools. A tool missing from a live session is not
 evidence of a broken server.
 
-A narrow discovery miss does not prove capability absence; check the configured
-server and supported discovery path.
-
-Match the authentication flow to the execution mode. Browser OAuth completes
-only in an interactive session; a headless or non-interactive session cannot
-finish the grant. Provision a token, complete the grant interactively
+Start with a read-only status check of the configured servers before any login
+attempt. Match the authentication flow to the execution mode. Browser OAuth
+completes only in an interactive session; a headless or non-interactive session
+cannot finish the grant. Provision a token, complete the grant interactively
 beforehand, or route through a proxy command that owns its own authentication.
 Record where the credential lives, and never write it into configuration
 committed to a repository. When inspecting configuration, print the keys,
 never the values.
+
+Attempt re-authentication at most once per server. If it fails, stop: report
+the exact error text and the user action needed (complete the browser grant,
+issue a token with the missing scope, or fix the registration). Do not retry,
+probe other login commands, or substitute a CLI for the server unless asked.
 
 Verify with a fresh probe, not the current session: start a new
 non-interactive session, list the server's tools, and call one read-only tool.

@@ -1811,6 +1811,7 @@ var publicMegapowersSkillNames = [...]string{
 	"humanizing-prose",
 	"independent-review",
 	"mcp-setup",
+	"megapowers-doctor",
 	"memory-hygiene",
 	"orchestrating",
 	"safe-effects",

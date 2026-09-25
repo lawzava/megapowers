@@ -42,18 +42,13 @@ verified behavior; plans prove only planning.
 Describe behavior as Added, Modified, or Removed deltas. Reconcile existing
 specifications with code and tests; a stale specification is not evidence.
 
-Before choosing a format, inspect repository instructions and files for
-baseline requirements and an active change. Detect them independently; a prompt
-that mentions OpenSpec does not establish a repository convention. Use the
-existing specification system and read whichever artifacts exist. Preserve its
-requirement IDs and format. After verification, reconcile deltas into the
-baseline. Archive only under an existing convention and authority.
-
-Without an existing specification system, keep proportional requirements and
-their evidence map inline unless repository convention or the user requires a
-durable artifact. Do not create new directories or scaffolding. Do not run or
-add an OpenSpec CLI or Node dependency. Use plain Markdown and skip a durable
-plan for a small reversible change with clear scope, risks, and oracle.
+Use an existing specification system when the repository has one; preserve its
+requirement IDs and format. When an `openspec/` directory exists, read
+[OpenSpec conventions](references/openspec.md). Without a specification
+system, keep proportional requirements and their evidence map inline unless
+repository convention or the user requires a durable artifact. Do not create
+new directories or scaffolding. Skip a durable plan for a small reversible
+change with clear scope, risks, and oracle.
 
 ## Produce an executable handoff
 

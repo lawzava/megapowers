@@ -266,6 +266,28 @@
       "provenance": "authored 2026-08-30; explaining MCP is not installing or debugging a server"
     },
     {
+      "id": "megapowers-doctor-verbatim",
+      "kind": "verbatim",
+      "expected": "megapowers-doctor",
+      "prompt": "Megapowers is not working in this session: the output style seems missing and no skill fired when I committed. Check the megapowers setup and tell me the exact fix.",
+      "provenance": "audit 2026-09-25: Claude output style silently off 09-05..09-25 with no detection"
+    },
+    {
+      "id": "megapowers-doctor-paraphrase",
+      "kind": "paraphrase",
+      "expected": "megapowers-doctor",
+      "prompt": "Every shell command now prints a megapowers hook error before it runs. Figure out what is wrong with the plugin install and how to repair it.",
+      "provenance": "audit 2026-09-25: a hook runner cached by an old Go failed every Bash call"
+    },
+    {
+      "id": "megapowers-doctor-buried",
+      "kind": "buried",
+      "expected": "megapowers-doctor",
+      "prompt": "Quick one first: what port does config.json declare? Then the real issue: replies got long again and I suspect the megapowers style stopped applying after the last plugin update; diagnose the plugin setup.",
+      "files": { "config.json": "{ \"port\": 8443 }\n" },
+      "provenance": "audit 2026-09-25: verbosity complaints followed the silent style loss"
+    },
+    {
       "id": "memory-hygiene-near-miss",
       "kind": "near-miss",
       "prompt": "Summarize memory/MEMORY.md in two sentences.",

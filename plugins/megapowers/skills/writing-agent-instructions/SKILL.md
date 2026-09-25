@@ -30,8 +30,6 @@ blanket prohibitions, approval gates, fixed workflows, or extra files. Add
 detail only when omitting it caused an observed failure or creates a concrete
 risk.
 
-Write every new deterministic helper or policy tool in Go.
-
 For a skill, read [skill authoring](references/skills.md). For project or
 subfolder guidance, read
 [repository instructions](references/repository-instructions.md). Read both
