@@ -29,7 +29,6 @@ tests. Run the broader suite at task or milestone completion, before claiming su
 
 ## Code judgment
 
-Repository instructions, existing code, and configured project tools are authoritative; skills supply defaults only where the repository is silent.
 Match local idioms, package boundaries, and public contracts unless they
 violate requirements or safety. Leave mechanical style to formatters, linters,
 and tests.

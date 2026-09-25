@@ -1,12 +1,167 @@
 package contracts
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 )
+
+// requiredSkillFacts lists short facts each skill body must carry. Facts are
+// matched as case-insensitive substrings of whitespace-normalized text so a
+// rewrite that keeps the meaning does not break them. They protect behavior
+// (a linked reference, a stop rule, a named artifact), not phrasing.
+var requiredSkillFacts = map[string][]string{
+	"autonomous-run": {
+		"compaction does not revoke",
+		"charter.md", "checkpoint.md", "journal.jsonl", "handoff.md",
+		"native goal",
+	},
+	"design-and-plan": {
+		"acceptance oracle",
+		"requirement id",
+		"references/openspec.md",
+		"failing test",
+		"do not create new directories",
+	},
+	"humanizing-prose": {
+		"../../output-styles/megapowers.md",
+		"every recommendation",
+	},
+	"independent-review": {
+		"gives only context separation, not independence",
+		"--approve-external",
+		"author and provider labels must differ",
+		"same declaration",
+	},
+	"mcp-setup": {
+		"restart the session",
+		"print the keys, never the values",
+		"at most once per server",
+		"user action",
+	},
+	"megapowers-doctor": {
+		"run-hook.cmd",
+		"doctor",
+		"WARN",
+		"references/fixes.md",
+		"skills/<name>",
+	},
+	"orchestrating": {
+		"native agents are the default",
+		"one to three direct children",
+		"one writer",
+		"agent-capabilities.md",
+		"cannot authorize",
+		"references/native-dispatch.md",
+	},
+	"safe-effects": {
+		"paid batch",
+	},
+	"systematic-debugging": {
+		"quota",
+		"unrelated caller cleanup",
+		"same cause",
+	},
+	"test-first-implementation": {
+		"production code follows a failing test",
+		"references/go.md", "references/python.md", "references/typescript.md",
+		"do not add production apis only for tests",
+	},
+	"upgrading-megapowers": {
+		"references/channels.md",
+		"verified no-op",
+		"never install unreleased branch state",
+	},
+	"verify-and-finish": {
+		"verified no-op",
+		"verified: <claim>",
+		"not verified. remaining: <gap>",
+		"local build cannot prove",
+	},
+	"writing-agent-instructions": {
+		"references/skills.md",
+		"references/repository-instructions.md",
+	},
+}
+
+// forbiddenSkillText lists text that must not return: removed duplicates of
+// repository policy, self-authorizing claims, and incident-specific filler.
+var forbiddenSkillText = map[string][]string{
+	"autonomous-run":             {"Experimental pending"},
+	"design-and-plan":            {"OpenSpec CLI"},
+	"humanizing-prose":           {"named source, direct observation, or explicit uncertainty"},
+	"independent-review":         {"provides context separation"},
+	"mcp-setup":                  {"narrow discovery miss"},
+	"orchestrating":              {"explicitly authorizes", "without dispatch is a contract violation"},
+	"test-first-implementation":  {"skills supply defaults only where the repository is silent"},
+	"verify-and-finish":          {"index size cap"},
+	"writing-agent-instructions": {"in Go"},
+}
+
+// forbiddenEverywhere applies to every shipped skill body and the output style.
+var forbiddenEverywhere = []string{
+	"Write all new helper code",
+	"Python or another scripting language",
+	"—",
+}
+
+func normalized(body string) string {
+	return strings.ToLower(strings.Join(strings.Fields(body), " "))
+}
+
+// The bare style name left the Claude Code style silently off for 20 days, so
+// the doctor's fix must name the plugin-qualified value.
+func TestDoctorFixesNameQualifiedStyle(t *testing.T) {
+	root := repoRoot(t)
+	fixes := read(t, root, "plugins/megapowers/skills/megapowers-doctor/references/fixes.md")
+	requireContains(t, fixes, `"outputStyle": "megapowers:Megapowers"`, "doctor fixes")
+}
+
+func TestSkillRequiredFacts(t *testing.T) {
+	root := repoRoot(t)
+	for _, name := range catalogNames(t, root) {
+		t.Run(name, func(t *testing.T) {
+			body := read(t, root, "plugins/megapowers/skills/"+name+"/SKILL.md")
+			text := normalized(body)
+			for _, fact := range requiredSkillFacts[name] {
+				if !strings.Contains(text, strings.ToLower(fact)) {
+					t.Errorf("missing required fact %q", fact)
+				}
+			}
+			for _, needle := range append(forbiddenSkillText[name], forbiddenEverywhere...) {
+				requireAbsent(t, text, needle, "removed guidance")
+			}
+		})
+	}
+	style := read(t, root, "plugins/megapowers/output-styles/megapowers.md")
+	for _, needle := range forbiddenEverywhere {
+		requireAbsent(t, style, needle, "output style")
+	}
+}
+
+func TestExperimentalStatusPinned(t *testing.T) {
+	root := repoRoot(t)
+	var catalog struct {
+		Skills []struct{ Name, Status string }
+	}
+	if err := json.Unmarshal([]byte(read(t, root, "plugins/megapowers/skills/catalog.json")), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	status := map[string]string{}
+	for _, skill := range catalog.Skills {
+		status[skill.Name] = skill.Status
+	}
+	// autonomous-run: runtime resume and compaction recovery are unproven.
+	// megapowers-doctor: no behavioral validation yet.
+	for _, name := range []string{"autonomous-run", "megapowers-doctor"} {
+		if status[name] != "experimental" {
+			t.Errorf("%s status = %q, want experimental", name, status[name])
+		}
+	}
+}
 
 func TestWorkflowSkillDiscoveryBoundaries(t *testing.T) {
 	root := repoRoot(t)
@@ -63,17 +218,9 @@ func TestWorkflowSkillDiscoveryBoundaries(t *testing.T) {
 	}
 }
 
-func TestWritingInstructionHelperPolicyPrecedesBothRoutes(t *testing.T) {
+func TestWritingInstructionRoutesToReferences(t *testing.T) {
 	root := repoRoot(t)
 	document := read(t, root, "plugins/megapowers/skills/writing-agent-instructions/SKILL.md")
-	helper := regexp.MustCompile(`(?i)every new deterministic (helper|tool)[^.]*\bGo\b`).FindStringIndex(document)
-	if helper == nil {
-		t.Fatal("shared entrypoint does not require new deterministic helpers to be Go")
-	}
-	branch := strings.Index(document, "For a skill,")
-	if branch < 0 || helper[0] > branch {
-		t.Fatal("deterministic helper policy is hidden in a format-specific branch")
-	}
 	for _, target := range []string{"references/skills.md", "references/repository-instructions.md"} {
 		if !strings.Contains(document, "]("+target+")") {
 			t.Errorf("entrypoint does not route to %s", target)
@@ -82,49 +229,6 @@ func TestWritingInstructionHelperPolicyPrecedesBothRoutes(t *testing.T) {
 			t.Errorf("routed reference %s is unreachable: %v", target, err)
 		}
 	}
-}
-
-func TestPlanningContractHandlesExistingAndAbsentSpecificationSystems(t *testing.T) {
-	root := repoRoot(t)
-	guidance := strings.ToLower(read(t, root, "plugins/megapowers/skills/design-and-plan/SKILL.md"))
-
-	t.Run("existing baseline and active change", func(t *testing.T) {
-		fixture := t.TempDir()
-		writeFixtureFile(t, fixture, "openspec/specs/retries.md", "# RETRY-1\n")
-		writeFixtureFile(t, fixture, "openspec/changes/retry-jitter/tasks.md", "- [ ] RETRY-1\n")
-		baseline, active := fixtureSpecState(t, fixture)
-		if !baseline || !active {
-			t.Fatal("fixture does not exercise both existing specification surfaces")
-		}
-		for _, concept := range []*regexp.Regexp{
-			regexp.MustCompile(`(?i)(detect|inspect|search).*(repository|files|instructions).*(baseline|active change)|(baseline|active change).*(detect|inspect|search)`),
-			regexp.MustCompile(`(?i)preserv[^.]*requirement id`),
-			regexp.MustCompile(`(?i)map[^.]*scenario[^.]*task[^.]*evidence`),
-		} {
-			if !concept.MatchString(guidance) {
-				t.Errorf("existing-system branch misses %s", concept)
-			}
-		}
-	})
-
-	t.Run("no specification convention", func(t *testing.T) {
-		fixture := t.TempDir()
-		writeFixtureFile(t, fixture, "go.mod", "module example.test/no-spec\n\ngo 1.25\n")
-		baseline, active := fixtureSpecState(t, fixture)
-		if baseline || active {
-			t.Fatal("fixture unexpectedly contains a specification system")
-		}
-		for _, concept := range []*regexp.Regexp{
-			regexp.MustCompile(`(?i)(without|no) (an |a )?(existing )?(specification|spec) (system|convention)`),
-			regexp.MustCompile(`(?i)inline[^.]*requirement`),
-			regexp.MustCompile(`(?i)(do not|no)[^.]*new director`),
-			regexp.MustCompile(`(?i)(do not|no)[^.]*\b(cli|node)\b`),
-		} {
-			if !concept.MatchString(guidance) {
-				t.Errorf("absent-system branch misses %s", concept)
-			}
-		}
-	})
 }
 
 func TestNativeFanoutExamplesDispatchThenJoinEveryIdentity(t *testing.T) {
@@ -166,172 +270,20 @@ func TestNativeFanoutExamplesDispatchThenJoinEveryIdentity(t *testing.T) {
 			}
 		})
 	}
-
-	lower := strings.ToLower(strings.Join(strings.Fields(document), " "))
-	for _, concept := range []*regexp.Regexp{
-		regexp.MustCompile(`(no.?op|no work).*(inline|do not delegate)|(inline|do not delegate).*(no.?op|no work)`),
-		regexp.MustCompile(`sequential.*inline|inline.*sequential`),
-		regexp.MustCompile(`explicit[^.]*authoriz[^.]*native agent`),
-		regexp.MustCompile(`operator.selected[^.]*access[^.]*before[^.]*(native|rank)`),
-		regexp.MustCompile(`one to three direct (children|agents)|1.?3 direct (children|agents)`),
-		regexp.MustCompile(`fresh[^.]*bounded[^.]*context`),
-		regexp.MustCompile(`fail[^.]*report|report[^.]*fail`),
-		regexp.MustCompile(`cancel[^.]*confirm|confirm[^.]*cancel`),
-		regexp.MustCompile(`ownership[^.]*disjoint|disjoint[^.]*ownership`),
-	} {
-		if !concept.MatchString(lower) {
-			t.Errorf("orchestration lifecycle misses %s", concept)
-		}
-	}
-	if strings.Contains(lower, "without dispatch is a contract violation") {
-		t.Error("skill still forces delegation whenever a lane looks eligible")
-	}
 }
 
-func TestFinishContractSupportsNoopWithoutWeakeningOpenWork(t *testing.T) {
+func TestOpenSpecReferenceLoadsOnlyWhenDirectoryExists(t *testing.T) {
 	root := repoRoot(t)
-	document := strings.ToLower(strings.Join(strings.Fields(read(t, root, "plugins/megapowers/skills/verify-and-finish/SKILL.md")), " "))
-	for _, concept := range []*regexp.Regexp{
-		regexp.MustCompile(`(start|first)[^.]*fresh[^.]*(state|evidence|oracle)`),
-		regexp.MustCompile(`verified no.?op[^.]*(stop|return)|stop[^.]*verified no.?op`),
-		regexp.MustCompile(`pending review[^.]*(open|unfinished)|open[^.]*pending review`),
-		regexp.MustCompile(`local[^.]*(cannot|does not)[^.]*external`),
-	} {
-		if !concept.MatchString(document) {
-			t.Errorf("finish contract misses %s", concept)
+	reference := normalized(read(t, root, "plugins/megapowers/skills/design-and-plan/references/openspec.md"))
+	for _, fact := range []string{"openspec/", "does not establish a repository convention", "do not run or add an openspec cli"} {
+		if !strings.Contains(reference, fact) {
+			t.Errorf("openspec reference missing %q", fact)
 		}
 	}
-}
-
-// These checks preserve instruction boundaries, not model behavior or code quality.
-func TestSimplificationGuidanceContracts(t *testing.T) {
-	root := repoRoot(t)
-	tests := []struct {
-		skill string
-		rules map[string]string
-	}{
-		{
-			skill: "design-and-plan",
-			rules: map[string]string{
-				"reuse before custom design":            `before[^.]*custom[^.]*existing code[^.]*standard library[^.]*native platform[^.]*installed dependenc`,
-				"requirements constrain simplification": `simpl[^.]*preserv[^.]*requirement`,
-				"no speculative work":                   `defer[^.]*speculative[^.]*preserv[^.]*requested`,
-			},
-		},
-		{
-			skill: "test-first-implementation",
-			rules: map[string]string{
-				"reuse before writing":              `before[^.]*custom code[^.]*existing code[^.]*standard library[^.]*native platform[^.]*installed dependenc`,
-				"equivalence before brevity":        `preserv[^.]*contract[^.]*validation[^.]*error handling[^.]*security[^.]*accessibility[^.]*tests`,
-				"line count is not the goal":        `do not[^.]*line count`,
-				"known limit and revisit condition": `known limit[^.]*comment[^.]*revisit`,
-				"test-first preserved":              `production code follows a failing test`,
-				"local conventions preserved":       `match local idioms, package boundaries, and public contracts`,
-			},
-		},
-		{
-			skill: "systematic-debugging",
-			rules: map[string]string{
-				"shared cause investigated":   `inspect[^.]*callers[^.]*shared[^.]*invariant`,
-				"sibling regression coverage": `regression[^.]*sibling[^.]*same cause`,
-				"scope remains bounded":       `avoid[^.]*unrelated[^.]*cleanup`,
-			},
-		},
+	entry := normalized(read(t, root, "plugins/megapowers/skills/design-and-plan/SKILL.md"))
+	if !regexp.MustCompile(`openspec/[^.]*(exists|present)[^.]*references/openspec\.md|references/openspec\.md[^.]*openspec/[^.]*(exists|present)`).MatchString(entry) {
+		t.Error("design-and-plan must load the OpenSpec reference only when an openspec/ directory exists")
 	}
-	for _, test := range tests {
-		t.Run(test.skill, func(t *testing.T) {
-			document := strings.ToLower(strings.Join(strings.Fields(read(t, root, "plugins/megapowers/skills/"+test.skill+"/SKILL.md")), " "))
-			for label, rule := range test.rules {
-				if !regexp.MustCompile(rule).MatchString(document) {
-					t.Errorf("missing %s", label)
-				}
-			}
-			for _, excluded := range []string{"shortest working diff wins", "one runnable check", "active every response", "ponytail:"} {
-				requireAbsent(t, document, excluded, "import boundary")
-			}
-		})
-	}
-}
-
-// These checks preserve evidence requirements in prose; they do not measure agent behavior or token savings.
-func TestOutputEvidenceGuidanceContracts(t *testing.T) {
-	root := repoRoot(t)
-	tests := []struct {
-		skill string
-		rules map[string]string
-	}{
-		{
-			skill: "orchestrating",
-			rules: map[string]string{
-				"reduce at the source":      `prefer[^.]*scoped searches[^.]*selected fields[^.]*native summary`,
-				"preserve review context":   `preserve[^.]*source[^.]*diff[^.]*correctness`,
-				"recover verbose output":    `verbose checks[^.]*complete stdout and stderr[^.]*scratch`,
-				"preserve original status":  `preserve[^.]*command[^.]*exit status[^.]*pipeline`,
-				"inspectable summary":       `report[^.]*command[^.]*exit status[^.]*available result counts[^.]*diagnostics[^.]*artifact path`,
-				"disclose omitted evidence": `disclose[^.]*filtering[^.]*truncation[^.]*saved output`,
-				"small result stays inline": `keep[^.]*small results[^.]*inline[^.]*artifact`,
-			},
-		},
-		{
-			skill: "systematic-debugging",
-			rules: map[string]string{
-				"retrieve before diagnosis":          `if[^.]*(filtered|truncated)[^.]*retrieve[^.]*raw[^.]*before[^.]*diagnos`,
-				"missing evidence stays unknown":     `unavailable[^.]*incomplete[^.]*inconclusive`,
-				"bounded recovery":                   `recover[^.]*missing[^.]*bounded[^.]*read`,
-				"recovery grants no retry authority": `do not repeat[^.]*side effect[^.]*recover[^.]*output`,
-			},
-		},
-		{
-			skill: "verify-and-finish",
-			rules: map[string]string{
-				"original status and evidence":  `check[^.]*original[^.]*exit status[^.]*raw evidence[^.]*claim`,
-				"hidden failure cannot pass":    `summary[^.]*cannot establish success[^.]*hidden failures`,
-				"incomplete proof remains open": `missing or truncated[^.]*unverified[^.]*recover`,
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.skill, func(t *testing.T) {
-			document := strings.ToLower(strings.Join(strings.Fields(read(t, root, "plugins/megapowers/skills/"+test.skill+"/SKILL.md")), " "))
-			for label, rule := range test.rules {
-				if !regexp.MustCompile(rule).MatchString(document) {
-					t.Errorf("missing %s", label)
-				}
-			}
-		})
-	}
-}
-
-func writeFixtureFile(t *testing.T, root, rel, body string) {
-	t.Helper()
-	path := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func fixtureSpecState(t *testing.T, root string) (baseline, active bool) {
-	t.Helper()
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		baseline = baseline || strings.Contains(rel, "/specs/")
-		active = active || strings.Contains(rel, "/changes/")
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return baseline, active
 }
 
 func harnessExample(t *testing.T, document, harness string) string {

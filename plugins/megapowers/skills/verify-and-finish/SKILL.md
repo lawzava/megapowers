@@ -35,9 +35,7 @@ the environment and correlation identity. If a required tool or environment is
 unavailable, report the criterion as unverified rather than substituting a
 nearby check.
 
-Check the required completion surface and constraints, such as an index size
-cap, before attributing access failures. Run the real user journey; name any
-agreed substitute's limits.
+Run the real user journey; name any agreed substitute's limits.
 
 Reconcile each affected repository-owned specification with verified behavior.
 Resolve every requirement to fresh evidence or a remaining gap; a plan is not

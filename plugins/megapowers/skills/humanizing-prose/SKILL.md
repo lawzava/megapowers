@@ -32,19 +32,16 @@ For examples of discussion and review structure, see
 
 ## Machine-prose markers
 
-Do not use em dashes (U+2014) or spaced hyphens as em dashes; use a
-comma, a period, a colon, or a new sentence. Apply this even when the
-surrounding archive uses them. Remove triads of adjectives, "not X but Y"
-framing, rhetorical questions, "it's worth noting", "in today's landscape",
-summary headers that restate the body, and generic closing offers or recaps. Vary
-sentence length instead of stacking parallel clauses. Keep one register
-across the piece.
-
-Replace vague attribution with a named source, direct observation, or explicit
-uncertainty. Make an evaluative claim name the actor, mechanism, scope,
-condition, or measurement that makes it specific. Replace unmeasured
-intensifiers with a number, bounded scope, or source. Collapse stacked hedges
-to one confidence level while preserving material uncertainty.
+Apply the plugin [output style](../../output-styles/megapowers.md) rules for
+attribution and specific evaluation; load it if it is not active. Do not use
+em dashes or spaced hyphens as em dashes, even when the surrounding archive
+uses them. Remove triads of adjectives, "not X but Y" framing, rhetorical
+questions, "it's worth noting", "in today's landscape", summary headers that
+restate the body, and generic closing offers or recaps. Vary sentence length
+instead of stacking parallel clauses. Keep one register across the piece.
+Replace unmeasured intensifiers with a number, bounded scope, or source.
+Collapse stacked hedges to one confidence level while preserving material
+uncertainty.
 
 For a status update or review summary, give the current verdict, material
 impact, and minimum evidence. For a discussion reply, include the requested

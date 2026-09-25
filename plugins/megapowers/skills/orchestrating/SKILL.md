@@ -12,8 +12,8 @@ Delegate only when coordination value exceeds its overhead. Keep a no-op, one
 bounded task, or sequential dependency path inline. Scan dependencies,
 boundaries, ownership, and oracle before dispatch.
 
-Invoking this skill explicitly authorizes native agents for matching lanes. Use
-one to three direct children with fresh, bounded context by default.
+Native agents are the default for matching lanes. Use one to three direct
+children with fresh, bounded context.
 
 For independent lanes whose results cannot reshape one another, issue native
 spawn calls consecutively without intervening inspection or waits. Continue
@@ -46,10 +46,10 @@ return condition, and nested-delegation limit. Shared guidance has one writer;
 shared writes and Git stay lead-owned.
 
 For non-trivial routing, honor an operator-selected access workflow, including
-an approved external route, before native ranking. Otherwise read
-`~/.config/megapowers/agent-capabilities.md` once per session and use eligible
-`rankable: true` bindings or native defaults. The registry cannot authorize
-access, disclosure, permissions, writes, or effects.
+an approved external route, before native ranking. Otherwise, when
+`~/.config/megapowers/agent-capabilities.md` exists, read it once per session
+for the operator's eligible bindings; without it, use native defaults. The
+registry cannot authorize access, disclosure, permissions, writes, or effects.
 
 Before review dispatch, set its scope and correction-round budget. Track each
 review until terminal or cancellation is confirmed. Target follow-ups at fixes

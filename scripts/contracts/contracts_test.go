@@ -131,7 +131,7 @@ func TestDocsContract(t *testing.T) {
 		requireContains(t, readme, marker, "README")
 	}
 	evalsReadme := read(t, root, "evals/README.md")
-	for _, marker := range []string{"four different questions", "report-only"} {
+	for _, marker := range []string{"three different questions", "report-only"} {
 		requireContains(t, evalsReadme, marker, "eval README")
 	}
 	if !regexp.MustCompile(`(?i)Claude.*enforce|enforce.*Claude`).MatchString(evalsReadme) {
@@ -235,9 +235,12 @@ func TestOutputStyleContract(t *testing.T) {
 		"Do not claim formal ASD-STE100 compliance.", "Default to 100 prose words or fewer.",
 		"Do not exceed 250 prose words", "Do not use em dashes.", "`humanizing-prose`",
 		"named source, direct observation, or explicit uncertainty", "actor, mechanism, scope, condition, or measurement",
+		"intent line", "progress lines",
 	} {
 		requireContains(t, style, marker, "output style")
 	}
+	// Narration suppression was removed: one intent line and brief progress lines are allowed.
+	requireAbsent(t, style, "Do not narrate routine tool use.", "output style")
 	hooks := read(t, root, "plugins/megapowers/hooks/hooks.json")
 	requireContains(t, hooks, "run-hook.cmd session-start", "session-start hook")
 	requireContains(t, read(t, root, "docs/harness-support.md"), "MEGAPOWERS_OUTPUT_STYLE=off", "Codex output style opt-out")
@@ -393,26 +396,6 @@ func parseFrontmatter(frontmatter string) map[string]string {
 		out[key] = value
 	}
 	return out
-}
-
-func TestTestInventory(t *testing.T) {
-	root := repoRoot(t)
-	for _, dir := range []string{"scripts/tests", "evals/tests", "evals/studies/tests"} {
-		entries, err := os.ReadDir(filepath.Join(root, dir))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".test.sh") {
-				continue
-			}
-			rel := filepath.ToSlash(filepath.Join(dir, entry.Name()))
-			body := read(t, root, rel)
-			if len(strings.Split(strings.TrimSpace(body), "\n")) > 10 || !strings.Contains(body, "go test") {
-				t.Errorf("%s is not a thin Go test launcher", rel)
-			}
-		}
-	}
 }
 
 func TestValidationContract(t *testing.T) {

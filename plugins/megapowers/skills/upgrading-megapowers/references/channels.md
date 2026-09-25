@@ -18,7 +18,12 @@ The supported floating registration tracks the `release` branch
 (`lawzava/megapowers@release` on Claude, `--ref release` on Codex), which only
 fast-forwards to signed release tags. A registration without a ref tracks
 `main`; Codex refreshes it at startup and prunes superseded caches, so treat it
-as a channel defect and propose re-registration with the ref. After the
+as a channel defect and propose re-registration with the ref.
+
+Resolve the stable release tag to its exact commit and compare it with the
+marketplace source's tracked head: the `release` branch when the registration
+carries that ref, otherwise the default branch. A floating refresh may proceed
+only when the two commits match; otherwise stop before any write. After the
 approved stable tag commit matches the observed marketplace head, refresh and
 register the floating install:
 
