@@ -39,6 +39,18 @@ func TestClassifyCommand(t *testing.T) {
 	}
 }
 
+func TestFindDenialAdviceMentionsFilter(t *testing.T) {
+	t.Parallel()
+
+	got := classifyCommand("find ~ -delete", "/home/tester")
+	if !got.Deny {
+		t.Fatalf("find ~ -delete was allowed")
+	}
+	if strings.Contains(got.Reason, "Use a specific relative start path") || !strings.Contains(got.Reason, "-name") {
+		t.Fatalf("find denial advice does not explain the filter route: %q", got.Reason)
+	}
+}
+
 func TestCommandLengthBoundary(t *testing.T) {
 	t.Parallel()
 

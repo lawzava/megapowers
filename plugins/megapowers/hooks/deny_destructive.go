@@ -23,10 +23,27 @@ var (
 	redirectPattern   = regexp.MustCompile(`^([0-9]*(&?>>?|<{1,3}>?)|[0-9]*[<>]&[0-9-]*)`)
 	parentPattern     = regexp.MustCompile(`^\.\.(?:/\.\.)*(?:/\*)?$`)
 	broadModePattern  = regexp.MustCompile(`^([ugoa]*)([-+=])([rwxXst]*)$`)
-	driveRootPattern  = regexp.MustCompile(`^[A-Za-z]:[\\/]?(?:/\*)?$`)
-	rawDeviceRedirect = regexp.MustCompile(`(^|[^<])>[[:space:]]*/dev/(sd|nvme|vd|xvd|mmcblk|disk|rdisk|mapper/|dm-|md[0-9]|md/|loop[0-9]|mtdblock|hd|sr|vblk|rbd|nbd|drbd|pmem|zvol/)`)
-	forkBombPattern   = regexp.MustCompile(`[A-Za-z_:][A-Za-z0-9_:]*[[:space:]]*\(\)[[:space:]]*\{[[:space:]]*[^|;&{}]+\|[^|;&{}]*&[[:space:]]*\}`)
+	driveRootPattern  = regexp.MustCompile(`^[A-Za-z]:[\\/]?\*?$`)
+	rawDeviceRedirect = regexp.MustCompile(`(^|[^<])>\|?[[:space:]]*/dev/(sd|nvme|vd|xvd|mmcblk|disk|rdisk|mapper/|dm-|md[0-9]|md/|loop[0-9]|mtdblock|hd|sr|vblk|rbd|nbd|drbd|pmem|zvol/)`)
+	functionPattern   = regexp.MustCompile(`([A-Za-z_:][A-Za-z0-9_:]*)[[:space:]]*\(\)[[:space:]]*\{([^{}]*)\}`)
+	functionDefName   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\(\)\{?$`)
+	numericModeShape  = regexp.MustCompile(`^[0-7]{3,4}$`)
 )
+
+// commandLeaders are shell words that precede a simple command inside a
+// compound statement and carry no command of their own.
+var commandLeaders = map[string]struct{}{
+	"{": {}, "!": {}, "if": {}, "then": {}, "else": {}, "elif": {}, "do": {}, "while": {}, "until": {},
+}
+
+var dotGlobs = map[string]struct{}{".*": {}, ".[!.]*": {}, ".[^.]*": {}, ".??*": {}}
+
+// findFilters narrow a find walk by name or path, which turns a home-wide
+// delete into a targeted cleanup.
+var findFilters = map[string]struct{}{
+	"-name": {}, "-iname": {}, "-path": {}, "-ipath": {}, "-wholename": {}, "-iwholename": {},
+	"-regex": {}, "-iregex": {}, "-lname": {}, "-ilname": {}, "-samefile": {}, "-inum": {},
+}
 
 var systemRoots = map[string]struct{}{
 	"Applications": {}, "Library": {}, "Network": {}, "System": {}, "Users": {}, "Volumes": {},
@@ -98,23 +115,39 @@ func scanLevel(command, home string) (decision, []string) {
 			catastrophic, nested := findIsCatastrophic(tail, home)
 			payloads = append(payloads, nested...)
 			if catastrophic {
-				return decision{true, "find deleting or shredding from a root, home, or system start path. Use a specific relative start path."}, nil
+				return decision{true, "find deleting or shredding everything under a root, home, or system start path. Start from a specific subdirectory, or for a home cleanup add a -name or -path filter before the delete."}, nil
 			}
 		case "chmod":
 			if chmodIsCatastrophic(tail, home) {
-				return decision{true, "chmod 777 on a root/system path."}, nil
+				return decision{true, "chmod setting a world-writable mode on a root, home, or system path."}, nil
 			}
 		case "dd":
 			if ddIsCatastrophic(tail) {
 				return decision{true, "dd writing to a raw block device (would overwrite a disk)."}, nil
 			}
-		case "mkfs", "wipefs", "blkdiscard", "shred", "truncate":
+		case "wipefs":
+			if wipefsIsCatastrophic(tail) {
+				return decision{true, "wipefs erasing signatures on a block device (would wipe a disk). Without -a or -o it only prints them."}, nil
+			}
+		case "blkdiscard":
+			if blkdiscardIsCatastrophic(tail) {
+				return decision{true, "blkdiscard targeting a block device (would wipe a disk). --dry-run is allowed."}, nil
+			}
+		case "mkfs", "shred", "truncate":
 			if formatIsCatastrophic(tail) {
 				return decision{true, name + " targeting a block device (would wipe a disk). Against a plain file this is allowed."}, nil
+			}
+		case "tee":
+			if formatIsCatastrophic(tail) {
+				return decision{true, "tee writing to a raw block device (would overwrite a disk)."}, nil
 			}
 		case "cp":
 			if cpIsCatastrophic(tail) {
 				return decision{true, "cp overwriting a raw block device (would clobber a disk)."}, nil
+			}
+		case "mv":
+			if cpIsCatastrophic(tail) {
+				return decision{true, "mv onto a raw block device (would clobber a disk)."}, nil
 			}
 		case "remove-item", "rd":
 			if recursiveRemoveIsCatastrophic(tail, home) {
@@ -135,6 +168,24 @@ func scanLevel(command, home string) (decision, []string) {
 					continue
 				}
 				if word == "-c" || shellFlagRunsCommand(word) {
+					take = true
+				}
+			}
+		case "pwsh", "powershell":
+			words, ok := shellWords(tail)
+			if !ok {
+				break
+			}
+			take := false
+			for _, word := range words {
+				if take {
+					if word != "" {
+						payloads = append(payloads, word)
+					}
+					take = false
+					continue
+				}
+				if powershellFlagRunsCommand(word) {
 					take = true
 				}
 			}
@@ -161,25 +212,73 @@ func scanLevel(command, home string) (decision, []string) {
 	if rawDeviceRedirect.MatchString(dequoted) {
 		return decision{true, "redirect to a raw block device (would overwrite a disk)"}, nil
 	}
-	if forkBombPattern.MatchString(dequoted) {
+	if isForkBomb(dequoted) {
 		return decision{true, "fork bomb"}, nil
 	}
 	return decision{}, payloads
+}
+
+// isForkBomb reports a function that recurses into itself in the background.
+// A function whose body merely backgrounds a pipeline is ordinary shell.
+func isForkBomb(text string) bool {
+	for _, match := range functionPattern.FindAllStringSubmatch(text, -1) {
+		name, body := match[1], match[2]
+		background := body
+		for _, operator := range []string{"&&", ">&", "<&", "&>"} {
+			background = strings.ReplaceAll(background, operator, "")
+		}
+		if !strings.Contains(background, "&") {
+			continue
+		}
+		tokens := strings.FieldsFunc(body, func(r rune) bool {
+			return unicode.IsSpace(r) || strings.ContainsRune("|&;(){}<>", r)
+		})
+		for _, token := range tokens {
+			if token == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// skipQuoted advances past a quoted region starting at i, honoring backslash
+// escapes inside double quotes and backticks.
+func skipQuoted(text string, i int) int {
+	quote := text[i]
+	i++
+	for i < len(text) && text[i] != quote {
+		if text[i] == '\\' && quote != '\'' && i+1 < len(text) {
+			i += 2
+			continue
+		}
+		i++
+	}
+	if i < len(text) {
+		i++
+	}
+	return i
 }
 
 func splitSegments(command string) []string {
 	segments := make([]string, 0, 4)
 	start := 0
 	for i := 0; i < len(command); {
+		if command[i] == '\\' && i+1 < len(command) {
+			i += 2
+			continue
+		}
 		if command[i] == '\'' || command[i] == '"' || command[i] == '`' {
-			quote := command[i]
-			i++
-			for i < len(command) && command[i] != quote {
+			i = skipQuoted(command, i)
+			continue
+		}
+		// An unquoted "#" that starts a word opens a comment to end of line.
+		if command[i] == '#' && (i == 0 || isSpace(command[i-1]) || strings.IndexByte(";&|(", command[i-1]) >= 0) {
+			segments = append(segments, command[start:i])
+			for i < len(command) && command[i] != '\n' {
 				i++
 			}
-			if i < len(command) {
-				i++
-			}
+			start = i
 			continue
 		}
 		if command[i] == ';' || command[i] == '&' || command[i] == '|' || command[i] == '\n' {
@@ -239,20 +338,54 @@ func shellWords(text string) ([]string, bool) {
 
 func resolveCommand(segment string) (string, string, bool) {
 	text := trimLeftSpace(segment)
+	skipName := false
 	for {
 		word, rest, ok := takeWord(text)
 		if !ok {
 			return "", "", false
 		}
+		if skipName {
+			// The word after "function" is the function's name.
+			skipName = false
+			text = trimLeftSpace(rest)
+			continue
+		}
+		// Function-definition parentheses as their own word: "name () {".
+		if word == "()" || word == "(){" {
+			text = trimLeftSpace(rest)
+			continue
+		}
+		// A subshell open glued to the command: "(rm -rf /)".
+		if trimmed := strings.TrimLeft(word, "("); trimmed != word {
+			if trimmed == "" {
+				text = trimLeftSpace(rest)
+				continue
+			}
+			text = trimmed + rest
+			continue
+		}
+		if word == "function" {
+			skipName = true
+			text = trimLeftSpace(rest)
+			continue
+		}
+		if _, leader := commandLeaders[word]; leader || functionDefName.MatchString(word) {
+			text = trimLeftSpace(rest)
+			continue
+		}
+		// "name () {": the parentheses follow the name as their own word.
+		if next, _, hasNext := takeWord(trimLeftSpace(rest)); hasNext && (next == "()" || next == "(){") && assignmentPattern.MatchString(word+"=") {
+			text = trimLeftSpace(rest)
+			continue
+		}
 		if redirectPattern.MatchString(word) || assignmentPattern.MatchString(word) {
 			text = trimLeftSpace(rest)
 			continue
 		}
-		if _, ok := wrappers[word]; !ok {
+		wrapper := commandBaseName(word)
+		if _, ok := wrappers[wrapper]; !ok {
 			break
 		}
-
-		wrapper := word
 		text = trimLeftSpace(rest)
 		for {
 			option, after, ok := takeWord(text)
@@ -279,8 +412,17 @@ func resolveCommand(segment string) (string, string, bool) {
 	if !ok {
 		return "", "", false
 	}
-	word = strings.TrimLeft(word, `\`)
-	return filepath.Base(word), rest, true
+	return commandBaseName(word), rest, true
+}
+
+// commandBaseName reduces "/usr/bin/env", "\rm", or "powershell.exe" to the
+// bare program name the classifier keys on.
+func commandBaseName(word string) string {
+	name := filepath.Base(strings.TrimLeft(word, `\`))
+	if len(name) > 4 && strings.EqualFold(name[len(name)-4:], ".exe") {
+		name = name[:len(name)-4]
+	}
+	return name
 }
 
 func takeWord(text string) (string, string, bool) {
@@ -342,14 +484,51 @@ func normalizePath(path string) string {
 	return normalized
 }
 
-func isCatastrophicTarget(target, home string) bool {
+// normalizeTarget applies the spelling normalizations shared by every target
+// check: unquoted-escape and trailing-backslash trims, unbalanced closers from
+// "(rm -rf /)" or "{ rm -rf /; }", path cleanup, and dotglobs folded into "/*".
+func normalizeTarget(target string) string {
 	target = strings.TrimLeft(target, `\`)
 	target = strings.TrimSuffix(target, `\`)
+	target = trimUnbalancedClosers(target)
+	if target == "" {
+		return ""
+	}
+	target = normalizePath(target)
+	if slash := strings.LastIndexByte(target, '/'); slash >= 0 {
+		if _, dotglob := dotGlobs[target[slash+1:]]; dotglob {
+			target = target[:slash+1] + "*"
+		}
+	}
+	return target
+}
+
+func trimUnbalancedClosers(target string) string {
+	for len(target) > 0 {
+		last := target[len(target)-1]
+		var open string
+		switch last {
+		case ')':
+			open = "("
+		case '}':
+			open = "{"
+		default:
+			return target
+		}
+		if strings.Count(target, open) >= strings.Count(target, string(last)) {
+			return target
+		}
+		target = target[:len(target)-1]
+	}
+	return target
+}
+
+func isCatastrophicTarget(target, home string) bool {
+	target = normalizeTarget(target)
 	if target == "" {
 		return false
 	}
-	target = normalizePath(target)
-	if target == "/" || target == "/*" || target == "/.*" || target == "~" || target == "~/*" {
+	if target == "/" || target == "/*" || target == "~" || target == "~/*" {
 		return true
 	}
 	if target == "$HOME" || target == "${HOME}" || target == "$HOME/*" || target == "${HOME}/*" {
@@ -382,6 +561,30 @@ func isCatastrophicTarget(target, home string) bool {
 		return true
 	}
 	return parentPattern.MatchString(target)
+}
+
+// isHomeDirectoryTarget reports a start path that is a whole home directory,
+// where a name or path filter turns a wipe into an ordinary cleanup.
+func isHomeDirectoryTarget(target, home string) bool {
+	target = normalizeTarget(target)
+	if target == "" {
+		return false
+	}
+	base := strings.TrimSuffix(target, "/*")
+	if base == "~" || base == "$HOME" || base == "${HOME}" {
+		return true
+	}
+	if suffix, ok := bracedHomeSuffix(base); ok && suffix == "" {
+		return true
+	}
+	if strings.HasPrefix(base, "~") && !strings.Contains(base, "/") {
+		return true
+	}
+	parts := strings.Split(strings.TrimPrefix(base, "/"), "/")
+	if strings.HasPrefix(base, "/") && len(parts) == 2 && (parts[0] == "home" || parts[0] == "Users") && parts[1] != "" {
+		return true
+	}
+	return home != "" && home != "/" && base == strings.TrimSuffix(home, "/")
 }
 
 func bracedHomeSuffix(target string) (string, bool) {
@@ -427,7 +630,7 @@ func rmIsCatastrophic(tail, home string) bool {
 		if !endOptions && strings.HasPrefix(word, "-") {
 			continue
 		}
-		if isCatastrophicTarget(word, home) {
+		if isCatastrophicTarget(word, home) || driveRootPattern.MatchString(word) {
 			return true
 		}
 	}
@@ -454,10 +657,15 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 	if !ok {
 		return false, nil
 	}
-	inStarts, dangerStart, deny := true, false, false
+	inStarts, hardStart, homeStart, filtered, deny := true, false, false, false, false
 	inExec, firstExec := false, false
 	var execArgs []string
 	var payloads []string
+	destroys := func() {
+		if hardStart || (homeStart && !filtered) {
+			deny = true
+		}
+	}
 	for _, word := range words {
 		if inExec {
 			if isFindExecTerminator(word) {
@@ -471,7 +679,7 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 			if firstExec {
 				firstExec = false
 				if isFindDestroyer(word) {
-					deny = true
+					destroys()
 				}
 			}
 			execArgs = append(execArgs, word)
@@ -484,15 +692,21 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 			case strings.HasPrefix(word, "-") || word == "(" || word == "!":
 				inStarts = false
 			default:
-				if isCatastrophicTarget(word, home) {
-					dangerStart = true
+				switch {
+				case isHomeDirectoryTarget(word, home):
+					homeStart = true
+				case isCatastrophicTarget(word, home):
+					hardStart = true
 				}
 				continue
 			}
 		}
+		if _, filter := findFilters[word]; filter || strings.HasPrefix(word, "-newer") {
+			filtered = true
+		}
 		switch word {
 		case "-delete":
-			deny = true
+			destroys()
 		case "-exec", "-execdir", "-ok", "-okdir":
 			inExec = true
 			firstExec = true
@@ -503,7 +717,7 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 			payloads = append(payloads, payload)
 		}
 	}
-	return dangerStart && deny, payloads
+	return deny, payloads
 }
 
 func isFindExecTerminator(word string) bool {
@@ -544,8 +758,9 @@ func quotePayload(words []string) string {
 }
 
 func isBroadWriteMode(mode string) bool {
-	if mode == "777" || mode == "0777" || mode == "1777" {
-		return true
+	if numericModeShape.MatchString(mode) {
+		// The last octal digit is "other"; bit 2 is write.
+		return (mode[len(mode)-1]-'0')&2 != 0
 	}
 	match := broadModePattern.FindStringSubmatch(mode)
 	if match == nil || match[2] == "-" || !strings.Contains(match[3], "w") {
@@ -607,12 +822,51 @@ func formatIsCatastrophic(tail string) bool {
 	if !ok {
 		return false
 	}
+	return anyBlockDevice(words)
+}
+
+func anyBlockDevice(words []string) bool {
 	for _, word := range words {
 		if isBlockDevice(word) {
 			return true
 		}
 	}
 	return false
+}
+
+// wipefsIsCatastrophic: wipefs only erases with -a/--all or -o/--offset, and
+// -n/--no-act turns either into a dry run. Without them it prints signatures.
+func wipefsIsCatastrophic(tail string) bool {
+	words, ok := shellWords(tail)
+	if !ok {
+		return false
+	}
+	erase, dryRun := false, false
+	for _, word := range words {
+		switch {
+		case word == "--all" || word == "--offset" || strings.HasPrefix(word, "--offset="):
+			erase = true
+		case word == "--no-act":
+			dryRun = true
+		case strings.HasPrefix(word, "-") && !strings.HasPrefix(word, "--"):
+			erase = erase || strings.ContainsAny(word[1:], "ao")
+			dryRun = dryRun || strings.ContainsRune(word[1:], 'n')
+		}
+	}
+	return erase && !dryRun && anyBlockDevice(words)
+}
+
+func blkdiscardIsCatastrophic(tail string) bool {
+	words, ok := shellWords(tail)
+	if !ok {
+		return false
+	}
+	for _, word := range words {
+		if word == "--dry-run" {
+			return false
+		}
+	}
+	return anyBlockDevice(words)
 }
 
 func cpIsCatastrophic(tail string) bool {
@@ -659,19 +913,17 @@ func recursiveRemoveIsCatastrophic(tail, home string) bool {
 func stripQuoted(text string) string {
 	var output strings.Builder
 	for i := 0; i < len(text); {
+		if text[i] == '\\' && i+1 < len(text) {
+			output.WriteString(text[i : i+2])
+			i += 2
+			continue
+		}
 		if text[i] != '\'' && text[i] != '"' && text[i] != '`' {
 			output.WriteByte(text[i])
 			i++
 			continue
 		}
-		quote := text[i]
-		i++
-		for i < len(text) && text[i] != quote {
-			i++
-		}
-		if i < len(text) {
-			i++
-		}
+		i = skipQuoted(text, i)
 	}
 	return output.String()
 }
@@ -681,6 +933,15 @@ func shellFlagRunsCommand(word string) bool {
 		return false
 	}
 	return (word[1] >= 'A' && word[1] <= 'Z') || (word[1] >= 'a' && word[1] <= 'z')
+}
+
+// powershellFlagRunsCommand accepts -c and any case-insensitive prefix of
+// -Command, which PowerShell resolves the same way.
+func powershellFlagRunsCommand(word string) bool {
+	if len(word) < 2 || word[0] != '-' {
+		return false
+	}
+	return strings.HasPrefix("-command", strings.ToLower(word))
 }
 
 func sshPayload(words []string) string {

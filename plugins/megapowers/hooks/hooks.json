@@ -3,6 +3,9 @@
     "SessionStart": [
       { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd session-start", "timeout": 60, "statusMessage": "Loading megapowers guidance" } ] }
     ],
+    "SubagentStart": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd subagent-start", "timeout": 60, "statusMessage": "Loading megapowers subagent guidance" } ] }
+    ],
     "PreToolUse": [
       { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-hook.cmd deny-destructive", "timeout": 60, "statusMessage": "Checking for destructive commands" } ] }
     ]

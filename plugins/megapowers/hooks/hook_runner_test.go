@@ -192,7 +192,29 @@ func TestLauncherUsesPrivateHomeCacheAndPlatformKey(t *testing.T) {
 	}
 }
 
-func TestLauncherDefaultsGoCacheUnderPrivateHookCache(t *testing.T) {
+func TestLauncherUsesDefaultGoCacheWhenWritable(t *testing.T) {
+	cache := t.TempDir()
+	home := t.TempDir()
+	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	cmd.Env = append(
+		environmentWithout("GOCACHE", "XDG_CACHE_HOME", "HOME", "MEGAPOWERS_HOOK_CACHE"),
+		"HOME="+home,
+		"MEGAPOWERS_HOOK_CACHE="+cache,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("cold launcher with writable home: %v\n%s", err, output)
+	}
+	if info, err := os.Stat(filepath.Join(home, ".cache", "go-build")); err != nil || !info.IsDir() {
+		t.Fatalf("launcher did not use the user's default Go cache: info=%v err=%v", info, err)
+	}
+	if _, err := os.Stat(filepath.Join(cache, "megapowers-hooks", "go-build")); !os.IsNotExist(err) {
+		t.Fatalf("launcher forced a private cold Go cache despite a usable default: %v", err)
+	}
+}
+
+func TestLauncherFallsBackToPrivateGoCacheWhenDefaultIsUnusable(t *testing.T) {
 	cache := t.TempDir()
 	fakeHome := filepath.Join(t.TempDir(), "home-file")
 	if err := os.WriteFile(fakeHome, []byte("not a directory"), 0o600); err != nil {
@@ -259,9 +281,7 @@ func TestLauncherRejectsSymlinkRunner(t *testing.T) {
 	if err := os.Mkdir(cacheDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	platformOS := commandOutput(t, "uname", "-s")
-	platformArch := commandOutput(t, "uname", "-m")
-	runner := filepath.Join(cacheDir, "megapowers-hook-"+runnerSourceHash(t)+"-"+platformOS+"-"+platformArch)
+	runner := filepath.Join(cacheDir, cachedRunnerName(t, commandOutput(t, "go", "env", "GOVERSION")))
 	if err := os.Symlink(filepath.Join(t.TempDir(), "attacker-runner"), runner); err != nil {
 		t.Fatal(err)
 	}
@@ -325,6 +345,184 @@ func TestHookManifestUsesGoRunnerWithoutStopGate(t *testing.T) {
 	if len(preTool) != 1 || preTool[0].Matcher != "Bash|PowerShell" || len(preTool[0].Hooks) != 1 || !strings.HasSuffix(preTool[0].Hooks[0].Command, "run-hook.cmd deny-destructive") || preTool[0].Hooks[0].Timeout < 30 {
 		t.Fatalf("unexpected PreToolUse hook: %+v", preTool)
 	}
+	subagent := parsed.Hooks["SubagentStart"]
+	if len(subagent) != 1 || subagent[0].Matcher != "" || len(subagent[0].Hooks) != 1 || !strings.HasSuffix(subagent[0].Hooks[0].Command, "run-hook.cmd subagent-start") || subagent[0].Hooks[0].Timeout < 30 {
+		t.Fatalf("unexpected SubagentStart hook: %+v", subagent)
+	}
+	if len(parsed.Hooks) != 3 {
+		t.Fatalf("hooks manifest registers %d events, want SessionStart, PreToolUse, SubagentStart", len(parsed.Hooks))
+	}
+}
+
+func TestLauncherRunsDirectlyWithoutShebang(t *testing.T) {
+	// Harnesses execute the launcher path itself; the file has no shebang and
+	// relies on the shell's ENOEXEC fallback.
+	launcher := filepath.Join(packageDir(t), "run-hook.cmd")
+	cmd := exec.Command("/bin/sh", "-c", `"$0" deny-destructive`, launcher)
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"rm -rf /"}}`)
+	cmd.Env = append(os.Environ(), "MEGAPOWERS_HOOK_CACHE="+t.TempDir())
+	output, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), `"permissionDecision":"deny"`) {
+		t.Fatalf("direct execution: %v\n%s", err, output)
+	}
+}
+
+func TestLauncherRefusesToBuildWithUnsupportedGo(t *testing.T) {
+	binDir := t.TempDir()
+	fakeGo := "#!/bin/sh\n" +
+		"if [ \"$1\" = env ] && [ \"$2\" = GOVERSION ]; then echo go1.24.3; exit 0; fi\n" +
+		"if [ \"$1\" = build ]; then echo 'fake go build must not run' >&2; exit 99; fi\n" +
+		"exit 1\n"
+	if err := os.WriteFile(filepath.Join(binDir, "go"), []byte(fakeGo), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cache := t.TempDir()
+	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	cmd.Env = append(environmentWithout("PATH", "MEGAPOWERS_HOOK_CACHE"), "PATH="+binDir+":"+os.Getenv("PATH"), "MEGAPOWERS_HOOK_CACHE="+cache)
+	output, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "Go 1.25 or newer is required") || !strings.Contains(string(output), "go1.24.3") || strings.Contains(string(output), "must not run") {
+		t.Fatalf("launcher error = %v, output = %q, want explicit refusal naming the found version", err, output)
+	}
+	if binaries, _ := filepath.Glob(filepath.Join(cache, "megapowers-hooks", "megapowers-hook-*")); len(binaries) != 0 {
+		t.Fatalf("launcher cached a runner from an unsupported Go: %v", binaries)
+	}
+}
+
+func TestLauncherRebuildsAfterGoUpgrade(t *testing.T) {
+	cache := t.TempDir()
+	cacheDir := filepath.Join(cache, "megapowers-hooks")
+	if err := os.Mkdir(cacheDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A runner built by an older toolchain is keyed by that toolchain's version
+	// and must be ignored once Go is upgraded.
+	stale := filepath.Join(cacheDir, cachedRunnerName(t, "go1.24.9"))
+	staleBody := "#!/bin/sh\necho 'megapowers hook: requires Go 1.25 or newer (running go1.24.9)' >&2\nexit 1\n"
+	if err := os.WriteFile(stale, []byte(staleBody), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"rm -rf /"}}`)
+	cmd.Env = append(os.Environ(), "MEGAPOWERS_HOOK_CACHE="+cache)
+	output, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), `"permissionDecision":"deny"`) {
+		t.Fatalf("launcher after Go upgrade: %v\n%s", err, output)
+	}
+	current := filepath.Join(cacheDir, cachedRunnerName(t, commandOutput(t, "go", "env", "GOVERSION")))
+	if _, err := os.Stat(current); err != nil {
+		t.Fatalf("runner for current Go missing: %v", err)
+	}
+}
+
+func TestLauncherUsesCachedRunnerWithoutGo(t *testing.T) {
+	cache := t.TempDir()
+	warm := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	warm.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	warm.Env = append(os.Environ(), "MEGAPOWERS_HOOK_CACHE="+cache)
+	if output, err := warm.CombinedOutput(); err != nil {
+		t.Fatalf("warm-up: %v\n%s", err, output)
+	}
+	binDir := t.TempDir()
+	for _, name := range []string{"chmod", "dirname", "mkdir", "uname"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(path, filepath.Join(binDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("/bin/bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"rm -rf /"}}`)
+	cmd.Env = []string{"PATH=" + binDir, "MEGAPOWERS_HOOK_CACHE=" + cache}
+	output, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), `"permissionDecision":"deny"`) {
+		t.Fatalf("cached runner without Go on PATH: %v\n%s", err, output)
+	}
+}
+
+func TestLauncherIgnoresLeftoverTempBuildWithoutGo(t *testing.T) {
+	cache := t.TempDir()
+	warm := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	warm.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	warm.Env = append(os.Environ(), "MEGAPOWERS_HOOK_CACHE="+cache)
+	if output, err := warm.CombinedOutput(); err != nil {
+		t.Fatalf("warm-up: %v\n%s", err, output)
+	}
+	// A killed build can leave a partial temp file that sorts after the real
+	// runner; the no-Go fallback must never execute it.
+	cacheDir := filepath.Join(cache, "megapowers-hooks")
+	leftover := filepath.Join(cacheDir, cachedRunnerName(t, "go9.9.9")+".4242.tmp")
+	if err := os.WriteFile(leftover, []byte("#!/bin/sh\necho 'partial build executed' >&2\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	binDir := t.TempDir()
+	for _, name := range []string{"chmod", "dirname", "mkdir", "uname"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(path, filepath.Join(binDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("/bin/bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"rm -rf /"}}`)
+	cmd.Env = []string{"PATH=" + binDir, "MEGAPOWERS_HOOK_CACHE=" + cache}
+	output, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), `"permissionDecision":"deny"`) || strings.Contains(string(output), "partial build") {
+		t.Fatalf("cached runner selection with leftover temp build: %v\n%s", err, output)
+	}
+}
+
+func TestLauncherTempBuildLivesOutsideRunnerGlob(t *testing.T) {
+	t.Parallel()
+
+	launcher, err := os.ReadFile(filepath.Join(packageDir(t), "run-hook.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stale := range []string{`tmp_runner="$runner.`, `set "TMP_RUNNER=%RUNNER%.`} {
+		if strings.Contains(string(launcher), stale) {
+			t.Errorf("temp build name %q would match the cached-runner glob", stale)
+		}
+	}
+}
+
+func TestLauncherExplainsUnreadableGoVersion(t *testing.T) {
+	binDir := t.TempDir()
+	fakeGo := "#!/bin/sh\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(binDir, "go"), []byte(fakeGo), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	cmd.Env = append(environmentWithout("PATH", "MEGAPOWERS_HOOK_CACHE"), "PATH="+binDir+":"+os.Getenv("PATH"), "MEGAPOWERS_HOOK_CACHE="+t.TempDir())
+	output, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "cannot read Go version") || strings.Contains(string(output), "1.25 or newer is required") {
+		t.Fatalf("launcher error = %v, output = %q, want a version-read failure, not a version requirement", err, output)
+	}
+}
+
+func TestLauncherDoctorSubcommand(t *testing.T) {
+	home := t.TempDir()
+	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "doctor")
+	cmd.Env = append(environmentWithout("HOME", "MEGAPOWERS_HOOK_CACHE", "XDG_CACHE_HOME"), "HOME="+home)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("doctor via launcher: %v\n%s", err, output)
+	}
+	for _, want := range []string{"megapowers doctor", "plugin root: " + filepath.Dir(packageDir(t)), "runner cache: " + filepath.Join(home, ".cache", "megapowers-hooks"), "go toolchain: "} {
+		if !strings.Contains(string(output), want) {
+			t.Errorf("doctor output lacks %q:\n%s", want, output)
+		}
+	}
+}
+
+func cachedRunnerName(t *testing.T, goVersion string) string {
+	t.Helper()
+	return "megapowers-hook-" + runnerSourceHash(t) + "-" + commandOutput(t, "uname", "-s") + "-" + commandOutput(t, "uname", "-m") + "-" + goVersion
 }
 
 func TestLauncherCacheKeyMatchesRunnerSources(t *testing.T) {
@@ -346,10 +544,40 @@ func TestLauncherCacheKeyMatchesRunnerSources(t *testing.T) {
 	}
 }
 
+// runnerSourceFiles is the exact list the launcher compiles, in hash order.
+var runnerSourceFiles = []string{"deny_destructive.go", "doctor.go", "gate_context.go", "hook_runner.go", "output_style.go"}
+
+func TestLauncherCompilesEveryRunnerSource(t *testing.T) {
+	t.Parallel()
+
+	launcher, err := os.ReadFile(filepath.Join(packageDir(t), "run-hook.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(packageDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sources []string
+	for _, entry := range entries {
+		if name := entry.Name(); strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go") {
+			sources = append(sources, name)
+		}
+	}
+	if strings.Join(sources, ",") != strings.Join(runnerSourceFiles, ",") {
+		t.Fatalf("runner sources on disk %v differ from the hashed list %v", sources, runnerSourceFiles)
+	}
+	for _, name := range sources {
+		if strings.Count(string(launcher), name) != 2 {
+			t.Errorf("launcher must compile %s in both the sh and cmd branches (found %d)", name, strings.Count(string(launcher), name))
+		}
+	}
+}
+
 func runnerSourceHash(t *testing.T) string {
 	t.Helper()
 	hash := sha256.New()
-	for _, name := range []string{"deny_destructive.go", "hook_runner.go", "output_style.go"} {
+	for _, name := range runnerSourceFiles {
 		content, err := os.ReadFile(filepath.Join(packageDir(t), name))
 		if err != nil {
 			t.Fatal(err)

@@ -31,7 +31,7 @@ func TestRunOutputStyleForCodex(t *testing.T) {
 	if strings.Contains(stdout.String(), "name: Megapowers") || !strings.Contains(stdout.String(), "Direct prose.") || strings.Contains(stdout.String(), skillLoadingReminder) {
 		t.Fatalf("unexpected output style: %q", stdout.String())
 	}
-	if strings.Contains(stdout.String(), helperCodeGuidance) {
+	if strings.Contains(stdout.String(), "helper code in Go") {
 		t.Fatalf("standalone output style contains helper-code guidance: %q", stdout.String())
 	}
 }
@@ -71,13 +71,10 @@ func TestSessionStartSeparatesWorkflowFromStyle(t *testing.T) {
 					if strings.Count(stdout.String(), skillLoadingReminder) != 1 {
 						t.Fatalf("workflow guidance must appear exactly once: %q", stdout.String())
 					}
-					for _, rule := range []string{
-						"Write all new helper code in Go, including temporary scripts, one-off commands,",
-						"data processing, and file-editing automation. Do not use Python or another",
-						"scripting language for convenience. Use native editing tools for direct edits.",
-					} {
-						if strings.Count(stdout.String(), rule) != 1 {
-							t.Errorf("helper-code rule must appear exactly once: %q; output: %q", rule, stdout.String())
+					// The Go-only helper rule is repository policy, not plugin policy.
+					for _, rule := range []string{"helper code in Go", "Code language", "Do not use Python"} {
+						if strings.Contains(stdout.String(), rule) {
+							t.Errorf("session-start must not ship the helper-language rule %q; output: %q", rule, stdout.String())
 						}
 					}
 					if want := harness == "codex" && styleMode != "off"; strings.Contains(stdout.String(), "STYLE_SENTINEL") != want {
