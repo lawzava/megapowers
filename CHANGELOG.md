@@ -5,6 +5,34 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.31.0 - 2026-09-28
+
+### Added
+
+- `writing-agent-instructions` ships global instruction templates,
+  `assets/global-CLAUDE.md` and `assets/global-AGENTS.md`, with a
+  `references/global-instructions.md` guide to scope, size, and wording. The
+  templates state precedence, a definition of done, scope rules, and approval
+  as the final step. They drop emphatic wording, re-check orders, and hard
+  stop rules. Sources: Anthropic's Opus 5 and 5.5 prompting guides and Claude
+  Code best practices, and OpenAI's GPT-6 model guidance and Astra prompting
+  post.
+- `orchestrating` ships `assets/agent-capabilities.md`, a template for the
+  optional personal registry.
+- `megapowers-doctor` reports the personal registry and warns when it is
+  expired or has no readable `expires_at`, since `orchestrating` then ignores
+  it.
+
+### Changed
+
+- `docs/orchestration.md` points to the registry template instead of an
+  inline schema. An unavailable binding is reported, not replaced by the
+  next-ranked one, and a failed task oracle calls for diagnosis, not a
+  provider switch.
+- `references/repository-instructions.md` records that Claude Code reads
+  `AGENTS.md` directly from v2.1.277 when no `CLAUDE.md` exists; the
+  `@AGENTS.md` import remains the recommended bridge.
+
 ## 0.30.2 - 2026-09-26
 
 ### Changed
