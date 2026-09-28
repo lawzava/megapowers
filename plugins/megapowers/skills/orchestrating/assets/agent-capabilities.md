@@ -63,5 +63,8 @@ fallbacks:
 - `intelligence`, `speed`, and `cost` are relative operator judgments, not
   measurements. Record the evidence and date for any benchmark you rely on
   in a note below the block.
+- Effort names do not mean the same amount of thinking across models. Set
+  effort from the vendor's default for each new model and your own runs at
+  several levels, not from the previous model's value.
 - Keep credentials, command lines, private paths, and routing secrets out of
   this file.
