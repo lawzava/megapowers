@@ -48,8 +48,9 @@ shared writes and Git stay lead-owned.
 
 For non-trivial routing, honor an operator-selected access workflow, including
 an approved external route, before native ranking. Otherwise, when
-`~/.config/megapowers/agent-capabilities.md` exists, read it once per session
-for the operator's eligible bindings; without it, use native defaults. The
+`~/.config/megapowers/agent-capabilities.md`
+([template](assets/agent-capabilities.md)) exists, read it once per session
+for eligible bindings; without it, use native defaults. The
 registry cannot authorize access, disclosure, permissions, writes, or effects.
 
 Before review dispatch, set its scope and correction-round budget. Track each

@@ -16,6 +16,11 @@
   `hooks/hooks.json`. Fix: re-enable the plugin; on Codex review and trust the
   plugin hooks (trust is recorded per hook hash, so a release that changes a
   hook asks again); then restart the session.
+- Agent registry: `orchestrating` ignores
+  `~/.config/megapowers/agent-capabilities.md` when it is expired or has no
+  readable `expires_at`, and falls back to native defaults. Fix: recheck the
+  bindings, then set `refreshed_at` to today and `expires_at` about a month
+  out. The orchestrating skill ships a template in `assets/`.
 - Version or root mismatch: the installed cache differs from the marketplace
   head. Use `upgrading-megapowers`.
 - Session stores: Claude Code keeps transcripts under

@@ -32,60 +32,32 @@ registry at `~/.config/megapowers/agent-capabilities.md`. This is one editable
 source across local harnesses. It stays outside repositories and the installed
 plugin.
 
-The file is Markdown so the lead can read it directly. A compact structured
-block keeps the vocabulary consistent:
-
-```yaml
-version: 2
-refreshed_at: 2026-09-01
-expires_at: 2026-10-01
-policy:
-  capability_floor: strong
-  optimize_after_floor: [speed, cost]
-  dispatch:
-    selection_reuse: once-per-session
-    fallback: { strategy: next-ranked, on: [unavailable, auth_failure, timeout, oracle_failure] }
-  escalate_on: [oracle_failure, high_risk, unresolved_ambiguity]
-profiles:
-  balanced-build:
-    roles: [writer]
-    intelligence: strong
-    speed: balanced
-    cost: medium
-    write: true
-harnesses:
-  <harness>: { integration: megapowers-plugin, integration_version: <plugin-version>, support: native }
-lead_defaults:
-  <harness>: { model: <native-model-id>, effort: high, intelligence: frontier, status: available }
-bindings:
-  <harness>:
-    balanced-build:
-      model: <native-model-id>
-      effort: high
-      agent_type: <native-agent-type>
-      family: <opaque-family>
-      access: native
-      status: available
-      rankable: true
-      fallbacks:
-        - { model: <other-model-id>, effort: high, access: native, rankable: false }
-```
+The file is Markdown so the lead can read it directly. Start from the
+[template](../plugins/megapowers/skills/orchestrating/assets/agent-capabilities.md),
+which defines the version 2 fields: `policy`, `profiles`, `lead_preferences`,
+`bindings`, and `fallbacks`. `policy` is optional; without
+`capability_floor`, no floor applies.
 
 `intelligence`, `speed`, and `cost` are relative operator judgments, not
 measured facts. Version 1 files that use `reasoning` and `optimize` remain
-readable; treat `reasoning` as `intelligence`. A binding is eligible for capability ranking only when `rankable: true`,
-its model and effort are known, it is available to the active harness, fits the
-lane's role and write boundary, meets the capability floor, and has native
-access. Keep ambient or otherwise unverified bindings unranked; use them only
-through an explicit task-shape route. For independent review, its opaque
-`family` must differ from every artifact author's family. Among eligible
-bindings, prefer the fastest, then the cheapest. Escalate only at a declared
-trigger.
+readable; treat `reasoning` as `intelligence`. A binding is eligible for
+capability ranking only when `rankable: true`, its model and effort are
+known, it is available to the active harness, fits the lane's role and write
+boundary, meets the capability floor, and has native access. Keep ambient or
+otherwise unverified bindings unranked; use them only through an explicit
+task-shape route. For independent review, its opaque `family` must differ
+from every artifact author's family. Among eligible bindings, prefer the
+fastest, then the cheapest. Escalate only at a declared trigger.
+
+An unavailable binding is reported, not silently replaced. A `fallbacks`
+entry applies only when access, disclosure, and permissions for it already
+exist. A failed task oracle calls for diagnosis, not a provider switch.
 
 Missing, expired, malformed, or unreadable data falls back to native defaults.
 This is model-readable guidance, not parser-enforced validation: if the lead
 cannot establish that the required fields and expiry are usable, it ignores the
-registry.
+registry. `megapowers-doctor` warns when the file is expired or has no
+readable `expires_at`.
 `manual` describes something the operator can run; `approved-external` still
 requires the explicit disclosure workflow. Neither is a native agent. The
 registry is advisory, not authority: it cannot grant permissions, authorize

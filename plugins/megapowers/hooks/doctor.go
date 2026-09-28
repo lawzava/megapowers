@@ -2,14 +2,18 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Doctor is a plain-text, read-only diagnostic. It never reads stdin, never
@@ -62,6 +66,7 @@ func runDoctor(getenv getenvFunc, output, errors io.Writer) int {
 		doctorCodexOutputStyle(report, getenv)
 	}
 	doctorHooks(report, root)
+	doctorAgentRegistry(report, getenv)
 
 	if _, err := io.WriteString(output, strings.Join(report.lines, "\n")+"\n"); err != nil {
 		fmt.Fprintln(errors, "megapowers doctor: cannot write report")
@@ -213,6 +218,46 @@ func doctorCodexOutputStyle(report *doctorReport, getenv getenvFunc) {
 	default:
 		report.add("MEGAPOWERS_OUTPUT_STYLE: %s (style injected; only \"off\" disables it)", value)
 	}
+}
+
+// doctorNow is replaceable so registry expiry tests do not depend on the clock.
+var doctorNow = time.Now
+
+var registryExpiry = regexp.MustCompile(`(?m)^\s*expires_at:\s*"?(\d{4}-\d{2}-\d{2})"?\s*$`)
+
+// doctorAgentRegistry reports the optional personal registry that
+// orchestrating reads. Orchestrating ignores a registry it cannot date, so an
+// expired or undated file is a silent fallback to native defaults worth a WARN.
+func doctorAgentRegistry(report *doctorReport, getenv getenvFunc) {
+	home := getenv("HOME")
+	if home == "" {
+		return
+	}
+	path := filepath.Join(home, ".config", "megapowers", "agent-capabilities.md")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		report.add("agent registry: none (optional; orchestrating uses native defaults)")
+		return
+	}
+	if err != nil {
+		report.warn("agent registry: %s not readable (%v); orchestrating ignores it", path, err)
+		return
+	}
+	match := registryExpiry.FindSubmatch(data)
+	if match == nil {
+		report.warn("agent registry: %s has no readable expires_at; orchestrating ignores it", path)
+		return
+	}
+	expires, err := time.Parse(time.DateOnly, string(match[1]))
+	if err != nil {
+		report.warn("agent registry: %s has no readable expires_at (%s); orchestrating ignores it", path, match[1])
+		return
+	}
+	if doctorNow().UTC().Format(time.DateOnly) > expires.Format(time.DateOnly) {
+		report.warn("agent registry: %s expired %s; orchestrating ignores it until refreshed", path, match[1])
+		return
+	}
+	report.add("agent registry: %s (expires %s)", path, match[1])
 }
 
 func doctorHooks(report *doctorReport, root string) {

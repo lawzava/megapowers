@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"testing/iotest"
+	"time"
 )
 
 func pluginVersion(t *testing.T) string {
@@ -107,6 +108,46 @@ func TestDoctorReportsCodexStyleState(t *testing.T) {
 	off := doctorOutput(t, map[string]string{"HOME": home, "MEGAPOWERS_HARNESS": "codex", "MEGAPOWERS_PLUGIN_ROOT": root, "MEGAPOWERS_OUTPUT_STYLE": "off"})
 	if !strings.Contains(off, "MEGAPOWERS_OUTPUT_STYLE: off (style injection disabled)") {
 		t.Fatalf("codex doctor report with style off:\n%s", off)
+	}
+}
+
+func TestDoctorReportsAgentRegistryExpiry(t *testing.T) {
+	previous := doctorNow
+	doctorNow = func() time.Time { return time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { doctorNow = previous })
+	root := filepath.Dir(packageDir(t))
+	for _, test := range []struct {
+		name, body string
+		want       []string
+		warn       bool
+	}{
+		{"absent", "", []string{"agent registry: none"}, false},
+		{"current", "```yaml\nversion: 2\nexpires_at: 2026-10-25\n```\n", []string{"agent registry:", "expires 2026-10-25"}, false},
+		{"expires today", "expires_at: 2026-09-28\n", []string{"expires 2026-09-28"}, false},
+		{"expired", "expires_at: 2026-09-01\n", []string{"expired 2026-09-01", "orchestrating ignores it"}, true},
+		{"no expiry", "version: 2\n", []string{"no readable expires_at", "orchestrating ignores it"}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			if test.body != "" {
+				dir := filepath.Join(home, ".config", "megapowers")
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "agent-capabilities.md"), []byte(test.body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			report := doctorOutput(t, map[string]string{"HOME": home, "MEGAPOWERS_HARNESS": "codex", "MEGAPOWERS_PLUGIN_ROOT": root})
+			for _, want := range test.want {
+				if !strings.Contains(report, want) {
+					t.Errorf("report lacks %q:\n%s", want, report)
+				}
+			}
+			if got := strings.Contains(report, "WARN: agent registry"); got != test.warn {
+				t.Errorf("registry WARN = %v, want %v:\n%s", got, test.warn, report)
+			}
+		})
 	}
 }
 

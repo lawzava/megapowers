@@ -366,6 +366,31 @@ func TestGlobalInstructionTemplates(t *testing.T) {
 	requireContains(t, repository, "2.1.277", "Claude AGENTS.md version floor")
 }
 
+func TestAgentCapabilitiesTemplate(t *testing.T) {
+	root := repoRoot(t)
+	const rel = "plugins/megapowers/skills/orchestrating/assets/agent-capabilities.md"
+	template := read(t, root, rel)
+	for _, key := range []string{"version: 2", "refreshed_at:", "expires_at:", "policy:", "profiles:", "lead_preferences:", "bindings:", "fallbacks:", "rankable:"} {
+		requireContains(t, template, key, rel)
+	}
+	requireContains(t, read(t, root, "plugins/megapowers/skills/orchestrating/SKILL.md"), "(assets/agent-capabilities.md)", "orchestrating template link")
+	docs := read(t, root, "docs/orchestration.md")
+	requireContains(t, docs, "(../plugins/megapowers/skills/orchestrating/assets/agent-capabilities.md)", "docs template link")
+	// An unavailable route or failed oracle is reported, never an automatic
+	// provider switch; the docs no longer carry a second, drifting schema.
+	for _, body := range []string{template, docs} {
+		for _, stale := range []string{"next-ranked", "lead_defaults", "fallback: { strategy"} {
+			requireAbsent(t, body, stale, "registry contract")
+		}
+	}
+	if strings.Contains(docs, "\nbindings:\n") {
+		t.Error("docs/orchestration.md still inlines a registry schema")
+	}
+	if regexp.MustCompile(`(?i)(/home/|/users/|subswapper|auth[.]json|api[_-]?key|account)`).MatchString(template) {
+		t.Errorf("%s contains machine-specific or credential material", rel)
+	}
+}
+
 func catalogNames(t *testing.T, root string) []string {
 	t.Helper()
 	var catalog struct {
