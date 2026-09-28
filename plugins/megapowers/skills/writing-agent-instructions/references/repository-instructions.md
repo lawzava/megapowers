@@ -18,12 +18,14 @@ instruction file in each directory, and guidance closer to the working
 directory appears later and takes precedence.
 
 Claude Code loads `CLAUDE.md` files above the working directory at launch and
-loads nested files when it reads within their subtrees. It does not treat
-`AGENTS.md` as its native project instruction file. When both harnesses need the
-same project guidance, keep `AGENTS.md` as the shared source and make
-`CLAUDE.md` import it with `@AGENTS.md`; add Claude-specific content only when
-behavior truly differs. An import organizes content but does not reduce the
-amount loaded into context.
+loads nested files when it reads within their subtrees. From v2.1.277 it also
+reads `AGENTS.md` directly, but by default only when no `CLAUDE.md` or
+`CLAUDE.local.md` exists in the working directory or above it, and some
+sessions cannot read `AGENTS.md` at all. When both harnesses need the same
+project guidance, keep `AGENTS.md` as the shared source and make `CLAUDE.md`
+import it with `@AGENTS.md`; the import works in every session and is never
+loaded twice. Add Claude-specific content only when behavior truly differs. An
+import organizes content but does not reduce the amount loaded into context.
 
 Do not mirror the same rules across root and nested files. Do not create files
 for harnesses the project does not support.
@@ -62,14 +64,15 @@ representative task with and without the change. For a typo, link repair, or
 small factual correction that does not change behavior, use proportional
 format, link, and file-scope checks without a baseline model run.
 
-## Sources reviewed 2026-09-05
+## Sources reviewed 2026-09-27
 
 - [OpenAI, Custom instructions with AGENTS.md](https://developers.openai.com/codex/guides/agents-md):
   startup discovery, root-to-working-directory order, nearest-scope precedence,
   and the combined project-instruction size limit.
 - [Anthropic, How Claude remembers your project](https://code.claude.com/docs/en/memory):
-  `CLAUDE.md` scope, nested loading, imports, instruction concision, and the
-  recommended `@AGENTS.md` bridge for repositories shared with other agents.
+  `CLAUDE.md` scope, nested loading, imports, instruction concision, direct
+  `AGENTS.md` loading from v2.1.277, and the recommended `@AGENTS.md` bridge
+  for repositories shared with other agents.
 - [Anthropic, Extend Claude with skills](https://code.claude.com/docs/en/skills):
   project and plugin skill locations, automatic skill selection, and the
   distinction between reference content and invoked task workflows.

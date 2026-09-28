@@ -32,8 +32,11 @@ risk.
 
 For a skill, read [skill authoring](references/skills.md). For project or
 subfolder guidance, read
-[repository instructions](references/repository-instructions.md). Read both
-only when the task changes both surfaces.
+[repository instructions](references/repository-instructions.md). For
+user-level instructions that apply to every repository, read
+[global instructions](references/global-instructions.md), which links the
+maintained templates. Read more than one only when the task changes more than
+one surface.
 
 Validate a new skill or material behavior change at two boundaries. First,
 confirm the target harness discovers the file and accepts its format. Then

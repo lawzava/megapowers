@@ -313,6 +313,59 @@ func TestSkillContracts(t *testing.T) {
 	}
 }
 
+func TestGlobalInstructionTemplates(t *testing.T) {
+	root := repoRoot(t)
+	const skill = "plugins/megapowers/skills/writing-agent-instructions/"
+	requireContains(t, read(t, root, skill+"SKILL.md"), "(references/global-instructions.md)", "skill link to global guidance")
+	reference := read(t, root, skill+"references/global-instructions.md")
+	for _, marker := range []string{"(../assets/global-CLAUDE.md)", "(../assets/global-AGENTS.md)", "`~/.claude/CLAUDE.md`", "`~/.codex/AGENTS.md`", "project_doc_max_bytes", "Sources reviewed"} {
+		requireContains(t, reference, marker, "global instructions reference")
+	}
+	known := map[string]bool{}
+	for _, name := range catalogNames(t, root) {
+		known[name] = true
+	}
+	for _, rel := range []string{skill + "assets/global-CLAUDE.md", skill + "assets/global-AGENTS.md"} {
+		body := read(t, root, rel)
+		// Claude docs target under 200 lines per file; Codex truncates all
+		// instruction files together at 32 KiB, so a global file keeps a quarter.
+		if lines := strings.Count(body, "\n"); lines > 150 {
+			t.Errorf("%s has %d lines, limit 150", rel, lines)
+		}
+		if len(body) > 8<<10 {
+			t.Errorf("%s has %d bytes, limit 8192", rel, len(body))
+		}
+		requireContains(t, body, "<!-- megapowers-global-baseline v2", rel)
+		// Anthropic (Opus 5/5.5) and OpenAI (GPT-6 Astra) guidance: scope
+		// discipline, a stated definition of done, and approval as the last step.
+		for _, marker := range []string{"materially different work", "Done means", "approval is the last step", "switch approach"} {
+			requireContains(t, body, marker, rel)
+		}
+		// Emphatic wording overtriggers, re-check orders cause over-verification,
+		// and stop-for-review gates pull the model toward early stops.
+		if emphatic := regexp.MustCompile(`\b(IMPORTANT|MUST|CRITICAL|ALWAYS|NEVER)\b`).FindString(body); emphatic != "" {
+			t.Errorf("%s uses emphatic %s", rel, emphatic)
+		}
+		for _, backfire := range []string{"double-check", "stop and report what you tried", "a decision only I can make"} {
+			requireAbsent(t, body, backfire, rel)
+		}
+		for _, stale := range []string{"—", "mega-orchestration", "mega-guardrails", "delegate-resolve", "models.toml", "superpowers", "OpenCode", "Grok"} {
+			requireAbsent(t, body, stale, rel)
+		}
+		for _, match := range regexp.MustCompile("`([a-z]+(?:-[a-z]+)+)`").FindAllStringSubmatch(body, -1) {
+			if strings.HasSuffix(match[1], "-md") || known[match[1]] {
+				continue
+			}
+			if regexp.MustCompile(`^(verify|test|design|safe|independent|systematic|writing|evidence|humanizing|grill|mcp|memory|upgrading|autonomous|megapowers)-`).MatchString(match[1]) {
+				t.Errorf("%s names unknown skill %s", rel, match[1])
+			}
+		}
+	}
+	repository := read(t, root, skill+"references/repository-instructions.md")
+	requireAbsent(t, repository, "does not treat `AGENTS.md` as its native", "stale Claude AGENTS.md claim")
+	requireContains(t, repository, "2.1.277", "Claude AGENTS.md version floor")
+}
+
 func catalogNames(t *testing.T, root string) []string {
 	t.Helper()
 	var catalog struct {
