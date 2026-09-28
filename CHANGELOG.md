@@ -5,6 +5,18 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.31.1 - 2026-09-28
+
+### Changed
+
+- The `orchestrating` registry template says effort names do not mean the
+  same amount of thinking across models, so set effort from each new model's
+  vendor default and your own runs, not from the previous model's value.
+  Source: Anthropic's "Prompting Claude Opus 5.5" guide, calibrate effort.
+- A contract test pins that reviewed content cannot close the
+  `independent-review` package fence. JSON encoding escapes `<` and `>`;
+  disabling that escaping now fails the test.
+
 ## 0.31.0 - 2026-09-28
 
 ### Added
