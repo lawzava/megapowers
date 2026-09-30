@@ -1,0 +1,15 @@
+# Reviewed public domains that shipped text may name. security-lint rejects any
+# other hostname in every tracked file, including tests; example.com,
+# example.org, and example.net are always allowed. Add only a public vendor,
+# standard, or tool domain here, never a private, client, or personal host.
+agentskills.io
+anthropic.com
+chatgpt.com
+claude.com
+github.com
+honnef.co
+keepachangelog.com
+openai.com
+schemastore.org
+shields.io
+tbench.ai

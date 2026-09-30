@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -78,5 +79,71 @@ func TestExplicitTestFixtureIsScanned(t *testing.T) {
 	t.Setenv("MEGAPOWERS_ROOT", root)
 	if code := runSecurityLint([]string{fixture}); code != 1 {
 		t.Fatalf("explicit fixture exit = %d, want 1", code)
+	}
+}
+
+// privacyRoot builds a git repository so the default scope (which covers test
+// fixtures) is exercised, not only explicit arguments.
+func privacyRoot(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	files["scripts/security-lint.allowlist"] = "CHANGELOG.md\n"
+	files["scripts/security-lint.domains"] = "# reviewed public domains\ngithub.com\n"
+	for name, body := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if out, err := exec.Command("git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	t.Setenv("MEGAPOWERS_ROOT", root)
+	return root
+}
+
+func TestPrivacyRulesScanTestFixturesAndAllowlistedFiles(t *testing.T) {
+	for name, files := range map[string]map[string]string{
+		"private host in a test fixture":  {"hooks/cases_test.go": `{command: "ssh transfer.acme-client.com uptime"}` + "\n"},
+		"private host in allowlisted log": {"CHANGELOG.md": "Moved backups to files.acme-client.com.\n"},
+		"machine home in a test fixture":  {"hooks/paths_test.go": `home := "/home/operator"` + "\n"},
+		"private host in shipped docs":    {"docs/guide.md": "Point the proxy at gateway.acme-client.io.\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			privacyRoot(t, files)
+			if code := runSecurityLint(nil); code != 1 {
+				t.Fatalf("exit = %d, want 1", code)
+			}
+		})
+	}
+}
+
+func TestPrivacyRulesAcceptReviewedAndReservedDomains(t *testing.T) {
+	privacyRoot(t, map[string]string{
+		"docs/guide.md":       "See github.com/o/r and api.github.com; examples use sftp.example.com and host.invalid.\n",
+		"hooks/cases_test.go": `home := "/home/tester"; host := "deploy.example.org"` + "\n",
+		"scripts/run.sh":      "go run ./scripts/validate.sh main.go\n",
+		"hooks/code.go":       "package hooks\n\nfunc f() { info, _ := entry.Info(); _ = tc.info; _ = syscall.SO_REUSEADDR }\n",
+	})
+	if code := runSecurityLint(nil); code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+}
+
+func TestPrivacyRulesCheckGoLiteralsAndComments(t *testing.T) {
+	for name, body := range map[string]string{
+		"string literal": "package hooks\n\nvar host = \"ssh transfer.acme-client.com\"\n",
+		"raw literal":    "package hooks\n\nvar host = `transfer.acme-client.com`\n",
+		"comment":        "package hooks\n\n// syncs to files.acme-client.com nightly\nfunc f() {}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			privacyRoot(t, map[string]string{"hooks/code.go": body})
+			if code := runSecurityLint(nil); code != 1 {
+				t.Fatalf("exit = %d, want 1", code)
+			}
+		})
 	}
 }

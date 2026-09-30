@@ -21,6 +21,9 @@ var (
 	reSafe  = regexp.MustCompile(`(?i)ignore (all |the )?(previous|prior) (instruction|message|context)|disregard (all |the )?(previous|prior|the above)|disable (the )?(sandbox|safety|guardrail|security)|bypass (the )?permission|bypass permissions|turn off (the )?(sandbox|safety)`)
 	reSkill = regexp.MustCompile(`^plugins/[^/]+/skills/`)
 	reHome  = regexp.MustCompile(`(^|[^a-z0-9_.])(/home|/users)/([a-z0-9_-]+)`)
+	// reHost matches hostnames under common public TLDs. Script and source
+	// extensions (.sh, .go, .md) are not TLDs here, so file names do not match.
+	reHost = regexp.MustCompile(`(^|[^a-z0-9._-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|io|dev|de|lt|ai|app|co|cloud|xyz|me|us|uk|eu|health|tech|info|biz|gg|so|to|page|site|online|store|shop))([^a-z0-9-]|$)`)
 )
 
 // Shipped artifacts must stay public-safe (AGENTS.md): only the documented
@@ -29,6 +32,7 @@ var fixtureHomes = map[string]bool{
 	"alice":   true,
 	"bob":     true,
 	"carol":   true,
+	"tester":  true,
 	"user":    true,
 	"example": true,
 }
@@ -62,6 +66,11 @@ func runSecurityLint(args []string) int {
 			return 2
 		}
 		root = wd
+	}
+	domains, err := loadAllowlist(filepath.Join(root, "scripts/security-lint.domains"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "security-lint: %v\n", err)
+		return 2
 	}
 	allowFile := filepath.Join(root, "scripts/security-lint.allowlist")
 	allow, err := loadAllowlist(allowFile)
@@ -136,12 +145,10 @@ func runSecurityLint(args []string) int {
 		if isControlFile(rel) {
 			continue
 		}
-		if !explicitScope && isTestFixture(rel) {
-			continue
-		}
-		if allow[rel] {
-			continue
-		}
+		// Test fixtures and allowlisted records skip the attack rules, but
+		// never the privacy rules: a private host or machine path leaks from
+		// a test file as readily as from shipped guidance.
+		privacyOnly := (!explicitScope && isTestFixture(rel)) || allow[rel]
 		data, err := os.ReadFile(f)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "security-lint: unreadable input: %s\n", rel)
@@ -150,9 +157,28 @@ func runSecurityLint(args []string) int {
 		if len(data) == 0 || !isText(data) {
 			continue
 		}
-		var fetchHits, b64Hits, evalHits, safeHits, homeHits, bidiHits []finding
+		var fetchHits, b64Hits, evalHits, safeHits, homeHits, hostHits, bidiHits []finding
 		for _, rec := range logicalLines(string(data)) {
 			lower := strings.ToLower(rec.text)
+			for _, m := range reHome.FindAllStringSubmatch(lower, -1) {
+				if !fixtureHomes[m[3]] {
+					homeHits = append(homeHits, finding{rel, rec.n, "machine-specific home path in shipped artifact"})
+					break
+				}
+			}
+			hostText := lower
+			if strings.HasSuffix(rel, ".go") {
+				hostText = goLiteralsAndComments(lower)
+			}
+			for _, m := range reHost.FindAllStringSubmatch(hostText, -1) {
+				if host := m[2]; !publicHost(host, domains) {
+					hostHits = append(hostHits, finding{rel, rec.n, "unreviewed hostname " + host + "; use example.com or add a public domain to scripts/security-lint.domains"})
+					break
+				}
+			}
+			if privacyOnly {
+				continue
+			}
 			if reFetch.MatchString(lower) && reHTTP.MatchString(lower) {
 				fetchHits = append(fetchHits, finding{rel, rec.n, "fetch of remote content in executable context"})
 			}
@@ -165,12 +191,6 @@ func runSecurityLint(args []string) int {
 			if reSafe.MatchString(lower) {
 				safeHits = append(safeHits, finding{rel, rec.n, "instruction to disable a safety mechanism"})
 			}
-			for _, m := range reHome.FindAllStringSubmatch(lower, -1) {
-				if !fixtureHomes[m[3]] {
-					homeHits = append(homeHits, finding{rel, rec.n, "machine-specific home path in shipped artifact"})
-					break
-				}
-			}
 			if hasBidi(rec.text) {
 				bidiHits = append(bidiHits, finding{rel, rec.n, "unicode direction-override / bidi control character"})
 			}
@@ -180,6 +200,7 @@ func runSecurityLint(args []string) int {
 		emitAll(evalHits)
 		emitAll(safeHits)
 		emitAll(homeHits)
+		emitAll(hostHits)
 		emitAll(bidiHits)
 	}
 
@@ -189,6 +210,56 @@ func runSecurityLint(args []string) int {
 	}
 	fmt.Fprintln(os.Stderr, "security-lint: clean")
 	return 0
+}
+
+// publicHost accepts reserved example domains and any host whose registrable
+// domain (the last two labels, or three under a two-letter country code such as
+// co.uk) is in the reviewed list.
+// goLiteralsAndComments keeps the parts of a Go source line that can carry a
+// hostname as data: string and raw literals and a trailing comment. Selector
+// expressions such as entry.Info() are code and never hostnames.
+func goLiteralsAndComments(line string) string {
+	var out strings.Builder
+	for i := 0; i < len(line); i++ {
+		switch c := line[i]; {
+		case c == '"' || c == '`':
+			j := i + 1
+			for j < len(line) && line[j] != c {
+				if c == '"' && line[j] == '\\' {
+					j++
+				}
+				j++
+			}
+			if j > len(line) {
+				j = len(line)
+			}
+			out.WriteString(" " + line[i+1:j] + " ")
+			i = j
+		case c == '/' && i+1 < len(line) && line[i+1] == '/':
+			out.WriteString(" " + line[i+2:])
+			return out.String()
+		}
+	}
+	return out.String()
+}
+
+func publicHost(host string, reviewed map[string]bool) bool {
+	labels := strings.Split(strings.Trim(host, "."), ".")
+	if len(labels) < 2 {
+		return true
+	}
+	registrable := strings.Join(labels[len(labels)-2:], ".")
+	if len(labels) >= 3 && len(labels[len(labels)-1]) == 2 {
+		switch labels[len(labels)-2] {
+		case "co", "com", "org", "net", "ac", "gov":
+			registrable = strings.Join(labels[len(labels)-3:], ".")
+		}
+	}
+	switch registrable {
+	case "example.com", "example.org", "example.net":
+		return true
+	}
+	return reviewed[registrable]
 }
 
 func loadAllowlist(path string) (map[string]bool, error) {
@@ -256,7 +327,8 @@ func isTestFixture(rel string) bool {
 func isControlFile(rel string) bool {
 	return rel == "scripts/cmd/security-lint/main.go" ||
 		rel == "scripts/cmd/security-lint/main_test.go" ||
-		rel == "scripts/security-lint.allowlist"
+		rel == "scripts/security-lint.allowlist" ||
+		rel == "scripts/security-lint.domains"
 }
 
 func displayPath(path string) string {
