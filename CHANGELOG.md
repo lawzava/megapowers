@@ -56,6 +56,13 @@ semver.
 - The skill body word caps rise from 400 to 425 per skill and from 330 to 345
   per skill in total, to hold rules that must load with their skill.
 
+### Fixed
+
+- The evaluation broker disables Claude Code 2.1.285's built-in
+  `cc-plugin-agents-md` plugin, which appeared in every fresh config and failed
+  both arms' exact plugin inventory check. Inventory errors now name each
+  reported plugin.
+
 ## 0.32.0 - 2026-09-30
 
 ### Changed

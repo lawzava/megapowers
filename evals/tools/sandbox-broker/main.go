@@ -1977,15 +1977,30 @@ func observedClaudeInventory(trace []byte, req brokerRequest) ([]string, error) 
 	return inventory, nil
 }
 
+// pluginSources names each reported plugin so an unexpected built-in is
+// diagnosable from the error alone.
+func pluginSources(plugins []any) string {
+	names := make([]string, 0, len(plugins))
+	for _, entry := range plugins {
+		plugin, _ := entry.(map[string]any)
+		name := firstString(plugin, "source")
+		if name == "" {
+			name = firstString(plugin, "name")
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
 func validateClaudeInventory(plugins []any, req brokerRequest) ([]string, error) {
 	if req.Arm == "control" {
 		if len(plugins) != 0 {
-			return nil, errors.New("claude control loaded a plugin")
+			return nil, fmt.Errorf("claude control loaded a plugin: %s", pluginSources(plugins))
 		}
 		return []string{}, nil
 	}
 	if len(plugins) != 1 {
-		return nil, fmt.Errorf("claude treatment loaded %d plugins; require exactly one", len(plugins))
+		return nil, fmt.Errorf("claude treatment loaded %d plugins; require exactly one: %s", len(plugins), pluginSources(plugins))
 	}
 	plugin, ok := plugins[0].(map[string]any)
 	if !ok || firstString(plugin, "name") != "megapowers" {
@@ -2048,6 +2063,10 @@ func writeClaudeSettings(req brokerRequest) (string, error) {
 			},
 		},
 		"disableAllHooks": false,
+		// Claude Code 2.1.285 enables this built-in in a fresh config and lists
+		// it in system/init. Disabling it keeps both arms at the exact inventory
+		// earlier runs measured.
+		"enabledPlugins": map[string]any{"cc-plugin-agents-md@builtin": false},
 	}
 	content, err := json.Marshal(settings)
 	if err != nil {
