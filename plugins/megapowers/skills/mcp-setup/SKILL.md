@@ -13,14 +13,16 @@ whether the server is global, project, or repository-local. Keep one
 registration channel per server; duplicate registrations across scopes produce
 conflicting tool lists and ambiguous failures.
 
-Servers register at session start. After any configuration change, restart the
-session before expecting new tools. A tool missing from a live session is not
-evidence of a broken server.
+Servers register at session start. Some harnesses reconnect a server or
+refresh its tools live; after a configuration change, reconnect the server from
+the harness's server menu when it offers one, otherwise restart the session. A
+tool missing from a live session is not evidence of a broken server.
 
 Start with a read-only status check of the configured servers before any login
 attempt. Match the authentication flow to the execution mode. Browser OAuth
-completes only in an interactive session; a headless or non-interactive session
-cannot finish the grant. Provision a token, complete the grant interactively
+needs an interactive terminal, not a local browser: on a remote or display-less
+host, a login command that prints the authorization URL and accepts the pasted
+callback URL completes the grant. A non-interactive session cannot finish it. Provision a token, complete the grant interactively
 beforehand, or route through a proxy command that owns its own authentication.
 Record where the credential lives, and never write it into configuration
 committed to a repository. When inspecting configuration, print the keys,

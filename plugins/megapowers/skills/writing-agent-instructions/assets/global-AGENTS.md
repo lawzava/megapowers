@@ -1,4 +1,5 @@
-<!-- megapowers-global-baseline v2 (2026-09-27). Copy to ~/.codex/AGENTS.md; Codex loads comments, so delete this one after editing. -->
+<!-- megapowers-global-baseline v2 (2026-09-27) -->
+<!-- Copy to ~/.codex/AGENTS.md. Codex loads comments: delete this line after editing and keep the baseline line above. -->
 
 # Global instructions
 
