@@ -32,6 +32,13 @@ var requiredSkillFacts = map[string][]string{
 		"references/design-red-flags.md",
 		"vertical",
 		"expand",
+		"one fact",
+		"hard to reverse, surprising",
+	},
+	"evidence-research": {
+		"git log -s",
+		"its own intent",
+		"what was searched",
 	},
 	"humanizing-prose": {
 		"../../output-styles/megapowers.md",
@@ -77,6 +84,7 @@ var requiredSkillFacts = map[string][]string{
 		"rank several",
 		"revert the edits it motivated",
 		"tag temporary instrumentation",
+		"redact",
 	},
 	"test-first-implementation": {
 		"production code follows a failing test",
@@ -98,6 +106,8 @@ var requiredSkillFacts = map[string][]string{
 		"never weaken",
 		"references/handoff.md",
 		"references/verification-driver.md",
+		"git patch-id",
+		"scope creep",
 	},
 	"writing-agent-instructions": {
 		"references/skills.md",

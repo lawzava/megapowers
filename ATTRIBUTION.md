@@ -53,24 +53,30 @@ disclosure and removal-testing approach. Its guidance is written for this
 repository's supported harnesses.
 
 Later adaptations, reviewed at `d81f3a183412e71a5b1e84ca21bc1a35eea03a60`,
-take concepts from `diagnosing-bugs`, `tdd`, `to-tickets`, `handoff`, and
-`retro`: a red-capable, minimized reproduction loop, ranked hypotheses, tagged
-temporary instrumentation, independent expected values, verification through
-the public interface, vertical slices with expand-and-contract for wide
-changes, portable handoff notes, and session retrospectives that prefer
-deterministic checks. The text is rewritten in repository style.
+take concepts from `diagnosing-bugs`, `tdd`, `to-tickets`, `handoff`, `retro`,
+`code-review`, `domain-modeling`, and `git-guardrails-claude-code`: a
+red-capable, minimized reproduction loop, ranked hypotheses, tagged temporary
+instrumentation, redacted captures, independent expected values, verification
+through the public interface, vertical slices with expand-and-contract for wide
+changes, portable handoff notes, session retrospectives that prefer
+deterministic checks, scope-creep review, a threshold for recording a decision,
+and stopping git commands that discard work. The text is rewritten in
+repository style, and the git check is a new Go implementation on the existing
+hook gate.
 
 ## pstack
 
 Guidance in `autonomous-run`, `systematic-debugging`, `design-and-plan`,
-`verify-and-finish`, `independent-review`, and `writing-agent-instructions`
-draws on [pstack](https://github.com/cursor/plugins/tree/main/pstack) by Lauren
+`verify-and-finish`, `independent-review`, `evidence-research`, and
+`writing-agent-instructions` draws on [pstack](https://github.com/cursor/plugins/tree/main/pstack) by Lauren
 Tan, reviewed at `2eb7ed4613cfc8f098dfe464a23680ea44d84c5e`. The adapted
 concepts are pull request CI classification and review-thread triage, measured
 one-change performance work, reverting edits a refuted hypothesis motivated,
 refusing to weaken an oracle, design red flags with caller-first sketches,
 project verification drivers, blind skill evaluation, and giving a reviewer the
-author's intent. The text is rewritten for Claude Code and Codex; no scripts,
+author's intent, plus rebase-stable verdicts through `git patch-id`, the one
+fact that makes a change safe, and line-history and intent epistemics from
+`why`. The text is rewritten for Claude Code and Codex; no scripts,
 personas, or Cursor-specific workflows were copied.
 
 Upstream license: MIT, Copyright (c) 2026 Lauren Tan.

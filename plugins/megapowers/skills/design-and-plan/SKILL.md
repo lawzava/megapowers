@@ -15,7 +15,9 @@ requirements or material tradeoffs change.
 
 Read repository instructions and relevant code. Establish entry points,
 callers, blast radius, the nearest convention-setting sibling, test coverage,
-and any unread area that could change the decision.
+and any unread area that could change the decision. Name the one fact that
+makes the change safe, and check where search stops: wire formats, stored data,
+and flags.
 
 Before custom design, check existing code, the standard library, native platform
 features, and installed dependencies. Simplify while preserving requirements
@@ -28,7 +30,9 @@ design, and screen them against [design red flags](references/design-red-flags.m
 Recommend one and state its tradeoff.
 
 Mark assumptions and blockers. Model a domain term when repeated state branches
-or synchronized booleans obscure one concept. Do not force a glossary or ADR.
+or synchronized booleans obscure one concept. Propose an ADR only for a decision
+that is hard to reverse, surprising without context, and a real tradeoff; do
+not force a glossary.
 
 ## Specify observable behavior
 

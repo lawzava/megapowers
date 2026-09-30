@@ -43,7 +43,18 @@ semver.
 - `verify-and-finish` forbids weakening a test, baseline, threshold, or
   predicate to obtain a pass.
 - `design-and-plan` slices tasks vertically and stages wide interface changes
-  as expand, migrate, contract.
+  as expand, migrate, contract. It names the one fact that makes a change safe,
+  checks where search stops, and proposes an ADR only for a decision that is
+  hard to reverse, surprising, and a real tradeoff.
+- `verify-and-finish` reruns stale-prone results after a rebase unless
+  `git patch-id` shows the change is unchanged, and reports unrequested
+  behavior as scope creep.
+- `evidence-research` uses `git log -S` and `git blame` for line history,
+  refuses code as evidence of its own intent, and reports an absence with what
+  was searched.
+- `systematic-debugging` redacts secrets before quoting captured output.
+- The skill body word caps rise from 400 to 425 per skill and from 330 to 345
+  per skill in total, to hold rules that must load with their skill.
 
 ## 0.32.0 - 2026-09-30
 

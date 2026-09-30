@@ -26,7 +26,8 @@ failures. Missing or truncated evidence needed for a claim leaves it unverified
 until recovered.
 
 Label inspection and inference; neither is an executed check. Bind stale-prone
-results to the artifact identity and commit. Separate declared configuration
+results to the artifact identity and commit; after a rebase, rerun them unless
+`git patch-id` shows the change is unchanged. Separate declared configuration
 from effective runtime behavior.
 
 Separate local verification from external proof. A local build cannot prove a
@@ -49,10 +50,11 @@ pending review. Bind checks and gates to the current artifact, and reassess
 after changes.
 
 Before a handoff, commit, PR, merge, or release, run canonical checks and inspect
-the diff and workspace. Remove generated excess. Confirm a named target branch
-before committing. Do not commit, publish, merge, delete a branch, or remove a
-worktree without authority for that destination. Destructive cleanup requires
-target confirmation and ownership evidence. For a handoff to another harness,
+the diff and workspace. Remove generated excess and report unrequested
+behavior as scope creep. Confirm a named target branch before committing. Do
+not commit, publish, merge, delete a branch, or remove a worktree without
+authority for that destination. Destructive cleanup requires target
+confirmation and ownership evidence. For a handoff to another harness,
 directory, or person, write a [handoff note](references/handoff.md).
 
 Open the report with `VERIFIED: <claim>` only when every required criterion has
