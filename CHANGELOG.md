@@ -5,6 +5,51 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.32.0 - 2026-09-30
+
+### Changed
+
+- The `PreToolUse` gate now stops the first commit, push, PR, publish,
+  deploy, or outward `gh` write in a session once, until `verify-and-finish`
+  or `safe-effects` loads; the retry runs. A skill already loaded in the
+  transcript skips the stop, and a session without an ID or a writable hook
+  cache gets the old reminder instead. Across 33 Claude sessions after
+  2026-09-26 that committed or opened a PR, 27 never loaded
+  `verify-and-finish`: the reminder arrived with the command it meant to
+  precede.
+- `independent-review` approval tokens (schema v4) cover the forwarded
+  environment: names are disclosed at inspection and value digests are bound,
+  so a changed endpoint or credential variable needs a new inspection.
+
+### Fixed
+
+- A real client hostname, account, and user name shipped in a hook test
+  fixture, and machine paths and a session URL sat in older history. History
+  was rewritten to remove them, and `security-lint` now checks every file,
+  tests included, for unreviewed hostnames and machine home paths.
+- The destructive-command guard caught `rm` only when unquoted; it now
+  resolves quoted programs, escaped nested quotes, command substitutions,
+  quoted device redirects, Windows profile paths, and `find` filters that
+  restrict nothing.
+- Read-only `gh api` calls (GraphQL queries, explicit `GET`) no longer trigger
+  `safe-effects`; `gh pr comment`, `review`, `edit`, `close` and `gh issue`
+  writes now do, and global options no longer hide `kubectl`, `helm`,
+  `docker`, `npm`, or `pnpm` subcommands.
+- Doctor reports project-level `outputStyle` overrides, accepts the registry
+  template's inline comment, requires hook commands, and counts skill loads
+  rather than mentions.
+- The Windows launcher keeps install paths containing `!` intact.
+- The review tool sends `-diff` files as text, rejects script-launcher
+  providers before approval, compares vendor labels case-insensitively,
+  handles submodule paths with spaces, and accepts successful replies that
+  carry usage metadata.
+- The release workflow publishes only the commit it attested.
+- `mcp-setup` no longer demands a restart after every change and describes
+  OAuth on remote hosts correctly.
+- Evals: strict scoring rejects duplicate JSON keys, the TDD fixture starts
+  green so a red run is attributable, native graders expect an honest
+  verdict, and study code carries platform build constraints.
+
 ## 0.31.1 - 2026-09-28
 
 ### Changed
