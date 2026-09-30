@@ -24,10 +24,15 @@ var (
 	parentPattern     = regexp.MustCompile(`^\.\.(?:/\.\.)*(?:/\*)?$`)
 	broadModePattern  = regexp.MustCompile(`^([ugoa]*)([-+=])([rwxXst]*)$`)
 	driveRootPattern  = regexp.MustCompile(`^[A-Za-z]:[\\/]?\*?$`)
-	rawDeviceRedirect = regexp.MustCompile(`(^|[^<])>\|?[[:space:]]*/dev/(sd|nvme|vd|xvd|mmcblk|disk|rdisk|mapper/|dm-|md[0-9]|md/|loop[0-9]|mtdblock|hd|sr|vblk|rbd|nbd|drbd|pmem|zvol/)`)
-	functionPattern   = regexp.MustCompile(`([A-Za-z_:][A-Za-z0-9_:]*)[[:space:]]*\(\)[[:space:]]*\{([^{}]*)\}`)
-	functionDefName   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\(\)\{?$`)
-	numericModeShape  = regexp.MustCompile(`^[0-7]{3,4}$`)
+	// windowsHomePattern matches a whole Windows profile or the profiles root:
+	// $env:USERPROFILE, $HOME (PowerShell names are case-insensitive), C:\Users,
+	// or C:\Users\<name>, each optionally followed by \*.
+	windowsHomePattern = regexp.MustCompile(`(?i)^(\$env:userprofile|\$\{env:userprofile\}|\$home|[a-z]:[\\/]users([\\/][^\\/*]+)?)[\\/]?\*?$`)
+	rawDeviceRedirect  = regexp.MustCompile(`(^|[^<])>\|?[[:space:]]*/dev/(sd|nvme|vd|xvd|mmcblk|disk|rdisk|mapper/|dm-|md[0-9]|md/|loop[0-9]|mtdblock|hd|sr|vblk|rbd|nbd|drbd|pmem|zvol/)`)
+	rawDevicePath      = regexp.MustCompile(`^/dev/(sd|nvme|vd|xvd|mmcblk|disk|rdisk|mapper/|dm-|md[0-9]|md/|loop[0-9]|mtdblock|hd|sr|vblk|rbd|nbd|drbd|pmem|zvol/)`)
+	functionPattern    = regexp.MustCompile(`([A-Za-z_:][A-Za-z0-9_:]*)[[:space:]]*\(\)[[:space:]]*\{([^{}]*)\}`)
+	functionDefName    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\(\)\{?$`)
+	numericModeShape   = regexp.MustCompile(`^[0-7]{3,4}$`)
 )
 
 // commandLeaders are shell words that precede a simple command inside a
@@ -172,7 +177,7 @@ func scanLevel(command, home string) (decision, []string) {
 				}
 			}
 		case "pwsh", "powershell":
-			words, ok := shellWords(tail)
+			words, ok := literalWords(tail)
 			if !ok {
 				break
 			}
@@ -212,6 +217,12 @@ func scanLevel(command, home string) (decision, []string) {
 	if rawDeviceRedirect.MatchString(dequoted) {
 		return decision{true, "redirect to a raw block device (would overwrite a disk)"}, nil
 	}
+	for _, target := range redirectTargets(command) {
+		if rawDevicePath.MatchString(target) {
+			return decision{true, "redirect to a raw block device (would overwrite a disk)"}, nil
+		}
+	}
+	payloads = append(payloads, commandSubstitutions(command)...)
 	if isForkBomb(dequoted) {
 		return decision{true, "fork bomb"}, nil
 	}
@@ -297,7 +308,165 @@ func splitSegments(command string) []string {
 	return segments
 }
 
+// shellWords splits POSIX shell words: a backslash escapes the next character
+// outside quotes, single quotes are literal, and inside double quotes a
+// backslash escapes only $, `, ", \, and newline. Unbalanced quotes fail.
 func shellWords(text string) ([]string, bool) {
+	var words []string
+	var token strings.Builder
+	inToken := false
+	for i := 0; i < len(text); {
+		c := text[i]
+		switch {
+		case c == '\\':
+			inToken = true
+			if i+1 < len(text) {
+				token.WriteByte(text[i+1])
+			}
+			i += 2
+			continue
+		case c == '\'':
+			end := strings.IndexByte(text[i+1:], '\'')
+			if end < 0 {
+				return nil, false
+			}
+			inToken = true
+			token.WriteString(text[i+1 : i+1+end])
+			i += end + 2
+			continue
+		case c == '"':
+			inToken = true
+			i++
+			for i < len(text) && text[i] != '"' {
+				if text[i] == '\\' && i+1 < len(text) && strings.IndexByte("$`\"\\\n", text[i+1]) >= 0 {
+					token.WriteByte(text[i+1])
+					i += 2
+					continue
+				}
+				token.WriteByte(text[i])
+				i++
+			}
+			if i >= len(text) {
+				return nil, false
+			}
+			i++
+			continue
+		case isSpace(c):
+			if inToken {
+				words = append(words, token.String())
+				token.Reset()
+				inToken = false
+			}
+			i++
+			continue
+		}
+		token.WriteByte(c)
+		inToken = true
+		i++
+	}
+	if inToken {
+		words = append(words, token.String())
+	}
+	return words, true
+}
+
+// commandSubstitutions returns the bodies of $(...) and backtick
+// substitutions that the shell would execute: those outside single quotes and
+// not escaped. Quoted data such as echo '$(rm -rf /)' is not returned.
+func commandSubstitutions(text string) []string {
+	var bodies []string
+	inDouble := false
+	for i := 0; i < len(text); i++ {
+		switch c := text[i]; {
+		case c == '\\':
+			i++
+		case c == '\'' && !inDouble:
+			end := strings.IndexByte(text[i+1:], '\'')
+			if end < 0 {
+				return bodies
+			}
+			i += end + 1
+		case c == '"':
+			inDouble = !inDouble
+		case c == '$' && i+1 < len(text) && text[i+1] == '(':
+			depth, j := 0, i+1
+			for ; j < len(text); j++ {
+				if text[j] == '(' {
+					depth++
+				} else if text[j] == ')' {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+			}
+			if j >= len(text) {
+				return bodies
+			}
+			bodies = append(bodies, text[i+2:j])
+			i = j
+		case c == '`':
+			end := strings.IndexByte(text[i+1:], '`')
+			if end < 0 {
+				return bodies
+			}
+			bodies = append(bodies, text[i+1:i+1+end])
+			i += end + 1
+		}
+	}
+	return bodies
+}
+
+// redirectTargets returns the decoded target word of each output redirection
+// outside quotes, so > "/dev/sda" is seen as /dev/sda. File-descriptor
+// duplications such as >&2 are skipped.
+func redirectTargets(text string) []string {
+	var targets []string
+	inDouble := false
+	for i := 0; i < len(text); i++ {
+		switch c := text[i]; {
+		case c == '\\':
+			i++
+		case c == '\'' && !inDouble:
+			end := strings.IndexByte(text[i+1:], '\'')
+			if end < 0 {
+				return targets
+			}
+			i += end + 1
+		case c == '"':
+			inDouble = !inDouble
+		case c == '>' && !inDouble && (i == 0 || text[i-1] != '<'):
+			j := i + 1
+			if j < len(text) && (text[j] == '>' || text[j] == '|') {
+				j++
+			}
+			if j < len(text) && text[j] == '&' {
+				i = j
+				continue
+			}
+			for j < len(text) && isSpace(text[j]) {
+				j++
+			}
+			end := j
+			for end < len(text) && !isSpace(text[end]) && strings.IndexByte(";&|<>", text[end]) < 0 {
+				if text[end] == '"' || text[end] == '\'' {
+					end = skipQuoted(text, end)
+					continue
+				}
+				end++
+			}
+			if words, ok := shellWords(text[j:end]); ok && len(words) == 1 {
+				targets = append(targets, words[0])
+			}
+			i = end - 1
+		}
+	}
+	return targets
+}
+
+// literalWords splits on whitespace and strips quotes without backslash
+// escapes, the way PowerShell and cmd treat backslashes as path separators.
+func literalWords(text string) ([]string, bool) {
 	var words []string
 	var token strings.Builder
 	inToken := false
@@ -415,9 +584,11 @@ func resolveCommand(segment string) (string, string, bool) {
 	return commandBaseName(word), rest, true
 }
 
-// commandBaseName reduces "/usr/bin/env", "\rm", or "powershell.exe" to the
-// bare program name the classifier keys on.
+// commandBaseName reduces "/usr/bin/env", "\rm", "powershell.exe", or a quoted
+// program such as "rm" in quotes to the bare program name the classifier keys
+// on. The shell removes quotes before it resolves the program, so this does too.
 func commandBaseName(word string) string {
+	word = strings.NewReplacer(`"`, "", `'`, "").Replace(word)
 	name := filepath.Base(strings.TrimLeft(word, `\`))
 	if len(name) > 4 && strings.EqualFold(name[len(name)-4:], ".exe") {
 		name = name[:len(name)-4]
@@ -659,6 +830,10 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 	}
 	inStarts, hardStart, homeStart, filtered, deny := true, false, false, false, false
 	inExec, firstExec := false, false
+	// A filter makes a home-wide delete ordinary only when it restricts every
+	// branch: an -o/-or/, alternative, a negated filter, or a match-all pattern
+	// such as '*' leaves the whole tree in scope.
+	branches, negate := false, false
 	var execArgs []string
 	var payloads []string
 	destroys := func() {
@@ -666,7 +841,7 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 			deny = true
 		}
 	}
-	for _, word := range words {
+	for index, word := range words {
 		if inExec {
 			if isFindExecTerminator(word) {
 				if payload := quotePayload(execArgs); payload != "" {
@@ -701,8 +876,25 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 				continue
 			}
 		}
+		switch word {
+		case "-o", "-or", ",":
+			branches = true
+		case "!", "-not":
+			negate = true
+			continue
+		}
 		if _, filter := findFilters[word]; filter || strings.HasPrefix(word, "-newer") {
-			filtered = true
+			pattern := ""
+			if index+1 < len(words) {
+				pattern = words[index+1]
+			}
+			if !negate && !(isNamePatternFilter(word) && strings.Trim(pattern, "*?.") == "") {
+				filtered = true
+			}
+		}
+		negate = false
+		if branches {
+			filtered = false
 		}
 		switch word {
 		case "-delete":
@@ -718,6 +910,17 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 		}
 	}
 	return deny, payloads
+}
+
+// isNamePatternFilter reports a find test whose argument is a glob or regex,
+// so a match-all argument restricts nothing.
+func isNamePatternFilter(word string) bool {
+	switch word {
+	case "-name", "-iname", "-path", "-ipath", "-wholename", "-iwholename", "-regex", "-iregex", "-lname", "-ilname":
+		return true
+	default:
+		return false
+	}
 }
 
 func isFindExecTerminator(word string) bool {
@@ -884,7 +1087,7 @@ func cpIsCatastrophic(tail string) bool {
 }
 
 func recursiveRemoveIsCatastrophic(tail, home string) bool {
-	words, ok := shellWords(tail)
+	words, ok := literalWords(tail)
 	if !ok {
 		return false
 	}
@@ -903,7 +1106,7 @@ func recursiveRemoveIsCatastrophic(tail, home string) bool {
 		if strings.HasPrefix(word, "-") || lower == "/s" || lower == "/q" {
 			continue
 		}
-		if isCatastrophicTarget(word, home) || driveRootPattern.MatchString(word) {
+		if isCatastrophicTarget(word, home) || driveRootPattern.MatchString(word) || windowsHomePattern.MatchString(word) {
 			return true
 		}
 	}

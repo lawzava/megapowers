@@ -100,7 +100,7 @@ func TestLegacyCommandCorpus(t *testing.T) {
 		{wantDeny: true, home: "/home/tester", command: "sh -c \"rm -rf /usr/*\""},
 		{wantDeny: true, home: "/home/tester", command: "eval \"rm -rf /\""},
 		{wantDeny: true, home: "/home/tester", command: "\\rm -rf /"},
-		{wantDeny: false, home: "/home/tester", command: "bash -c \"bash -c \\\"rm -rf /\\\"\""},
+		{wantDeny: true, home: "/home/tester", command: "bash -c \"bash -c \\\"rm -rf /\\\"\""},
 		{wantDeny: true, home: "/home/tester", command: ": > /dev/sda"},
 		{wantDeny: true, home: "/home/tester", command: "cat /dev/zero > /dev/nvme0n1"},
 		{wantDeny: true, home: "/home/tester", command: "dd if=/dev/zero of=/dev/mapper/vg-root bs=1M"},

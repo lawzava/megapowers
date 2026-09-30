@@ -102,7 +102,7 @@ func TestDoctorReportsCodexStyleState(t *testing.T) {
 	home := t.TempDir()
 	root := filepath.Dir(packageDir(t))
 	on := doctorOutput(t, map[string]string{"HOME": home, "MEGAPOWERS_HARNESS": "codex", "MEGAPOWERS_PLUGIN_ROOT": root})
-	if !strings.Contains(on, "harness: codex") || !strings.Contains(on, "MEGAPOWERS_OUTPUT_STYLE: unset (style injected)") || strings.Contains(on, "claude outputStyle") {
+	if !strings.Contains(on, "harness: codex") || !strings.Contains(on, "MEGAPOWERS_OUTPUT_STYLE: unset (style injection enabled)") || strings.Contains(on, "claude outputStyle") {
 		t.Fatalf("codex doctor report:\n%s", on)
 	}
 	off := doctorOutput(t, map[string]string{"HOME": home, "MEGAPOWERS_HARNESS": "codex", "MEGAPOWERS_PLUGIN_ROOT": root, "MEGAPOWERS_OUTPUT_STYLE": "off"})
@@ -165,5 +165,89 @@ func TestDoctorDetectsHarnessFromEnvironment(t *testing.T) {
 	unknown := doctorOutput(t, map[string]string{"HOME": home, "MEGAPOWERS_PLUGIN_ROOT": root})
 	if !strings.Contains(unknown, "harness: unknown") || !strings.Contains(unknown, "claude outputStyle") || !strings.Contains(unknown, "MEGAPOWERS_OUTPUT_STYLE") {
 		t.Fatalf("unknown harness must report both style checks:\n%s", unknown)
+	}
+}
+
+func TestDoctorAcceptsTheFilledRegistryTemplate(t *testing.T) {
+	previous := doctorNow
+	doctorNow = func() time.Time { return time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { doctorNow = previous })
+	template, err := os.ReadFile(filepath.Join(packageDir(t), "..", "skills", "orchestrating", "assets", "agent-capabilities.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(template, []byte("expires_at: <YYYY-MM-DD>")) {
+		t.Fatalf("template no longer carries the expires_at placeholder this test fills")
+	}
+	filled := bytes.ReplaceAll(template, []byte("<YYYY-MM-DD>"), []byte("2026-10-25"))
+	home := t.TempDir()
+	dir := filepath.Join(home, ".config", "megapowers")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "agent-capabilities.md"), filled, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	report := doctorOutput(t, map[string]string{"HOME": home, "MEGAPOWERS_HARNESS": "codex", "MEGAPOWERS_PLUGIN_ROOT": filepath.Dir(packageDir(t))})
+	if !strings.Contains(report, "expires 2026-10-25") || strings.Contains(report, "WARN: agent registry") {
+		t.Fatalf("a filled template with its inline comment must date correctly:\n%s", report)
+	}
+}
+
+func writeProjectSettings(t *testing.T, project, name, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(project, ".claude"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, ".claude", name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDoctorReportsProjectOutputStyleOverride(t *testing.T) {
+	root := filepath.Dir(packageDir(t))
+	for _, test := range []struct {
+		name, file, body, dirVar string
+		want                     []string
+		warn                     bool
+	}{
+		{"local override wins", "settings.local.json", `{"outputStyle":"Megapowers"}`, "CLAUDE_PROJECT_DIR", []string{"outputStyle: Megapowers", "settings.local.json", "megapowers:Megapowers"}, true},
+		{"shared override wins", "settings.json", `{"outputStyle":"default"}`, "PWD", []string{"outputStyle: default", filepath.Join(".claude", "settings.json")}, true},
+		{"project without style defers to user", "settings.json", `{"permissions":{}}`, "PWD", []string{"claude outputStyle: megapowers:Megapowers (OK"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home, project := t.TempDir(), t.TempDir()
+			writeClaudeSettings(t, home, `{"outputStyle":"megapowers:Megapowers"}`)
+			writeProjectSettings(t, project, test.file, test.body)
+			report := doctorOutput(t, map[string]string{"HOME": home, "MEGAPOWERS_HARNESS": "claude", "MEGAPOWERS_PLUGIN_ROOT": root, test.dirVar: project})
+			for _, want := range test.want {
+				if !strings.Contains(report, want) {
+					t.Errorf("report lacks %q:\n%s", want, report)
+				}
+			}
+			if got := strings.Contains(report, "WARN: claude outputStyle"); got != test.warn {
+				t.Errorf("outputStyle WARN = %v, want %v:\n%s", got, test.warn, report)
+			}
+		})
+	}
+}
+
+func TestDoctorWarnsOnHookEventsWithoutCommands(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "hooks"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"hooks":{"PreToolUse":[],"SessionStart":[{"hooks":[]}],"SubagentStart":[{"hooks":[{"type":"command","command":"run-hook.cmd subagent-start"}]}]}}`
+	if err := os.WriteFile(filepath.Join(root, "hooks", "hooks.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	report := doctorOutput(t, map[string]string{"HOME": t.TempDir(), "MEGAPOWERS_HARNESS": "codex", "MEGAPOWERS_PLUGIN_ROOT": root})
+	for _, want := range []string{"WARN: hooks.json does not register PreToolUse", "WARN: hooks.json does not register SessionStart"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("report lacks %q:\n%s", want, report)
+		}
+	}
+	if strings.Contains(report, "does not register SubagentStart") {
+		t.Errorf("a registered command must satisfy the check:\n%s", report)
 	}
 }

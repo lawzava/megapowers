@@ -56,7 +56,7 @@ func runDoctor(getenv getenvFunc, output, errors io.Writer) int {
 	harness, signal := detectHarness(getenv)
 	report.add("harness: %s (%s)", harness, signal)
 
-	doctorGo(report, getenv)
+	doctorGo(report)
 	doctorRunnerCache(report, getenv)
 
 	if harness != "codex" {
@@ -131,7 +131,7 @@ func detectHarness(getenv getenvFunc) (string, string) {
 	return "unknown", "no harness variables; both style checks follow"
 }
 
-func doctorGo(report *doctorReport, getenv getenvFunc) {
+func doctorGo(report *doctorReport) {
 	report.add("runner built with: %s (%s)", runtime.Version(), runnerPath())
 	goBinary, err := exec.LookPath("go")
 	if err != nil {
@@ -150,7 +150,6 @@ func doctorGo(report *doctorReport, getenv getenvFunc) {
 	if err := requireGo125(version); err != nil {
 		report.warn("go toolchain %s: the launcher refuses to build with it; install Go 1.25 or newer", version)
 	}
-	_ = getenv
 }
 
 func runnerPath() string {
@@ -181,49 +180,88 @@ func claudeSettingsPath(getenv getenvFunc) string {
 	return ""
 }
 
+// doctorClaudeOutputStyle reports the effective outputStyle: project-local
+// and project settings override the user file, so a stale value there turns
+// the style off even when the user file is correct.
 func doctorClaudeOutputStyle(report *doctorReport, getenv getenvFunc) {
-	path := claudeSettingsPath(getenv)
-	if path == "" {
+	project := getenv("CLAUDE_PROJECT_DIR")
+	if project == "" {
+		project = getenv("PWD")
+	}
+	user := claudeSettingsPath(getenv)
+	if project != "" {
+		for _, path := range []string{filepath.Join(project, ".claude", "settings.local.json"), filepath.Join(project, ".claude", "settings.json")} {
+			if path == user {
+				continue
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			style, err := outputStyleOf(data)
+			if err != nil {
+				report.warn("claude outputStyle: %s is not valid JSON (%v)", path, err)
+				return
+			}
+			if style != "" {
+				reportClaudeStyle(report, style, path+" overrides the user settings")
+				return
+			}
+		}
+	}
+	if user == "" {
 		report.warn("claude outputStyle: cannot locate settings.json (no HOME or CLAUDE_CONFIG_DIR)")
 		return
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(user)
 	if err != nil {
-		report.warn("claude outputStyle: %s not readable (%v); the plugin style is optional, set \"outputStyle\": %q there to enable it", path, err, expectedOutputStyle)
+		report.warn("claude outputStyle: %s not readable (%v); the plugin style is optional, set \"outputStyle\": %q there to enable it", user, err, expectedOutputStyle)
 		return
 	}
+	style, err := outputStyleOf(data)
+	if err != nil {
+		report.warn("claude outputStyle: %s is not valid JSON (%v)", user, err)
+		return
+	}
+	if style == "" {
+		report.warn("claude outputStyle: not set in %s; the plugin style is optional, set \"outputStyle\": %q to enable it", user, expectedOutputStyle)
+		return
+	}
+	reportClaudeStyle(report, style, user)
+}
+
+func outputStyleOf(data []byte) (string, error) {
 	var settings struct {
 		OutputStyle string `json:"outputStyle"`
 	}
-	if err := json.Unmarshal(data, &settings); err != nil {
-		report.warn("claude outputStyle: %s is not valid JSON (%v)", path, err)
+	err := json.Unmarshal(data, &settings)
+	return settings.OutputStyle, err
+}
+
+func reportClaudeStyle(report *doctorReport, style, source string) {
+	if style == expectedOutputStyle {
+		report.add("claude outputStyle: %s (OK, %s)", style, source)
 		return
 	}
-	switch settings.OutputStyle {
-	case expectedOutputStyle:
-		report.add("claude outputStyle: %s (OK, %s)", settings.OutputStyle, path)
-	case "":
-		report.warn("claude outputStyle: not set in %s; the plugin style is optional, set \"outputStyle\": %q to enable it", path, expectedOutputStyle)
-	default:
-		report.warn("claude outputStyle: %s in %s; the plugin style resolves only as %q (bare \"Megapowers\" is silently ignored)", settings.OutputStyle, path, expectedOutputStyle)
-	}
+	report.warn("claude outputStyle: %s in %s; the plugin style resolves only as %q (bare \"Megapowers\" is silently ignored)", style, source, expectedOutputStyle)
 }
 
 func doctorCodexOutputStyle(report *doctorReport, getenv getenvFunc) {
 	switch value := getenv("MEGAPOWERS_OUTPUT_STYLE"); value {
 	case "":
-		report.add("MEGAPOWERS_OUTPUT_STYLE: unset (style injected)")
+		report.add("MEGAPOWERS_OUTPUT_STYLE: unset (style injection enabled)")
 	case "off":
 		report.add("MEGAPOWERS_OUTPUT_STYLE: off (style injection disabled)")
 	default:
-		report.add("MEGAPOWERS_OUTPUT_STYLE: %s (style injected; only \"off\" disables it)", value)
+		report.add("MEGAPOWERS_OUTPUT_STYLE: %s (style injection enabled; only \"off\" disables it)", value)
 	}
 }
 
 // doctorNow is replaceable so registry expiry tests do not depend on the clock.
 var doctorNow = time.Now
 
-var registryExpiry = regexp.MustCompile(`(?m)^\s*expires_at:\s*"?(\d{4}-\d{2}-\d{2})"?\s*$`)
+// registryExpiry tolerates the inline YAML comment the shipped template keeps.
+var registryExpiry = regexp.MustCompile(`(?m)^\s*expires_at:\s*"?(\d{4}-\d{2}-\d{2})"?\s*(#.*)?$`)
 
 // doctorAgentRegistry reports the optional personal registry that
 // orchestrating reads. Orchestrating ignores a registry it cannot date, so an
@@ -270,6 +308,9 @@ func doctorHooks(report *doctorReport, root string) {
 	var manifest struct {
 		Hooks map[string][]struct {
 			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
 		} `json:"hooks"`
 	}
 	if err := json.Unmarshal(data, &manifest); err != nil {
@@ -290,9 +331,18 @@ func doctorHooks(report *doctorReport, root string) {
 		events = append(events, event)
 	}
 	sort.Strings(events)
-	report.add("hooks.json events: %s", strings.Join(events, ", "))
+	report.add("hooks.json events: %s (declared; a loaded session shows whether the harness ran them)", strings.Join(events, ", "))
+	// An event key with no command entry registers nothing the harness can run.
 	for _, required := range []string{"PreToolUse", "SessionStart", "SubagentStart"} {
-		if _, ok := manifest.Hooks[required]; !ok {
+		registered := false
+		for _, group := range manifest.Hooks[required] {
+			for _, hook := range group.Hooks {
+				if strings.TrimSpace(hook.Command) != "" {
+					registered = true
+				}
+			}
+		}
+		if !registered {
 			report.warn("hooks.json does not register %s", required)
 		}
 	}

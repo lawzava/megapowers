@@ -23,11 +23,13 @@ fails, report its exit status and raw error; that failure is the diagnosis.
 
 ## Did a skill fire?
 
-A skill fired only if the session loaded its body. Search the harness session
-store without printing transcripts: count recent files that mention
-`skills/<name>`, which matches both tool loads and direct file reads, for
-example `find <session store> -mtime -7 -type f -exec grep -l 'skills/<name>' {} + | wc -l`.
-Report counts and session identifiers, not contents.
+A skill fired only if the session loaded its body; a catalog entry or a
+prose mention is not a load. Search the harness session store without
+printing transcripts and count only load records: a skill tool call naming
+the skill, an injected skill body, or a tool call that reads
+`skills/<name>/SKILL.md`.
+The [session-store entry](references/fixes.md) gives the exact search per
+harness. Report counts and session identifiers, not contents.
 
 If a matching task never loaded the skill, the defect is trigger wording or
 the startup reminder, not the installation; use `writing-agent-instructions`

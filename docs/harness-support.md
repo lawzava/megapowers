@@ -15,7 +15,7 @@ environments.
 | Skill reminder at session start | `SessionStart` hook | `SessionStart` hook |
 | Subagent context | `SubagentStart` hook: skill reminder and compact report contract | `SubagentStart` hook: same text |
 | Destructive-command guard | High-confidence denies only | High-confidence denies only |
-| Completion and effect reminders | Non-blocking `PreToolUse` context before commit, push, PR, publish, and deploy commands | Same, where Codex accepts `additionalContext` from `PreToolUse` |
+| Completion and effect gate | `PreToolUse` denies the first commit, push, PR, publish, deploy, or outward `gh` write per session until the matching skill loads; the retry runs | Same, where Codex honors a `PreToolUse` deny |
 | Self-diagnosis | `megapowers-doctor` skill over the Go `doctor` command | Same |
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |

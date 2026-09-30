@@ -1,6 +1,9 @@
 : << 'CMDBLOCK'
 @echo off
-setlocal enabledelayedexpansion
+rem Capture paths with delayed expansion off so a "!" in an install or profile
+rem path survives; after the switch below, paths are read only as !VAR!, whose
+rem values are never re-parsed.
+setlocal disabledelayedexpansion
 
 if "%~1"=="" (
     echo megapowers hook: cannot run hook: missing hook name 1>&2
@@ -18,6 +21,7 @@ if not defined CACHE_BASE (
     goto fail
 )
 set "CACHE_DIR=%CACHE_BASE%\megapowers-hooks"
+setlocal enabledelayedexpansion
 if not defined PROCESSOR_ARCHITECTURE (
     set "REASON=cannot resolve Windows architecture"
     goto fail
@@ -36,13 +40,13 @@ if defined GO_VERSION (
     set "GO_KEY=!GO_VERSION:devel =!"
     for /f "tokens=1" %%k in ("!GO_KEY!") do set "GO_KEY=%%k"
 )
-set "RUNNER_PREFIX=%CACHE_DIR%\megapowers-hook-8fbe8725c0bcc208-windows-%PROCESSOR_ARCHITECTURE%"
+set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-bc7ab6cde18f1c6d-windows-%PROCESSOR_ARCHITECTURE%"
 set "RUNNER="
 if defined GO_KEY (
     set "RUNNER=!RUNNER_PREFIX!-!GO_KEY!.exe"
 ) else (
     for %%f in ("!RUNNER_PREFIX!-*.exe") do (
-        if /i not "%%~xf"==".tmp" set "RUNNER=%%~ff"
+        if /i not "%%~xf"==".tmp" set "RUNNER=!CACHE_DIR!\%%~nxf"
     )
 )
 if not defined RUNNER (
@@ -54,31 +58,31 @@ if not defined RUNNER (
     goto fail
 )
 
-if exist "%CACHE_DIR%" (
-    fsutil reparsepoint query "%CACHE_DIR%" >nul 2>nul
+if exist "!CACHE_DIR!" (
+    fsutil reparsepoint query "!CACHE_DIR!" >nul 2>nul
     if not errorlevel 1 (
-        set "REASON=refusing symlink hook cache: %CACHE_DIR%"
+        set "REASON=refusing symlink hook cache: !CACHE_DIR!"
         goto fail
     )
 )
-if not exist "%CACHE_DIR%" mkdir "%CACHE_DIR%" >nul 2>nul
-if not exist "%CACHE_DIR%" (
-    set "REASON=cannot create hook cache: %CACHE_DIR%"
+if not exist "!CACHE_DIR!" mkdir "!CACHE_DIR!" >nul 2>nul
+if not exist "!CACHE_DIR!" (
+    set "REASON=cannot create hook cache: !CACHE_DIR!"
     goto fail
 )
-if exist "%RUNNER%" (
-    fsutil reparsepoint query "%RUNNER%" >nul 2>nul
+if exist "!RUNNER!" (
+    fsutil reparsepoint query "!RUNNER!" >nul 2>nul
     if not errorlevel 1 (
-        set "REASON=refusing symlink cached runner: %RUNNER%"
+        set "REASON=refusing symlink cached runner: !RUNNER!"
         goto fail
     )
 )
-if exist "%RUNNER%\" (
-    set "REASON=cached runner is not a file: %RUNNER%"
+if exist "!RUNNER!\" (
+    set "REASON=cached runner is not a file: !RUNNER!"
     goto fail
 )
 
-if not exist "%RUNNER%" (
+if not exist "!RUNNER!" (
     set "GO_SEMVER=!GO_KEY:go=!"
     set "GO_MAJOR=0"
     set "GO_MINOR=0"
@@ -96,19 +100,19 @@ if not exist "%RUNNER%" (
     if not defined GOCACHE (
         set "GO_DEFAULT_CACHE="
         for /f "delims=" %%c in ('go env GOCACHE 2^>nul') do set "GO_DEFAULT_CACHE=%%c"
-        if not defined GO_DEFAULT_CACHE set "GOCACHE=%CACHE_DIR%\go-build"
-        if /i "!GO_DEFAULT_CACHE!"=="off" set "GOCACHE=%CACHE_DIR%\go-build"
+        if not defined GO_DEFAULT_CACHE set "GOCACHE=!CACHE_DIR!\go-build"
+        if /i "!GO_DEFAULT_CACHE!"=="off" set "GOCACHE=!CACHE_DIR!\go-build"
     )
-    set "TMP_RUNNER=%CACHE_DIR%\build-!RANDOM!.tmp.exe"
-    go build -trimpath -o "!TMP_RUNNER!" "%HOOK_DIR%hook_runner.go" "%HOOK_DIR%deny_destructive.go" "%HOOK_DIR%output_style.go" "%HOOK_DIR%gate_context.go" "%HOOK_DIR%doctor.go"
+    set "TMP_RUNNER=!CACHE_DIR!\build-!RANDOM!.tmp.exe"
+    go build -trimpath -o "!TMP_RUNNER!" "!HOOK_DIR!hook_runner.go" "!HOOK_DIR!deny_destructive.go" "!HOOK_DIR!output_style.go" "!HOOK_DIR!gate_context.go" "!HOOK_DIR!doctor.go"
     if errorlevel 1 (
         del /q "!TMP_RUNNER!" >nul 2>nul
         set "REASON=cannot build cached hook runner"
         goto fail
     )
-    move /y "!TMP_RUNNER!" "%RUNNER%" >nul
+    move /y "!TMP_RUNNER!" "!RUNNER!" >nul
     if errorlevel 1 (
-        if exist "%RUNNER%" (
+        if exist "!RUNNER!" (
             del /q "!TMP_RUNNER!" >nul 2>nul
         ) else (
             del /q "!TMP_RUNNER!" >nul 2>nul
@@ -118,19 +122,20 @@ if not exist "%RUNNER%" (
     )
 )
 
-set "MEGAPOWERS_PLUGIN_ROOT=%PLUGIN_DIR%"
-set "MEGAPOWERS_HOOK_CACHE_DIR=%CACHE_DIR%"
-"%RUNNER%" %*
+set "MEGAPOWERS_PLUGIN_ROOT=!PLUGIN_DIR!"
+set "MEGAPOWERS_HOOK_CACHE_DIR=!CACHE_DIR!"
+"!RUNNER!" %*
 set "RC=!errorlevel!"
 exit /b !RC!
 
 :fail
+setlocal enabledelayedexpansion
 rem A launcher failure never blocks the tool call: the guard hooks warn the
 rem user through systemMessage and exit 0; doctor keeps a hard failure.
 echo megapowers hook: !REASON! 1>&2
-if /i "%HOOK_NAME%"=="deny-destructive" goto warn
-if /i "%HOOK_NAME%"=="session-start" goto warn
-if /i "%HOOK_NAME%"=="subagent-start" exit /b 0
+if /i "!HOOK_NAME!"=="deny-destructive" goto warn
+if /i "!HOOK_NAME!"=="session-start" goto warn
+if /i "!HOOK_NAME!"=="subagent-start" exit /b 0
 exit /b 1
 :warn
 set "JSON_REASON=!REASON:\=\\!"
@@ -249,7 +254,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-runner_prefix="$cache_dir/megapowers-hook-8fbe8725c0bcc208-$platform_os-$platform_arch"
+runner_prefix="$cache_dir/megapowers-hook-bc7ab6cde18f1c6d-$platform_os-$platform_arch"
 if [ -n "$go_key" ]; then
   runner="$runner_prefix-$go_key"
 else

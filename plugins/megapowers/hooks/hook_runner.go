@@ -16,8 +16,9 @@ const maxHookInputBytes = 256 << 10
 const hookUsage = "expected deny-destructive, session-start, subagent-start, output-style, or doctor"
 
 type preToolUseInput struct {
-	SessionID string `json:"session_id"`
-	ToolInput struct {
+	SessionID      string `json:"session_id"`
+	TranscriptPath string `json:"transcript_path"`
+	ToolInput      struct {
 		Command string `json:"command"`
 	} `json:"tool_input"`
 }
@@ -120,13 +121,21 @@ func runDenyDestructive(getenv getenvFunc, input io.Reader, output, errors io.Wr
 		return 0
 	}
 
-	// Allowed commands may still deserve a non-blocking skill reminder.
-	context := gateContext(event.ToolInput.Command, event.SessionID, getenv)
-	if context == "" {
+	// Allowed commands that complete work or reach outside the machine stop
+	// once per session until the matching skill loads.
+	deny, remind := gateDecision(event.ToolInput.Command, event.SessionID, event.TranscriptPath, getenv)
+	var specific hookSpecificOutput
+	switch {
+	case len(deny) > 0:
+		specific = hookSpecificOutput{HookEventName: "PreToolUse", PermissionDecision: "deny",
+			PermissionDecisionReason: gateMessages(append(deny, remind...), completionDeny, effectDeny)}
+	case len(remind) > 0:
+		specific = hookSpecificOutput{HookEventName: "PreToolUse", AdditionalContext: gateMessages(remind, completionContext, effectContext)}
+	default:
 		return 0
 	}
-	if err := emitHookOutput(output, hookSpecificOutput{HookEventName: "PreToolUse", AdditionalContext: context}); err != nil {
-		fmt.Fprintln(errors, "megapowers destructive guard: cannot emit context")
+	if err := emitHookOutput(output, specific); err != nil {
+		fmt.Fprintln(errors, "megapowers destructive guard: cannot emit gate output")
 		return 1
 	}
 	return 0

@@ -101,9 +101,11 @@ shorter report contract described below.
     subagents: lead with the result, cite `file:line` or command evidence, no
     padding, no em dashes.
   - `PreToolUse` on Bash and PowerShell: denies a narrow set of catastrophic
-    commands, and adds a non-blocking reminder to load `verify-and-finish`
-    before `git commit`, `git push`, and `gh pr create`, or `safe-effects`
-    before publish and deploy commands. The reminder never blocks.
+    commands. The first `git commit`, `git push`, or `gh pr create` in a
+    session stops once until `verify-and-finish` loads, and the first publish,
+    deploy, or outward `gh` write stops once until `safe-effects` loads; the
+    retry runs. A skill already loaded in the transcript skips the stop, and
+    without a session ID the hook only adds a reminder.
 - Two Go standard-library tools that load only with their skill: the
   memory-audit validator for `memory-hygiene` and the review packager for
   `independent-review`.
@@ -120,7 +122,7 @@ access.
 Per session, outside this repository, the style, startup hook text, and skill
 catalog cost about 1,470 tokens on Claude Code and about 1,510 on Codex
 (word-count estimate from installed session text, 2026-09-25). Each skill body
-is 274 to 468 words and loads only when triggered. The style shortens replies
+is 191 to 398 words and loads only when triggered. The style shortens replies
 (in one operator's September 2026 Codex sessions, styled final messages had a
 median of 70 words and em dashes in 0.6 percent, against 36 percent without
 the style), but it is not a compression feature and makes no cost claim.
@@ -181,8 +183,8 @@ Code docs' advice for skills that over-trigger.
 What megapowers does differently: both harnesses from one plugin with the
 same Go hook code; calm trigger descriptions instead of emphatic "you must"
 language, which Anthropic's current prompting guidance and OpenAI's
-2026-09-11 skills post both warn causes over-triggering; non-blocking
-reminders that load the verification and side-effect skills at the moment a
+2026-09-11 skills post both warn causes over-triggering; a once-per-session
+stop that loads the verification and side-effect skills before the first
 commit, push, or deploy runs; a cross-provider `independent-review` path with
 a disclosure step; `safe-effects` for outward effects; a memory validator;
 and a doctor.
