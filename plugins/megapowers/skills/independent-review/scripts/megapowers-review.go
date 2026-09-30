@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -131,7 +132,10 @@ type disclosure struct {
 	Paths           []string          `json:"paths"`
 	Source          sourceIdentity    `json:"source"`
 	Chunks          []chunkDisclosure `json:"chunks"`
-	ApprovalToken   string            `json:"approval_token"`
+	// ProviderEnvironment names the variables forwarded to the provider;
+	// values stay private but their digests are bound to the token.
+	ProviderEnvironment []string `json:"provider_environment"`
+	ApprovalToken       string   `json:"approval_token"`
 }
 
 type transcriptEvidence struct {
@@ -234,6 +238,10 @@ func main() {
 }
 
 func run(args []string) error {
+	// Provider isolation relies on POSIX permissions and process groups.
+	if runtime.GOOS == "windows" {
+		return errors.New("megapowers-review runs on Linux and macOS; on Windows, run it from WSL")
+	}
 	if len(args) == 0 {
 		return errors.New("usage: megapowers-review inspect|review [options]")
 	}
@@ -262,7 +270,12 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	token := approvalToken(binary, chunkHashes(cap))
+	providerEnv, err := providerEnvironment(opt.providerEnv, root)
+	if err != nil {
+		return err
+	}
+	envDigests := environmentDigests(providerEnv)
+	token := approvalToken(binary, chunkHashes(cap), envDigests)
 	disc := disclosure{
 		Provider:        opt.provider,
 		ProviderCommand: binary.Command,
@@ -274,6 +287,10 @@ func run(args []string) error {
 		Source:          cap.Source,
 		Chunks:          make([]chunkDisclosure, 0, len(cap.Chunks)),
 		ApprovalToken:   token,
+	}
+	for _, entry := range providerEnv {
+		name, _, _ := strings.Cut(entry, "=")
+		disc.ProviderEnvironment = append(disc.ProviderEnvironment, name)
 	}
 	for i, chunk := range cap.Chunks {
 		disc.ByteCount += len(chunk.Package)
@@ -307,8 +324,8 @@ func run(args []string) error {
 	if opt.approveExternal == "" {
 		return errors.New("external disclosure not approved; run inspect, then pass its token as --approve-external TOKEN")
 	}
-	if !approvalTokenMatches(opt.approveExternal, binary, chunkHashes(cap)) {
-		return errors.New("approval token does not match the current package, provider label, command, and binary; run inspect again")
+	if !approvalTokenMatches(opt.approveExternal, binary, chunkHashes(cap), envDigests) {
+		return errors.New("approval token does not match the current package, provider label, command, binary, and forwarded environment; run inspect again")
 	}
 	// Allocate the receipt run before dispatch so an unwritable destination
 	// fails before credentials or source reach the provider.
@@ -418,6 +435,9 @@ func parseOptions(command string, args []string) (options, error) {
 	if fs.NArg() != 0 {
 		return opt, fmt.Errorf("unexpected positional arguments: %s", strings.Join(fs.Args(), " "))
 	}
+	// Labels are recorded in receipts; trim them so spacing cannot fake a
+	// second vendor.
+	opt.provider, opt.author = strings.TrimSpace(opt.provider), strings.TrimSpace(opt.author)
 	if command == "inspect" && (opt.author != "" || opt.out != "" || opt.approveExternal != "" || opt.retainTranscript) {
 		return opt, errors.New("inspect accepts --provider, --provider-command, --provider-env, and one input mode only")
 	}
@@ -442,7 +462,7 @@ func parseOptions(command string, args []string) (options, error) {
 		if strings.TrimSpace(opt.author) == "" {
 			return opt, errors.New("--author LABEL is required")
 		}
-		if opt.author == opt.provider {
+		if strings.EqualFold(opt.author, opt.provider) {
 			return opt, errors.New("--provider and --author must differ for independent review")
 		}
 	}
@@ -612,7 +632,9 @@ func captureRange(root, baseRev, headRev string, maxFilesPerChunk int) (capture,
 		}
 		// Blobs are capped at maxFileBytes each, so one file's patch cannot
 		// reach this buffer limit; the exact cost check below rejects oversize.
-		patch, err := runGit(root, 2*maxPackageBytes, "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--unified=80", base, head, "--", rec.path)
+		// --text overrides a "-diff" attribute: both blobs already passed text
+		// validation, and the reviewer must see the change itself.
+		patch, err := runGit(root, 2*maxPackageBytes, "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-renames", "--unified=80", base, head, "--", rec.path)
 		if err != nil {
 			return capture{}, fmt.Errorf("capture commit range for %s: %w", rec.path, err)
 		}
@@ -830,11 +852,14 @@ func rejectTrackedSubmodule(root, rel string) error {
 		if len(record) == 0 {
 			continue
 		}
-		fields := bytes.Fields(record)
-		if len(fields) < 4 || string(fields[0]) != "160000" {
+		// Each record is "<mode> <object> <stage>\t<path>"; the path may
+		// contain spaces, so split the header from the path at the tab.
+		header, pathBytes, ok := bytes.Cut(record, []byte{'\t'})
+		fields := bytes.Fields(header)
+		if !ok || len(fields) < 3 || string(fields[0]) != "160000" {
 			continue
 		}
-		path := string(fields[3])
+		path := string(pathBytes)
 		if rel == path || strings.HasPrefix(rel, path+"/") {
 			return fmt.Errorf("submodule input rejected: %s", rel)
 		}
@@ -1010,11 +1035,32 @@ func providerBinary(provider, template, root string) (providerExecutable, error)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
 		return providerExecutable{}, fmt.Errorf("provider command is not an executable regular file: %s", resolved)
 	}
+	// The review runs a verified copy of the provider outside its install
+	// directory. A script launcher (for example an npm shim) resolves its
+	// runtime relative to its own path and breaks after the copy, so reject it
+	// here instead of after disclosure approval.
+	if script, err := hasShebang(resolved); err != nil || script {
+		return providerExecutable{}, fmt.Errorf("provider command %s is a script launcher; the review needs a self-contained executable, such as the provider's native binary", resolved)
+	}
 	hash, err := hashProviderBinary(resolved, info)
 	if err != nil {
 		return providerExecutable{}, err
 	}
 	return providerExecutable{Provider: provider, Command: template, Args: argv[1:], Path: resolved, SHA256: hash}, nil
+}
+
+func hasShebang(path string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	prefix := make([]byte, 2)
+	n, err := io.ReadFull(file, prefix)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	return n == 2 && string(prefix) == "#!", nil
 }
 
 func hashProviderBinary(path string, before os.FileInfo) (string, error) {
@@ -1048,10 +1094,11 @@ func hashProviderBinary(path string, before os.FileInfo) (string, error) {
 }
 
 // approvalToken binds the provider label, the command template as given,
-// the resolved binary identity, and the ordered list of chunk package hashes,
-// so a single token approves the whole run and any of those changing
-// invalidates it.
-func approvalToken(binary providerExecutable, packageSHA256s []string) string {
+// the resolved binary identity, the ordered list of chunk package hashes, and
+// the forwarded environment (names with value digests, since a variable can
+// redirect the destination), so a single token approves the whole run and any
+// of those changing invalidates it.
+func approvalToken(binary providerExecutable, packageSHA256s, envDigests []string) string {
 	material := struct {
 		Schema          string   `json:"schema"`
 		Provider        string   `json:"provider"`
@@ -1059,8 +1106,10 @@ func approvalToken(binary providerExecutable, packageSHA256s []string) string {
 		BinaryPath      string   `json:"binary_path"`
 		BinarySHA256    string   `json:"binary_sha256"`
 		PackageSHA256s  []string `json:"package_sha256s"`
+		Environment     []string `json:"environment"`
 	}{
-		Schema:          "megapowers.external-review-approval.v3",
+		Schema:          "megapowers.external-review-approval.v4",
+		Environment:     envDigests,
 		Provider:        binary.Provider,
 		ProviderCommand: binary.Command,
 		BinaryPath:      binary.Path,
@@ -1075,8 +1124,18 @@ func approvalToken(binary providerExecutable, packageSHA256s []string) string {
 	return "mpr1_" + hex.EncodeToString(sum[:])
 }
 
-func approvalTokenMatches(provided string, binary providerExecutable, packageSHA256s []string) bool {
-	expected := approvalToken(binary, packageSHA256s)
+// environmentDigests maps each NAME=value entry to NAME=sha256(value).
+func environmentDigests(env []string) []string {
+	digests := make([]string, 0, len(env))
+	for _, entry := range env {
+		name, value, _ := strings.Cut(entry, "=")
+		digests = append(digests, name+"="+hashBytes([]byte(value)))
+	}
+	return digests
+}
+
+func approvalTokenMatches(provided string, binary providerExecutable, packageSHA256s, envDigests []string) bool {
+	expected := approvalToken(binary, packageSHA256s, envDigests)
 	var providedDigest [sha256.Size]byte
 	valid := false
 	if strings.HasPrefix(provided, "mpr1_") {
@@ -1262,8 +1321,10 @@ func (s *providerSession) dispatch(prompt []byte) ([]byte, []byte, error) {
 	return stdout, stderr, nil
 }
 
+// The needles are phrases, not bare words: a successful JSON reply routinely
+// carries a "usage" object or a "limit" field.
 var preflightAuthOrLimitNeedles = []string{
-	"limit", "usage", "unauthorized", "login", "log in", "401", "429",
+	"usage limit", "rate limit", "limit reached", "limit exceeded", "reached your", "unauthorized", "login", "log in", "401", "429",
 	"authentication", "not logged in", "credential", "quota", "too many requests", "token has expired",
 }
 

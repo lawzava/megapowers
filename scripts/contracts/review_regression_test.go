@@ -36,6 +36,8 @@ func main() {
  case "fail": fmt.Fprintln(os.Stderr,"\x1b[31mprovider authentication failed\x1b[0m"); fmt.Fprintln(os.Stderr,"api_key = sk-abcdefghijklmnopqrstuvwxyz123456\nOAUTH_TOKEN=eyJhbGciOiJIUzI1NiJ9.sensitive.signature\naccount=user@example.com org=org_12345 url=https://example.invalid/?token=secret\ntenant=internal-customer"); fmt.Fprint(os.Stderr,strings.Repeat("x",6000)); os.Exit(23)
  case "empty": fmt.Fprintln(os.Stderr,"401 OAuth access token has expired. Please log in again."); return
  case "limit": fmt.Println("You've reached your usage limit"); os.Exit(1)
+ case "limit-ok": fmt.Println("You've reached your usage limit"); return
+ case "usage-json": fmt.Println("{\"response\":\"OK\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}"); return
  case "stall": time.Sleep(30*time.Second)
 case "overflow": for i:=0;i<64;i++ { if _,err:=fmt.Print(strings.Repeat("x",1<<20));err!=nil{return} }; return
  case "later": data,_:=os.ReadFile(filepath.Join(record,"count")); n,_:=strconv.Atoi(string(data)); n++; write("count",strconv.Itoa(n)); if n>=3 { fmt.Fprintln(os.Stderr,"rate limit exceeded"); os.Exit(1) }
@@ -218,6 +220,8 @@ func TestReviewInputAndApprovalBoundaries(t *testing.T) {
 		{"no review command", "--provider-command", []string{"review", "--file", "app.go", "--provider", "vendor-a", "--author", "vendor-b", "--approve-external", "invalid"}},
 		{"no author", "--author", []string{"review", "--file", "app.go", "--provider", "vendor-a", "--provider-command", f.command, "--approve-external", "invalid"}},
 		{"same family", "must differ", []string{"review", "--file", "app.go", "--provider", "vendor-a", "--author", "vendor-a", "--provider-command", f.command, "--approve-external", "invalid"}},
+		{"same family by case", "must differ", []string{"review", "--file", "app.go", "--provider", "Vendor-A", "--author", "vendor-a", "--provider-command", f.command, "--approve-external", "invalid"}},
+		{"same family by spacing", "must differ", []string{"review", "--file", "app.go", "--provider", "vendor-a", "--author", " vendor-a ", "--provider-command", f.command, "--approve-external", "invalid"}},
 		{"no approval", "approve-external", []string{"review", "--file", "app.go", "--provider", "vendor-a", "--author", "vendor-b", "--provider-command", f.command}},
 	} {
 		t.Run(tc.name, func(t *testing.T) { f.call(tc.needle, tc.args...) })
@@ -363,7 +367,9 @@ func TestReviewDeliveryReceiptsAndEnvironment(t *testing.T) {
 			t.Errorf("missing allowed environment %s", required)
 		}
 	}
-	args := f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE_API_KEY", "--provider-env", "FAKE_HOME", "--provider-env", "FAKE_CONFIG_DIR")
+	envFlags := []string{"--provider-env", "FAKE_API_KEY", "--provider-env", "FAKE_HOME", "--provider-env", "FAKE_CONFIG_DIR"}
+	envToken := f.inspect(f.command, append([]string{"--file", "app.go"}, envFlags...)...)["approval_token"].(string)
+	args := f.review(envToken, f.command, append([]string{"--file", "app.go", "--out", out}, envFlags...)...)
 	f.call("", args...)
 	env = f.recordText("env")
 	for _, required := range []string{"FAKE_API_KEY=test-credential", "FAKE_HOME=" + os.Getenv("FAKE_HOME"), "FAKE_CONFIG_DIR=" + os.Getenv("FAKE_CONFIG_DIR")} {
@@ -374,7 +380,8 @@ func TestReviewDeliveryReceiptsAndEnvironment(t *testing.T) {
 	f.call("provider-env", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE=VALUE")...)
 	t.Setenv("FAKE_HOME", filepath.Join(f.repo, "inside-home"))
 	t.Setenv("FAKE_CONFIG_DIR", filepath.Join(f.repo, "inside-home", "config"))
-	f.call("", args...)
+	envToken = f.inspect(f.command, append([]string{"--file", "app.go"}, envFlags...)...)["approval_token"].(string)
+	f.call("", f.review(envToken, f.command, append([]string{"--file", "app.go", "--out", out}, envFlags...)...)...)
 	env = f.recordText("env")
 	if strings.Contains(env, "FAKE_HOME=") || strings.Contains(env, "FAKE_CONFIG_DIR=") || !strings.Contains(env, "FAKE_API_KEY=test-credential") {
 		t.Fatal("repository-local config environment was not removed")
@@ -444,7 +451,7 @@ func TestReviewPackageCannotCloseItsFence(t *testing.T) {
 
 func TestReviewFailuresRemainPrivateAndBounded(t *testing.T) {
 	f := newReviewFixture(t)
-	for _, tc := range []struct{ mode, needle string }{{"fail", "provider exited"}, {"empty", "authentication failed; verify provider login or API credentials"}, {"limit", "preflight"}, {"stall", "timeout"}, {"overflow", "preflight"}} {
+	for _, tc := range []struct{ mode, needle string }{{"fail", "provider exited"}, {"empty", "authentication failed; verify provider login or API credentials"}, {"limit", "preflight"}, {"limit-ok", "preflight"}, {"stall", "timeout"}, {"overflow", "preflight"}} {
 		t.Run(tc.mode, func(t *testing.T) {
 			parent := f.t
 			f.t = t
@@ -599,4 +606,72 @@ func TestReviewRangesAndChunking(t *testing.T) {
 	f.write(filepath.Join(f.repo, "bulk/huge.txt"), strings.Repeat("b", 600000))
 	hugeHead := f.commit("huge file", "bulk/huge.txt")
 	f.call("size limit", "inspect", "--base", bytesHead, "--head", hugeHead, "--provider", "vendor-a", "--provider-command", f.command)
+}
+
+func TestReviewPreflightAcceptsSuccessfulReplyWithUsageMetadata(t *testing.T) {
+	f := newReviewFixture(t)
+	command := "fake-reviewer --mode usage-json"
+	token := f.inspect(command, "--file", "app.go")["approval_token"].(string)
+	out := filepath.Join(f.root, "usage-json")
+	if err := os.Mkdir(out, 0700); err != nil {
+		t.Fatal(err)
+	}
+	f.call("", f.review(token, command, "--file", "app.go", "--out", out, "--preflight-timeout", "5s")...)
+	if len(reviewFiles(t, out)) == 0 {
+		t.Fatal("a successful reply carrying usage metadata must pass preflight and write a receipt")
+	}
+}
+
+func TestReviewRejectsFilesUnderSubmodulePathWithSpaces(t *testing.T) {
+	f := newReviewFixture(t)
+	f.exec(f.repo, "git", "update-index", "--add", "--cacheinfo", "160000,"+f.head+",deps/private module")
+	f.write(filepath.Join(f.repo, "deps", "private module", "notes.txt"), "private\n")
+	f.call("submodule", "inspect", "--file", "deps/private module/notes.txt", "--provider", "vendor-a", "--provider-command", f.command)
+}
+
+func TestReviewRejectsScriptLauncherProvider(t *testing.T) {
+	f := newReviewFixture(t)
+	launcher := filepath.Join(filepath.Dir(f.binary), "script-reviewer")
+	if err := os.WriteFile(launcher, []byte("#!/bin/sh\nexec \"$(dirname \"$0\")/fake-reviewer\" \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.call("self-contained", "inspect", "--file", "app.go", "--provider", "vendor-a", "--provider-command", "script-reviewer --mode ok")
+}
+
+func TestReviewApprovalBindsProviderEnvironment(t *testing.T) {
+	f := newReviewFixture(t)
+	out := filepath.Join(f.root, "env-binding")
+	if err := os.Mkdir(out, 0700); err != nil {
+		t.Fatal(err)
+	}
+	info := f.inspect(f.command, "--file", "app.go", "--provider-env", "FAKE_API_KEY")
+	names, _ := json.Marshal(info["provider_environment"])
+	if !bytes.Contains(names, []byte("FAKE_API_KEY")) || bytes.Contains(names, []byte("test-credential")) {
+		t.Fatalf("inspection must disclose forwarded variable names without values: %s", names)
+	}
+	token := info["approval_token"].(string)
+	f.clearCalls()
+	f.call("approval token does not match", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE_API_KEY", "--provider-env", "FAKE_HOME")...)
+	t.Setenv("FAKE_API_KEY", "rerouted-credential")
+	f.call("approval token does not match", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE_API_KEY")...)
+	f.noCalls()
+}
+
+func TestReviewPackageIgnoresDiffSuppressingAttributes(t *testing.T) {
+	f := newReviewFixture(t)
+	f.write(filepath.Join(f.repo, ".gitattributes"), "auth.go -diff\n")
+	f.write(filepath.Join(f.repo, "auth.go"), "package example\nfunc Allowed() bool { return false }\n")
+	base := f.commit("auth", ".gitattributes", "auth.go")
+	f.write(filepath.Join(f.repo, "auth.go"), "package example\nfunc Allowed() bool { return true }\n")
+	head := f.commit("open auth", "auth.go")
+	token := f.inspect(f.command, "--base", base, "--head", head)["approval_token"].(string)
+	out := filepath.Join(f.root, "attributes")
+	if err := os.Mkdir(out, 0700); err != nil {
+		t.Fatal(err)
+	}
+	f.call("", f.review(token, f.command, "--base", base, "--head", head, "--out", out)...)
+	input := f.recordText("input")
+	if !strings.Contains(input, "return true") || strings.Contains(input, "Binary files") {
+		t.Fatalf("the provider must receive the textual change despite -diff:\n%s", input)
+	}
 }
