@@ -35,6 +35,12 @@ brace group, an `if` or function body, and wrappers named by absolute path
 `wipefs` (no `-a`, or `-n`/`--no-act`), a `blkdiscard --dry-run`, or a
 `find` under home that carries a name or path filter before `-delete`.
 
+Git commands that discard uncommitted, stashed, or unmerged work are not
+denied. The first run of each distinct such command in a session stops once
+with a reminder to check `git status` and `git stash list`; the identical retry
+runs. Without a session ID or a writable hook cache, the hook only adds that
+reminder.
+
 One matcher covers the Bash and PowerShell tools, and both receive the same
 high-confidence denials: the PowerShell tool hands over the same
 `tool_input.command` field, so `Remove-Item -Recurse /` and the cmd.exe

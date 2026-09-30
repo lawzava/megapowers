@@ -19,14 +19,21 @@ import (
 // mostly ignored. When the once-marker cannot be recorded (no session ID or an
 // unusable cache), the gate falls back to non-blocking context so it can never
 // block the same command twice.
+//
+// A git command that discards uncommitted, stashed, or unmerged work has no
+// matching skill. It stops once per session and exact command instead, so the
+// agent checks what it would lose before the retry runs.
 const (
 	completionSkill = "verify-and-finish"
 	effectSkill     = "safe-effects"
+	discardGate     = "git-discard"
 
 	completionContext = "Before claiming this complete, load and follow the megapowers verify-and-finish skill if it is not already loaded for this outcome."
 	effectContext     = "Before running this outward effect, load and follow the megapowers safe-effects skill if it is not already loaded for this effect."
 	completionDeny    = "Load and follow the megapowers verify-and-finish skill before this completion step, then run the command again; this check blocks once per session."
 	effectDeny        = "Load and follow the megapowers safe-effects skill before this outward effect, then run the command again; this check blocks once per session."
+	discardContext    = "This git command discards uncommitted, stashed, or unmerged work. Check git status and git stash list and confirm the work is disposable or the user asked to discard it."
+	discardDeny       = "This git command discards uncommitted, stashed, or unmerged work. Check git status and git stash list, confirm the work is disposable or the user asked to discard it, then run the same command again; this check blocks once per command."
 
 	gateMarkerDir = "gate-context"
 	gateMarkerTTL = 7 * 24 * time.Hour
@@ -82,16 +89,36 @@ func gateDecision(command, sessionID, transcriptPath string, getenv getenvFunc) 
 			remind = append(remind, skill)
 		}
 	}
+	if gitDiscards(command) {
+		digest := sha256.Sum256([]byte(command))
+		switch markGate(root, sessionID, discardGate+"-"+hex.EncodeToString(digest[:8])) {
+		case markerNew:
+			deny = append(deny, discardGate)
+		case markerUnavailable:
+			remind = append(remind, discardGate)
+		}
+	}
 	return deny, remind
 }
 
-func gateMessages(skills []string, completion, effect string) string {
+// gateMessages returns the deny reasons, or the non-blocking context when
+// deny is false, for each gate in order.
+func gateMessages(gates []string, deny bool) string {
 	var lines []string
-	for _, skill := range skills {
-		if skill == completionSkill {
-			lines = append(lines, completion)
-		} else {
-			lines = append(lines, effect)
+	for _, gate := range gates {
+		switch {
+		case gate == completionSkill && deny:
+			lines = append(lines, completionDeny)
+		case gate == completionSkill:
+			lines = append(lines, completionContext)
+		case gate == discardGate && deny:
+			lines = append(lines, discardDeny)
+		case gate == discardGate:
+			lines = append(lines, discardContext)
+		case deny:
+			lines = append(lines, effectDeny)
+		default:
+			lines = append(lines, effectContext)
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -232,6 +259,87 @@ func gateKind(name string, words []string) string {
 		}
 	}
 	return ""
+}
+
+// gitDiscards reports a git command that discards work the repository cannot
+// recover on its own: a hard reset, a forced clean, a forced or whole-tree
+// checkout, a whole-tree worktree restore, a forced branch delete, or a dropped
+// or cleared stash.
+func gitDiscards(command string) bool {
+	if len(command) > maxCommandBytes {
+		return false
+	}
+	for _, segment := range splitSegments(command) {
+		name, tail, ok := resolveCommand(segment)
+		if !ok || name != "git" {
+			continue
+		}
+		words, ok := shellWords(tail)
+		if !ok {
+			words = strings.Fields(tail)
+		}
+		if gitDiscardWords(nonempty(words)) {
+			return true
+		}
+	}
+	return false
+}
+
+func gitDiscardWords(words []string) bool {
+	subs := subcommands(words, gitValueOptions, 1)
+	if len(subs) == 0 {
+		return false
+	}
+	var args []string
+	for i, word := range words {
+		if word == subs[0] {
+			args = words[i+1:]
+			break
+		}
+	}
+	switch subs[0] {
+	case "reset":
+		return hasWord(args, "--hard")
+	case "clean":
+		return (hasWord(args, "--force") || hasShortFlag(args, 'f')) && !hasWord(args, "--dry-run") && !hasShortFlag(args, 'n')
+	case "checkout":
+		return hasWord(args, "-f") || hasWord(args, "--force") || hasWholeTreePath(args)
+	case "restore":
+		stagedOnly := (hasWord(args, "--staged") || hasShortFlag(args, 'S')) && !hasWord(args, "--worktree") && !hasShortFlag(args, 'W')
+		return hasWholeTreePath(args) && !stagedOnly
+	case "branch":
+		forced := hasShortFlag(args, 'D') || ((hasWord(args, "--delete") || hasShortFlag(args, 'd')) && (hasWord(args, "--force") || hasShortFlag(args, 'f')))
+		return forced && len(subcommands(args, nil, 1)) == 1
+	case "stash":
+		second := subcommands(args, nil, 1)
+		return len(second) == 1 && (second[0] == "drop" || second[0] == "clear")
+	}
+	return false
+}
+
+// hasShortFlag reports a single-dash option cluster containing flag, so -fdx
+// counts as -f.
+func hasShortFlag(words []string, flag byte) bool {
+	for _, word := range words {
+		if word == "--" {
+			return false
+		}
+		if len(word) > 1 && word[0] == '-' && word[1] != '-' && strings.IndexByte(word[1:], flag) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// hasWholeTreePath reports a pathspec naming the whole working tree.
+func hasWholeTreePath(words []string) bool {
+	for _, word := range words {
+		switch word {
+		case ".", "./", ":/", ":/.", "*", ":(top)":
+			return true
+		}
+	}
+	return false
 }
 
 // subcommand returns the first non-option word, skipping values of options

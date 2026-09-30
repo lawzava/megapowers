@@ -17,7 +17,9 @@ skills, one concise output style, a destructive-command tripwire, and a doctor.
   same reminder and a compact report contract for subagents. `PreToolUse`
   denies a narrow set of catastrophic shell commands and returns a
   non-blocking reminder to load `verify-and-finish` before commit, push, and
-  PR commands or `safe-effects` before publish and deploy commands. The same
+  PR commands or `safe-effects` before publish and deploy commands. A git
+  command that discards uncommitted, stashed, or unmerged work stops once per
+  exact command with a reminder to check `git status`. The same
   runner's `doctor` command backs `megapowers-doctor`.
 - `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: native plugin
   metadata.

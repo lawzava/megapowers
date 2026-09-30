@@ -128,9 +128,9 @@ func runDenyDestructive(getenv getenvFunc, input io.Reader, output, errors io.Wr
 	switch {
 	case len(deny) > 0:
 		specific = hookSpecificOutput{HookEventName: "PreToolUse", PermissionDecision: "deny",
-			PermissionDecisionReason: gateMessages(append(deny, remind...), completionDeny, effectDeny)}
+			PermissionDecisionReason: gateMessages(append(deny, remind...), true)}
 	case len(remind) > 0:
-		specific = hookSpecificOutput{HookEventName: "PreToolUse", AdditionalContext: gateMessages(remind, completionContext, effectContext)}
+		specific = hookSpecificOutput{HookEventName: "PreToolUse", AdditionalContext: gateMessages(remind, false)}
 	default:
 		return 0
 	}

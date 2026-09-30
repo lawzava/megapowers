@@ -105,7 +105,11 @@ shorter report contract described below.
     session stops once until `verify-and-finish` loads, and the first publish,
     deploy, or outward `gh` write stops once until `safe-effects` loads; the
     retry runs. A skill already loaded in the transcript skips the stop, and
-    without a session ID the hook only adds a reminder.
+    without a session ID the hook only adds a reminder. A git command that
+    discards uncommitted, stashed, or unmerged work (`reset --hard`, a forced
+    `clean`, a forced or whole-tree `checkout`, a whole-tree `restore`,
+    `branch -D`, `stash drop` or `clear`) stops once per exact command with a
+    reminder to check `git status` first.
 - Two Go standard-library tools that load only with their skill: the
   memory-audit validator for `memory-hygiene` and the review packager for
   `independent-review`.

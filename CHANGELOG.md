@@ -9,6 +9,12 @@ semver.
 
 ### Added
 
+- The `PreToolUse` gate stops each distinct git command that discards
+  uncommitted, stashed, or unmerged work once per session: `reset --hard`, a
+  forced `clean`, a forced or whole-tree `checkout`, a whole-tree `restore`,
+  `branch -D`, and `stash drop` or `clear`. The reason asks for `git status`
+  and `git stash list` first; the identical retry runs. Dry runs, staged-only
+  restores, and path-scoped checkouts stay quiet.
 - `independent-review` sends the author's intent to the reviewer. `inspect`
   and `review` accept `--intent`; inspection discloses it, the approval token
   binds it, and the prompt carries it JSON-encoded so it cannot open or close
