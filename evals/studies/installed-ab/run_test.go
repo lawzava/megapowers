@@ -1,3 +1,5 @@
+//go:build unix
+
 package main
 
 import (
@@ -740,4 +742,35 @@ func receiptTrace(t *testing.T, receipts ...map[string]any) []byte {
 		trace.WriteByte('\n')
 	}
 	return trace.Bytes()
+}
+
+// TestTDDFixtureStartsGreenForAttribution pins the redesign behind the red
+// metric: receipts record only "go test" and an exit code, so a red run is
+// attributable to the actor's new test only when the untouched fixture passes
+// the plain test run. The protected acceptance test sits behind the
+// "acceptance" build tag, and only the outcome oracle enables it.
+func TestTDDFixtureStartsGreenForAttribution(t *testing.T) {
+	cases, _, err := loadConfiguration(filepath.Join("cases.json"), filepath.Join("gates.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tdd studyCase
+	for _, c := range cases.Cases {
+		if c.ID == "tdd-add-multiply" {
+			tdd = c
+		}
+	}
+	if tdd.ID == "" {
+		t.Fatal("tdd-add-multiply case missing")
+	}
+	dir := t.TempDir()
+	if err := materializeFixture(dir, tdd.Files); err != nil {
+		t.Fatal(err)
+	}
+	if rc, err := runOracle(context.Background(), dir, []string{"go", "test", "./..."}); err != nil || rc != 0 {
+		t.Fatalf("untouched fixture must pass a plain go test run (rc=%d err=%v)", rc, err)
+	}
+	if rc, err := runOracle(context.Background(), dir, tdd.OracleCommand); err != nil || rc == 0 {
+		t.Fatalf("untouched fixture must fail its acceptance oracle %v (rc=%d err=%v)", tdd.OracleCommand, rc, err)
+	}
 }

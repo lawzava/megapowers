@@ -1,3 +1,5 @@
+//go:build linux
+
 // megapowers-eval-broker runs one Claude Code or Codex evaluation actor inside
 // a narrow Linux filesystem boundary. Provider credentials stay in this broker;
 // the actor receives only a short-lived credential-proxy capability.
@@ -4668,12 +4670,22 @@ var skillBodyPattern = regexp.MustCompile(`(?i)(?:^|/)skills/([a-z0-9][a-z0-9._-
 // these to skill_selected and keeps only the first successful read per
 // skill, because re-reading an already loaded body is ordinary behavior,
 // not a second activation.
+// skillBodyReaders are programs whose file arguments print file content. A
+// SKILL.md path handed to printf, echo, test, ls, or stat is not a body read.
+var skillBodyReaders = map[string]bool{
+	"cat": true, "sed": true, "head": true, "tail": true, "nl": true, "less": true, "more": true,
+	"bat": true, "awk": true, "cut": true, "grep": true, "rg": true, "get-content": true, "gc": true, "type": true,
+}
+
 func skillReadEvents(command string, rc int) []actorEvent {
 	segments, _ := normalizedCommandSegments(command)
 	events := make([]actorEvent, 0, 1)
 	seen := make(map[string]bool)
 	for _, fields := range segments {
-		for _, field := range fields {
+		if len(fields) == 0 || !skillBodyReaders[filepath.Base(fields[0])] {
+			continue
+		}
+		for _, field := range fields[1:] {
 			match := skillBodyPattern.FindStringSubmatch(filepath.ToSlash(field))
 			if match == nil {
 				continue

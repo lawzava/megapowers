@@ -505,3 +505,32 @@ func TestEvalShellLaunchersContainNoPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestScoreRejectsDuplicateJSONKeys(t *testing.T) {
+	valid := []map[string]any{baseBehavioralRow("treatment-1", "block-1", "treatment"), baseBehavioralRow("control-1", "block-1", "control")}
+	for name, inject := range map[string]func(string) string{
+		"top-level": func(line string) string { return strings.Replace(line, "{", `{"verdict":"fail",`, 1) },
+		"nested": func(line string) string {
+			return strings.Replace(line, `"harness":{`, `"harness":{"model":"other",`, 1)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var lines []string
+			for _, row := range valid {
+				data, err := json.Marshal(row)
+				if err != nil {
+					t.Fatal(err)
+				}
+				lines = append(lines, string(data))
+			}
+			lines[0] = inject(lines[0])
+			path := filepath.Join(t.TempDir(), "dup.jsonl")
+			if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if output, code := score(t, path); code == 0 || !strings.Contains(output, "duplicate") {
+				t.Fatalf("strict scorer must reject a duplicate key (%d): %s", code, output)
+			}
+		})
+	}
+}

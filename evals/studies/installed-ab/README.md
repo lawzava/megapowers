@@ -17,7 +17,7 @@ Real runs are always explicit. They never fall back to a fake actor:
 
 ```bash
 go run evals/studies/installed-ab/run.go --run --credentialed \
-  --harness codex --model gpt-5.6-sol --effort high \
+  --harness codex --model gpt-6.1-sol --effort high \
   --sandbox-broker /usr/local/libexec/megapowers-eval-broker \
   --broker-sha256 "$BROKER_SHA256" --paired-runs 10 \
   --actor-timeout 20m \
@@ -27,6 +27,10 @@ go run evals/studies/installed-ab/run.go --run --credentialed \
 For a diagnostic pilot, use `--paired-runs 1 --actor-timeout 5m`. The current
 `cases.json` catalog has 23 cases and runs 46 executions per harness at
 `--paired-runs 1` (each case executes once as treatment and once as control).
+The `tdd-add-multiply` case keeps its protected acceptance test behind the
+`acceptance` build tag: the untouched fixture passes a plain `go test ./...`,
+so a red receipt after a new test is attributable to that test, and only the
+outcome oracle (`go test -tags acceptance ./...`) runs the acceptance check.
 A separate `holdout.json` catalog holds 6 cases frozen for out-of-sample
 checks; `--cases` selects one committed catalog or the other, never both in
 the same run, so their counts do not add. Run Claude and Codex in parallel

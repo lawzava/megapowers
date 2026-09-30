@@ -18,7 +18,7 @@ on this harness and model?
 
 ## Purpose
 
-The 2026-08-30 installed A/B run (see `evals/RESULTS.md`) could not separate
+The 2026-08-30 installed A/B run (see `evals/RESULTS-archive.md`) could not separate
 activation failures from capability failures. This corpus is the regression
 oracle for skill-text edits: run the affected slice before merging any change
 to a `SKILL.md` description or trigger surface.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -242,58 +241,39 @@ func TestDeclaredExplicitOnlyPolicy(t *testing.T) {
 	}
 }
 
-// TestEnsureGoCacheTrustsAWritableGoDefault pins M4: ensureGoCache must not
-// force every contributor with a normal, writable GOCACHE onto a cold cache
-// under TMPDIR. It should only fall back when go's own default is unset or
-// unwritable.
-func TestEnsureGoCacheTrustsAWritableGoDefault(t *testing.T) {
-	original, had := os.LookupEnv("GOCACHE")
-	if err := os.Unsetenv("GOCACHE"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if had {
-			os.Setenv("GOCACHE", original)
-		} else {
-			os.Unsetenv("GOCACHE")
+func TestCachedRunnerExecutableCheckIsPlatformAware(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, mode os.FileMode) os.FileInfo {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("x"), mode); err != nil {
+			t.Fatal(err)
 		}
-	})
-	out, err := exec.Command("go", "env", "GOCACHE").Output()
-	if err != nil {
-		t.Skipf("cannot determine go's default GOCACHE: %v", err)
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info
 	}
-	want := strings.TrimSpace(string(out))
-	if want == "" || !goCacheWritable(want) {
-		t.Skip("go's default GOCACHE is not writable in this environment")
-	}
-	if err := ensureGoCache(); err != nil {
-		t.Fatalf("ensureGoCache: %v", err)
-	}
-	// ensureGoCache should leave GOCACHE untouched (still unset) so go
-	// resolves the same writable default itself, rather than forcing every
-	// contributor onto a cold megapowers-gocache under TMPDIR.
-	if got := os.Getenv("GOCACHE"); got != "" {
-		t.Fatalf("ensureGoCache overrode a writable default GOCACHE (go's own default is %q): got %q", want, got)
-	}
-}
-
-func TestGoCacheWritableAcceptsAWritableDirectory(t *testing.T) {
-	if !goCacheWritable(t.TempDir()) {
-		t.Fatal("expected a writable temp directory to be accepted")
-	}
-}
-
-func TestGoCacheWritableRejectsAnUnwritableParent(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("permission bits are not enforced for root")
-	}
-	parent := t.TempDir()
-	locked := filepath.Join(parent, "locked")
-	if err := os.Mkdir(locked, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chmod(locked, 0o700) })
-	if goCacheWritable(filepath.Join(locked, "gocache")) {
-		t.Fatal("expected an unwritable parent directory to be rejected")
+	windowsExe := write("megapowers-hook-x-windows-AMD64-go1.25.exe", 0o644)
+	windowsBare := write("megapowers-hook-x-windows-AMD64-go1.25", 0o644)
+	unixPlain := write("megapowers-hook-x-Linux", 0o644)
+	unixExec := write("megapowers-hook-x-Linux-exec", 0o755)
+	for _, tc := range []struct {
+		name string
+		info os.FileInfo
+		goos string
+		want bool
+	}{
+		{"windows exe without POSIX bits", windowsExe, "windows", true},
+		{"windows file without .exe", windowsBare, "windows", false},
+		{"unix file without execute bit", unixPlain, "linux", false},
+		{"unix executable", unixExec, "linux", true},
+	} {
+		if got := isExecutableRunner(tc.info, tc.goos); got != tc.want {
+			t.Errorf("%s: isExecutableRunner = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }

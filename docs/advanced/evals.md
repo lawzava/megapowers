@@ -36,7 +36,7 @@ Each study README is authoritative for its commands and boundaries:
 - [Installed-plugin A/B](../../evals/studies/installed-ab/README.md) defines its
   paired schedule, acceptance rules, resume contract, and broker requirements.
 - [Native Claude smoke evaluations](../../plugins/megapowers/evals/README.md)
-  run three bounded cases through `claude plugin eval`.
+  run five bounded cases through `claude plugin eval`.
 
 Published numbers live in [evals/RESULTS.md](../../evals/RESULTS.md).
 Selftests and deterministic contracts do not produce behavioral evidence.

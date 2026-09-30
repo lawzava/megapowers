@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/lawzava/megapowers/internal/strictjson"
 	"io"
 	"math"
 	"os"
@@ -341,15 +342,10 @@ func decodeRow(line []byte) (resultRow, error) {
 			return row, fmt.Errorf("field %q: %w", name, err)
 		}
 	}
-	decoder := json.NewDecoder(bytes.NewReader(line))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&row); err != nil {
-		return row, err
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		if err == nil {
-			return row, errors.New("multiple JSON values in one row")
-		}
+	// strictjson rejects duplicate keys at any depth, unknown fields, and
+	// trailing values: encoding/json alone lets a later duplicate overwrite a
+	// verdict or metric.
+	if err := strictjson.Decode(line, &row); err != nil {
 		return row, err
 	}
 	return row, validateRow(row)

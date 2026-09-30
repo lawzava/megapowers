@@ -540,7 +540,7 @@ func verifyInstalledHookRuntime(parent context.Context, home, installedRoot stri
 		return errors.New("cold hook call did not create exactly one cached runner")
 	}
 	info, err := os.Lstat(runners[0])
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o111 == 0 {
+	if err != nil || !isExecutableRunner(info, runtime.GOOS) {
 		return errors.New("cached hook runner is not a regular executable")
 	}
 	firstBytes, err := os.ReadFile(runners[0])
@@ -835,4 +835,17 @@ func runCodexInstallSmoke(ctx context.Context, root string, args []string, stdou
 		return 1
 	}
 	return 0
+}
+
+// isExecutableRunner accepts a regular, non-symlink runner. Windows reports no
+// POSIX execute bits (regular files read as 0666 or 0444), so there the .exe
+// name the launcher builds is the executable signal.
+func isExecutableRunner(info os.FileInfo, goos string) bool {
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	if goos == "windows" {
+		return strings.EqualFold(filepath.Ext(info.Name()), ".exe")
+	}
+	return info.Mode().Perm()&0o111 != 0
 }

@@ -1,3 +1,5 @@
+//go:build unix
+
 // Command run executes the trigger-recall activation study.
 //
 // It measures, per shipped skill and harness, whether the installed plugin's
@@ -31,6 +33,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/lawzava/megapowers/evals/internal/brokerresponse"
 	"io"
 	"io/fs"
 	"os"
@@ -286,6 +289,8 @@ type runOptions struct {
 	Selftest     bool
 	Reps         int
 	ActorTimeout time.Duration
+	// BrokerHash is the pin validateBroker verified; the manifest records it.
+	BrokerHash string
 }
 
 func main() {
@@ -375,7 +380,7 @@ func main() {
 	if len(selected.Cases) == 0 {
 		fatal(fmt.Errorf("--filter %q matches no cases", *filter))
 	}
-	options := runOptions{Harness: *harness, Model: *model, Effort: *effort, Repo: root, Out: *out, Timestamp: time.Now().UTC(), Reps: *reps, ActorTimeout: *actorTimeout}
+	options := runOptions{Harness: *harness, Model: *model, Effort: *effort, Repo: root, Out: *out, Timestamp: time.Now().UTC(), Reps: *reps, ActorTimeout: *actorTimeout, BrokerHash: verifiedBrokerHash}
 	subject := brokerActor{Path: *broker, ExpectedHash: verifiedBrokerHash}
 	_, manifest, err := executeStudy(context.Background(), selected, gates, catalog, options, subject)
 	if err != nil {
@@ -971,7 +976,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 		Effort:          opts.Effort,
 		Reps:            opts.Reps,
 		Environment:     runEnvironment{OS: runtime.GOOS, Arch: runtime.GOARCH, Locale: portableIdentifier(locale())},
-		BrokerHash:      hashBytes([]byte("in-process-selftest-fake")),
+		BrokerHash:      manifestBrokerHash(opts),
 		PluginHash:      pluginHash,
 		CaseCatalogHash: caseCatalogHash,
 		GatesHash:       gatesHash,
@@ -1031,10 +1036,20 @@ func configurationHashes(cases casesFile, gates gatesFile) (string, string, erro
 
 // stagePluginTree copies the shipped plugin into a private read-only location
 // and returns a deterministic content hash of the staged bytes.
+// manifestBrokerHash records the verified broker pin; only a selftest, which
+// runs no broker, records the fixed sentinel.
+func manifestBrokerHash(opts runOptions) string {
+	if opts.Selftest || opts.BrokerHash == "" {
+		return hashBytes([]byte("in-process-selftest-fake"))
+	}
+	return opts.BrokerHash
+}
+
 func stagePluginTree(source, destination string) (string, error) {
 	type stagedFile struct {
 		name    string
 		content []byte
+		mode    os.FileMode
 	}
 	files := make([]stagedFile, 0)
 	err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, err error) error {
@@ -1055,7 +1070,17 @@ func stagePluginTree(source, destination string) (string, error) {
 		if err != nil {
 			return err
 		}
-		files = append(files, stagedFile{name: filepath.ToSlash(relative), content: content})
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		// Hooks run the launcher directly, so the executable bit is part of
+		// the staged plugin and of its hash.
+		mode := os.FileMode(0o600)
+		if info.Mode().Perm()&0o100 != 0 {
+			mode = 0o700
+		}
+		files = append(files, stagedFile{name: filepath.ToSlash(relative), content: content, mode: mode})
 		return nil
 	})
 	if err != nil {
@@ -1064,13 +1089,13 @@ func stagePluginTree(source, destination string) (string, error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
 	hasher := sha256.New()
 	for _, file := range files {
-		fmt.Fprintf(hasher, "%d:%s:%d:", len(file.name), file.name, len(file.content))
+		fmt.Fprintf(hasher, "%d:%s:%o:%d:", len(file.name), file.name, file.mode, len(file.content))
 		hasher.Write(file.content)
 		target := filepath.Join(destination, filepath.FromSlash(file.name))
 		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 			return "", err
 		}
-		if err := os.WriteFile(target, file.content, 0o600); err != nil {
+		if err := os.WriteFile(target, file.content, file.mode); err != nil {
 			return "", err
 		}
 	}
@@ -1405,6 +1430,24 @@ type brokerResponse struct {
 	Isolation       isolationAttestation `json:"isolation"`
 }
 
+// decodeBrokerOutput requires every field the grader reads before a strict
+// decode, so an incomplete response cannot pass as an empty clean run.
+func decodeBrokerOutput(data []byte) (brokerResponse, error) {
+	var response brokerResponse
+	if err := brokerresponse.RequirePresent(data, "schema_version", "cli_version", "response", "trace", "events", "plugin_inventory", "rc", "duration_ms", "isolation"); err != nil {
+		return response, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&response); err != nil {
+		return response, fmt.Errorf("sandbox broker response: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return response, errors.New("sandbox broker response has trailing data")
+	}
+	return response, nil
+}
+
 func stageVerifiedBroker(sourcePath, expectedHash string) (string, func(), error) {
 	dir, err := os.MkdirTemp("", "megapowers-verified-broker-")
 	if err != nil {
@@ -1526,14 +1569,9 @@ func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult
 	if err := command.Run(); err != nil {
 		return actorResult{RC: 125}, fmt.Errorf("sandbox broker failed: %w: %s", err, strings.TrimSpace(string(stderr.Bytes())))
 	}
-	var response brokerResponse
-	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&response); err != nil {
-		return actorResult{RC: 125}, fmt.Errorf("sandbox broker response: %w", err)
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return actorResult{RC: 125}, errors.New("sandbox broker response has trailing data")
+	response, err := decodeBrokerOutput(stdout.Bytes())
+	if err != nil {
+		return actorResult{RC: 125}, err
 	}
 	if err := validateIsolation(response, roots, request.Home); err != nil {
 		return actorResult{RC: 125}, err

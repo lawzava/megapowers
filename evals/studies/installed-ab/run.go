@@ -1,3 +1,5 @@
+//go:build unix
+
 // run.go executes installed-plugin treatment/control studies in disposable homes.
 // Selftests use an in-process fake actor and are never emitted as behavioral evidence.
 package main
@@ -13,6 +15,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/lawzava/megapowers/evals/internal/brokerresponse"
 	"io"
 	"io/fs"
 	"net"
@@ -3402,18 +3405,10 @@ func (b brokerActor) Run(ctx context.Context, request actorRequest) (actorResult
 }
 
 func validateBrokerResponsePresence(content []byte) error {
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(content, &object); err != nil {
-		return fmt.Errorf("sandbox broker response: %w", err)
-	}
-	for _, field := range []string{"schema_version", "cli_version", "response", "trace", "events", "plugin_inventory", "rc", "duration_ms", "isolation"} {
-		value, present := object[field]
-		if !present || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
-			return fmt.Errorf("sandbox broker response omitted required field %q", field)
-		}
-	}
-	return nil
+	return brokerresponse.RequirePresent(content, brokerResponseFields...)
 }
+
+var brokerResponseFields = []string{"schema_version", "cli_version", "response", "trace", "events", "plugin_inventory", "rc", "duration_ms", "isolation"}
 
 func makeBrokerRequest(request actorRequest) (brokerRequest, []string) {
 	pluginRepo := ""

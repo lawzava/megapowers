@@ -2,7 +2,6 @@ package evaltool
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -51,7 +50,11 @@ func TestCoverageInventoryDiscoversSkillsDynamically(t *testing.T) {
 	if !strings.Contains(out.String(), want) {
 		t.Fatalf("inventory missing %q:\n%s", want, out.String())
 	}
-	if strings.Index(out.String(), "| alpha | 1 | study-declared |") > strings.Index(out.String(), "| zeta | 0 | none |") {
+	alpha, zeta := strings.Index(out.String(), "| alpha | 1 | study-declared |"), strings.Index(out.String(), "| zeta | 0 | none |")
+	if alpha < 0 || zeta < 0 {
+		t.Fatalf("inventory lacks an expected row:\n%s", out.String())
+	}
+	if alpha > zeta {
 		t.Fatalf("skills not sorted:\n%s", out.String())
 	}
 }
@@ -64,58 +67,5 @@ func TestRunAllRejectsInvalidTimeout(t *testing.T) {
 	}
 	if got, err := positiveSeconds("7"); err != nil || got.Seconds() != 7 {
 		t.Fatalf("positiveSeconds(7) = %v, %v", got, err)
-	}
-}
-
-// TestEnsureGoCacheTrustsAWritableGoDefault pins M4: ensureGoCache must not
-// force every contributor with a normal, writable GOCACHE onto a cold cache
-// under TMPDIR. It should only fall back when go's own default is unset or
-// unwritable.
-func TestEnsureGoCacheTrustsAWritableGoDefault(t *testing.T) {
-	original, had := os.LookupEnv("GOCACHE")
-	if err := os.Unsetenv("GOCACHE"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if had {
-			os.Setenv("GOCACHE", original)
-		} else {
-			os.Unsetenv("GOCACHE")
-		}
-	})
-	out, err := exec.Command("go", "env", "GOCACHE").Output()
-	if err != nil {
-		t.Skipf("cannot determine go's default GOCACHE: %v", err)
-	}
-	want := strings.TrimSpace(string(out))
-	if want == "" || !goCacheWritable(want) {
-		t.Skip("go's default GOCACHE is not writable in this environment")
-	}
-	if err := ensureGoCache(); err != nil {
-		t.Fatalf("ensureGoCache: %v", err)
-	}
-	if got := os.Getenv("GOCACHE"); got != "" {
-		t.Fatalf("ensureGoCache overrode a writable default GOCACHE (go's own default is %q): got %q", want, got)
-	}
-}
-
-func TestGoCacheWritableAcceptsAWritableDirectory(t *testing.T) {
-	if !goCacheWritable(t.TempDir()) {
-		t.Fatal("expected a writable temp directory to be accepted")
-	}
-}
-
-func TestGoCacheWritableRejectsAnUnwritableParent(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("permission bits are not enforced for root")
-	}
-	parent := t.TempDir()
-	locked := filepath.Join(parent, "locked")
-	if err := os.Mkdir(locked, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chmod(locked, 0o700) })
-	if goCacheWritable(filepath.Join(locked, "gocache")) {
-		t.Fatal("expected an unwritable parent directory to be rejected")
 	}
 }

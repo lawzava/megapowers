@@ -297,5 +297,3 @@ Codex external ChatGPT-token login is an experimental app-server capability.
 Unknown protocol responses, refresh requests, and client-authority requests fail
 closed; re-run after native login refresh or review a compatible CLI update.
 A live credentialed pilot must verify current CLI plugin loading, provider routing, native tool confinement, and subagent lifecycle events before evidence is accepted.
-
-This binary does not implement the PR-replay runner's older schema `1`.
