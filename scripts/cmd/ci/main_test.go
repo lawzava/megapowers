@@ -179,7 +179,7 @@ func TestFastForwardReleaseRejectsDivergedBranch(t *testing.T) {
 		{},
 		{ExitCode: 1},
 	}}
-	err := fastForwardRelease(context.Background(), "v1.2.3", runner)
+	err := fastForwardRelease(context.Background(), "v1.2.3", testSHA, runner)
 	if err == nil || !strings.Contains(err.Error(), "refusing non-fast-forward") {
 		t.Fatalf("expected non-fast-forward rejection, got %v", err)
 	}
@@ -192,7 +192,7 @@ func TestFastForwardReleaseRejectsDivergedBranch(t *testing.T) {
 
 func TestFastForwardReleaseRejectsInvalidResolvedSHA(t *testing.T) {
 	runner := &scriptedExecutor{results: []commandResult{{Stdout: "not-a-sha\n"}}}
-	if err := fastForwardRelease(context.Background(), "v1.2.3", runner); err == nil || !strings.Contains(err.Error(), "invalid commit SHA") {
+	if err := fastForwardRelease(context.Background(), "v1.2.3", testSHA, runner); err == nil || !strings.Contains(err.Error(), "invalid commit SHA") {
 		t.Fatalf("expected invalid SHA rejection, got %v", err)
 	}
 	if len(runner.calls) != 1 {
@@ -206,7 +206,7 @@ func TestFastForwardReleaseCreatesMissingBranchAtExactTagCommit(t *testing.T) {
 		{ExitCode: 2},
 		{},
 	}}
-	if err := fastForwardRelease(context.Background(), "v1.2.3", runner); err != nil {
+	if err := fastForwardRelease(context.Background(), "v1.2.3", testSHA, runner); err != nil {
 		t.Fatal(err)
 	}
 	wantPush := commandSpec{Name: "git", Args: []string{"push", "origin", testSHA + ":refs/heads/release"}}
@@ -220,7 +220,7 @@ func TestFastForwardReleaseFailsClosedOnRemoteError(t *testing.T) {
 		{Stdout: testSHA + "\n"},
 		{ExitCode: 1, Stderr: "authentication failed"},
 	}}
-	if err := fastForwardRelease(context.Background(), "v1.2.3", runner); err == nil || !strings.Contains(err.Error(), "inspect remote") {
+	if err := fastForwardRelease(context.Background(), "v1.2.3", testSHA, runner); err == nil || !strings.Contains(err.Error(), "inspect remote") {
 		t.Fatalf("expected remote inspection failure, got %v", err)
 	}
 	if len(runner.calls) != 2 {
@@ -344,5 +344,53 @@ func validAttestationInput() attestationInput {
 		ClaudeVersion: "1.2.3", CodexVersion: "1.2.3",
 		PluginTreeSHA256: strings.Repeat("a", 64), ModesManifestSHA256: strings.Repeat("b", 64),
 		SmokeClaude: "pass", SmokeCodex: "pass",
+	}
+}
+
+func TestFastForwardReleaseRejectsTagDriftFromAttestedSHA(t *testing.T) {
+	moved := strings.Repeat("b", 40)
+	runner := &scriptedExecutor{results: []commandResult{{Stdout: moved + "\n"}}}
+	err := fastForwardRelease(context.Background(), "v1.2.3", testSHA, runner)
+	if err == nil || !strings.Contains(err.Error(), "attested") {
+		t.Fatalf("expected tag drift rejection, got %v", err)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("contacted the remote after tag drift: %#v", runner.calls)
+	}
+}
+
+func TestFastForwardReleaseRequiresAttestedSHA(t *testing.T) {
+	runner := &scriptedExecutor{}
+	if err := fastForwardRelease(context.Background(), "v1.2.3", "", runner); err == nil || !strings.Contains(err.Error(), "attested") {
+		t.Fatalf("expected missing attested SHA rejection, got %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("ran commands without an attested SHA: %#v", runner.calls)
+	}
+}
+
+func TestWindowsHookCheckRunsFromBangPath(t *testing.T) {
+	hooks := t.TempDir()
+	for _, name := range []string{"run-hook.cmd", "hook_runner.go"} {
+		if err := os.WriteFile(filepath.Join(hooks, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runner := &scriptedExecutor{results: []commandResult{
+		{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked"}}`},
+	}}
+	if err := checkWindowsHooksFromBangPath(context.Background(), filepath.Join(hooks, "run-hook.cmd"), t.TempDir(), runner); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.calls) != 1 || len(runner.calls[0].Args) < 2 || !strings.Contains(runner.calls[0].Args[1], "!") {
+		t.Fatalf("hook did not run from a path containing '!': %#v", runner.calls)
+	}
+	copied := filepath.Join(filepath.Dir(runner.calls[0].Args[1]), "hook_runner.go")
+	if _, err := os.Stat(copied); err != nil {
+		t.Fatalf("hook sources were not copied beside the launcher: %v", err)
+	}
+	broken := &scriptedExecutor{results: []commandResult{{Stdout: `{"systemMessage":"guard is inactive"}`}}}
+	if err := checkWindowsHooksFromBangPath(context.Background(), filepath.Join(hooks, "run-hook.cmd"), t.TempDir(), broken); err == nil {
+		t.Fatal("a launcher that fails from a '!' path must fail the check")
 	}
 }

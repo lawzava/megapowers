@@ -145,3 +145,47 @@ func checkWindowsHooks(ctx context.Context, hook string, runner commandExecutor)
 	}
 	return nil
 }
+
+// checkWindowsHooksFromBangPath copies the hook directory under a path that
+// contains "!" and requires the launcher to still build and deny: cmd.exe
+// delayed expansion would otherwise corrupt such install paths and silently
+// disable the guard.
+func checkWindowsHooksFromBangPath(ctx context.Context, hook, tempRoot string, runner commandExecutor) error {
+	source := filepath.Dir(hook)
+	target := filepath.Join(tempRoot, "mp!bang", "hooks")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(source, entry.Name()))
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(target, entry.Name()), data, 0o700); err != nil {
+			return err
+		}
+	}
+	result, err := runner.Run(ctx, commandSpec{Name: "cmd.exe", Args: []string{"/c", filepath.Join(target, filepath.Base(hook)), "deny-destructive"},
+		Stdin: `{"tool_input":{"command":"Remove-Item -Recurse C:\\"}}`,
+		// A fresh cache under a "!" path forces a build from the copied sources.
+		Env: map[string]string{"MEGAPOWERS_HOOK_CACHE": filepath.Join(tempRoot, "cache!dir")}})
+	if err != nil {
+		return err
+	}
+	var response struct {
+		HookSpecificOutput struct {
+			PermissionDecision string `json:"permissionDecision"`
+		} `json:"hookSpecificOutput"`
+	}
+	if result.ExitCode != 0 || json.Unmarshal([]byte(result.Stdout), &response) != nil || response.HookSpecificOutput.PermissionDecision != "deny" {
+		return fmt.Errorf("launcher installed under a path containing '!' did not deny (exit %d)", result.ExitCode)
+	}
+	return nil
+}

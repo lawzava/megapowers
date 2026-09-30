@@ -290,9 +290,14 @@ func emitAttestation(output io.Writer, input attestationInput) error {
 	return encoder.Encode(value)
 }
 
-func fastForwardRelease(ctx context.Context, tag string, runner commandExecutor) error {
+// fastForwardRelease publishes exactly the commit the attest job verified:
+// a tag moved after attestation must not reach installs.
+func fastForwardRelease(ctx context.Context, tag, attestedSHA string, runner commandExecutor) error {
 	if !strings.HasPrefix(tag, "v") {
 		return fmt.Errorf("tag %q does not match v*", tag)
+	}
+	if !isLowerHex(attestedSHA, 40) {
+		return fmt.Errorf("attested commit SHA %q is missing or invalid", attestedSHA)
 	}
 	resolved, err := runner.Run(ctx, commandSpec{Name: "git", Args: []string{"rev-parse", tag + "^{commit}"}})
 	if err != nil {
@@ -304,6 +309,9 @@ func fastForwardRelease(ctx context.Context, tag string, runner commandExecutor)
 	sha := strings.TrimSpace(resolved.Stdout)
 	if !isLowerHex(sha, 40) {
 		return fmt.Errorf("tag %s resolved to an invalid commit SHA", tag)
+	}
+	if sha != attestedSHA {
+		return fmt.Errorf("tag %s now resolves to %s, not the attested %s; refusing to publish", tag, sha, attestedSHA)
 	}
 	remote, err := runner.Run(ctx, commandSpec{Name: "git", Args: []string{"ls-remote", "--exit-code", "--heads", "origin", "release"}})
 	if err != nil {

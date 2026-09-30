@@ -21,6 +21,8 @@ permissions:
 jobs:
   attest:
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
     steps:
       - name: Checkout the release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -117,4 +119,5 @@ jobs:
       - name: Fast-forward release to the attested tag
         env:
           TAG: ${{ github.ref_name }}
+          ATTESTED_SHA: ${{ needs.attest.outputs.sha }}
         run: go run ./scripts/cmd/ci release-fast-forward
