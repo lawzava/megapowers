@@ -41,24 +41,31 @@ reviewer_cmd='<reviewer-cli> --model <model-id> --prompt-file {prompt_file}'
 
 ## Inspect first
 
+State what the change must do and must not break. The reviewer judges the
+change against this intent instead of disputing it:
+
+```bash
+intent='<intended behavior and acceptance boundary>'
+```
+
 Review one repository file:
 
 ```bash
-go run "$review_tool" inspect --file path/to/file --provider <reviewer-family> \
-  --provider-command "$reviewer_cmd"
+go run "$review_tool" inspect --file path/to/file --intent "$intent" \
+  --provider <reviewer-family> --provider-command "$reviewer_cmd"
 ```
 
 Or review an immutable commit range:
 
 ```bash
 go run "$review_tool" inspect --base <base-revision> --head <head-revision> \
-  --provider <reviewer-family> --provider-command "$reviewer_cmd"
+  --intent "$intent" --provider <reviewer-family> --provider-command "$reviewer_cmd"
 ```
 
 The disclosure shows source identity, per-chunk paths, bytes, and package
-hashes, the resolved binary path and hash, the command, and an
-`approval_token`. Stop if a path, byte count, provider, binary, or command is
-not the one intended. Copy the token only after reviewing those fields:
+hashes, the intent, the resolved binary path and hash, the command, and an
+`approval_token`. Stop if a path, byte count, intent, provider, binary, or
+command is not the one intended. Copy the token only after reviewing those fields:
 
 ```bash
 approval_token='<approval_token from the inspected JSON>'
@@ -67,7 +74,7 @@ approval_token='<approval_token from the inspected JSON>'
 ## Approve and dispatch
 
 ```bash
-go run "$review_tool" review --file path/to/file \
+go run "$review_tool" review --file path/to/file --intent "$intent" \
   --provider <reviewer-family> --provider-command "$reviewer_cmd" \
   --author <author-family> --approve-external "$approval_token"
 ```
@@ -79,7 +86,7 @@ secret patterns. Commit ranges use immutable revisions and exclude unrelated
 worktree changes. Reviewer processes receive a small environment allowlist plus
 the named `--provider-env` variables.
 Review recaptures the source and resolves the reviewer again before dispatch.
-Any package, binary, or command change invalidates the token and requires a new
+Any package, intent, binary, or command change invalidates the token and requires a new
 inspection. The approved binary bytes are copied into a private read-only
 execution path, so later pathname replacement cannot change what runs.
 

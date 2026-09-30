@@ -52,6 +52,7 @@ type options struct {
 	provider         string
 	providerCommand  string
 	providerEnv      stringList
+	intent           string
 	author           string
 	out              string
 	approveExternal  string
@@ -124,6 +125,7 @@ type chunkDisclosure struct {
 type disclosure struct {
 	Provider        string            `json:"provider"`
 	ProviderCommand string            `json:"provider_command"`
+	Intent          string            `json:"intent,omitempty"`
 	BinaryPath      string            `json:"binary_path"`
 	BinarySHA256    string            `json:"binary_sha256"`
 	FileCount       int               `json:"file_count"`
@@ -275,10 +277,11 @@ func run(args []string) error {
 		return err
 	}
 	envDigests := environmentDigests(providerEnv)
-	token := approvalToken(binary, chunkHashes(cap), envDigests)
+	token := approvalToken(binary, chunkHashes(cap), envDigests, opt.intent)
 	disc := disclosure{
 		Provider:        opt.provider,
 		ProviderCommand: binary.Command,
+		Intent:          opt.intent,
 		BinaryPath:      binary.Path,
 		BinarySHA256:    binary.SHA256,
 		FileCount:       len(cap.Paths),
@@ -324,8 +327,8 @@ func run(args []string) error {
 	if opt.approveExternal == "" {
 		return errors.New("external disclosure not approved; run inspect, then pass its token as --approve-external TOKEN")
 	}
-	if !approvalTokenMatches(opt.approveExternal, binary, chunkHashes(cap), envDigests) {
-		return errors.New("approval token does not match the current package, provider label, command, binary, and forwarded environment; run inspect again")
+	if !approvalTokenMatches(opt.approveExternal, binary, chunkHashes(cap), envDigests, opt.intent) {
+		return errors.New("approval token does not match the current package, intent, provider label, command, binary, and forwarded environment; run inspect again")
 	}
 	// Allocate the receipt run before dispatch so an unwritable destination
 	// fails before credentials or source reach the provider.
@@ -363,7 +366,10 @@ func run(args []string) error {
 	}
 	for i, chunk := range cap.Chunks {
 		info := chunkInfo{Index: i + 1, Count: total}
-		prompt := makePrompt(chunk.Package, info)
+		prompt, err := makePrompt(chunk.Package, info, opt.intent)
+		if err != nil {
+			return err
+		}
 		stdout, stderr, err := session.dispatch(prompt)
 		if err != nil {
 			return fmt.Errorf("provider failed on chunk %d of %d; completed chunks: %d; no receipt written: %w", info.Index, total, i, err)
@@ -423,6 +429,7 @@ func parseOptions(command string, args []string) (options, error) {
 	fs.StringVar(&opt.provider, "provider", "", "reviewer label; must differ from --author")
 	fs.StringVar(&opt.providerCommand, "provider-command", "", "provider command template: argv[0] plus arguments, with optional {prompt_file} and {scratch_dir}")
 	fs.Var(&opt.providerEnv, "provider-env", "environment variable name to pass through (repeatable)")
+	fs.StringVar(&opt.intent, "intent", "", "artifact intent and acceptance boundary sent to the reviewer")
 	fs.StringVar(&opt.author, "author", "", "artifact author label; must differ from --provider")
 	fs.StringVar(&opt.out, "out", "", "private receipt directory")
 	fs.StringVar(&opt.approveExternal, "approve-external", "", "token emitted by inspect")
@@ -439,7 +446,7 @@ func parseOptions(command string, args []string) (options, error) {
 	// second vendor.
 	opt.provider, opt.author = strings.TrimSpace(opt.provider), strings.TrimSpace(opt.author)
 	if command == "inspect" && (opt.author != "" || opt.out != "" || opt.approveExternal != "" || opt.retainTranscript) {
-		return opt, errors.New("inspect accepts --provider, --provider-command, --provider-env, and one input mode only")
+		return opt, errors.New("inspect accepts --provider, --provider-command, --provider-env, --intent, and one input mode only")
 	}
 	if opt.maxFilesPerChunk < 1 {
 		return opt, errors.New("--max-files-per-chunk must be at least 1")
@@ -1094,11 +1101,11 @@ func hashProviderBinary(path string, before os.FileInfo) (string, error) {
 }
 
 // approvalToken binds the provider label, the command template as given,
-// the resolved binary identity, the ordered list of chunk package hashes, and
-// the forwarded environment (names with value digests, since a variable can
+// the resolved binary identity, the ordered list of chunk package hashes, the
+// stated intent, and the forwarded environment (names with value digests, since a variable can
 // redirect the destination), so a single token approves the whole run and any
 // of those changing invalidates it.
-func approvalToken(binary providerExecutable, packageSHA256s, envDigests []string) string {
+func approvalToken(binary providerExecutable, packageSHA256s, envDigests []string, intent string) string {
 	material := struct {
 		Schema          string   `json:"schema"`
 		Provider        string   `json:"provider"`
@@ -1107,6 +1114,8 @@ func approvalToken(binary providerExecutable, packageSHA256s, envDigests []strin
 		BinarySHA256    string   `json:"binary_sha256"`
 		PackageSHA256s  []string `json:"package_sha256s"`
 		Environment     []string `json:"environment"`
+		// Omitted when empty so tokens without an intent keep their v4 encoding.
+		Intent string `json:"intent,omitempty"`
 	}{
 		Schema:          "megapowers.external-review-approval.v4",
 		Environment:     envDigests,
@@ -1115,6 +1124,7 @@ func approvalToken(binary providerExecutable, packageSHA256s, envDigests []strin
 		BinaryPath:      binary.Path,
 		BinarySHA256:    binary.SHA256,
 		PackageSHA256s:  packageSHA256s,
+		Intent:          intent,
 	}
 	encoded, err := json.Marshal(material)
 	if err != nil {
@@ -1134,8 +1144,8 @@ func environmentDigests(env []string) []string {
 	return digests
 }
 
-func approvalTokenMatches(provided string, binary providerExecutable, packageSHA256s, envDigests []string) bool {
-	expected := approvalToken(binary, packageSHA256s, envDigests)
+func approvalTokenMatches(provided string, binary providerExecutable, packageSHA256s, envDigests []string, intent string) bool {
+	expected := approvalToken(binary, packageSHA256s, envDigests, intent)
 	var providedDigest [sha256.Size]byte
 	valid := false
 	if strings.HasPrefix(provided, "mpr1_") {
@@ -1153,9 +1163,20 @@ func approvalTokenMatches(provided string, binary providerExecutable, packageSHA
 	return valid && equal == 1
 }
 
-func makePrompt(pkg []byte, chunk chunkInfo) []byte {
+func makePrompt(pkg []byte, chunk chunkInfo, intent string) ([]byte, error) {
 	var prompt bytes.Buffer
 	prompt.WriteString("<task>Adversarially review the supplied static change. Identify correctness, security, data-integrity, and maintainability defects. Give a clear approve or needs-attention verdict with concise path-specific findings.</task>\n")
+	if intent != "" {
+		// JSON encoding escapes angle brackets, so the intent cannot open or
+		// close prompt markup.
+		encoded, err := json.Marshal(intent)
+		if err != nil {
+			return nil, fmt.Errorf("encode intent: %w", err)
+		}
+		prompt.WriteString("<intent>")
+		prompt.Write(encoded)
+		prompt.WriteString("</intent>\n<intent-rule>Judge the change against this author intent and acceptance boundary. Do not dispute the intent itself; report where the change fails it or breaks something outside it.</intent-rule>\n")
+	}
 	if chunk.Count > 1 {
 		fmt.Fprintf(&prompt, "<scope>This package is part %d of %d of one larger change, split by top-level directory. Review it on its own and name any cross-part dependency you cannot verify.</scope>\n", chunk.Index, chunk.Count)
 	}
@@ -1163,7 +1184,7 @@ func makePrompt(pkg []byte, chunk chunkInfo) []byte {
 	prompt.WriteString("<review-package>")
 	prompt.Write(pkg)
 	prompt.WriteString("</review-package>\n")
-	return prompt.Bytes()
+	return prompt.Bytes(), nil
 }
 
 func stageVerifiedExecutable(parent string, binary providerExecutable) (string, error) {

@@ -8,9 +8,9 @@ metadata:
 
 # Independent Review
 
-Use model review for residual uncertainty after executable checks. State artifact
-intent and acceptance boundary. Same-provider review gives only context
-separation, not independence. The lead owns remediation and reruns the oracle.
+Use model review for residual uncertainty after executable checks. Same-provider
+review gives only context separation, not independence. The lead owns
+remediation and reruns the oracle.
 
 ## Trusted review path
 
@@ -21,17 +21,19 @@ any external call. Set `review_tool` to the installed
 
 ```bash
 reviewer_cmd='<reviewer CLI and arguments>'   # {prompt_file} and {scratch_dir} expand
-go run "$review_tool" inspect --file path/to/file \
+intent='<intended behavior and acceptance boundary>'
+go run "$review_tool" inspect --file path/to/file --intent "$intent" \
   --provider <reviewer-family> --provider-command "$reviewer_cmd"
 go run "$review_tool" inspect --base <base-revision> --head <head-revision> \
-  --provider <reviewer-family> --provider-command "$reviewer_cmd"
+  --intent "$intent" --provider <reviewer-family> --provider-command "$reviewer_cmd"
 ```
 
-The inspection prints the binary hash, command, chunk package hashes, and one
-`approval_token`. Approve only that exact package, binary, and command:
+The inspection prints the intent, binary hash, command, chunk package hashes,
+and one `approval_token`. Approve only that exact package, intent, binary, and
+command:
 
 ```bash
-go run "$review_tool" review --file path/to/file \
+go run "$review_tool" review --file path/to/file --intent "$intent" \
   --provider <reviewer-family> --provider-command "$reviewer_cmd" \
   --author <author-family> --approve-external "$approval_token"
 ```
@@ -40,7 +42,7 @@ Author and provider labels must differ and name real vendor families. The
 prompt arrives on stdin unless the command names `{prompt_file}`. Credentials
 pass only through `--provider-env NAME`. A preflight probe fails fast on login,
 usage-limit, or stall before any artifact bytes leave the machine. Any file,
-binary, or command change requires a new inspection and token.
+intent, binary, or command change requires a new inspection and token.
 
 ## Declare the payload once
 
@@ -50,8 +52,8 @@ destination provider. Ask approval with that same declaration and dispatch
 that identical scope, so any harness approval reviewer sees one payload. A review mandate alone does not authorize disclosure. If the
 artifact changes after approval, declare and approve again. If the harness's
 own reviewer still denies the send, report its reason and stop; do not retry
-with a different payload. If dispatch waits on a permission prompt or provider
-stall, surface it and ask; do not wait silently.
+with a different payload. Surface a permission prompt or provider stall
+instead of waiting silently.
 
 Receipts are advisory, not an approval gate; they stay under private Git
 metadata unless `--out` names an existing absolute directory outside the

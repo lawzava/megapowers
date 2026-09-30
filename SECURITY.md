@@ -107,7 +107,8 @@ not enforcement.
 The review tool accepts only one explicit file or one immutable commit range.
 It does not infer the dirty worktree or include untracked files. Before an
 external call it prints the provider, source identity, paths, file count, byte
-count, and package hash, then requires `--approve-external`.
+count, package hash, and any `--intent` text, then requires
+`--approve-external`. The intent is sent verbatim and bound to the token.
 
 It rejects:
 
