@@ -24,7 +24,8 @@ and acceptance criteria.
 
 Resolve factual prerequisites before preference or policy questions. Present
 competing sketches only for a high-impact, underconstrained, or hard-to-reverse
-design. Recommend one and state its tradeoff.
+design, and screen them against [design red flags](references/design-red-flags.md).
+Recommend one and state its tradeoff.
 
 Mark assumptions and blockers. Model a domain term when repeated state branches
 or synchronized booleans obscure one concept. Do not force a glossary or ADR.
@@ -55,8 +56,10 @@ change with clear scope, risks, and oracle.
 Name the outcome, owned files, interfaces, error behavior, acceptance criteria,
 dependencies, and exact verification commands. Map each criterion to an
 implementation target and local or external oracle. Start behavior tasks with a
-failing test. Keep tasks sequential unless ownership is disjoint and neither
-result can reshape the other.
+failing test. Slice tasks vertically, each verifiable alone. Stage a
+wide interface change as expand, migrate callers in batches, then contract.
+Keep tasks sequential unless ownership is disjoint and neither result can reshape
+the other.
 
 Exclude speculative options, placeholders, unrelated cleanup, and unauthorized
 commit steps. Before execution, check for missing criteria, inconsistent names,

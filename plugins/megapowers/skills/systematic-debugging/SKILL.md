@@ -11,11 +11,13 @@ metadata:
 Find the root cause before attempting a fix. A symptom patch without a causal
 explanation creates a second unknown.
 
-Read the complete failure and reproduce it with the smallest reliable loop.
-Trace the bad value or condition backward across boundaries, compare it with a
-working path, and inspect recent changes without assuming they are causal. For
-flakiness, identify nondeterministic input, timing, shared state, or resource
-contention instead of retrying until green.
+Read the complete failure. Reproduce it with a fast, deterministic loop that
+goes red on the reported symptom, then minimize it. Trace the bad value or
+condition backward across boundaries, compare it with a working path, and
+inspect recent changes without assuming they are causal. For flakiness,
+identify nondeterministic input, timing, shared state, or resource contention
+instead of retrying until green. For slowness, use
+[performance measurement](references/performance.md).
 
 If output is filtered or truncated, retrieve the relevant raw diagnostics before
 diagnosing the failure. If raw evidence remains unavailable or incomplete, treat
@@ -33,9 +35,10 @@ or harness restriction could explain the failure, verify outside that
 restriction before declaring the dependency broken. A working session does not
 prove a separate launch path is healthy.
 
-State one evidence-backed hypothesis and test the cheapest decisive prediction
-while changing one variable. A failed hypothesis is evidence; update the model
-before trying another. After the cause is confirmed, write and run a failing
+Rank several falsifiable, evidence-backed hypotheses before testing any, then
+test the cheapest decisive prediction while changing one variable. A refuted
+hypothesis is evidence: revert the edits it motivated and update the model.
+Tag temporary instrumentation so one search removes it. After the cause is confirmed, write and run a failing
 regression test at a stable boundary before changing production code. Make the
 smallest cause-level fix, then run the regression, relevant checks, and the
 original failure path.

@@ -67,6 +67,10 @@ and competing instructions:
 For a new skill or a material change to its trigger, scope, or workflow, run the
 same cases against the prior version or a no-skill baseline. Inspect whether the
 skill activated and whether the final artifact or decision met the case oracle.
+Keep the cases blind: nothing the tested model sees names the evaluation, judge,
+rubric, or variant, and each prompt reads as an ordinary user request. Grade
+skill use from the files the transcript shows the model read, not from its own
+account. A judge scores both variants in one pass without knowing which is which.
 Repeat model-based trigger tests because activation varies between runs. Revise
 from patterns across cases, not one failed phrase. For typo, punctuation, link,
 or quoting corrections that do not change behavior, use the relevant format,

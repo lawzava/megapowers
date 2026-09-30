@@ -15,7 +15,9 @@ Use `systematic-debugging` for unknown causes.
 
 ## Red, green, refactor
 
-1. Test real behavior at a stable observable boundary, rather than mock assertions.
+1. Test real behavior at a stable observable boundary, not through mock
+   assertions or a side-channel query. Take expected values from the
+   specification or a worked example, never from a recomputation of the code.
 2. Verify red: confirm failure for the missing behavior, excluding setup errors
    and typos.
 3. Implement only what satisfies that test. Avoid speculative options,

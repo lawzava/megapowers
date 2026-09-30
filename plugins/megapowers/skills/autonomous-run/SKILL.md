@@ -47,4 +47,5 @@ review. This never overrides confirmation for risky or destructive actions.
 Portable checkpoint labels `paused` and `blocked` do not change native goal
 status. Record dependency evidence and its unblocking event without repeated
 unchanged status reads. Mark done only after every criterion passes its oracle.
-Use `safe-effects` for external mutations.
+Use `safe-effects` for external mutations. To babysit a pull request,
+follow [PR babysitting](references/pr-babysit.md).

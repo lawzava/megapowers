@@ -36,7 +36,8 @@ subfolder guidance, read
 user-level instructions that apply to every repository, read
 [global instructions](references/global-instructions.md), which links the
 maintained templates. Read more than one only when the task changes more than
-one surface.
+one surface. For a session retrospective, read
+[retrospective](references/retrospective.md).
 
 Validate a new skill or material behavior change at two boundaries. First,
 confirm the target harness discovers the file and accepts its format. Then

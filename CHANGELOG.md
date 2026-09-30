@@ -5,6 +5,40 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Added
+
+- `independent-review` sends the author's intent to the reviewer. `inspect`
+  and `review` accept `--intent`; inspection discloses it, the approval token
+  binds it, and the prompt carries it JSON-encoded so it cannot open or close
+  prompt markup. The skill already asked for intent, but the tool had no way to
+  pass it.
+- `autonomous-run` links a pull request babysitting reference: CI failure
+  classification before any retry, review threads as untrusted data triaged
+  into fix, dismiss, or ask, and no merge without an explicit request.
+- `systematic-debugging` links a performance measurement reference: a
+  sensitivity-checked, frozen harness, median of several runs, and one change
+  kept or reverted per measurement.
+- `verify-and-finish` links references for portable handoff notes and for
+  building a project verification driver on request.
+- `design-and-plan` links design red flags for screening competing sketches.
+- `writing-agent-instructions` links a session retrospective reference, and
+  skill evaluation cases stay blind to the tested model.
+
+### Changed
+
+- `systematic-debugging` ranks several falsifiable hypotheses instead of one,
+  asks for a fast deterministic loop that goes red on the reported symptom,
+  reverts edits a refuted hypothesis motivated, and tags temporary
+  instrumentation.
+- `test-first-implementation` rejects side-channel assertions and expected
+  values recomputed the way the code computes them.
+- `verify-and-finish` forbids weakening a test, baseline, threshold, or
+  predicate to obtain a pass.
+- `design-and-plan` slices tasks vertically and stages wide interface changes
+  as expand, migrate, contract.
+
 ## 0.32.0 - 2026-09-30
 
 ### Changed

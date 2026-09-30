@@ -21,6 +21,7 @@ var requiredSkillFacts = map[string][]string{
 		"announces the next step",
 		"two or three",
 		"blocks nothing",
+		"references/pr-babysit.md",
 	},
 	"design-and-plan": {
 		"acceptance oracle",
@@ -28,6 +29,9 @@ var requiredSkillFacts = map[string][]string{
 		"references/openspec.md",
 		"failing test",
 		"do not create new directories",
+		"references/design-red-flags.md",
+		"vertical",
+		"expand",
 	},
 	"humanizing-prose": {
 		"../../output-styles/megapowers.md",
@@ -38,6 +42,7 @@ var requiredSkillFacts = map[string][]string{
 		"--approve-external",
 		"author and provider labels must differ",
 		"same declaration",
+		"--intent",
 	},
 	"mcp-setup": {
 		"restart the session",
@@ -68,11 +73,17 @@ var requiredSkillFacts = map[string][]string{
 		"quota",
 		"unrelated caller cleanup",
 		"same cause",
+		"references/performance.md",
+		"rank several",
+		"revert the edits it motivated",
+		"tag temporary instrumentation",
 	},
 	"test-first-implementation": {
 		"production code follows a failing test",
 		"references/go.md", "references/python.md", "references/typescript.md",
 		"do not add production apis only for tests",
+		"side-channel",
+		"never from a recomputation",
 	},
 	"upgrading-megapowers": {
 		"references/channels.md",
@@ -84,10 +95,14 @@ var requiredSkillFacts = map[string][]string{
 		"verified: <claim>",
 		"not verified. remaining: <gap>",
 		"local build cannot prove",
+		"never weaken",
+		"references/handoff.md",
+		"references/verification-driver.md",
 	},
 	"writing-agent-instructions": {
 		"references/skills.md",
 		"references/repository-instructions.md",
+		"references/retrospective.md",
 	},
 }
 
@@ -100,6 +115,7 @@ var forbiddenSkillText = map[string][]string{
 	"independent-review":         {"provides context separation"},
 	"mcp-setup":                  {"narrow discovery miss"},
 	"orchestrating":              {"explicitly authorizes", "without dispatch is a contract violation"},
+	"systematic-debugging":       {"State one evidence-backed hypothesis"},
 	"test-first-implementation":  {"skills supply defaults only where the repository is silent"},
 	"verify-and-finish":          {"index size cap"},
 	"writing-agent-instructions": {"in Go"},
