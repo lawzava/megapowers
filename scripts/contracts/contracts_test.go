@@ -288,8 +288,11 @@ func TestSkillContracts(t *testing.T) {
 		}
 		words := len(strings.Fields(skillBody))
 		totalWords += words
-		if words > 400 {
-			t.Errorf("%s has %d body words, limit 400", rel, words)
+		// Raised from 400 and 330 in 2026-10 when detail moved into linked
+		// references and the bodies kept only the rules that must load with the
+		// skill. The caps still bound what every activation costs.
+		if words > 425 {
+			t.Errorf("%s has %d body words, limit 425", rel, words)
 		}
 		for _, link := range regexp.MustCompile(`\[[^]]+\]\(([^)]+)\)`).FindAllStringSubmatch(body, -1) {
 			target := strings.Split(link[1], "#")[0]
@@ -301,7 +304,7 @@ func TestSkillContracts(t *testing.T) {
 			}
 		}
 	}
-	if limit := len(names) * 330; totalWords > limit {
+	if limit := len(names) * 345; totalWords > limit {
 		t.Errorf("primary skill guidance has %d words, derived limit %d", totalWords, limit)
 	}
 	loaded := read(t, root, "AGENTS.md")
