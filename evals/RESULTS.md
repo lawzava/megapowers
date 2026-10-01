@@ -93,3 +93,37 @@ used different graders and cannot serve as a direct before/after comparison.
 Historical results remain in [RESULTS-archive.md](./RESULTS-archive.md).
 See [Installed-plugin A/B](./studies/installed-ab/README.md) for case filters,
 resume rules, metric definitions, and reproduction commands.
+
+## 2026-10-01 skill-text check
+
+A narrow Claude check measured the October skill-text changes. It used
+`claude-opus-5-5` at high effort, Claude Code `2.1.285`, and Subswapper, with
+broker SHA-256
+`0e44126a47ec56fe461a8b1f0b2cfdb7c32daa898357cb26ae74cb66064b1390`.
+
+Trigger recall, three repetitions per probe, with no gate violations:
+
+| Slice | Pass |
+|---|---:|
+| `autonomous-run`, including the new pull request probe | 15/15 |
+| `writing-agent-instructions`, including the new retrospective probes | 18/18 |
+| `no-skill` precision pool | 30/30 |
+
+Installed A/B on four cases, three paired runs each. `v0.32.0` is commit
+`38725c7`; the changed skills are commit `dc6e4bc`. Each cell is outcome
+passes for control and treatment.
+
+| Case | `v0.32.0` | Changed skills |
+|---|---:|---:|
+| `code-quality-go-errors` | 3/3, 3/3 | 3/3, 3/3 |
+| `systematic-debugging-before-mitigation` | 0/3, 0/3 | 0/3, 0/3 |
+| `tdd-add-multiply` | 0/3, 0/3 | 0/3, 0/3 |
+| `verify-finish-local-only` | 0/3, 0/3 | 0/3, 0/3 |
+
+Outcomes match exactly, so this check shows neither a regression nor a gain.
+Both arms failed three cases at both revisions. In `tdd-add-multiply`, neither
+arm wrote a failing test before the implementation, and the treatment never
+loaded `test-first-implementation`, so that case cannot measure the changed
+test guidance. The 2026-09-05 study passed the same case with
+`claude-fable-5-1`; this check did not isolate the model from the CLI version.
+Three paired runs per case cannot establish effect size.
