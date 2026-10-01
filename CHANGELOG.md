@@ -31,6 +31,10 @@ semver.
 - `design-and-plan` links design red flags for screening competing sketches.
 - `writing-agent-instructions` links a session retrospective reference, and
   skill evaluation cases stay blind to the tested model.
+- `autonomous-run` and `writing-agent-instructions` trigger on keeping a pull
+  request moving to merge-ready and on session retrospectives. Three new
+  trigger-recall probes cover them; the Claude slices for both skills and the
+  no-skill pool passed 63 of 63 at `claude-opus-5-5` high.
 
 ### Changed
 

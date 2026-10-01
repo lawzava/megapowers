@@ -1,7 +1,7 @@
 ---
 name: writing-agent-instructions
-description: Use when creating, revising, or auditing an agent skill, AGENTS.md, CLAUDE.md, or nested project instructions, including trigger design, progressive disclosure, harness-aware scope, and behavioral validation.
-when_to_use: "Trigger phrases: write a skill, create a skill instruction, improve AGENTS.md, audit CLAUDE.md, project instructions, subfolder instructions, skill trigger."
+description: Use when creating, revising, or auditing an agent skill, AGENTS.md, CLAUDE.md, or nested project instructions, including trigger design, progressive disclosure, harness-aware scope, behavioral validation, and session retrospectives that turn agent mistakes into instruction or tooling changes.
+when_to_use: "Trigger phrases: write a skill, create a skill instruction, improve AGENTS.md, audit CLAUDE.md, project instructions, subfolder instructions, skill trigger, run a retro on this session, what should we change so the agent avoids this next time."
 metadata:
   short-description: Write focused skills and repository instructions
 ---

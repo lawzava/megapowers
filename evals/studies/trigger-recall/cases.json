@@ -591,6 +591,29 @@
       "prompt": "What port does config.json use?",
       "files": { "config.json": "{ \"port\": 8443, \"debug\": false }\n" },
       "provenance": "authored 2026-08-30 no-skill pool"
+    },
+    {
+      "id": "autonomous-run-pr-paraphrase",
+      "kind": "paraphrase",
+      "expected": "autonomous-run",
+      "prompt": "PR 42 is approved to land once it is green, but CI is red and two review threads are open. Keep working it on your own until it is merge-ready while I am away. Describe how you will run that, then stop before touching anything.",
+      "files": { "README.md": "# service\n\nPR 42 adds retry backoff to the HTTP client.\n" },
+      "provenance": "authored 2026-10-01 for the pull request babysitting trigger"
+    },
+    {
+      "id": "writing-agent-instructions-retro",
+      "kind": "paraphrase",
+      "expected": "writing-agent-instructions",
+      "prompt": "SESSION.md lists what went wrong in my last agent session. Run a retrospective: what should change in our agent instructions, checks, or tooling so the next session avoids it? List the changes ranked by impact; do not apply them.",
+      "files": { "AGENTS.md": "Run go test ./....\n", "SESSION.md": "# Session notes\n\n- 40 minutes searching for the config loader; it lives in internal/boot/load.go.\n- Pushed a change that CI rejected for an unused import that go vet would have caught.\n- Re-ran the full test suite six times to read one failing test.\n" },
+      "provenance": "authored 2026-10-01 for the session retrospective trigger"
+    },
+    {
+      "id": "writing-agent-instructions-retro-near-miss",
+      "kind": "near-miss",
+      "prompt": "How many bullet points does SESSION.md contain? Answer with the number only. Change nothing.",
+      "files": { "SESSION.md": "# Session notes\n\n- 40 minutes searching for the config loader; it lives in internal/boot/load.go.\n- Pushed a change that CI rejected for an unused import that go vet would have caught.\n- Re-ran the full test suite six times to read one failing test.\n" },
+      "provenance": "authored 2026-10-01; counting session notes is not a retrospective"
     }
   ]
 }
