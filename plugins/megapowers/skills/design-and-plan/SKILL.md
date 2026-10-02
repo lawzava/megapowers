@@ -24,6 +24,9 @@ features, and installed dependencies. Simplify while preserving requirements
 and conventions. Defer speculative needs while preserving requested behavior
 and acceptance criteria.
 
+Before broadening design, apply [foundation and scope](references/design-red-flags.md#foundation-and-scope)
+proportionally and inline.
+
 Resolve factual prerequisites before preference or policy questions. Present
 competing sketches only for a high-impact, underconstrained, or hard-to-reverse
 design, and screen them against [design red flags](references/design-red-flags.md).

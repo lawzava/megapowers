@@ -40,3 +40,16 @@ repeat across boundaries. Group code by the decisions it protects.
 A method forwards the same arguments to another method of the same shape and
 hides nothing. Remove it, or keep it only when it adds policy, adaptation, or a
 distinct abstraction.
+
+## Foundation and scope
+
+Before broadening a design, identify the processed entity, when it exists and
+changes, the trigger, who owns the result, and current exclusions. Distinguish
+direct requirements from engineering inferences. For a material choice, compare
+the simplest existing-entity path with the proposed extension. Prefer the
+existing path when it satisfies current required behavior; justify an extension
+with a concrete current scenario it must cover. Seek agreement only for a
+material product behavior choice left open by primary requirements, with the
+tradeoff explained; do not reopen settled behavior or elevate routine
+implementation details to product decisions. Broad plan approval does not
+settle an unexplained choice. Keep this check proportional and inline.

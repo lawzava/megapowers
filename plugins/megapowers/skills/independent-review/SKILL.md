@@ -63,3 +63,7 @@ dismissals against the artifact intent. Fix as the single writer and rerun
 acceptance tests after every material change. Bound correction rounds:
 re-review only fixes, affected boundaries, and new evidence. Join every
 requested review before completion; approval cannot settle a queued review.
+
+For design or material architecture reviews, apply
+[foundation checks](references/foundation-review.md) to the review input and
+requirements summary.
