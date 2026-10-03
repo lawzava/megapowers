@@ -5,6 +5,25 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.34.0 - 2026-10-03
+
+Applies Anthropic's
+[Opus 5.5 guide](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/).
+
+### Changed
+
+- `independent-review` asks the external reviewer only for defects it would
+  block the merge for, each with path and line, why it is wrong, and the input
+  or sequence that shows it fails. It no longer asks for maintainability
+  findings.
+- The output style puts the needed decision, approval, or input first when a
+  turn ends waiting on the user.
+- `orchestrating` treats each lane's report as a claim and checks its evidence
+  before using it.
+- The global `CLAUDE.md` baseline is v3: status notes go in the same message
+  as the next action, and work with many steps keeps its task list in a file
+  under `$TMPDIR`. The global-instructions reference cites the guide.
+
 ## 0.33.1 - 2026-10-03
 
 ### Added
