@@ -61,7 +61,8 @@ never converts them into approval.
 Report failures and retain successful evidence. Prefer completion events or
 asynchronous waits within tool deadlines and required update cadence. Avoid
 foreground sleeps beyond those limits and repeated reads of unchanged status;
-keep a final readback. Join all identities before synthesis.
+keep a final readback. Join all identities before synthesis. Treat each
+lane's report as a claim: check its evidence before using it.
 After a scope or context change, scan again and use delta-only follow-ups.
 
 Ordinary handoffs use inline inspection plus `verify-and-finish`; only a

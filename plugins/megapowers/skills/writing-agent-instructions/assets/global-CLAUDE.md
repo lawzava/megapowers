@@ -1,4 +1,4 @@
-<!-- megapowers-global-baseline v2 (2026-09-27). Copy to ~/.claude/CLAUDE.md. -->
+<!-- megapowers-global-baseline v3 (2026-10-03). Copy to ~/.claude/CLAUDE.md. -->
 <!-- Claude Code strips HTML comments before loading, so these notes cost no context. -->
 <!-- If one line keeps being ignored, add emphasis to that line alone. Emphasis on many lines makes none stand out. -->
 
@@ -53,7 +53,11 @@ guidance.
   run, result inspected, and failures the change caused fixed.
 - While work remains and nothing blocks it, take the next step. Do not end a
   turn with a summary that announces the next step, an offer to continue, a
-  list of decisions that blocks nothing, or a milestone report.
+  list of decisions that blocks nothing, or a milestone report. Put status
+  notes in the same message as the next action.
+- For work with many steps, keep the task list in a file under `$TMPDIR`,
+  tick items as they finish, and give me its path. The file survives context
+  compaction, and I can read it instead of the scrollback.
 - End the turn when the work is done or when nothing can advance without my
   answer or an approval.
 - Report with evidence: the command you ran and what it returned. Report

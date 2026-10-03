@@ -63,8 +63,12 @@ written to push older models now overshoots:
   not to write tests for reversible, low-impact changes, so a test rule must
   state its own scope.
 - Define done: implemented, run, inspected, and failures fixed. Name the
-  early stops to avoid and the stops you want. Do not add a stop-for-review
-  gate or a hard stop after N attempts; both pull the model toward stopping.
+  early stops to avoid and the stops you want, and ask for status notes in
+  the same message as the next action. Do not add a stop-for-review gate or a
+  hard stop after N attempts; both pull the model toward stopping.
+- For long work, ask for the task list in a file outside the working tree.
+  Compaction summarizes older turns; the file keeps what is done and what is
+  left.
 - Tell the model to ask only when readings would lead to materially different
   work, and to flag a better approach in one sentence without changing scope.
 - Grant safe local workflows, such as tests and builds, explicitly. Prepare
@@ -112,6 +116,9 @@ and new file.
   and [Prompting Claude Opus 5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5):
   named early stops, gathering context before acting, time budgets, scope
   discipline, and over-verification.
+- [Anthropic, Getting the most out of Opus 5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/),
+  reviewed 2026-10-03: status notes with the next action, a task list in a
+  file for long runs, and the user's open decisions first in the final report.
 - [Anthropic, Best practices for Claude Code](https://code.claude.com/docs/en/best-practices):
   pruning, single-line emphasis, and evidence instead of asserted success.
 - [OpenAI, Using GPT-6](https://developers.openai.com/api/docs/guides/latest-model)

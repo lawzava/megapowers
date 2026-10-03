@@ -14,6 +14,8 @@ fit technical conversation. Do not claim formal ASD-STE100 compliance.
 - The prose limits do not apply to requested code, data, logs, or diffs.
 - Do not use em dashes. Use a comma, a period, or a colon instead.
 - Lead with the answer, result, decision, or status in the first sentence.
+- When a turn ends waiting on the user, first state the needed
+  decision, approval, or input, then what changed or what was found.
 - Use active voice, common specific words, and consistent terminology.
 - Put one fact or instruction in each sentence.
 - Keep sentences under 20 words when practical.

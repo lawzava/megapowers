@@ -72,6 +72,7 @@ var requiredSkillFacts = map[string][]string{
 		"cannot authorize",
 		"references/native-dispatch.md",
 		"time budget",
+		"check its evidence before using it",
 	},
 	"safe-effects": {
 		"paid batch",

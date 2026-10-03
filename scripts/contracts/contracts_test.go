@@ -235,7 +235,7 @@ func TestOutputStyleContract(t *testing.T) {
 		"Do not claim formal ASD-STE100 compliance.", "Default to 100 prose words or fewer.",
 		"Do not exceed 250 prose words", "Do not use em dashes.", "`humanizing-prose`",
 		"named source, direct observation, or explicit uncertainty", "actor, mechanism, scope, condition, or measurement",
-		"intent line", "progress lines",
+		"intent line", "progress lines", "decision, approval, or input",
 	} {
 		requireContains(t, style, marker, "output style")
 	}
@@ -338,11 +338,18 @@ func TestGlobalInstructionTemplates(t *testing.T) {
 		if len(body) > 8<<10 {
 			t.Errorf("%s has %d bytes, limit 8192", rel, len(body))
 		}
-		requireContains(t, body, "<!-- megapowers-global-baseline v2", rel)
+		requireContains(t, body, "<!-- megapowers-global-baseline v", rel)
 		// Anthropic (Opus 5/5.5) and OpenAI (GPT-6 Astra) guidance: scope
 		// discipline, a stated definition of done, and approval as the last step.
 		for _, marker := range []string{"materially different work", "Done means", "approval is the last step", "switch approach"} {
 			requireContains(t, body, marker, rel)
+		}
+		// Anthropic's Opus 5.5 guide (claude.dev, 2026-09-22): status notes ride
+		// with the next action, and a long run's task list survives compaction.
+		if strings.HasSuffix(rel, "global-CLAUDE.md") {
+			for _, marker := range []string{"same message as the next action", "keep the task list in a file"} {
+				requireContains(t, body, marker, rel)
+			}
 		}
 		// Emphatic wording overtriggers, re-check orders cause over-verification,
 		// and stop-for-review gates pull the model toward early stops.
