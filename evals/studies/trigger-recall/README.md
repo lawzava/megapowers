@@ -1,27 +1,13 @@
 # Trigger recall
 
-This study measures skill activation, not task quality. Every run installs the
-current checkout and executes a fixed probe corpus. The verdict for each probe
-comes only from trace-proven `skill_selected` events:
-
-- **Recall probes** (`verbatim`, `paraphrase`, `buried`) pass when the expected
-  skill activates successfully.
-- **Precision probes** (`near-miss`, `no-skill`) fail when any shipped skill
-  outside the probe's `expected` and `allowed` sets is selected, counting
-  failed attempts. Selections of non-megapowers skills never affect a verdict.
-
-Rows carry `evidence_class: "activation"` and a single `treatment` arm. The
-strict scorer validates them separately from behavioral treatment/control
-evidence and reports per-case pass rates. Activation evidence never becomes an
-efficacy claim; it answers one question: does the shipped trigger surface bind
-on this harness and model?
-
-## Purpose
-
-The 2026-08-30 installed A/B run (see `evals/RESULTS-archive.md`) could not separate
-activation failures from capability failures. This corpus is the regression
-oracle for skill-text edits: run the affected slice before merging any change
-to a `SKILL.md` description or trigger surface.
+This study measures skill activation, not task quality. It answers one
+question: does the shipped trigger surface (the skill text the harness shows
+the model when choosing a skill) bind on this harness and model? It is the
+regression oracle for skill-text edits: run the affected slice before merging
+any change to a `SKILL.md` description or trigger surface. The 2026-08-30
+installed A/B run (see `evals/RESULTS-archive.md`) could not separate
+activation failures from capability failures; this corpus measures activation
+alone.
 
 ## Credential-free mechanics
 
@@ -50,11 +36,34 @@ go run evals/studies/trigger-recall/run.go --run --credentialed \
   --out results/trigger-recall-claude
 ```
 
+Run Claude Code and Codex separately. `--filter <substring>` restricts a run
+to matching case ids; use it for the pre-merge slice of one edited skill plus
+the `no-skill` pool. The publish bundle contains only sanitized
+`publish/results.jsonl` and `publish/manifest.json`; prompts, traces, and
+private paths are never published.
+
+## How a probe is judged
+
+Every run installs the current checkout and executes a fixed probe corpus.
+The verdict for each probe comes only from trace-proven `skill_selected`
+events:
+
+- **Recall probes** (`verbatim`, `paraphrase`, `buried`) pass when the expected
+  skill activates successfully.
+- **Precision probes** (`near-miss`, `no-skill`) fail when any shipped skill
+  outside the probe's `expected` and `allowed` sets is selected, counting
+  failed attempts. Selections of non-megapowers skills never affect a verdict.
+
+Rows carry `evidence_class: "activation"` and a single `treatment` arm. The
+strict scorer validates them separately from behavioral treatment/control
+evidence and reports per-case pass rates. Activation evidence never becomes an
+efficacy claim.
+
 Each probe absorbs one automatic retry for a transient actor failure (fresh
 disposable directories per attempt; retry counts appear in the manifest). A
 second failure fails the run closed and writes the attempt's trace and error
-to `<out>/failures/` — private maintainer diagnostics, never part of the
-publish bundle.
+to `<out>/failures/`, which is private maintainer diagnostics and never part
+of the publish bundle.
 
 A broker `skills_catalog` attestation with `rendered: false` is the same
 class of failure: the harness never presented the Megapowers catalog, so the
@@ -75,12 +84,6 @@ values are report-only, present values become violations enforced for the
 harnesses in `enforce_harnesses`. The shipped gates set 120 words and 0.1
 for Claude.
 
-Run Claude Code and Codex separately. `--filter <substring>` restricts a run
-to matching case ids; use it for the pre-merge slice of one edited skill plus
-the `no-skill` pool. The publish bundle contains only sanitized
-`publish/results.jsonl` and `publish/manifest.json`; prompts, traces, and
-private paths are never published.
-
 ## Corpus and gates
 
 `cases.json` ships at least three recall probes per model-selectable skill
@@ -89,13 +92,14 @@ and at least ten no-skill probes. Skills with
 `policy.allow_implicit_invocation: false` in Codex's `agents/openai.yaml`,
 are exempt from implicit recall. The runner reads each harness's native policy.
 `memory-hygiene` has separate explicit-invocation and implicit non-selection
-probes. Every probe records provenance. `gates.json` enforces for the
-harnesses in `enforce_harnesses` (currently Claude only) and records
-violations without failing elsewhere. The 2026-09-02 Codex run reported
-0/117 implicit recall despite a rendered catalog. Interactive sessions did
-load skills. Probe shape, hook trust, and multi-turn context are hypotheses
-for the difference, not established causes. Codex stays report-only until
-controlled comparisons explain the gap.
+probes. Every probe records provenance.
+
+`gates.json` enforces for the harnesses in `enforce_harnesses` (currently
+Claude only) and records violations without failing elsewhere. The 2026-09-02
+Codex run reported 0/117 implicit recall despite a rendered catalog.
+Interactive sessions did load skills. Probe shape, hook trust, and multi-turn
+context are hypotheses for the difference, not established causes. Codex
+stays report-only until controlled comparisons explain the gap.
 
 One calibrated boundary is accepted, not a defect: `safe-effects-near-miss`
 never gates (`per_case.max_false_selection_rate: 1`). Once the broker write

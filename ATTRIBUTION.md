@@ -33,7 +33,7 @@ Upstream license: MIT, Copyright (c) 2025 Jesse Vincent.
 
 `humanizing-prose` adapts the editing approach from
 [humanizer](https://github.com/blader/humanizer) by Siqi Chen. The current skill
-keeps the fact-preservation and direct-writing contract while removing a fixed
+keeps the fact-preservation and direct-writing contract and drops the fixed
 vocabulary checklist.
 
 Upstream license: MIT, Copyright (c) 2025 Siqi Chen.
@@ -48,36 +48,49 @@ style, makes it topic-agnostic, and resolves facts itself following the
 
 Upstream license: MIT, Copyright (c) 2026 Matt Pocock.
 
-The instruction-authoring skill also draws on Matt Pocock's progressive
+`writing-agent-instructions` also draws on Matt Pocock's progressive
 disclosure and removal-testing approach. Its guidance is written for this
 repository's supported harnesses.
 
 Later adaptations, reviewed at `d81f3a183412e71a5b1e84ca21bc1a35eea03a60`,
 take concepts from `diagnosing-bugs`, `tdd`, `to-tickets`, `handoff`, `retro`,
-`code-review`, `domain-modeling`, and `git-guardrails-claude-code`: a
-red-capable, minimized reproduction loop, ranked hypotheses, tagged temporary
-instrumentation, redacted captures, independent expected values, verification
-through the public interface, vertical slices with expand-and-contract for wide
-changes, portable handoff notes, session retrospectives that prefer
-deterministic checks, scope-creep review, a threshold for recording a decision,
-and stopping git commands that discard work. The text is rewritten in
-repository style, and the git check is a new Go implementation on the existing
-hook gate.
+`code-review`, `domain-modeling`, and `git-guardrails-claude-code`:
+
+- a minimized reproduction loop that can go red, with ranked hypotheses;
+- tagged temporary instrumentation and redacted captures;
+- independent expected values and verification through the public interface;
+- vertical slices, with expand-and-contract for wide changes;
+- portable handoff notes and session retrospectives that prefer deterministic
+  checks;
+- scope-creep review and a threshold for recording a decision;
+- stopping git commands that discard work.
+
+The text is rewritten in repository style. The git check is a new Go
+implementation on the existing hook gate.
 
 ## pstack
 
 Guidance in `autonomous-run`, `systematic-debugging`, `design-and-plan`,
 `verify-and-finish`, `independent-review`, `evidence-research`, and
-`writing-agent-instructions` draws on [pstack](https://github.com/cursor/plugins/tree/main/pstack) by Lauren
-Tan, reviewed at `2eb7ed4613cfc8f098dfe464a23680ea44d84c5e`. The adapted
-concepts are pull request CI classification and review-thread triage, measured
-one-change performance work, reverting edits a refuted hypothesis motivated,
-refusing to weaken an oracle, design red flags with caller-first sketches,
-project verification drivers, blind skill evaluation, and giving a reviewer the
-author's intent, plus rebase-stable verdicts through `git patch-id`, the one
-fact that makes a change safe, and line-history and intent epistemics from
-`why`. The text is rewritten for Claude Code and Codex; no scripts,
-personas, or Cursor-specific workflows were copied.
+`writing-agent-instructions` draws on
+[pstack](https://github.com/cursor/plugins/tree/main/pstack) by Lauren Tan,
+reviewed at `2eb7ed4613cfc8f098dfe464a23680ea44d84c5e`. The adapted concepts
+are:
+
+- pull request CI classification and review-thread triage;
+- measured one-change performance work;
+- reverting edits a refuted hypothesis motivated;
+- refusing to weaken a verification check;
+- design red flags with caller-first sketches;
+- project verification drivers;
+- blind skill evaluation;
+- giving a reviewer the author's intent;
+- rebase-stable verdicts through `git patch-id`;
+- the one fact that makes a change safe;
+- line-history and intent reasoning from `why`.
+
+The text is rewritten for Claude Code and Codex. No scripts, personas, or
+Cursor-specific workflows were copied.
 
 Upstream license: MIT, Copyright (c) 2026 Lauren Tan.
 
@@ -95,7 +108,7 @@ Planning, implementation, and debugging guidance draws on
 [Ponytail](https://github.com/DietrichGebert/ponytail) by DietrichGebert,
 reviewed at `356918eba965ee1eac64bd3a7f0dd02108350de5`. The adapted concepts are
 reuse before custom implementation, checking shared callers, and documenting
-known limits with conditions for revisiting them. Megapowers retains its
+known limits with conditions for revisiting them. Megapowers keeps its own
 requirement, testing, and scope boundaries.
 
 Upstream license: MIT, Copyright (c) 2026 DietrichGebert.
@@ -118,7 +131,7 @@ progressive disclosure, scoped discovery, and task-based evaluation.
 
 ## Everything Claude Code
 
-The Go reference in `test-first-implementation` retains stable context, error, and
+The Go reference in `test-first-implementation` keeps stable context, error, and
 goroutine guidance adapted from `golang-patterns` in
 [Everything Claude Code](https://github.com/affaan-m/everything-claude-code) by
 Affaan Mustafa.

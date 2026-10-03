@@ -1,41 +1,48 @@
 # megapowers plugin
 
-One native-first workflow plugin for current Claude Code and Codex: 16 task
-skills, one concise output style, a destructive-command tripwire, and a doctor.
+One workflow plugin for current Claude Code and Codex: 16 task skills, one
+short output style, a hook that blocks a few catastrophic shell commands, and a
+doctor. It uses the planning, agents, goals, permissions, memory, worktrees,
+and browser tools each harness already has. It ships no model router,
+orchestration daemon, or vendor choice.
 
 ## Contents
 
-- `skills/`: task-level skills for orchestration, structured interviews,
+- `skills/`: one skill per task type: orchestration, structured interviews,
   research, design, implementation with language-specific code judgment,
-  debugging, verification, effects, durable runs, independent review, memory
-  hygiene, MCP setup, prose, safe upgrades, writing agent instructions, and
-  self-diagnosis (`megapowers-doctor`). `skills/catalog.json` records stable
-  or experimental maturity outside portable skill frontmatter.
+  debugging, verification, actions with real-world side effects, long
+  unattended runs, independent review, memory hygiene, MCP setup, prose, safe
+  upgrades, writing agent instructions, and self-diagnosis
+  (`megapowers-doctor`). `skills/catalog.json` records whether each skill is
+  stable or experimental, since portable skill frontmatter has no field for
+  that.
 - `output-styles/`: the shared source for direct, concise technical replies.
 - `hooks/`: Go hooks with one entrypoint, `run-hook.cmd`. `SessionStart` adds
   a skill-loading reminder and, on Codex, the style. `SubagentStart` adds the
   same reminder and a compact report contract for subagents. `PreToolUse`
-  denies a narrow set of catastrophic shell commands and returns a
-  non-blocking reminder to load `verify-and-finish` before commit, push, and
-  PR commands or `safe-effects` before publish and deploy commands. A git
-  command that discards uncommitted, stashed, or unmerged work stops once per
-  exact command with a reminder to check `git status`. The same
-  runner's `doctor` command backs `megapowers-doctor`.
-- `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: native plugin
-  metadata.
+  denies a narrow set of catastrophic shell commands. It also stops the first
+  commit, push, or PR command in a session once and names `verify-and-finish`,
+  and the first publish or deploy command once and names `safe-effects`;
+  the retry runs, and an already loaded skill skips the stop. A git command
+  that discards uncommitted, stashed, or
+  unmerged work stops once per exact command with a reminder to check
+  `git status`. The same runner's `doctor` command backs `megapowers-doctor`.
+- `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: plugin
+  metadata for each harness.
 
-The plugin uses native harness planning, agents, goals, permissions, memory,
-worktrees, and browser tools. It ships no model router, orchestration daemon,
-or vendor choice.
+## Output style
 
 Claude Code: the style is off until selected. Choose `megapowers:Megapowers`
 in the `/config` output-style picker or run
 `/output-style megapowers:Megapowers`; the bare value `Megapowers` does not
 resolve. The style preserves the built-in coding instructions and respects
-another selected style. Codex: the trusted startup hook adds the same style as
-developer context without changing user config; Codex requires review and
-trust before it runs plugin hooks, and asks again when a release changes them.
-Set `MEGAPOWERS_OUTPUT_STYLE=off` before launching Codex to omit the style.
+another selected style.
+
+Codex: the trusted startup hook adds the same style as developer context
+without changing user config. Codex requires review and trust before it runs
+plugin hooks, and asks again when a release changes them. Set
+`MEGAPOWERS_OUTPUT_STYLE=off` before launching Codex to omit the style.
+
 Hooks compile once with the local Go toolchain (1.25 or newer) into a cached
 executable; the plugin contains no prebuilt binaries.
 
@@ -50,9 +57,9 @@ diagnosis steps are in
 
 The guard catches a narrow set of obvious catastrophic shell commands, including
 compound forms and absolute-path wrappers. It is not a sandbox. The
-independent-review skill sends only an explicit file or immutable commit range
-after a disclosure and approval step. No hook, tool, or skill opens a network
-connection on its own. Read the
+independent-review skill sends only an explicit file or immutable commit range,
+and only after telling you what it will disclose and getting your approval. No
+hook, tool, or skill opens a network connection on its own. Read the
 [security policy](https://github.com/lawzava/megapowers/blob/main/SECURITY.md)
 before enabling either path.
 

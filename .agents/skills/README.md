@@ -1,9 +1,9 @@
 # Repository-local skills
 
-These relative symlinks, one per shipped skill, expose the canonical
-`plugins/megapowers/skills/<name>/SKILL.md` files to Codex while working in this
-checkout. Git tracks the links; there is no copy or generation step.
+Each entry here is a relative symlink to the canonical
+`plugins/megapowers/skills/<name>/SKILL.md`, so Codex can see the shipped
+skills while working in this checkout. Git tracks the links; there is no copy
+or generation step.
 
-They are for repository development, not a second installation channel. Install
-the published plugin through the Codex marketplace as described in
-[docs/install.md](../../docs/install.md).
+They exist for repository development only. To install the published plugin,
+use the Codex marketplace as described in [docs/install.md](../../docs/install.md).

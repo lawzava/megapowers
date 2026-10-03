@@ -1,11 +1,12 @@
 # Independent review
 
-Independent review is an explicit external disclosure path for residual risk in
-security, authentication, billing, concurrency, data integrity, and similar
-work. It supplements tests and measurements. It does not replace them.
+Independent review sends a disclosed package of source to a reviewer from
+another vendor when tests and measurements leave residual risk in security,
+authentication, billing, concurrency, data integrity, and similar work. It
+supplements those tests; it does not replace them.
 
 The tool is vendor-neutral. It runs whatever reviewer command the operator
-names, verifies that binary, and binds approval to the exact package, binary,
+names, verifies that binary, and ties approval to the exact package, binary,
 and command. megapowers ships no provider list, model choice, or credential
 handling; those live in the operator's registry and instructions.
 
@@ -85,10 +86,12 @@ submodules, binary data, oversized packages, secret-like paths, and common
 secret patterns. Commit ranges use immutable revisions and exclude unrelated
 worktree changes. Reviewer processes receive a small environment allowlist plus
 the named `--provider-env` variables.
+
 Review recaptures the source and resolves the reviewer again before dispatch.
-Any package, intent, binary, or command change invalidates the token and requires a new
-inspection. The approved binary bytes are copied into a private read-only
-execution path, so later pathname replacement cannot change what runs.
+Any change to the package, intent, binary, or command invalidates the token
+and requires a new inspection. The approved binary bytes are copied into a
+private read-only execution path, so a later swap at the original pathname
+cannot change what runs.
 
 ## Receipts and transcripts
 

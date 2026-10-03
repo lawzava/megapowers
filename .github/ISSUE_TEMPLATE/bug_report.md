@@ -1,12 +1,12 @@
 ---
 name: Bug report
-about: A skill, hook, tool, eval, or doc behaves differently than claimed
+about: A skill, hook, tool, eval, or doc behaves differently than documented
 labels: bug
 ---
 
-**Outcome observed**
+**What happened**
 
-**Expected outcome**
+**What you expected**
 
 **Harness and version**: Claude Code / Codex
 
@@ -14,6 +14,6 @@ labels: bug
 
 **Minimal reproduction**
 
-**Evidence**: command output, hook input JSON, or result row with secrets removed
+**Evidence**: command output, hook input JSON, or result row, with secrets removed
 
-**Deterministic gate**: `scripts/validate.sh` pass / fail / not run
+**`scripts/validate.sh`**: pass / fail / not run

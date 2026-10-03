@@ -1,18 +1,19 @@
 # Exact-tag install smoke
 
-This post-publish oracle installs exactly one `megapowers` plugin into fresh,
+This post-publish check installs exactly one `megapowers` plugin into fresh,
 unauthenticated Claude Code and Codex homes. It verifies registration JSON,
 harness-reported cache paths, both cached manifests and versions, and the exact
-installed bytes of `evidence-research`. It does not invoke a model or
-claim behavioral quality.
+installed bytes of `evidence-research`. It needs no credentials, invokes no
+model, and proves delivery only, not behavioral quality.
 
-Credential-free runner check:
+Runner check, no CLI required:
 
 ```bash
 bash evals/studies/install-smoke/run-smoke.sh --selftest
 ```
 
-Local diagnostic mode permits a missing CLI only when the other harness passes:
+Local diagnostic mode, which tolerates a missing CLI only when the other
+harness passes:
 
 ```bash
 evals/studies/install-smoke/run-smoke.sh \
@@ -31,6 +32,4 @@ evals/studies/install-smoke/run-smoke.sh \
 ```
 
 Exact-ref mode fails on every skip, verifies the fetched tag points at `HEAD`,
-and checks source plus cached manifests have the requested version. This
-credential-free oracle proves delivery only; it does not claim behavioral
-quality.
+and checks that the source and cached manifests carry the requested version.

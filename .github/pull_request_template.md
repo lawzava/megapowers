@@ -1,9 +1,9 @@
-**Outcome and reason**
+**What changed and why**
 
 **Evidence**
 
-- [ ] `scripts/validate.sh`
-- [ ] Focused regression or mutation test for changed executable behavior
-- [ ] Guidance change: source-bound installed-plugin A/B for Claude Code and Codex, or not applicable
-- [ ] New claims distinguish deterministic, behavioral, and report-only evidence
+- [ ] `scripts/validate.sh` passes
+- [ ] Changed executable behavior has a focused regression test, or a test proving the check rejects a wrong artifact
+- [ ] Guidance change: installed-plugin A/B on Claude Code and Codex, pinned to the source revision, or not applicable
+- [ ] New claims say whether their evidence is deterministic, behavioral, or report-only
 - [ ] No credentials, private paths, raw transcripts, or generated agent artifacts

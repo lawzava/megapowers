@@ -1,18 +1,18 @@
 # Install megapowers
 
-megapowers supports current Claude Code and Codex. Choose one native channel per
-harness so each skill registers once. Register the marketplace at the `release`
-branch: it only fast-forwards to signed release tags, so the automatic
-marketplace refresh that both harnesses run never installs unreleased `main`
-state.
+megapowers supports current Claude Code and Codex. Install it through one
+channel per harness so each skill registers once. Register the marketplace at
+the `release` branch: that branch only fast-forwards to signed release tags, so
+the automatic marketplace refresh that both harnesses run never installs
+unreleased `main`.
 
 ## Requirements
 
 - A current Claude Code or Codex CLI, already authenticated.
 - Git, for marketplace snapshots.
-- Go 1.25 or newer, for hooks and deterministic tools. Hooks compile once into
-  a local cache, outside the installed plugin. Later calls reuse that executable.
-  Missing Go or an unusable cache produces an explicit hook error.
+- Go 1.25 or newer, for hooks and the plugin's Go tools. Hooks compile once
+  into a local cache outside the installed plugin, and later calls reuse that
+  executable. Missing Go or an unusable cache produces an explicit hook error.
 
 ## Claude Code
 
@@ -28,15 +28,15 @@ claude plugin list --json
 ```
 
 Start a fresh session. Ask Claude Code to load `humanizing-prose` and summarize
-its preservation rules. This checks discovery and full skill loading without
-claiming broader behavioral quality.
+its preservation rules. This checks that the skill is discovered and fully
+loaded; it says nothing about broader behavior.
 
 The output style is optional and off until selected. Select the
 plugin-qualified value `megapowers:Megapowers` in `/config` under Output style,
 or run `/output-style megapowers:Megapowers`. The resulting setting is
 `"outputStyle": "megapowers:Megapowers"`. The bare value `Megapowers` does not
 resolve to the plugin style. The style preserves built-in coding instructions.
-Select another style to opt out while keeping the plugin enabled. Start a new
+To opt out while keeping the plugin enabled, select another style. Start a new
 session after changing style, then run `/megapowers:megapowers-doctor` to
 confirm the value in effect.
 
@@ -76,8 +76,8 @@ that discovery channel when testing the installed plugin in an isolated home.
 Keep the links as the canonical development entrypoints. Do not edit installed
 caches or global configuration to hide a duplicate during an unrelated task.
 
-For a deliberate Codex setup using the installed release in this checkout,
-disable each repository skill path through native configuration:
+To use the installed release deliberately while working in this checkout on
+Codex, disable each repository skill path through native configuration:
 
 ```toml
 [[skills.config]]
@@ -86,19 +86,17 @@ enabled = false
 ```
 
 Use one entry per repository skill. Keep the installed plugin enabled so its
-hooks remain available. Verify the exact path with native `skills/list` before
-expanding the exclusions: the repository entry must be disabled and the installed
-entry enabled. Verify hook trust with `hooks/list`. Exclude only the intended
-checkout; a candidate run must load source through its own isolated plugin
-installation. Removing these entries restores repository discovery.
+hooks remain available. Before adding more exclusions, confirm the exact path
+with native `skills/list`: the repository entry must be disabled and the
+installed entry enabled. Confirm hook trust with `hooks/list`. Exclude only the
+intended checkout; a candidate run must load source through its own isolated
+plugin installation. Removing these entries restores repository discovery.
 
 ## Pin a release
 
 A local immutable checkout makes the selected source explicit for either
-harness:
-
-Replace `vX.Y.Z` with a reviewed published tag. Do not run the placeholder
-literally.
+harness. Replace `vX.Y.Z` with a reviewed published tag; do not run the
+placeholder literally.
 
 ```bash
 release_tag=vX.Y.Z
@@ -107,7 +105,8 @@ git clone --branch "$release_tag" --depth 1 \
 ```
 
 Pass that checkout path instead of `lawzava/megapowers@release` (Claude) or
-`lawzava/megapowers --ref release` (Codex) to the marketplace add command. Verify the selected commit before trusting it:
+`lawzava/megapowers --ref release` (Codex) to the marketplace add command.
+Check the selected commit before trusting it:
 
 ```bash
 git -C "megapowers-$release_tag" rev-parse HEAD
@@ -119,21 +118,24 @@ git -C "megapowers-$release_tag" status --short
 Use `upgrading-megapowers` for an agent-driven update. It inventories the
 installed version, enabled state, source, scope, pins, local edits, duplicates,
 and active caches before asking once for the exact writes. A current install is
-a valid no-op. Preserve the channel already in use and read
+a valid no-op. Keep the channel already in use, and read
 [CHANGELOG.md](../CHANGELOG.md) before changing it.
 
 The exact per-harness refresh and registration commands, the `HEAD` comparison
-against the approved release tag, and the runtime markers to ignore live in one
-place, the skill's
+against the approved release tag, and the runtime markers to ignore are in the
+skill's
 [channels reference](../plugins/megapowers/skills/upgrading-megapowers/references/channels.md).
-Two rules from it apply to any manual update: a registration without a ref
-tracks `main` and receives unreleased commits, so re-register with `--ref
-release` (Codex) or `@release` (Claude) if the marketplace list shows no ref;
-and after a marketplace refresh, require the reported `HEAD` to equal the
-approved release commit before registering the new snapshot. Restart before
-expecting new guidance. Do not delete an older cache while a live session may
-still use it. A pinned local checkout changes only when you deliberately replace
-or update that checkout.
+Two rules from it apply to any manual update:
+
+- A registration without a ref tracks `main` and receives unreleased commits.
+  If the marketplace list shows no ref, re-register with `--ref release`
+  (Codex) or `@release` (Claude).
+- After a marketplace refresh, require the reported `HEAD` to equal the
+  approved release commit before registering the new snapshot.
+
+Restart before expecting new guidance. Do not delete an older cache while a
+live session may still use it. A pinned local checkout changes only when you
+deliberately replace or update that checkout.
 
 ## Uninstall
 
@@ -171,7 +173,7 @@ measure agent behavior. Optional behavioral studies are described in
 
 Ask for `megapowers-doctor` (`/megapowers:megapowers-doctor` on Claude Code, or
 the skill name after `$` as the Codex skills list shows it). It runs the
-plugin's deterministic `doctor` command and reports the plugin version and
-root, the harness, the Go toolchain version against the cached runner, the
-Claude `outputStyle` value in effect, whether the hooks are registered, and how
-to check your transcripts for skill loads.
+plugin's `doctor` command and reports the plugin version and root, the
+harness, the Go toolchain version against the cached runner, the Claude
+`outputStyle` value in effect, whether the hooks are registered, and how to
+check your transcripts for skill loads.

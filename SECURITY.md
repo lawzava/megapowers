@@ -18,22 +18,22 @@ Review the exact revision before installing it.
 There is no daemon, model router, formatter, status line, or background
 scheduler.
 
-The memory-audit tool validates provenance, dates, retention decisions, and
+The memory-audit tool checks provenance, dates, retention decisions, and
 common credential patterns. It rejects symlink inputs and never edits provider
-memory. Pattern checks cannot establish that a claim is true or current; the
-memory-hygiene skill requires source inspection and one exact approval. After
-approval, the active agent applies that patch through the harness memory
-boundary and verifies every target by readback.
+memory. Pattern checks cannot tell whether a claim is true or current, so the
+`memory-hygiene` skill requires inspecting the source and one exact approval.
+After approval, the active agent applies that patch through the harness memory
+boundary and reads every target back to verify it.
 
 ## Destructive-command guard
 
-The hook catches a narrow set of obvious catastrophic commands. It uses
-command-string parsing for precision, not evasion resistance. The parser looks
-through compound shapes an agent writes by accident, such as a subshell, a
-brace group, an `if` or function body, and wrappers named by absolute path
-(`/usr/bin/env rm`, `/usr/bin/sudo rm`). It does not deny a read-only
-`wipefs` (no `-a`, or `-n`/`--no-act`), a `blkdiscard --dry-run`, or a
-`find` under home that carries a name or path filter before `-delete`.
+The hook catches a narrow set of obvious catastrophic commands. Its
+command-string parsing aims at precision, not evasion resistance. The parser
+looks through compound shapes an agent writes by accident, such as a subshell,
+a brace group, an `if` or function body, and wrappers named by absolute path
+(`/usr/bin/env rm`, `/usr/bin/sudo rm`). It does not deny a read-only `wipefs`
+(no `-a`, or `-n`/`--no-act`), a `blkdiscard --dry-run`, or a `find` under
+home that carries a name or path filter before `-delete`.
 
 Git commands that discard uncommitted, stashed, or unmerged work are not
 denied. The first run of each distinct such command in a session stops once
@@ -42,28 +42,27 @@ runs. Without a session ID or a writable hook cache, the hook only adds that
 reminder.
 
 One matcher covers the Bash and PowerShell tools, and both receive the same
-high-confidence denials: the PowerShell tool hands over the same
-`tool_input.command` field, so `Remove-Item -Recurse /` and the cmd.exe
+high-confidence denials. PowerShell hands over the
+same `tool_input.command` field, so `Remove-Item -Recurse /` and the cmd.exe
 `rd /s /q C:\` classify under the same rules as `rm -rf /`.
 
-Matching PreToolUse `deny` decisions are applied by Claude Code's decision
-control before the call runs, so they survive `bypassPermissions` and
-`--dangerously-skip-permissions`: bypass mode removes permission prompts, not
-hook evaluation. PreToolUse fires on every tool call and a `deny` cancels the
-call, including in modes that skip other prompts.
+Claude Code applies a matching PreToolUse `deny` decision before the call runs,
+so denials survive `bypassPermissions` and `--dangerously-skip-permissions`.
+Bypass mode removes permission prompts, not hook evaluation. PreToolUse fires
+on every tool call, and a `deny` cancels the call, including in modes that skip
+other prompts.
 
 - Claude Code and Codex receive the same high-confidence denials.
 - Reversible risk stays with each harness's native permission system.
 - A hook evaluation error is visible and nonzero. Do not treat a broken hook as
   protection.
 
-### What stays allow by design
+### Allowed by design
 
 The guard is a tripwire for plausible accidents, not an obfuscation filter.
 Everything below is deliberate.
 
-Allowed by design (reversible, scoped, or owned by the harness permission
-system):
+Allowed (reversible, scoped, or owned by the harness permission system):
 
 - Scoped deletes and cleanup: `rm -rf ./dist`, `/tmp/app/*`,
   `/etc/nginx/conf.d/*`, `~/.cache/foo`, `~alice/Code/build`, and filtered
@@ -80,8 +79,8 @@ system):
 - Account and access-control changes (`userdel`, `useradd -G sudo`,
   `setfacl`, `visudo`), locally or over ssh, and other remote effects.
 
-Known bypasses (deliberately left uncovered; chasing them with more regex is a
-losing game the project does not run):
+Known bypasses, left uncovered on purpose because more regex would not close
+them:
 
 - Obfuscated spellings: encoded, aliased, or escaped commands, command
   substitution, heredoc-fed shells, double-nested `bash -c` with escaped
@@ -105,8 +104,8 @@ command. Use the harness sandbox, OS permissions, least-privilege credentials,
 backups, and explicit review as the real controls.
 
 `safe-effects` covers deploys, messages, charges, migrations, destructive
-queries, DNS changes, and other external mutations. It is still model guidance,
-not enforcement.
+queries, DNS changes, and other changes outside the machine. It is model
+guidance, not enforcement.
 
 ## Independent-review disclosure
 
@@ -127,11 +126,12 @@ It rejects:
 Pattern matching cannot identify every secret. Inspect the disclosure and the
 source itself before approval. Raw transcripts are not retained by default.
 Receipts are advisory records, not signatures or tamper-proof attestations.
-After token validation, the tool executes a private read-only copy whose bytes
-match the approved provider hash rather than the mutable provider pathname.
-Explicit receipt output must already exist at an absolute canonical path that
-neither overlaps nor contains the repository. Writes are rooted at an opened
-directory handle; the default remains under Git metadata.
+
+After token validation, the tool runs a private read-only copy of the reviewer
+binary whose bytes match the approved hash, not the mutable provider pathname.
+An explicit receipt output directory must already exist at an absolute
+canonical path that neither overlaps nor contains the repository. Writes are
+rooted at an opened directory handle; the default stays under Git metadata.
 
 See [docs/advanced/independent-review.md](./docs/advanced/independent-review.md)
 for the exact workflow.
@@ -159,16 +159,18 @@ Before installation:
 
 ## Credentials and artifacts
 
-The installed-plugin A/B study never copies credentials into actor-visible
-homes or launches a provider directly. Real runs require a reviewed, hash-pinned broker
-that owns authentication outside an attested OS isolation boundary. A missing,
-mismatched, or overbroad attestation fails closed. Publish bundles contain only
-sanitized result rows and manifests, not credentials, raw prompts, responses,
-transcripts, repositories, or absolute paths. Inspect them before sharing.
+The installed-plugin A/B study (the credentialed evaluation in `evals/`) never
+copies credentials into home directories visible to the evaluated agent (the
+actor) or launches a provider directly. Real runs require a reviewed,
+hash-pinned broker that handles authentication outside an attested OS
+isolation boundary. A missing, mismatched, or overbroad attestation fails
+closed. Publish bundles contain only sanitized result rows and manifests, not
+credentials, raw prompts, responses, transcripts, repositories, or absolute
+paths. Inspect them before sharing.
 
-Broker paths must be absolute, canonical, free of symlinks, outside actor-visible
-and output trees, and point to a self-contained executable. Each invocation runs
-a private read-only copy whose bytes match the pinned hash.
+Broker paths must be absolute, canonical, free of symlinks, outside
+actor-visible and output trees, and point to a self-contained executable. Each
+invocation runs a private read-only copy whose bytes match the pinned hash.
 
 Do not store credentials in repository configuration, fixtures, eval case
 manifests, or review receipts.

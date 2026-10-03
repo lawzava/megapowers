@@ -5,32 +5,34 @@ and Codex.
 
 ## Before a pull request
 
-Run the deterministic gate:
+Run the deterministic checks:
 
 ```bash
 scripts/validate.sh
 bash evals/run-all.sh --json results.jsonl
 ```
 
-Then match evidence to the change:
+Then add the evidence the change needs. An "oracle" below is the check that
+decides whether an eval trial passed.
 
 | Change | Required evidence |
 |---|---|
-| Hook, tool, manifest, or runner behavior | A failing regression first, then the focused test and full deterministic gate |
-| New or changed agent guidance | Reproduce the missing behavior or inspect the deficient contract; use task outcomes and installed-plugin A/B when comparison would inform the change |
-| Removed or compressed guidance | Deterministic gate, plus evidence for any published behavior the removed text carried |
+| Hook, tool, manifest, or runner behavior | A regression test that fails first, then the focused test and the full deterministic checks |
+| New or changed agent guidance | Reproduce the missing behavior or inspect the deficient contract; use task outcomes and an installed-plugin A/B comparison when a comparison would inform the change |
+| Removed or compressed guidance | Deterministic checks, plus evidence for any published behavior the removed text carried |
 | Editorial text | Link, reference, and deterministic checks only |
-| Eval oracle | Mutation proof that the oracle rejects a deliberately wrong artifact |
+| Eval oracle | Proof that the oracle rejects a deliberately wrong artifact |
 
 A runner selftest proves mechanics only. It is not behavioral evidence.
 
 ## Scope
 
 - Keep the marketplace at exactly one plugin. `skills/catalog.json` is the
-  skill inventory; tests and docs derive counts from it, never restate them.
-- Keep semantic skills portable. Harness-specific mechanics belong at a narrow
-  adapter or documented provider boundary.
-- Prefer native agents, goals, permissions, worktrees, memory, and browser tools.
+  skill inventory; tests and docs derive counts from it and never restate them.
+- Keep skills portable across harnesses. Harness-specific mechanics belong in
+  a narrow adapter or at a documented provider boundary.
+- Prefer the agents, goals, permissions, worktrees, memory, and browser tools
+  each harness already has.
 - Do not add a model router, session prompt injection, scheduler, formatter,
   status line, or another harness without an explicit scope decision and fresh
   evidence.
@@ -39,10 +41,10 @@ A runner selftest proves mechanics only. It is not behavioral evidence.
 ## Code and prose
 
 - Follow repository instructions and neighboring conventions.
-- Deterministic glue and tests use Go standard library. Shell entrypoints only
-  launch Go commands or the cached hook executable. Use `go test ./...` for
-  package tests and `scripts/validate.sh` for the canonical gate.
-- Add or change behavior test-first. Keep hooks bounded and directly tested.
+- Deterministic glue and tests use the Go standard library. Shell entrypoints
+  only launch Go commands or the cached hook executable. Use `go test ./...`
+  for package tests and `scripts/validate.sh` for the canonical check.
+- Add or change behavior test-first. Keep hooks small and directly tested.
 - Human-facing prose leads with the outcome, preserves source facts, and omits
   unsupported claims and session history.
 - Keep commits conventional and focused. Do not add attribution or session
@@ -58,7 +60,8 @@ The current evidence stack is documented in
 [docs/advanced/evals.md](./docs/advanced/evals.md):
 
 1. deterministic regressions for mechanics;
-2. trigger recall for trace-proven skill selection;
+2. trigger recall, which checks from the trace that the right skill was
+   selected;
 3. optional credentialed installed-plugin A/B for comparative behavior;
 4. exact-tag install smoke after publication.
 
@@ -74,9 +77,9 @@ indeterminate, timed-out, or harness-error data fails closed.
 3. Run `scripts/release.sh X.Y.Z`; it validates the clean, already-versioned
    candidate without mutating, tagging, or publishing it.
 4. Review the diff, push the exact revision, and wait for remote CI on it.
-5. With CI green, perform the separately authorized signed tag and GitHub
-   release. The release workflow fast-forwards the `release` branch to the
-   attested tag; installs track that branch.
+5. With CI green, create the signed tag and GitHub release; each needs its own
+   authorization. The release workflow fast-forwards the `release` branch to
+   the attested tag; installs track that branch.
 6. Run exact-tag install smoke against the public tag.
 
 The same order, with the study boundaries, is in

@@ -6,8 +6,8 @@ not prove another layer.
 | Layer | Evidence | Release role |
 |---|---|---|
 | Deterministic regressions | Repository mechanics without model credentials | Required PR gate |
-| Trigger recall | Trace-proven skill selection | Enforced for Claude; report-only for Codex |
-| Installed-plugin A/B | Treatment reliability with paired control outcomes | Optional diagnostic |
+| Trigger recall | Skill selection proven from session traces | Enforced for Claude; report-only for Codex |
+| Installed-plugin A/B | Plugin-arm success rate against paired empty-control runs | Optional diagnostic |
 
 The documentation freshness check (`scripts/check-freshness.sh`) is a
 maintainer check outside the PR gate.
@@ -52,5 +52,5 @@ responses, transcripts, credentials, or absolute paths.
 4. Create the signed tag and publish the GitHub release.
 5. Run exact-tag fresh-install smoke against the public tag.
 
-Installed A/B remains outside the release gate. Post-publish smoke proves
+Installed A/B stays outside the release gate. Post-publish smoke proves
 delivery from the public ref, not agent quality.
