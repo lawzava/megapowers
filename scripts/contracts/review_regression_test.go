@@ -449,6 +449,24 @@ func TestReviewPackageCannotCloseItsFence(t *testing.T) {
 	}
 }
 
+// Anthropic's Opus 5.5 guide (claude.dev, 2026-09-22) asks reviewers for
+// merge-blocking problems only, each located and shown to fail; a broad
+// defect list invites style findings that bury the blockers.
+func TestReviewPromptAsksForMergeBlockingFindings(t *testing.T) {
+	f := newReviewFixture(t)
+	token := f.inspect(f.command, "--file", "app.go")["approval_token"].(string)
+	f.call("", f.review(token, f.command, "--file", "app.go")...)
+	input := f.recordText("input")
+	for _, needle := range []string{"block the merge", "path and line", "shows it fails"} {
+		if !strings.Contains(input, needle) {
+			t.Errorf("reviewer prompt lacks %q:\n%s", needle, input)
+		}
+	}
+	if strings.Contains(input, "maintainability") {
+		t.Errorf("reviewer prompt still invites maintainability findings:\n%s", input)
+	}
+}
+
 func TestReviewFailuresRemainPrivateAndBounded(t *testing.T) {
 	f := newReviewFixture(t)
 	for _, tc := range []struct{ mode, needle string }{{"fail", "provider exited"}, {"empty", "authentication failed; verify provider login or API credentials"}, {"limit", "preflight"}, {"limit-ok", "preflight"}, {"stall", "timeout"}, {"overflow", "preflight"}} {

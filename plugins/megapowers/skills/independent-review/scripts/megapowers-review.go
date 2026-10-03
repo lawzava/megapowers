@@ -1165,7 +1165,7 @@ func approvalTokenMatches(provided string, binary providerExecutable, packageSHA
 
 func makePrompt(pkg []byte, chunk chunkInfo, intent string) ([]byte, error) {
 	var prompt bytes.Buffer
-	prompt.WriteString("<task>Adversarially review the supplied static change. Identify correctness, security, data-integrity, and maintainability defects. Give a clear approve or needs-attention verdict with concise path-specific findings.</task>\n")
+	prompt.WriteString("<task>Adversarially review the supplied static change. Report only defects you would block the merge for, such as correctness, security, or data-integrity failures. For each finding, give the path and line, why it is wrong, and the input or sequence that shows it fails. Give a clear approve or needs-attention verdict.</task>\n")
 	if intent != "" {
 		// JSON encoding escapes angle brackets, so the intent cannot open or
 		// close prompt markup.
