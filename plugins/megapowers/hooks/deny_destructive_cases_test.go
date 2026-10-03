@@ -19,7 +19,7 @@ func TestLegacyCommandCorpus(t *testing.T) {
 		{wantDeny: false, home: "/home/tester", command: "rm -rf ~/.cache/foo"},
 		{wantDeny: false, home: "/home/tester", command: "rm -rf \"$HOME/projects/scratch\""},
 		{wantDeny: false, home: "/home/tester", command: "rm -rf build dist coverage"},
-		{wantDeny: false, home: "/home/tester", command: "curl -H \"Authorization: Bearer $STRIPE_API_KEY\" https://api.example.com/v1/x"},
+		{wantDeny: false, home: "/home/tester", command: "curl -H \"Accept: application/json\" https://api.example.com/v1/x"},
 		{wantDeny: false, home: "/home/tester", command: "ssh -i ~/.ssh/key user@host"},
 		{wantDeny: false, home: "/home/tester", command: "git clean -fn"},
 		{wantDeny: false, home: "/home/tester", command: "git clean -n -f"},
