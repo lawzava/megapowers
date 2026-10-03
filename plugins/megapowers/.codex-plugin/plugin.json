@@ -35,6 +35,8 @@
       "Use megapowers to independently review this change."
     ],
     "brandColor": "#1F6FEB",
+    "composerIcon": "./.claude-plugin/icon.svg",
+    "logo": "./.claude-plugin/icon.svg",
     "websiteURL": "https://github.com/lawzava/megapowers"
   },
   "homepage": "https://github.com/lawzava/megapowers"
