@@ -5,6 +5,34 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.33.1 - 2026-10-03
+
+### Added
+
+- A plugin icon. Claude Code reads `.claude-plugin/icon.svg`; the Codex
+  manifest points `composerIcon` and `logo` at the same file.
+
+### Changed
+
+- The README is restructured for first-time readers: what the plugin does,
+  example requests, a flow diagram, a comparison with alternatives, and
+  collapsible detail. It now states how often required skills loaded in the
+  A/B study and includes the exact-activation row where treatment trails
+  control.
+- Supporting docs (`SECURITY.md`, `ATTRIBUTION.md`, `CONTRIBUTING.md`,
+  `docs/`, eval READMEs, and GitHub templates) use plain language in place of
+  internal jargon. Facts, numbers, commands, and links are unchanged.
+
+### Fixed
+
+- The plugin README, root README, and `docs/harness-support.md` described the
+  completion and effect gate as waiting until the skill loads, or as never
+  denying. The hook denies the first matching command once with a reason
+  naming the skill, and the retry runs.
+- A destructive-guard test fixture no longer contains a credential-shaped
+  environment variable, which marketplace scanning reported as reading an
+  installer credential.
+
 ## 0.33.0 - 2026-10-01
 
 ### Added
