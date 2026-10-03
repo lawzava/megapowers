@@ -84,9 +84,9 @@ func TestCIContract(t *testing.T) {
 	freshness := read(t, root, ".github/workflows/freshness.yml")
 	for _, pin := range []string{
 		"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-		"actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16",
-		"actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38",
-		"actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+		"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+		"actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+		"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
 	} {
 		requireContains(t, ci, pin, "CI action pin")
 	}
