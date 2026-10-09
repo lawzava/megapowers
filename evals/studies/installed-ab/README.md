@@ -39,7 +39,7 @@ harnesses through Subswapper, use the broker's
 
 ### Catalogs and sharding
 
-The current `cases.json` catalog has 23 cases and runs 46 executions per
+The current `cases.json` catalog has 30 cases and runs 60 executions per
 harness at `--paired-runs 1` (each case executes once as treatment and once as
 control). A separate `holdout.json` catalog holds 6 cases frozen for
 out-of-sample checks. `--cases` selects one committed catalog or the other,
@@ -186,12 +186,63 @@ fail the case. Cases may assign stable `required_fact_ids` and
 when these are omitted. Prefer case-specific assertion alternatives over
 general negation heuristics.
 
+A forbidden fact does not count where it is negated: one of the three words
+before the match, in the same clause, is `not`, `no`, `never`, `without`, `nor`,
+`cannot`, or ends in `n't`. Clauses end at `.`, `!`, `?`, `;`, `:`, and newlines.
+"TASK-2 is not complete" therefore does not count as the forbidden fact
+`complete`, while "Not ready. The deploy is complete" does. The check is
+lexical; it ignores negation scope and negators after the match. Required facts
+match without negation handling.
+
+Matching ignores Markdown backticks, applies word boundaries only at a fact's
+word-character edges (so `**` matches bold text), and does not count a
+forbidden phrase wrapped in quotes, such as `removed "experts say"`.
+
+Literal matching still fails correct paraphrases ("credentials aren't
+available" for "credentials are unavailable"). The
+[fact judge](../../tools/fact-judge/main.go) re-grades only the fact checks
+from the retained private responses:
+
+```bash
+go run ./evals/tools/fact-judge --cases evals/studies/installed-ab/cases.json \
+  --run-dir results/installed-ab --out results/installed-ab-judge \
+  --judge '<judge CLI and arguments naming {prompt_file}>'
+```
+
+Each case's responses go to the judge in one pass, shuffled with a fixed seed
+and labeled `R1..Rn`, with no arm, run, or case identity. The judge marks each
+required fact as stated or not and each forbidden claim as asserted or not;
+quoting, negating, or explaining a removal is not asserting. A missing
+response or fact in its JSON fails closed. The judged outcome keeps every
+non-fact component the row recorded (oracle, workflow, word cap, event order,
+protected files, forbidden events and skills). Report literal and judged
+outcomes side by side; the judge is a model and its verdicts are claims.
+
 Every row also publishes sanitized action, write, test, and skill selection
 attempt counts. Orchestration rows record whether `orchestrating` was
 selected, so future failures distinguish activation from dispatch behavior
 without publishing prompts or traces.
 
 ### Case gates
+
+Fixtures are plain files. A case with `git_init: true` also gets a Git
+repository on branch `main` with one initial commit of every fixture file,
+author and committer `Fixture <fixture@example.invalid>`, both dates
+`2026-01-01T00:00:00Z`, and local `commit.gpgsign=false`. Its optional
+`post_init_files` map, shaped like `files`, is then written and left
+uncommitted. Both arms receive the same commit ID, and the fixture hash binds
+both fields. `post_init_files` requires `git_init` and must not overwrite a
+protected file.
+
+Prose and workflow cases may set `max_words`, a positive integer. The final
+response must contain at most that many whitespace-separated words, counting
+code blocks; otherwise `artifact_success` fails. Rows record
+`within_max_words`. Workflow and safe-effects cases may set
+`required_event_order`, two or more distinct event kinds. Every listed kind
+must occur, and the first attempt of each, regardless of `rc`, must appear in
+the listed order; otherwise `workflow_success` fails. Rows record
+`required_event_order`. Action attempt counts include `git_commit` and
+`external_write` events.
 
 Prose gates require all seeded facts, zero seeded inventions, and exact no-op
 behavior for text that is already direct, ignoring trailing whitespace only.
@@ -321,6 +372,12 @@ Failed arms also write one mode-`0600` redacted receipt under
 bounded skill selections, attempted forbidden event kinds, and normalized
 test command names with exit codes. It contains no response text, command
 arguments, output, or filesystem paths, and it never enters `publish/`.
+
+Every arm, completed or failed, also writes its raw final response to
+`private/responses/<case>-<block>-<arm>-<run_id>.txt` with mode `0600` in a
+`0700` directory. These files match the published `response` artifact hash
+and may contain task content, so `private/` must stay local and never be
+shared or committed.
 
 A TDD failure with no trusted broker receipt records the bounded
 observability gap `trusted_test_execution_receipt_missing`; native test
