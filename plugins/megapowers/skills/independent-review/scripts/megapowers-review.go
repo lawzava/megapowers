@@ -240,10 +240,11 @@ var secretAssignmentPattern = regexp.MustCompile(`(?im)^[+-]?\s*(?:export\s+)?(?
 var identifierOrSelector = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 
 // codeReference reports whether an unquoted assignment value is code: an
-// identifier or selector followed by a call, argument, or statement delimiter.
-// The value's own shape proves nothing, since a passphrase such as
+// identifier or selector followed by a call or an argument delimiter. The
+// value's own shape proves nothing, since a passphrase such as
 // correct_horse_battery_staple looks like an identifier; a bare value at the
-// end of a config line stays a candidate secret.
+// end of a config line, or one a shell statement ends with ";", stays a
+// candidate secret.
 func codeReference(data []byte, match []int) bool {
 	if match[3] > match[2] {
 		return false
@@ -252,7 +253,7 @@ func codeReference(data []byte, match []int) bool {
 		return false
 	}
 	rest := bytes.TrimLeft(data[match[5]:], " \t")
-	return len(rest) > 0 && bytes.IndexByte([]byte("(,);"), rest[0]) >= 0
+	return len(rest) > 0 && bytes.IndexByte([]byte("(,)"), rest[0]) >= 0
 }
 
 func main() {

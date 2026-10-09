@@ -40,7 +40,7 @@ if defined GO_VERSION (
     set "GO_KEY=!GO_VERSION:devel =!"
     for /f "tokens=1" %%k in ("!GO_KEY!") do set "GO_KEY=%%k"
 )
-set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-6100e2f8acb871dd-windows-%PROCESSOR_ARCHITECTURE%"
+set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-a1bafd163c4ec2ae-windows-%PROCESSOR_ARCHITECTURE%"
 set "RUNNER="
 if defined GO_KEY (
     set "RUNNER=!RUNNER_PREFIX!-!GO_KEY!.exe"
@@ -254,7 +254,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-runner_prefix="$cache_dir/megapowers-hook-6100e2f8acb871dd-$platform_os-$platform_arch"
+runner_prefix="$cache_dir/megapowers-hook-a1bafd163c4ec2ae-$platform_os-$platform_arch"
 if [ -n "$go_key" ]; then
   runner="$runner_prefix-$go_key"
 else

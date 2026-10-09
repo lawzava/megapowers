@@ -340,12 +340,12 @@ func gitDiscards(command, cwd string) bool {
 		return false
 	}
 	dir := cwd
-	// An export in an earlier segment moves the repository for git but not for
-	// the hook's own ancestry check, so any mention disables the exemption.
-	for _, variable := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"} {
-		if strings.Contains(command, variable) {
-			dir = ""
-		}
+	// An export in an earlier segment, such as GIT_DIR, moves the repository
+	// for git but not for the hook's own ancestry check. Any GIT_ name, after
+	// removing the quotes a shell would join (GIT_''DIR), disables the
+	// exemption; the stop it keeps costs one retry.
+	if strings.Contains(strings.NewReplacer(`'`, "", `"`, "", `\`, "").Replace(command), "GIT_") {
+		dir = ""
 	}
 	for _, segment := range splitSegments(command) {
 		name, tail, ok := resolveCommand(segment)
@@ -794,7 +794,12 @@ var (
 		"--header": {}, "--user-agent": {}, "--referer": {}, "--user": {}, "--password": {}, "--http-user": {},
 		"--http-password": {}, "--directory-prefix": {}, "--load-cookies": {}, "--save-cookies": {}, "--input-file": {},
 		"--base": {}, "--config": {}, "--tries": {}, "--timeout": {}, "--wait": {}, "--ca-certificate": {},
-		"--certificate": {}, "--private-key": {}, "--execute": {}, "--domains": {}, "--accept": {}, "--reject": {}}
+		"--certificate": {}, "--private-key": {}, "--execute": {}, "--domains": {}, "--accept": {}, "--reject": {},
+		"--accept-regex": {}, "--reject-regex": {}, "--exclude-domains": {}, "--include-directories": {},
+		"--exclude-directories": {}, "--proxy-user": {}, "--proxy-password": {}, "--level": {}, "--quota": {},
+		"--limit-rate": {}, "--bind-address": {}, "--waitretry": {}, "--read-timeout": {}, "--dns-timeout": {},
+		"--connect-timeout": {}, "--ca-directory": {}, "--certificate-type": {}, "--private-key-type": {},
+		"--local-encoding": {}, "--remote-encoding": {}, "--restrict-file-names": {}, "--default-page": {}}
 	httpieValueFlags = map[string]struct{}{"-a": {}, "--auth": {}, "-A": {}, "--auth-type": {}, "-o": {}, "--output": {},
 		"--session": {}, "--session-read-only": {}, "--verify": {}, "--cert": {}, "--cert-key": {}, "--proxy": {}, "--timeout": {},
 		"-p": {}, "--print": {}, "--pretty": {}, "-s": {}, "--style": {}, "--format-options": {}, "--max-redirects": {},

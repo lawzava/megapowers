@@ -52,6 +52,7 @@ func TestGateStopsDeploysAndHTTPWrites(t *testing.T) {
 		"curl --json={} https://api.example.com/items",
 		"curl -X POST https://api.example.com/items --next -X GET https://api.example.com/items",
 		"curl -d a=1 https://api.example.com/a --next https://api.example.com/b",
+		"curl --data payload --next https://api.example.com/items",
 	} {
 		t.Run(command, func(t *testing.T) {
 			t.Parallel()
@@ -99,6 +100,8 @@ func TestGateIgnoresHTTPNearMisses(t *testing.T) {
 		"wget --post-data=x --output-document response.txt http://127.0.0.1:8080/items",
 		"wget --post-data=x --header Accept:json http://localhost:8080/items",
 		"curl -X POST http://localhost:3000/a --next https://api.example.com/b",
+		"wget --post-data=x --reject-regex 'https://remote.example/.*' http://127.0.0.1/",
+		"wget --post-data=x --accept-regex 'https://remote.example/.*' http://127.0.0.1/",
 		"http GET api.example.com/items",
 		"http api.example.com/items q==x",
 		"http api.example.com/items Authorization:token",
