@@ -43,9 +43,7 @@ Resolve every requirement to fresh evidence or a remaining gap; a plan is not
 implementation evidence.
 
 Account for every requested review, including queued and running requests.
-Join them and resolve credible findings. One approval does not cancel another
-pending review. Bind checks and gates to the current artifact, and reassess
-after changes.
+Join them and resolve credible findings.
 
 Before a handoff, commit, PR, merge, or release, run canonical checks and inspect
 the diff and workspace. Remove generated excess and report unrequested
@@ -56,4 +54,5 @@ confirmation and ownership evidence. For a handoff to another harness,
 directory, or person, write a [handoff note](references/handoff.md).
 
 Open the report with `VERIFIED: <claim>` only when every required criterion has
-fresh oracle evidence. Otherwise use `NOT VERIFIED. Remaining: <gap>`.
+fresh oracle evidence, and state what that evidence does not cover, such as
+deployment or publication. Otherwise use `NOT VERIFIED. Remaining: <gap>`.

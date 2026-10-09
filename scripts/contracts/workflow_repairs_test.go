@@ -80,7 +80,7 @@ var requiredSkillFacts = map[string][]string{
 		"check its evidence before using it",
 	},
 	"safe-effects": {
-		"under the user's name", "credential stores", "i allow",
+		"under the user's name", "credential stores", "i allow", "unexecuted, with its authorization status",
 		"paid batch",
 	},
 	"systematic-debugging": {
@@ -110,6 +110,7 @@ var requiredSkillFacts = map[string][]string{
 		"verified no-op",
 		"verified: <claim>",
 		"not verified. remaining: <gap>",
+		"what that evidence does not cover",
 		"local build cannot prove",
 		"never weaken",
 		"references/handoff.md",

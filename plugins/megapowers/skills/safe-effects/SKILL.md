@@ -33,7 +33,7 @@ otherwise record the duplicate-prevention strategy.
 Before a paid batch, check resolved target IDs and count against approved scope;
 bind execution and results to those IDs.
 
-Proceed only inside the approved boundary. Irreversible, weakly compensable,
+Irreversible, weakly compensable,
 sensitive, or high-blast actions need explicit approval immediately before
 execution. Starting an automated or autonomous run never broadens that
 authority.
@@ -49,4 +49,5 @@ run a command, give one complete line with real paths, outside a code block.
 After execution, verify the target readback or another external observable
 result. Record partial completion and the compensating action plainly. Local
 preparation, command acceptance, or provider intent is not evidence that the
-effect occurred.
+effect occurred. Report a prepared effect as unexecuted, with its authorization
+status.
