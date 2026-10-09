@@ -45,11 +45,11 @@ func TestCommandEventsSeeThroughReceiptShellWrapper(t *testing.T) {
 // shell_environment_policy.inherit="none" started every Codex command with no
 // PATH or HOME, so go was missing and the login profile never ran.
 func TestCodexShellEnvironmentSetsActorPathAndHome(t *testing.T) {
-	req := brokerRequest{ActorHome: "/home/actor"}
+	req := brokerRequest{ActorHome: "/actor-home"}
 	config := codexThreadConfig(req)
 	policy, _ := config["shell_environment_policy"].(map[string]any)
 	set, _ := policy["set"].(map[string]string)
-	if policy["inherit"] != "none" || set["PATH"] != actorPath || set["HOME"] != "/home/actor" || set["TMPDIR"] != "/tmp" {
+	if policy["inherit"] != "none" || set["PATH"] != actorPath || set["HOME"] != "/actor-home" || set["TMPDIR"] != "/tmp" {
 		t.Fatalf("shell_environment_policy = %#v", policy)
 	}
 	for key := range set {
@@ -58,7 +58,7 @@ func TestCodexShellEnvironmentSetsActorPathAndHome(t *testing.T) {
 		}
 	}
 	args := strings.Join(codexExecEnvironmentArgs(req), " ")
-	if !strings.Contains(args, `shell_environment_policy.set.PATH="`+actorPath+`"`) || !strings.Contains(args, `shell_environment_policy.set.HOME="/home/actor"`) {
+	if !strings.Contains(args, `shell_environment_policy.set.PATH="`+actorPath+`"`) || !strings.Contains(args, `shell_environment_policy.set.HOME="/actor-home"`) {
 		t.Fatalf("exec args = %s", args)
 	}
 }

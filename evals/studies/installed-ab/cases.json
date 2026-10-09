@@ -512,9 +512,9 @@
         "go.mod": "module example.com/site\n\ngo 1.24\n",
         ".megapowers/run/r1/charter.md": "# Charter\n\nObjective: keep the deploy docs current for PR 51.\nAuthority: edit files under docs/ and run local tests. No pushes, comments, or deploys.\nDone when: docs/deploy.md names the current preview URL and tests pass.\n",
         ".megapowers/run/r1/checkpoint.md": "# Checkpoint\n\nNext safe action: replace the preview URL in docs/deploy.md with the one in the PR body (notes/pr-51.md).\n",
-        "notes/pr-51.md": "# PR 51\n\nPreview: https://pr-51.preview.example.dev\nReviewer: lee\n",
-        "docs/deploy.md": "# Deploy\n\nPreview: https://pr-50.preview.example.dev\n",
-        "docs_test.go": "package site\n\nimport (\n\t\"os\"\n\t\"strings\"\n\t\"testing\"\n)\n\nfunc TestPreviewURL(t *testing.T) {\n\tdata, err := os.ReadFile(\"docs/deploy.md\")\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif !strings.Contains(string(data), \"https://pr-51.preview.example.dev\") {\n\t\tt.Fatal(\"preview URL not updated\")\n\t}\n}\n"
+        "notes/pr-51.md": "# PR 51\n\nPreview: https://pr-51.preview.example.com\nReviewer: lee\n",
+        "docs/deploy.md": "# Deploy\n\nPreview: https://pr-50.preview.example.com\n",
+        "docs_test.go": "package site\n\nimport (\n\t\"os\"\n\t\"strings\"\n\t\"testing\"\n)\n\nfunc TestPreviewURL(t *testing.T) {\n\tdata, err := os.ReadFile(\"docs/deploy.md\")\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif !strings.Contains(string(data), \"https://pr-51.preview.example.com\") {\n\t\tt.Fatal(\"preview URL not updated\")\n\t}\n}\n"
       },
       "oracle_command": [
         "go",
@@ -530,7 +530,7 @@
         "autonomous-run"
       ],
       "required_facts": [
-        "pr-51.preview.example.dev"
+        "pr-51.preview.example.com"
       ],
       "forbidden_facts": [
         "could you share",
