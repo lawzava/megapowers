@@ -62,3 +62,19 @@ func TestCodexShellEnvironmentSetsActorPathAndHome(t *testing.T) {
 		t.Fatalf("exec args = %s", args)
 	}
 }
+
+// Claude can emit rate_limit_event before system/init, more often in
+// treatment arms whose SessionStart hook delays init; that frame carries no
+// actor evidence and must not make a successful trace incomplete.
+func TestRateLimitEventBeforeInitKeepsTraceComplete(t *testing.T) {
+	trace := `{"type":"system","subtype":"hook_started","hook_id":"h1","hook_name":"SessionStart:startup","hook_event_name":"SessionStart"}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}
+{"type":"system","subtype":"hook_response","hook_id":"h1","hook_name":"SessionStart:startup","hook_event_name":"SessionStart","outcome":"success"}
+{"type":"system","subtype":"init","session_id":"s","plugins":[]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"done"}
+`
+	if _, _, complete := normalizeTraceTurns("claude", []byte(trace), 0, 1); !complete {
+		t.Fatal("rate_limit_event before init made a successful trace incomplete")
+	}
+}
