@@ -1128,3 +1128,22 @@ func TestFactsIgnoreCodeSpansAndQuotedForbiddenMentions(t *testing.T) {
 		t.Fatalf("unquoted forbidden claims invented=%d, want 2", invented)
 	}
 }
+
+// A resumed run retries a failed arm under the same run ID; the failed
+// attempt's private evidence must survive for diagnosis.
+func TestPrivateArtifactsKeepEveryAttempt(t *testing.T) {
+	out := t.TempDir()
+	row := resultRow{CaseID: "c", BlockID: "c-001-001", Arm: "treatment", RunID: "c-001-001-treatment-x"}
+	if err := writePrivateResponse(out, row, "first", []byte("trace-1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePrivateResponse(out, row, "second", []byte("trace-2")); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"responses", "traces"} {
+		entries, err := os.ReadDir(filepath.Join(out, "private", kind))
+		if err != nil || len(entries) != 2 {
+			t.Fatalf("%s kept %d files (%v), want 2 attempts", kind, len(entries), err)
+		}
+	}
+}

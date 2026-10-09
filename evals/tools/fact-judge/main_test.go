@@ -117,3 +117,20 @@ func TestMarkupForbiddenFactsStayLiteral(t *testing.T) {
 		t.Fatalf("forbidden = %v, want markup literal and claims judged", v.Forbidden)
 	}
 }
+
+// A retried arm keeps every attempt; the row describes the last one.
+func TestReadResponseUsesLatestAttempt(t *testing.T) {
+	dir := t.TempDir()
+	responses := filepath.Join(dir, "private", "responses")
+	if err := os.MkdirAll(responses, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"c-run1.txt": "failed", "c-run1-attempt-2.txt": "second", "c-run1-attempt-3.txt": "final", "c-run10.txt": "other"} {
+		if err := os.WriteFile(filepath.Join(responses, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := readResponse(dir, "run1"); err != nil || got != "final" {
+		t.Fatalf("readResponse = %q, %v; want the final attempt", got, err)
+	}
+}

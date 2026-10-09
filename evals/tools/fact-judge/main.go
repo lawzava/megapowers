@@ -249,14 +249,26 @@ func loadRows(path string) ([]row, error) {
 // readResponse finds the retained response by its run ID, which ends the
 // private file name.
 func readResponse(runDir, runID string) (string, error) {
-	matches, err := filepath.Glob(filepath.Join(runDir, "private", "responses", "*"+runID+".txt"))
+	directory := filepath.Join(runDir, "private", "responses")
+	matches, err := filepath.Glob(filepath.Join(directory, "*"+runID+".txt"))
 	if err != nil {
 		return "", err
 	}
 	if len(matches) != 1 {
 		return "", fmt.Errorf("run %s has %d retained responses, want 1", runID, len(matches))
 	}
-	data, err := os.ReadFile(matches[0])
+	// A retried arm keeps each attempt as <name>-attempt-N.txt; the published
+	// row describes the last one.
+	latest := matches[0]
+	base := strings.TrimSuffix(latest, ".txt")
+	for attempt := 2; ; attempt++ {
+		next := fmt.Sprintf("%s-attempt-%d.txt", base, attempt)
+		if _, err := os.Stat(next); err != nil {
+			break
+		}
+		latest = next
+	}
+	data, err := os.ReadFile(latest)
 	return string(data), err
 }
 

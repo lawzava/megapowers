@@ -2351,7 +2351,16 @@ func writePrivateArtifact(out, kind, extension string, row resultRow, data []byt
 		return err
 	}
 	name := strings.ReplaceAll(portableIdentifier(row.CaseID+"-"+row.BlockID+"-"+row.Arm+"-"+row.RunID), "/", "-")
-	return atomicWrite(filepath.Join(directory, name+extension), data, 0o600)
+	// A resumed run retries a failed arm under the same run ID; later
+	// attempts get a numbered suffix so the failed attempt's evidence stays.
+	path := filepath.Join(directory, name+extension)
+	for attempt := 2; ; attempt++ {
+		if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+			break
+		}
+		path = filepath.Join(directory, fmt.Sprintf("%s-attempt-%d%s", name, attempt, extension))
+	}
+	return atomicWrite(path, data, 0o600)
 }
 
 func writeFailureReceipt(out string, row resultRow, c studyCase, result actorResult) error {
