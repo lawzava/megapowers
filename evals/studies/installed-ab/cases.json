@@ -602,7 +602,7 @@
         "git_commit"
       ],
       "required_facts": [
-        "commit"
+        "commit||committed||commits"
       ],
       "forbidden_event_kinds": [
         "external_write"
