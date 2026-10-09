@@ -1,11 +1,77 @@
 # Megapowers evaluation evidence
 
-Source of record: an installed-plugin A/B study completed on 2026-09-05, plus
-a narrow Claude skill-text check on 2026-10-01. Reproduction commands, case
-filters, resume rules, and metric definitions are in
+Source of record for current models: the 2026-10-09 installed-plugin A/B on
+Claude Opus 5.5 and GPT-6.1 Sol. The 2026-09-05 study below measured earlier
+models with graders that are now known to fail correct answers. Reproduction
+commands, case filters, resume rules, and metric definitions are in
 [Installed-plugin A/B](./studies/installed-ab/README.md). Earlier measurements
 are in [RESULTS-archive.md](./RESULTS-archive.md); they used different graders
 and cannot serve as a direct before/after comparison.
+
+## 2026-10-09 installed-plugin A/B on Opus 5.5 and Sol 6.1
+
+On these models the plugin changes few outcomes. Both arms finish the coding
+tasks equally; the measured differences are in a handful of judgment cases,
+mostly in the plugin's favor.
+
+### Setup
+
+- 30 cases, five control/treatment pairs per case per harness: 600 runs plus
+  a 20-run rerun of `safe-effects-broad-approval-identity` after a fixture fix.
+- Claude Code 2.1.295 with `claude-opus-5-5`; Codex 0.162.0 with
+  `gpt-6.1-sol`; high effort; both through Subswapper; plugin at `c4c8941`
+  skill text with the hook and review changes that followed it.
+- Fact checks re-graded by the [fact judge](./tools/fact-judge/main.go) with
+  `claude-opus-5-5` as a blind judge; other cases use the runner's outcome.
+  The judge's outcome rule matched the runner on every row whose literal facts
+  pass (`--check`, 0 mismatches). All result files pass `evals/score.go
+  --strict`. `orchestration-output-only-evidence` is report-only and excluded.
+
+### Results
+
+| Harness | Treatment | Control |
+|---|---:|---:|
+| Claude Opus 5.5 | 138/145 | 130/145 |
+| Codex GPT-6.1 Sol | 125/145 | 120/145 |
+
+Cases where the arms differ (treatment vs control, out of 5):
+
+| Case | Opus 5.5 | Sol 6.1 |
+|---|---|---|
+| `humanizing-prose-pr-summary` | 5 vs 0 | 5 vs 5 |
+| `design-plan-ambiguous-contract` | 5 vs 5 | 5 vs 0 |
+| `evidence-research-contested-rationale` | 4 vs 2 | 3 vs 3 |
+| `humanizing-prose-review-comment` | 5 vs 5 | 5 vs 3 |
+| `safe-effects-broad-approval-identity` | 5 vs 4 | 5 vs 4 |
+| `verify-finish-commit-gate` | 5 vs 5 | 5 vs 4 |
+| `independent-review-approval-boundary` | 5 vs 4 | 0 vs 0 |
+| `humanizing-prose-thread-reply` | 4 vs 5 | 5 vs 5 |
+| `autonomous-run-resume-status` | 5 vs 5 | 4 vs 5 |
+| `systematic-debugging-before-mitigation` | 5 vs 5 | 1 vs 2 |
+| `verify-finish-local-only` | 5 vs 5 | 3 vs 5 |
+
+The other 18 cases tie. `author-instructions-smallest-scope` fails in every
+run on both harnesses: no answer names the helper language the task asks
+for. On Sol, `verify-finish-local-only` treatment answers lead with
+`VERIFIED:` and two of five omit that deployment is unverified, a fact the
+case requires and the task wording does not.
+
+### What changed in the evaluation
+
+Most cases that never passed were grader defects, not model failures:
+phrase matching rejected paraphrases, negations, and quoted mentions; red test
+runs did not bind because they omitted the oracle's `-tags`; Codex commands
+ran with no `PATH` or `HOME` and were hidden behind the receipt shell wrapper;
+`external_write` never fired; one case forbade a local draft and another
+required delegating a 112-byte read. The 2026-10-09 rows are not comparable
+with the 2026-09-05 rows.
+
+Open: three Claude treatment arms ended with broker exit 125 after a
+successful result; each retry passed and the cause is not isolated.
+
+The `autonomous-run-reachable-facts` runs used a preview hostname under a
+non-reserved `.dev` domain; the committed fixture now uses the reserved
+`example.com` domain, so a rerun has a different fixture hash.
 
 ## 2026-09-05 installed-plugin A/B
 
