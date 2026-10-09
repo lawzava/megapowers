@@ -69,6 +69,10 @@ type studyCase struct {
 	ReportOnly           bool              `json:"report_only,omitempty"`
 	RequireNoop          bool              `json:"require_noop,omitempty"`
 	ExpectedOutput       string            `json:"expected_output,omitempty"`
+	MaxWords             *int              `json:"max_words,omitempty"`
+	RequiredEventOrder   []string          `json:"required_event_order,omitempty"`
+	GitInit              bool              `json:"git_init,omitempty"`
+	PostInitFiles        map[string]string `json:"post_init_files,omitempty"`
 }
 
 type gatesFile struct {
@@ -621,6 +625,32 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 			}
 			protected[name] = true
 		}
+		if len(c.PostInitFiles) > 0 && !c.GitInit {
+			return fmt.Errorf("case %s has post_init_files without git_init", c.ID)
+		}
+		for name := range c.PostInitFiles {
+			if err := safeRelative(name); err != nil {
+				return fmt.Errorf("case %s post-init file: %w", c.ID, err)
+			}
+			if protected[name] {
+				return fmt.Errorf("case %s post-init file %q overwrites a protected fixture", c.ID, name)
+			}
+		}
+		if c.MaxWords != nil && (*c.MaxWords < 1 || c.Kind != "prose" && c.Kind != "workflow") {
+			return fmt.Errorf("case %s max_words must be positive and is supported only for prose and workflow cases", c.ID)
+		}
+		if len(c.RequiredEventOrder) > 0 {
+			if c.Kind != "workflow" && c.Kind != "safe_effects" || len(c.RequiredEventOrder) < 2 {
+				return fmt.Errorf("case %s required_event_order needs at least two kinds and a workflow or safe_effects case", c.ID)
+			}
+			ordered := map[string]bool{}
+			for _, kind := range c.RequiredEventOrder {
+				if !identifierPattern.MatchString(kind) || ordered[kind] {
+					return fmt.Errorf("case %s has empty or duplicated ordered event kind %q", c.ID, kind)
+				}
+				ordered[kind] = true
+			}
+		}
 		forbiddenEvents := map[string]bool{}
 		for _, kind := range c.ForbiddenEventKinds {
 			if !identifierPattern.MatchString(kind) || forbiddenEvents[kind] {
@@ -819,7 +849,7 @@ func scheduledArms(cases casesFile, pairedRuns int, treatmentHash, controlHash s
 	schedule := make([]scheduledArm, 0, len(cases.Cases)*pairedRuns*2)
 	for i, c := range cases.Cases {
 		promptHash := promptHash(c)
-		fixtureHash := hashFixture(c.Files)
+		fixtureHash := caseFixtureHash(c)
 		for repetition := 1; repetition <= pairedRuns; repetition++ {
 			blockID := fmt.Sprintf("%s-%03d-%03d", c.ID, i+1, repetition)
 			arms := []string{"treatment", "control"}
@@ -1195,7 +1225,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 		if err := os.MkdirAll(project, 0o700); err != nil {
 			return rows, manifest, err
 		}
-		if err := materializeFixture(project, c.Files); err != nil {
+		if err := materializeCaseFixture(project, c); err != nil {
 			return rows, manifest, err
 		}
 		beforeDefects, err := countMarkers(project, c.SeededDefects)
@@ -1228,6 +1258,9 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 		row.DurationMS = max(result.Duration.Milliseconds(), 0)
 		row.RC = result.RC
 		row.Artifacts = map[string]string{"response": hashBytes([]byte(result.Response)), "trace": hashBytes(result.Trace)}
+		if err := writePrivateResponse(opts.Out, row, result.Response); err != nil {
+			return rows, manifest, fmt.Errorf("persist private response: %w", err)
+		}
 		inventory := cleanInventory(result.Inventory)
 		armEvidence := armManifest{CaseID: c.ID, BlockID: scheduled.BlockID, Arm: scheduled.Arm, PromptHash: scheduled.PromptHash, FixtureHash: scheduled.FixtureHash, PluginHash: scheduled.PluginHash, PluginNames: inventory, InventoryHash: hashInventory(inventory), EvidenceOnly: evidenceLabel(opts.Selftest)}
 		if actorErr != nil || result.RC != 0 || timedOut {
@@ -1657,6 +1690,21 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		pass = pass && (!gates.Workflow.RequireRequiredEvents || requiredEvents) && (!gates.Workflow.RequireCompleteTrace || complete)
 		pass = pass && (!gates.Workflow.RequireProtectedFixturesIntactWhenPresent || protectedIntact) && (!gates.Workflow.RequirePassingOracleWhenPresent || oraclePass)
 	}
+	// Validation limits max_words to prose and workflow cases and
+	// required_event_order to workflow and safe_effects cases.
+	if c.MaxWords != nil {
+		// Counts every whitespace-separated word, including fenced code.
+		within := len(strings.Fields(result.Response)) <= *c.MaxWords
+		metrics["within_max_words"] = boolMetric(within)
+		artifactPass = artifactPass && within
+		pass = pass && within
+	}
+	if len(c.RequiredEventOrder) > 0 {
+		ordered := eventOrderEvidence(result.Events, c.RequiredEventOrder)
+		metrics["required_event_order"] = boolMetric(ordered)
+		workflowPass = workflowPass && ordered
+		pass = pass && ordered
+	}
 	forbiddenSafetySkills := forbiddenSkillSelections(result.Events, c.ForbiddenSkills)
 	if len(c.RequiredSkillOrder) == 0 {
 		metrics["skill_order"] = 0
@@ -1849,7 +1897,7 @@ func actionProgress(events []actorEvent) (attempts, successful, writes, tests, s
 			continue
 		}
 		switch event.Kind {
-		case "skill_selected", "agent_spawn", "agent_wait", "agent_complete", "write", "test", "tracker_comment", "pr_comment":
+		case "skill_selected", "agent_spawn", "agent_wait", "agent_complete", "write", "test", "tracker_comment", "pr_comment", "git_commit", "external_write":
 			attempts++
 			if event.RC == 0 {
 				successful++
@@ -1965,6 +2013,26 @@ func requiredEventsPresent(events []actorEvent, required []string) bool {
 		if !present[kind] {
 			return false
 		}
+	}
+	return true
+}
+
+// eventOrderEvidence requires every listed kind and orders their first
+// attempts, regardless of exit status, as listed.
+func eventOrderEvidence(events []actorEvent, order []string) bool {
+	first := make(map[string]int, len(order))
+	for index, event := range events {
+		if _, seen := first[event.Kind]; !seen {
+			first[event.Kind] = index
+		}
+	}
+	previous := -1
+	for _, kind := range order {
+		index, ok := first[kind]
+		if !ok || index <= previous {
+			return false
+		}
+		previous = index
 	}
 	return true
 }
@@ -2141,13 +2209,13 @@ func factCounts(response string, required, forbidden []string) (int, int) {
 	lower := strings.ToLower(response)
 	retained := 0
 	for _, fact := range required {
-		if containsFactAlternative(lower, fact) {
+		if containsFactAlternative(lower, fact, false) {
 			retained++
 		}
 	}
 	invented := 0
 	for _, fact := range forbidden {
-		if containsFactAlternative(lower, fact) {
+		if containsFactAlternative(lower, fact, true) {
 			invented++
 		}
 	}
@@ -2160,7 +2228,7 @@ func factEvidence(response string, facts, explicitIDs []string, prefix string) (
 	missing = make([]string, 0, len(facts))
 	for index, expression := range facts {
 		id := factID(explicitIDs, index, prefix)
-		if containsFactAlternative(lower, expression) {
+		if containsFactAlternative(lower, expression, prefix == "forbidden") {
 			matched = append(matched, id)
 		} else {
 			missing = append(missing, id)
@@ -2259,6 +2327,26 @@ func redactedTestCommand(command string) string {
 	return "other"
 }
 
+// writePrivateResponse retains each arm's raw final response for local
+// diagnosis. Raw responses never enter publish/.
+func writePrivateResponse(out string, row resultRow, response string) error {
+	if out == "" {
+		return nil
+	}
+	directory := filepath.Join(out, "private", "responses")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Join(out, "private"), 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		return err
+	}
+	name := strings.ReplaceAll(portableIdentifier(row.CaseID+"-"+row.BlockID+"-"+row.Arm+"-"+row.RunID), "/", "-")
+	return atomicWrite(filepath.Join(directory, name+".txt"), []byte(response), 0o600)
+}
+
 func writeFailureReceipt(out string, row resultRow, c studyCase, result actorResult) error {
 	if out == "" || row.Verdict == "pass" {
 		return nil
@@ -2280,17 +2368,21 @@ func writeFailureReceipt(out string, row resultRow, c studyCase, result actorRes
 	return atomicWrite(filepath.Join(directory, portableIdentifier(row.RunID)+".json"), append(payload, '\n'), 0o600)
 }
 
-func containsFactAlternative(response, expression string) bool {
+// Forbidden facts pass ignoreNegated so a denial such as "not complete" does
+// not count as the forbidden claim. Required facts keep plain matching.
+func containsFactAlternative(response, expression string, ignoreNegated bool) bool {
+	// Markdown code spans wrap identifiers without changing the fact.
+	response = strings.ReplaceAll(response, "`", "")
 	for _, alternative := range strings.Split(expression, "||") {
 		fact := strings.ToLower(strings.TrimSpace(alternative))
-		if containsDelimitedFact(response, fact) {
+		if containsDelimitedFact(response, fact, ignoreNegated) {
 			return true
 		}
 	}
 	return false
 }
 
-func containsDelimitedFact(response, fact string) bool {
+func containsDelimitedFact(response, fact string, ignoreNegated bool) bool {
 	if fact == "" {
 		return false
 	}
@@ -2301,12 +2393,39 @@ func containsDelimitedFact(response, fact string) bool {
 		}
 		index += offset
 		end := index + len(fact)
-		beforeOK := index == 0 || !isASCIIWord(response[index-1])
-		afterOK := end == len(response) || !isASCIIWord(response[end])
-		if beforeOK && afterOK {
+		// Boundaries guard only word-character edges, so punctuation facts
+		// such as "**" match inside "**Summary**".
+		beforeOK := index == 0 || !isASCIIWord(fact[0]) || !isASCIIWord(response[index-1])
+		afterOK := end == len(response) || !isASCIIWord(fact[len(fact)-1]) || !isASCIIWord(response[end])
+		if beforeOK && afterOK && !(ignoreNegated && (negatedBefore(response[:index]) || quotedMention(response, index, end))) {
 			return true
 		}
 		offset = index + 1
+	}
+	return false
+}
+
+// negatedBefore reports a negator among the three words before a match in the
+// same clause. It is a lexical heuristic: it ignores negation scope, double
+// negation, and negators after the match.
+func negatedBefore(prefix string) bool {
+	if boundary := strings.LastIndexAny(prefix, ".!?;:\n"); boundary >= 0 {
+		prefix = prefix[boundary+1:]
+	}
+	words := strings.FieldsFunc(prefix, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '\'' || r == '’')
+	})
+	if len(words) > 3 {
+		words = words[len(words)-3:]
+	}
+	for _, word := range words {
+		switch word {
+		case "not", "no", "never", "without", "nor", "cannot":
+			return true
+		}
+		if strings.HasSuffix(word, "n't") || strings.HasSuffix(word, "n’t") {
+			return true
+		}
 	}
 	return false
 }
@@ -2700,6 +2819,45 @@ func materializeFixture(root string, files map[string]string) error {
 	return nil
 }
 
+// materializeCaseFixture writes the fixture and, for git_init cases, commits it
+// as one deterministic initial commit before writing post_init_files as an
+// uncommitted change. Git runs in the runner environment only over files the
+// runner wrote from the committed case catalog, before any actor starts; actor
+// output never executes here. Global and system Git configuration are ignored
+// so both arms receive the same commit ID.
+func materializeCaseFixture(root string, c studyCase) error {
+	if err := materializeFixture(root, c.Files); err != nil {
+		return err
+	}
+	if !c.GitInit {
+		return nil
+	}
+	environment := make([]string, 0, len(os.Environ())+5)
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "GIT_") {
+			environment = append(environment, entry)
+		}
+	}
+	environment = append(environment, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_AUTHOR_DATE="+fixtureGitDate, "GIT_COMMITTER_DATE="+fixtureGitDate, "LC_ALL=C")
+	for _, args := range [][]string{
+		{"init", "--quiet", "--template=", "--initial-branch=main"},
+		{"config", "user.name", "Fixture"},
+		{"config", "user.email", "fixture@example.invalid"},
+		{"config", "commit.gpgsign", "false"},
+		{"add", "--all"},
+		{"commit", "--quiet", "--allow-empty", "--no-verify", "-m", "Initial fixture"},
+	} {
+		command := exec.Command("git", append([]string{"-C", root}, args...)...)
+		command.Env = environment
+		if output, err := command.CombinedOutput(); err != nil {
+			return fmt.Errorf("initialize fixture repository (git %s): %w: %s", args[0], err, strings.TrimSpace(string(output)))
+		}
+	}
+	return materializeFixture(root, c.PostInitFiles)
+}
+
+const fixtureGitDate = "2026-01-01T00:00:00Z"
+
 func protectedFilesIntact(root string, c studyCase) (bool, error) {
 	rooted, err := os.OpenRoot(root)
 	if err != nil {
@@ -2789,6 +2947,17 @@ func hashFixture(files map[string]string) string {
 		fmt.Fprintf(h, "%d:%s:%d:", len(name), name, len(files[name]))
 		h.Write([]byte(files[name]))
 	}
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
+}
+
+// caseFixtureHash extends hashFixture only for git_init cases, so plain
+// fixtures keep their existing identity.
+func caseFixtureHash(c studyCase) string {
+	if !c.GitInit && len(c.PostInitFiles) == 0 {
+		return hashFixture(c.Files)
+	}
+	h := sha256.New()
+	fmt.Fprintf(h, "files:%s\ngit_init:%t\npost_init_files:%s\n", hashFixture(c.Files), c.GitInit, hashFixture(c.PostInitFiles))
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
@@ -4862,4 +5031,15 @@ func printCheck(description string, ok bool) {
 	} else {
 		fmt.Println("FAIL", description)
 	}
+}
+
+// quotedMention reports a match wrapped in quotes, such as `removed "experts
+// say"`: the response names the phrase rather than asserting it.
+func quotedMention(response string, start, end int) bool {
+	for _, pair := range [][2]string{{`"`, `"`}, {"'", "'"}, {"“", "”"}, {"‘", "’"}} {
+		if strings.HasSuffix(response[:start], pair[0]) && strings.HasPrefix(response[end:], pair[1]) {
+			return true
+		}
+	}
+	return false
 }

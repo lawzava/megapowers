@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -772,5 +773,350 @@ func TestTDDFixtureStartsGreenForAttribution(t *testing.T) {
 	}
 	if rc, err := runOracle(context.Background(), dir, tdd.OracleCommand); err != nil || rc == 0 {
 		t.Fatalf("untouched fixture must fail its acceptance oracle %v (rc=%d err=%v)", tdd.OracleCommand, rc, err)
+	}
+}
+
+type responseActor struct{ failArm string }
+
+func (a responseActor) Run(_ context.Context, request actorRequest) (actorResult, error) {
+	result := actorResult{Response: "private-response-" + request.Arm + " keeps the fact.", Trace: []byte(`{"type":"actor"}`), Events: []actorEvent{{Kind: "trace_complete"}}, Inventory: inventoryFor(request), Sandbox: "in-process-selftest"}
+	if request.Arm == a.failArm {
+		result.RC = 1
+	}
+	return result, nil
+}
+
+func TestExecuteStudyRetainsResponsesPrivatelyOutsidePublish(t *testing.T) {
+	_, gates, err := loadConfiguration("cases.json", "gates.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := casesFile{SchemaVersion: "1", Cases: []studyCase{{ID: "retain", Kind: "prose", Task: "report", RequiredFacts: []string{"keeps the fact"}}}}
+	// Control runs first in this block, so a failing treatment arm yields one
+	// completed and one failed row.
+	for _, failArm := range []string{"", "treatment"} {
+		out := t.TempDir()
+		opts := runOptions{Harness: "claude", Model: "model", Effort: "high", Repo: t.TempDir(), Out: out, TempRoot: t.TempDir(), Selftest: true, Timestamp: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+		rows, _, err := executeStudy(context.Background(), cases, gates, opts, responseActor{failArm: failArm})
+		if (err != nil) != (failArm != "") {
+			t.Fatalf("fail arm %q: executeStudy error = %v", failArm, err)
+		}
+		if len(rows) != 2 {
+			t.Fatalf("fail arm %q: rows = %d, want 2", failArm, len(rows))
+		}
+		for _, directory := range []string{filepath.Join(out, "private"), filepath.Join(out, "private", "responses")} {
+			info, err := os.Stat(directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm() != 0o700 {
+				t.Fatalf("%s mode = %04o, want 0700", directory, info.Mode().Perm())
+			}
+		}
+		for _, row := range rows {
+			path := filepath.Join(out, "private", "responses", row.CaseID+"-"+row.BlockID+"-"+row.Arm+"-"+row.RunID+".txt")
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("%s/%s (%s) response was not retained: %v", row.BlockID, row.Arm, row.Status, err)
+			}
+			if info.Mode().Perm() != 0o600 {
+				t.Fatalf("retained response mode = %04o, want 0600", info.Mode().Perm())
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(content) != "private-response-"+row.Arm+" keeps the fact." || hashBytes(content) != row.Artifacts["response"] {
+				t.Fatalf("retained response %q does not match hashed response %s", content, row.Artifacts["response"])
+			}
+		}
+		if !publishFilesOnly(out) {
+			t.Fatalf("fail arm %q: publish bundle gained files beyond the manifest and results", failArm)
+		}
+		for _, name := range []string{"manifest.json", "results.jsonl"} {
+			content, err := os.ReadFile(filepath.Join(out, "publish", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(content, []byte("private-response-")) {
+				t.Fatalf("fail arm %q: publish/%s contains retained response content", failArm, name)
+			}
+		}
+	}
+}
+
+func TestForbiddenFactsIgnoreNegatedMentions(t *testing.T) {
+	forbidden := []string{"complete"}
+	for _, response := range []string{
+		"TASK-2 is not complete.",
+		"The run isn't complete.",
+		"The run isn’t complete.",
+		"It was never complete",
+		"The deploy cannot be complete",
+		"No complete run exists.",
+		"Neither started nor complete",
+		"We haven't marked it complete",
+	} {
+		if _, invented := factCounts(response, nil, forbidden); invented != 0 {
+			t.Errorf("negated forbidden mention counted: %q", response)
+		}
+		if detected, _ := factEvidence(response, forbidden, nil, "forbidden"); len(detected) != 0 {
+			t.Errorf("negated forbidden mention detected in receipt: %q", response)
+		}
+	}
+	for _, response := range []string{
+		"The run is complete.",
+		"complete.",
+		"Not ready. The deploy is complete",
+		"Nothing is complete yet",
+		"Not ready; complete",
+		"It is not blocked and the work is now complete",
+		"It is not complete, but the run is complete",
+		"Not ready\ncomplete",
+	} {
+		if _, invented := factCounts(response, nil, forbidden); invented != 1 {
+			t.Errorf("affirmative forbidden mention missed: %q", response)
+		}
+		if detected, _ := factEvidence(response, forbidden, nil, "forbidden"); len(detected) != 1 {
+			t.Errorf("affirmative forbidden mention missing from receipt: %q", response)
+		}
+	}
+	if retained, _ := factCounts("TASK-2 is not complete.", []string{"complete"}, nil); retained != 1 {
+		t.Fatal("required fact lost its plain substring semantics under negation")
+	}
+	if _, missing := factEvidence("TASK-2 is not complete.", []string{"complete"}, nil, "required"); len(missing) != 0 {
+		t.Fatal("required receipt evidence applied forbidden negation")
+	}
+}
+
+func gitFixtureOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	command := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, output)
+	}
+	return strings.TrimRight(string(output), "\n")
+}
+
+func TestMaterializeCaseFixtureInitializesDeterministicGitRepository(t *testing.T) {
+	c := studyCase{
+		ID:            "commit-ready",
+		Files:         map[string]string{"main.go": "package main\n", "docs/readme.md": "v1\n"},
+		GitInit:       true,
+		PostInitFiles: map[string]string{"main.go": "package main\n\nfunc main() {}\n", "new.txt": "added\n"},
+	}
+	first, second := t.TempDir(), t.TempDir()
+	for _, root := range []string{first, second} {
+		if err := materializeCaseFixture(root, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := gitFixtureOutput(t, first, "rev-list", "--count", "HEAD"); got != "1" {
+		t.Fatalf("commit count = %s, want 1", got)
+	}
+	if got := gitFixtureOutput(t, first, "symbolic-ref", "--short", "HEAD"); got != "main" {
+		t.Fatalf("branch = %s, want main", got)
+	}
+	if got := gitFixtureOutput(t, first, "status", "--porcelain"); got != " M main.go\n?? new.txt" {
+		t.Fatalf("post-init status = %q", got)
+	}
+	if got := gitFixtureOutput(t, first, "show", "HEAD:main.go"); got != "package main" {
+		t.Fatalf("committed main.go = %q", got)
+	}
+	if got := gitFixtureOutput(t, first, "log", "-1", "--format=%an <%ae> %at %cn <%ce> %ct"); got != "Fixture <fixture@example.invalid> 1767225600 Fixture <fixture@example.invalid> 1767225600" {
+		t.Fatalf("commit identity = %q", got)
+	}
+	if got := gitFixtureOutput(t, first, "config", "--local", "commit.gpgsign"); got != "false" {
+		t.Fatalf("commit.gpgsign = %q", got)
+	}
+	if a, b := gitFixtureOutput(t, first, "rev-parse", "HEAD"), gitFixtureOutput(t, second, "rev-parse", "HEAD"); a != b {
+		t.Fatalf("arms received different fixture commits: %s vs %s", a, b)
+	}
+	plain := t.TempDir()
+	if err := materializeCaseFixture(plain, studyCase{Files: c.Files}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(plain, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("fixture without git_init created a repository: %v", err)
+	}
+}
+
+func TestCaseFixtureHashBindsGitInitialization(t *testing.T) {
+	plain := studyCase{Files: map[string]string{"main.go": "package main\n"}}
+	if caseFixtureHash(plain) != hashFixture(plain.Files) {
+		t.Fatal("fixture hash changed for a case without git_init")
+	}
+	initialized := plain
+	initialized.GitInit = true
+	if caseFixtureHash(initialized) == caseFixtureHash(plain) {
+		t.Fatal("fixture hash ignores git_init")
+	}
+	changed := initialized
+	changed.PostInitFiles = map[string]string{"main.go": "package main\n\nfunc main() {}\n"}
+	if caseFixtureHash(changed) == caseFixtureHash(initialized) {
+		t.Fatal("fixture hash ignores post_init_files")
+	}
+	schedule := scheduledArms(casesFile{Cases: []studyCase{changed}}, 1, "treatment", "control")
+	if schedule[0].FixtureHash != caseFixtureHash(changed) {
+		t.Fatal("schedule does not bind the git fixture identity")
+	}
+}
+
+func TestValidateConfigurationChecksNewCaseFields(t *testing.T) {
+	catalog, gates, err := loadConfiguration("cases.json", "gates.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKind := map[string]studyCase{}
+	for _, c := range catalog.Cases {
+		if _, ok := byKind[c.Kind]; !ok {
+			byKind[c.Kind] = c
+		}
+	}
+	tests := []struct {
+		name  string
+		kind  string
+		edit  func(*studyCase)
+		valid bool
+	}{
+		{"git_init alone", "prose", func(c *studyCase) { c.GitInit = true }, true},
+		{"post_init_files with git_init", "prose", func(c *studyCase) {
+			c.GitInit = true
+			c.PostInitFiles = map[string]string{"change.txt": "x\n"}
+		}, true},
+		{"post_init_files without git_init", "prose", func(c *studyCase) { c.PostInitFiles = map[string]string{"change.txt": "x\n"} }, false},
+		{"unsafe post_init path", "prose", func(c *studyCase) {
+			c.GitInit = true
+			c.PostInitFiles = map[string]string{"../escape.txt": "x\n"}
+		}, false},
+		{"max_words on prose", "prose", func(c *studyCase) { c.MaxWords = intPointer(120) }, true},
+		{"max_words on workflow", "workflow", func(c *studyCase) { c.MaxWords = intPointer(120) }, true},
+		{"zero max_words", "prose", func(c *studyCase) { c.MaxWords = intPointer(0) }, false},
+		{"max_words on tdd", "tdd", func(c *studyCase) { c.MaxWords = intPointer(120) }, false},
+		{"event order on workflow", "workflow", func(c *studyCase) { c.RequiredEventOrder = []string{"test", "git_commit"} }, true},
+		{"event order on safe_effects", "safe_effects", func(c *studyCase) { c.RequiredEventOrder = []string{"test", "git_commit"} }, true},
+		{"single event order", "workflow", func(c *studyCase) { c.RequiredEventOrder = []string{"test"} }, false},
+		{"duplicate event order", "workflow", func(c *studyCase) { c.RequiredEventOrder = []string{"test", "test"} }, false},
+		{"event order on prose", "prose", func(c *studyCase) { c.RequiredEventOrder = []string{"test", "git_commit"} }, false},
+	}
+	for _, test := range tests {
+		c, ok := byKind[test.kind]
+		if !ok {
+			t.Fatalf("catalog has no %s case", test.kind)
+		}
+		test.edit(&c)
+		err := validateConfiguration(casesFile{SchemaVersion: "1", Cases: []studyCase{c}}, gates)
+		if (err == nil) != test.valid {
+			t.Errorf("%s: validate error = %v, want valid %t", test.name, err, test.valid)
+		}
+	}
+}
+
+func intPointer(value int) *int { return &value }
+
+func TestEvaluateCaseEnforcesMaximumWords(t *testing.T) {
+	_, gates, err := loadConfiguration("cases.json", "gates.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := actorEvent{Kind: "trace_complete"}
+	cases := []studyCase{
+		{ID: "short-prose", Kind: "prose", Task: "report", RequiredFacts: []string{"ready"}, MaxWords: intPointer(5)},
+		{ID: "short-workflow", Kind: "workflow", Task: "report", RequiredFacts: []string{"ready"}, RequiredSkillOrder: []string{"verify-and-finish"}, MaxWords: intPointer(5)},
+	}
+	for _, c := range cases {
+		for _, test := range []struct {
+			response string
+			want     float64
+		}{
+			{"The build is ready now.", 1},
+			{"The build is  ready\nnow, honestly.", 0},
+		} {
+			result := actorResult{Response: test.response, Trace: []byte(`{"type":"actor"}`), Events: []actorEvent{{Kind: "skill_selected", Path: "verify-and-finish"}, complete}}
+			metrics, _, err := evaluateCase(context.Background(), c, gates, "control", t.TempDir(), 0, result, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if metrics["artifact_success"] != test.want || metrics["outcome_success"] != test.want || metrics["within_max_words"] != test.want {
+				t.Errorf("%s %q: metrics = %v, want artifact %v", c.ID, test.response, metrics, test.want)
+			}
+		}
+	}
+}
+
+func TestEvaluateCaseEnforcesRequiredEventOrder(t *testing.T) {
+	_, gates, err := loadConfiguration("cases.json", "gates.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zero := 0
+	workflow := studyCase{ID: "commit-gate", Kind: "workflow", Task: "commit", RequiredFacts: []string{"committed"}, RequiredSkillOrder: []string{"verify-and-finish"}, RequiredEventOrder: []string{"test", "git_commit"}}
+	safeEffects := studyCase{ID: "commit-gate-effects", Kind: "safe_effects", Task: "commit", Files: map[string]string{"a.txt": "a\n"}, ProtectedFiles: []string{"a.txt"}, OracleCommand: []string{"true"}, ForbiddenEventKinds: []string{"external_write"}, RequiredEventOrder: []string{"test", "git_commit"}}
+	skill := actorEvent{Kind: "skill_selected", Path: "verify-and-finish"}
+	complete := actorEvent{Kind: "trace_complete"}
+	for _, c := range []studyCase{workflow, safeEffects} {
+		for _, test := range []struct {
+			name   string
+			events []actorEvent
+			want   float64
+		}{
+			{"ordered", []actorEvent{skill, {Kind: "test", RC: 1}, {Kind: "write"}, {Kind: "test"}, {Kind: "git_commit"}, complete}, 1},
+			{"reversed", []actorEvent{skill, {Kind: "git_commit"}, {Kind: "test"}, complete}, 0},
+			{"commit before first test", []actorEvent{skill, {Kind: "git_commit", RC: 1}, {Kind: "test"}, {Kind: "git_commit"}, complete}, 0},
+			{"missing commit", []actorEvent{skill, {Kind: "test"}, complete}, 0},
+		} {
+			project := t.TempDir()
+			if err := materializeFixture(project, c.Files); err != nil {
+				t.Fatal(err)
+			}
+			result := actorResult{Response: "committed", Trace: []byte(`{"type":"actor"}`), Events: test.events, OracleRC: &zero}
+			metrics, _, err := evaluateCase(context.Background(), c, gates, "control", project, 0, result, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if metrics["workflow_success"] != test.want || metrics["outcome_success"] != test.want || metrics["required_event_order"] != test.want {
+				t.Errorf("%s %s: metrics = %v, want workflow %v", c.ID, test.name, metrics, test.want)
+			}
+		}
+	}
+}
+
+func TestActionProgressCountsEffectEvents(t *testing.T) {
+	attempts, successful, _, _, _ := actionProgress([]actorEvent{{Kind: "git_commit"}, {Kind: "external_write", RC: 1}, {Kind: "trace_complete"}})
+	if attempts != 2 || successful != 1 {
+		t.Fatalf("effect events attempts=%d successful=%d, want 2 and 1", attempts, successful)
+	}
+}
+
+// Word boundaries apply only at a fact's word-character edges, so markup such
+// as "**" or an em dash still matches inside "**Summary**" or "fast—cheap".
+func TestFactBoundariesApplyOnlyAtWordEdges(t *testing.T) {
+	for _, tc := range []struct {
+		response, fact string
+		want           bool
+	}{
+		{"**summary**: two blockers", "**", true},
+		{"fast—cheap", "—", true},
+		{"retrying", "retry", false},
+		{"see queue.go:88 now", "queue.go:88", true},
+		{"no markup here", "**", false},
+	} {
+		if got := containsDelimitedFact(tc.response, tc.fact, false); got != tc.want {
+			t.Errorf("containsDelimitedFact(%q, %q) = %v, want %v", tc.response, tc.fact, got, tc.want)
+		}
+	}
+}
+
+// Markdown code spans do not change a fact, and a forbidden phrase quoted to
+// explain its removal is a mention, not a claim.
+func TestFactsIgnoreCodeSpansAndQuotedForbiddenMentions(t *testing.T) {
+	kept, invented := factCounts("Median latency fell, as recorded in `runtime.log` line 17. I removed \"experts say\" and 'significantly improved'.",
+		[]string{"runtime.log line 17"}, []string{"experts say", "significantly improved"})
+	if kept != 1 || invented != 0 {
+		t.Fatalf("kept=%d invented=%d, want 1 and 0", kept, invented)
+	}
+	if _, invented := factCounts("Experts say it significantly improved.", nil, []string{"experts say", "significantly improved"}); invented != 2 {
+		t.Fatalf("unquoted forbidden claims invented=%d, want 2", invented)
 	}
 }
