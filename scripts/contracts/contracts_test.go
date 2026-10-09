@@ -3,7 +3,9 @@ package contracts
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -107,7 +109,7 @@ func TestDocsContract(t *testing.T) {
 	root := repoRoot(t)
 	for _, rel := range []string{
 		"README.md", "docs/install.md", "docs/orchestration.md", "docs/harness-support.md",
-		"docs/advanced/independent-review.md", "docs/advanced/evals.md", "docs/advanced/verification-maps.md",
+		"docs/advanced/independent-review.md", "docs/advanced/evals.md",
 		"plugins/megapowers/README.md", "evals/README.md", "evals/RESULTS.md",
 	} {
 		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
@@ -119,7 +121,7 @@ func TestDocsContract(t *testing.T) {
 			t.Errorf("obsolete surface remains: %s", rel)
 		}
 	}
-	active := []string{"README.md", "SECURITY.md", "CONTRIBUTING.md", "docs/install.md", "docs/orchestration.md", "docs/harness-support.md", "docs/advanced/independent-review.md", "docs/advanced/evals.md", "docs/advanced/verification-maps.md", "plugins/megapowers/README.md", "evals/README.md"}
+	active := []string{"README.md", "SECURITY.md", "CONTRIBUTING.md", "docs/install.md", "docs/orchestration.md", "docs/harness-support.md", "docs/advanced/independent-review.md", "docs/advanced/evals.md", "plugins/megapowers/README.md", "evals/README.md"}
 	for _, rel := range active {
 		body := read(t, root, rel)
 		for _, removed := range []string{"OpenCode", "models.toml", "delegates.toml", "model catalog", "mega-orchestration", "mega-guardrails"} {
@@ -197,15 +199,13 @@ func TestNativeFirstContract(t *testing.T) {
 	if strings.Join(actualSkills, "\n") != strings.Join(names, "\n") {
 		t.Errorf("skill inventory differs from catalog\ncatalog=%v\ndirs=%v", names, actualSkills)
 	}
-	for _, name := range names {
-		link := filepath.Join(root, ".agents/skills", name)
-		target, err := os.Readlink(link)
-		if err != nil || target != "../../plugins/megapowers/skills/"+name {
-			t.Errorf("unexpected skill link %s -> %s (%v)", name, target, err)
-		}
+	// Skills reach both harnesses only through the plugin. Repository-local
+	// copies made Codex list each skill twice in this checkout.
+	if _, err := os.Lstat(filepath.Join(root, ".agents/skills")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf(".agents/skills must not exist; develop through the local marketplace (%v)", err)
 	}
 	hooks := read(t, root, "plugins/megapowers/hooks/hooks.json")
-	for _, marker := range []string{"run-hook.cmd session-start", "run-hook.cmd deny-destructive", `"Bash|PowerShell"`} {
+	for _, marker := range []string{"run-hook.cmd session-start", "run-hook.cmd deny-destructive", `"Bash|PowerShell"`, `"mcp__.*"`} {
 		requireContains(t, hooks, marker, "hook manifest")
 	}
 	entries, _ := os.ReadDir(filepath.Join(root, "plugins/megapowers/hooks"))
@@ -498,48 +498,6 @@ func TestValidationContract(t *testing.T) {
 	}
 	for _, removed := range []string{"OpenCode", "models.toml", "delegates.toml", "skill-router", "copied-agent"} {
 		requireAbsent(t, implementation, removed, "validation implementation")
-	}
-}
-
-func TestVerificationMapContract(t *testing.T) {
-	root := repoRoot(t)
-	var document struct {
-		SchemaVersion string `json:"schema_version"`
-		Application   string `json:"application"`
-		Status        string `json:"status"`
-		Journeys      []struct {
-			ID            string   `json:"id"`
-			Surface       string   `json:"surface"`
-			Harness       string   `json:"harness"`
-			IsolatedState string   `json:"isolated_state"`
-			Cleanup       string   `json:"cleanup"`
-			Doctor        []string `json:"doctor"`
-			Runner        []string `json:"runner"`
-			Evidence      []string `json:"evidence"`
-		} `json:"journeys"`
-	}
-	body := read(t, root, "verification/megapowers.json")
-	if err := json.Unmarshal([]byte(body), &document); err != nil {
-		t.Fatal(err)
-	}
-	if document.SchemaVersion != "1" || document.Application != "megapowers" || document.Status != "pilot" || len(document.Journeys) < 3 {
-		t.Error("verification map header or journey inventory is invalid")
-	}
-	seen := map[string]bool{}
-	for _, journey := range document.Journeys {
-		if journey.ID == "" || seen[journey.ID] || journey.Surface == "" || journey.IsolatedState == "" || journey.Cleanup == "" || len(journey.Doctor) == 0 || len(journey.Runner) == 0 || len(journey.Evidence) == 0 {
-			t.Errorf("invalid journey %+v", journey)
-		}
-		seen[journey.ID] = true
-		if strings.Contains(journey.ID, "exact-tag-install") {
-			joined := strings.Join(journey.Runner, " ")
-			for _, marker := range []string{"evals/studies/install-smoke/run-smoke.sh", "--out", "--harnesses", "--source", "--ref", "--version"} {
-				requireContains(t, joined, marker, journey.ID)
-			}
-		}
-	}
-	if regexp.MustCompile(`(?i)(/home/|credentials|auth[.]json|secret|customer)`).MatchString(body) {
-		t.Error("verification map contains private or credential state")
 	}
 }
 

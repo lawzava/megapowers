@@ -70,27 +70,27 @@ checks skill discovery separately from the startup style.
 
 ## Developing this repository
 
-The repository's `.agents/skills` links and an installed plugin can expose the
-same skills twice. Use the repository links for source development, or disable
-that discovery channel when testing the installed plugin in an isolated home.
-Keep the links as the canonical development entrypoints. Do not edit installed
-caches or global configuration to hide a duplicate during an unrelated task.
+The checkout exposes no skills of its own, so working in it never lists a
+skill twice. To try source changes, load the plugin from the checkout for one
+session or install it into an isolated home.
 
-To use the installed release deliberately while working in this checkout on
-Codex, disable each repository skill path through native configuration:
+Claude Code:
 
-```toml
-[[skills.config]]
-path = "/absolute/path/to/megapowers/.agents/skills/orchestrating/SKILL.md"
-enabled = false
+```bash
+claude --plugin-dir plugins/megapowers
 ```
 
-Use one entry per repository skill. Keep the installed plugin enabled so its
-hooks remain available. Before adding more exclusions, confirm the exact path
-with native `skills/list`: the repository entry must be disabled and the
-installed entry enabled. Confirm hook trust with `hooks/list`. Exclude only the
-intended checkout; a candidate run must load source through its own isolated
-plugin installation. Removing these entries restores repository discovery.
+Codex, with a separate `CODEX_HOME` so the release install stays untouched:
+
+```bash
+export CODEX_HOME="$TMPDIR/codex-megapowers-dev"
+codex plugin marketplace add "$PWD"
+codex plugin add megapowers@megapowers
+```
+
+The local marketplace is `.agents/plugins/marketplace.json`. The new home
+needs its own `codex login`. Trust the hooks when Codex asks, and confirm with
+`hooks/list`.
 
 ## Pin a release
 
