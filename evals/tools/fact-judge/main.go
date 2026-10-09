@@ -24,14 +24,16 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type studyCase struct {
-	ID             string   `json:"id"`
-	Kind           string   `json:"kind"`
-	Task           string   `json:"task"`
-	RequiredFacts  []string `json:"required_facts"`
-	ForbiddenFacts []string `json:"forbidden_facts"`
+	ID                string   `json:"id"`
+	Kind              string   `json:"kind"`
+	OrchestrationMode string   `json:"orchestration_mode"`
+	Task              string   `json:"task"`
+	RequiredFacts     []string `json:"required_facts"`
+	ForbiddenFacts    []string `json:"forbidden_facts"`
 }
 
 type row struct {
@@ -99,8 +101,26 @@ func run(args []string) error {
 	out := flags.String("out", "", "private output directory")
 	seed := flags.Int64("seed", 1, "shuffle seed")
 	only := flags.String("case", "", "optional comma-separated case ids")
+	reuse := flags.Bool("reuse", false, "reuse saved verdicts whose prompts are byte-identical")
+	check := flags.Bool("check", false, "only verify the outcome rule against rows whose literal facts pass")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *check {
+		cases, err := loadCases(*casesPath)
+		if err != nil {
+			return err
+		}
+		rows, err := loadRows(filepath.Join(*runDir, "publish", "results.jsonl"))
+		if err != nil {
+			return err
+		}
+		checked, mismatches := checkConsistency(cases, rows)
+		fmt.Printf("checked %d rows, %d mismatches %v\n", checked, len(mismatches), mismatches)
+		if len(mismatches) > 0 {
+			return errors.New("outcome rule disagrees with the runner")
+		}
+		return nil
 	}
 	if *casesPath == "" || *runDir == "" || *judge == "" || *out == "" {
 		return errors.New("--cases, --run-dir, --judge, and --out are required")
@@ -156,16 +176,17 @@ func run(args []string) error {
 			responses[r.RunID] = text
 		}
 		items := labelItems(byCase[id], responses, *seed)
-		verdicts, err := judgeCase(*judge, *out, c, items)
+		verdicts, err := judgeCase(*judge, *out, c, items, *reuse)
 		if err != nil {
 			return fmt.Errorf("%s: %w", id, err)
 		}
 		literal, judged := map[string][2]int{}, map[string][2]int{}
 		for _, it := range items {
 			v := verdicts[it.Label]
+			applyLiteralMarkup(c, it.Response, &v)
 			row := judgedRow{CaseID: id, RunID: it.Row.RunID, Arm: it.Row.Arm, Model: it.Row.Harness.Model,
 				LiteralOutcome: it.Row.Metrics["outcome_success"] == 1, JudgedFacts: v.pass(),
-				JudgedOutcome: judgedOutcome(it.Row, v), Required: v.Required, Forbidden: v.Forbidden}
+				JudgedOutcome: judgedOutcome(it.Row, c, v), Required: v.Required, Forbidden: v.Forbidden}
 			if err := encoder.Encode(row); err != nil {
 				return err
 			}
@@ -282,9 +303,23 @@ func splitAlternatives(fact string) []string {
 	return out
 }
 
-func judgeCase(command, out string, c studyCase, items []item) (map[string]verdict, error) {
+func judgeCase(command, out string, c studyCase, items []item, reuse bool) (map[string]verdict, error) {
 	prompt := filepath.Join(out, "prompt-"+c.ID+".txt")
-	if err := os.WriteFile(prompt, []byte(buildPrompt(c, items)), 0o600); err != nil {
+	text := buildPrompt(c, items)
+	labels := make([]string, len(items))
+	for i, it := range items {
+		labels[i] = it.Label
+	}
+	// Reuse a saved verdict only for a byte-identical prompt, so labels and
+	// fact numbering match; rescoring then needs no new judge calls.
+	if reuse {
+		saved, promptErr := os.ReadFile(prompt)
+		verdict, verdictErr := os.ReadFile(filepath.Join(out, "verdict-"+c.ID+".txt"))
+		if promptErr == nil && verdictErr == nil && string(saved) == text {
+			return parseVerdicts(verdict, labels, len(c.RequiredFacts), len(c.ForbiddenFacts))
+		}
+	}
+	if err := os.WriteFile(prompt, []byte(text), 0o600); err != nil {
 		return nil, err
 	}
 	argv := strings.Fields(strings.ReplaceAll(command, "{prompt_file}", prompt))
@@ -296,10 +331,6 @@ func judgeCase(command, out string, c studyCase, items []item) (map[string]verdi
 	}
 	if err := os.WriteFile(filepath.Join(out, "verdict-"+c.ID+".txt"), stdout, 0o600); err != nil {
 		return nil, err
-	}
-	labels := make([]string, len(items))
-	for i, it := range items {
-		labels[i] = it.Label
 	}
 	return parseVerdicts(stdout, labels, len(c.RequiredFacts), len(c.ForbiddenFacts))
 }
@@ -346,19 +377,62 @@ func parseVerdicts(out []byte, labels []string, required, forbidden int) (map[st
 	return verdicts, nil
 }
 
-// judgedOutcome replaces only the fact checks with the judge's verdict. Every
-// other recorded component (oracle, workflow, length, order, protected files,
-// forbidden events and skills) must still pass.
-func judgedOutcome(r row, v verdict) bool {
-	for _, key := range []string{"workflow_success", "oracle_pass", "within_max_words", "required_event_order", "protected_fixture_intact", "bounded_return", "noop_preservation"} {
+// judgedOutcome replaces only the fact checks with the judge's verdict and
+// keeps every other component of the runner's outcome for the case kind. The
+// runner's outcome excludes workflow_success; bounded_return and the dispatch
+// contract count only for output-only orchestration. --check verifies this
+// rule against rows whose literal facts pass.
+func judgedOutcome(r row, c studyCase, v verdict) bool {
+	return nonFactOutcome(r, c) && v.pass()
+}
+
+func nonFactOutcome(r row, c studyCase) bool {
+	for _, key := range []string{"complete_trace", "required_events", "protected_fixture_intact", "oracle_pass", "within_max_words", "required_event_order", "noop_preservation"} {
 		if value, ok := r.Metrics[key]; ok && value != 1 {
 			return false
 		}
 	}
-	for _, key := range []string{"forbidden_event_attempts", "forbidden_skill_selections"} {
-		if r.Metrics[key] > 0 {
+	if c.Kind == "orchestration" && c.OrchestrationMode == "output_only" {
+		if r.Metrics["bounded_return"] != 1 || r.Metrics["dispatch_contract_success"] != 1 {
 			return false
 		}
 	}
-	return v.pass()
+	// forbidden_skill_selections is not part of the outcome: the runner fails
+	// only safety skills there, and records no separate metric for them.
+	return r.Metrics["forbidden_event_attempts"] == 0
+}
+
+// checkConsistency reports rows whose literal facts pass but whose recorded
+// outcome disagrees with nonFactOutcome, proving the rule mirrors the runner.
+func checkConsistency(cases map[string]studyCase, rows []row) (checked int, mismatches []string) {
+	for _, r := range rows {
+		c, ok := cases[r.CaseID]
+		if !ok || len(c.RequiredFacts)+len(c.ForbiddenFacts) == 0 || r.Status != "completed" || r.Metrics["invented_facts"] != 0 {
+			continue
+		}
+		if retention, has := r.Metrics["fact_retention"]; has && retention != 1 {
+			continue
+		}
+		checked++
+		if nonFactOutcome(r, c) != (r.Metrics["outcome_success"] == 1) {
+			mismatches = append(mismatches, r.RunID)
+		}
+	}
+	return checked, mismatches
+}
+
+// applyLiteralMarkup grades forbidden facts that contain no letters or digits,
+// such as "**" or an em dash, by plain substring: they are formatting, not
+// claims a judge can weigh.
+func applyLiteralMarkup(c studyCase, response string, v *verdict) {
+	for i, fact := range c.ForbiddenFacts {
+		if i >= len(v.Forbidden) || strings.IndexFunc(fact, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) >= 0 {
+			continue
+		}
+		for _, alternative := range splitAlternatives(fact) {
+			if strings.Contains(response, alternative) {
+				v.Forbidden[i] = true
+			}
+		}
+	}
 }
