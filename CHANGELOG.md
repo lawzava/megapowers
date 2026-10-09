@@ -5,6 +5,80 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+From a review of Claude Code and Codex sessions since 0.34.0, recent
+mattpocock/skills, pstack, and Superpowers changes, and current Anthropic and
+OpenAI guidance for Opus 5.5 and GPT-6.1 Sol.
+
+### Fixed
+
+- `independent-review`'s tool no longer fails large reviews as
+  "authentication failed": provider stderr keeps draining past its cap, and
+  diagnosis ignores the echoed prompt. A stdout overflow reports the limit.
+- The review approval token binds only a proxy's scheme, host, and port, so a
+  sandbox that rotates proxy credentials per shell call no longer invalidates
+  approval between `inspect` and `review`.
+- The review secret scan no longer rejects code such as
+  `apiKey: client.New(apiKey)`, catches secrets on diff `+` and `-` lines, and
+  names the file and line it rejected without printing the value.
+- A parallel call of the same kind can no longer pass the completion or effect
+  gate before its skill loads: same-kind calls stop for 60 seconds after the
+  first denial, then fail open.
+- The install smoke no longer assumes exactly three hook commands.
+- The eval broker disables Claude Code 2.1.295's built-in `plugin-authoring`
+  plugin, which otherwise failed every control arm's inventory check.
+
+### Added
+
+- The effect gate covers MCP tools that create, update, delete, send, or post,
+  `wrangler` deploys, `curl`, `wget`, HTTPie, and `xh` write requests to
+  non-loopback hosts, and wrapper scripts given an HTTP write method with a
+  remote URL or API path.
+- `--file` accepts a `.diff` or `.patch` file under `$TMPDIR`.
+- `safe-effects`: text under the user's name stays a draft until that post is
+  approved; MCP writes are outward effects; never read credential stores to
+  reach unexposed tools; after a classifier denial, ask once for an explicit
+  "I allow <effect> on <target>" reply.
+- `autonomous-run`: use reachable sources before asking, watch with one
+  blocking watcher or scheduler, and keep `.megapowers/` out of Git.
+- `orchestrating`: lane lifecycle rules for liveness checks, worktree and
+  branch cleanup, shared build caches, background cross-provider reviews,
+  round-budget escalation, and the Claude Code Agent `effort` parameter.
+- `humanizing-prose`: write in the user's own voice on request; summaries use
+  plain paragraphs and do not repeat inline findings.
+- `test-first-implementation`: prove a forced red changed the code.
+- `grill-me`: questions are worded so "yes" accepts the recommendation.
+- The output style asks three or more decisions one at a time.
+- References: checks before trusting a measured number, ordered performance
+  fixes, eval trial validity, four design red flags and the agent-contributor
+  lens, an enforcement ladder for retrospectives, `/doctor prompt-audit`, and a
+  project `verify` skill name for Claude Code.
+
+### Changed
+
+- The startup and subagent reminder states facts and says explicit user and
+  repository instructions take precedence over skill guidance.
+- `test-first-implementation` skips new tests for reversible, low-impact edits
+  and tests that restate the implementation, matching GPT-6.1 Sol guidance.
+- `git branch -D` of a branch already merged into `HEAD` no longer stops.
+- `verify-and-finish` runs the user journey when the change can affect it.
+- `independent-review` asks for disclosure approval instead of silently
+  substituting a same-provider review.
+- `mcp-setup` treats diagnostic output as secret-bearing before the first
+  command.
+- `systematic-debugging` triggers on build and deploy failures and pasted CI
+  logs.
+- Skill bodies drop text that restated descriptions, harness defaults, or
+  linked references, found with Claude Code's prompt-audit.
+
+### Removed
+
+- The repository `.agents/skills` links, which made Codex list each skill
+  twice in this checkout. Development loads the plugin with `--plugin-dir` or
+  an isolated Codex home.
+- The unused `verification/megapowers.json` pilot and its doc.
+
 ## 0.34.0 - 2026-10-03
 
 Applies Anthropic's
