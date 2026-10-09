@@ -47,6 +47,11 @@ func TestGateStopsDeploysAndHTTPWrites(t *testing.T) {
 		"http api.example.com/items count:=3",
 		"xh PUT https://api.example.com/items/1 name=y",
 		"https api.example.com/upload file@a.png",
+		"curl --request=POST https://api.example.com/items",
+		"curl --data=x https://api.example.com/items",
+		"curl --json={} https://api.example.com/items",
+		"curl -X POST https://api.example.com/items --next -X GET https://api.example.com/items",
+		"curl -d a=1 https://api.example.com/a --next https://api.example.com/b",
 	} {
 		t.Run(command, func(t *testing.T) {
 			t.Parallel()
@@ -91,6 +96,9 @@ func TestGateIgnoresHTTPNearMisses(t *testing.T) {
 		"curl --unix-socket /var/run/docker.sock -X POST http://localhost/containers/x/start",
 		"wget https://example.com/file.tar.gz",
 		"wget --post-data a=1 http://localhost:8080",
+		"wget --post-data=x --output-document response.txt http://127.0.0.1:8080/items",
+		"wget --post-data=x --header Accept:json http://localhost:8080/items",
+		"curl -X POST http://localhost:3000/a --next https://api.example.com/b",
 		"http GET api.example.com/items",
 		"http api.example.com/items q==x",
 		"http api.example.com/items Authorization:token",

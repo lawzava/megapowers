@@ -340,6 +340,13 @@ func gitDiscards(command, cwd string) bool {
 		return false
 	}
 	dir := cwd
+	// An export in an earlier segment moves the repository for git but not for
+	// the hook's own ancestry check, so any mention disables the exemption.
+	for _, variable := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"} {
+		if strings.Contains(command, variable) {
+			dir = ""
+		}
+	}
 	for _, segment := range splitSegments(command) {
 		name, tail, ok := resolveCommand(segment)
 		if ok && (name == "cd" || name == "pushd" || name == "popd") {
@@ -780,7 +787,14 @@ var (
 		"--resolve": {}, "--connect-to": {}, "--range": {}, "--limit-rate": {}, "--oauth2-bearer": {}, "--interface": {},
 		"--retry-delay": {}, "--retry-max-time": {}, "--output-dir": {}, "--noproxy": {}, "--proxy-user": {}, "--url-query": {},
 		"--variable": {}, "--dump-header": {}, "--trace": {}, "--trace-ascii": {}, "--stderr": {}, "--aws-sigv4": {}}
-	wgetShortValues  = "aABDeiIloOPQRtTUwX"
+	wgetShortValues = "aABDeiIloOPQRtTUwX"
+	// wgetLongValueOptions take their value as the next word when written
+	// without "=", so that word is never a request target.
+	wgetLongValueOptions = map[string]struct{}{"--output-document": {}, "--output-file": {}, "--append-output": {},
+		"--header": {}, "--user-agent": {}, "--referer": {}, "--user": {}, "--password": {}, "--http-user": {},
+		"--http-password": {}, "--directory-prefix": {}, "--load-cookies": {}, "--save-cookies": {}, "--input-file": {},
+		"--base": {}, "--config": {}, "--tries": {}, "--timeout": {}, "--wait": {}, "--ca-certificate": {},
+		"--certificate": {}, "--private-key": {}, "--execute": {}, "--domains": {}, "--accept": {}, "--reject": {}}
 	httpieValueFlags = map[string]struct{}{"-a": {}, "--auth": {}, "-A": {}, "--auth-type": {}, "-o": {}, "--output": {},
 		"--session": {}, "--session-read-only": {}, "--verify": {}, "--cert": {}, "--cert-key": {}, "--proxy": {}, "--timeout": {},
 		"-p": {}, "--print": {}, "--pretty": {}, "-s": {}, "--style": {}, "--format-options": {}, "--max-redirects": {},
@@ -870,6 +884,12 @@ func isWriteMethodWord(word string) bool {
 func curlWrites(words []string) bool {
 	method, body, read := "", false, false
 	var targets []string
+	// Each --next starts a transfer with its own method, body, and URLs; any
+	// writing transfer to a remote host gates the whole invocation.
+	transferWrites := func() bool {
+		writes := isMutatingMethod(method) || (method == "" && body && !read)
+		return writes && reachesRemote(targets)
+	}
 	for i := 0; i < len(words); i++ {
 		word := words[i]
 		next := func() string {
@@ -879,21 +899,36 @@ func curlWrites(words []string) bool {
 			}
 			return ""
 		}
+		option, inline, hasInline := strings.Cut(word, "=")
+		if !strings.HasPrefix(word, "--") {
+			option, hasInline = word, false
+		}
+		value := func() string {
+			if hasInline {
+				return inline
+			}
+			return next()
+		}
 		switch {
 		case word == "--":
 			targets = append(targets, words[i+1:]...)
 			i = len(words)
-		case word == "-X" || word == "--request":
-			method = next()
-		case word == "--url":
-			targets = append(targets, next())
-		case hasKey(curlLongDataOptions, word):
+		case word == "--next" || word == "-:":
+			if transferWrites() {
+				return true
+			}
+			method, body, read, targets = "", false, false, nil
+		case word == "-X" || option == "--request":
+			method = value()
+		case option == "--url":
+			targets = append(targets, value())
+		case hasKey(curlLongDataOptions, option):
 			body = true
-			next()
+			value()
 		case word == "--get" || word == "--head":
 			read = true
-		case hasKey(curlLongValueOptions, word):
-			next()
+		case hasKey(curlLongValueOptions, option):
+			value()
 		case strings.HasPrefix(word, "--"):
 		case strings.HasPrefix(word, "-") && len(word) > 1:
 		cluster:
@@ -903,13 +938,13 @@ func curlWrites(words []string) bool {
 					read = read || flag == 'G' || flag == 'I'
 					continue
 				}
-				value := word[k+1:]
-				if value == "" {
-					value = next()
+				attached := word[k+1:]
+				if attached == "" {
+					attached = next()
 				}
 				switch flag {
 				case 'X':
-					method = value
+					method = attached
 				case 'd', 'F', 'T':
 					body = true
 				}
@@ -919,8 +954,7 @@ func curlWrites(words []string) bool {
 			targets = append(targets, word)
 		}
 	}
-	writes := isMutatingMethod(method) || (method == "" && body && !read)
-	return writes && reachesRemote(targets)
+	return transferWrites()
 }
 
 // wgetWrites: --method names the request; --post-data or --post-file sends
@@ -943,7 +977,7 @@ func wgetWrites(words []string) bool {
 			if !hasValue {
 				i++
 			}
-		case option == "--body-data" || option == "--body-file":
+		case option == "--body-data" || option == "--body-file" || hasKey(wgetLongValueOptions, option):
 			if !hasValue {
 				i++
 			}

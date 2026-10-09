@@ -797,6 +797,11 @@ func TestReviewSecretScanSeparatesCodeFromLiterals(t *testing.T) {
 	for _, tc := range []struct{ content, value string }{
 		{"# config\n\napi_key = \"a1b2c3d4e5f6g7h8i9\"\n", "a1b2c3d4e5f6g7h8i9"},
 		{"# config\n\npassword: hunter2hunter2hunter2\n", "hunter2hunter2hunter2"},
+		// Digit-free passphrases look like identifiers; only code punctuation
+		// after the value marks it as a reference.
+		{"# config\n\npassword: correct_horse_battery_staple\n", "correct_horse_battery_staple"},
+		{"# config\n\n+password: correct.horse.battery.staple\n", "correct.horse.battery.staple"},
+		{"# config\n\nclient_secret: CorrectHorseBatteryStaple\n", "CorrectHorseBatteryStaple"},
 	} {
 		f.write(filepath.Join(f.repo, "settings.txt"), tc.content)
 		result := f.call("likely secret content rejected: settings.txt:3", "inspect", "--file", "settings.txt", "--provider", "vendor-a", "--provider-command", f.command)

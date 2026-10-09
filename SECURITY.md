@@ -49,6 +49,9 @@ gets the once-per-session `safe-effects` stop, and other MCP calls pass
 silently. Tool arguments are not inspected, so this is a reminder gate, not a
 policy on what MCP servers may do.
 
+The HTTP write check reads command words only. It does not see a body piped
+into HTTPie, a target URL held only in a variable, or `wrangler secret put`.
+
 One matcher covers the Bash and PowerShell tools, and both receive the same
 high-confidence denials. PowerShell hands over the
 same `tool_input.command` field, so `Remove-Item -Recurse /` and the cmd.exe

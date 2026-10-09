@@ -240,31 +240,19 @@ var secretAssignmentPattern = regexp.MustCompile(`(?im)^[+-]?\s*(?:export\s+)?(?
 var identifierOrSelector = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 
 // codeReference reports whether an unquoted assignment value is code: an
-// identifier or selector that is called, or one without digits written in
-// dotted, snake, or camel form, which names a variable rather than a literal.
+// identifier or selector followed by a call, argument, or statement delimiter.
+// The value's own shape proves nothing, since a passphrase such as
+// correct_horse_battery_staple looks like an identifier; a bare value at the
+// end of a config line stays a candidate secret.
 func codeReference(data []byte, match []int) bool {
 	if match[3] > match[2] {
 		return false
 	}
-	value := data[match[4]:match[5]]
-	if !identifierOrSelector.Match(value) {
+	if !identifierOrSelector.Match(data[match[4]:match[5]]) {
 		return false
 	}
-	if rest := bytes.TrimLeft(data[match[5]:], " \t"); len(rest) > 0 && rest[0] == '(' {
-		return true
-	}
-	if bytes.ContainsAny(value, "0123456789") {
-		return false
-	}
-	if bytes.ContainsAny(value, "._") {
-		return true
-	}
-	for i := 1; i < len(value); i++ {
-		if value[i-1] >= 'a' && value[i-1] <= 'z' && value[i] >= 'A' && value[i] <= 'Z' {
-			return true
-		}
-	}
-	return false
+	rest := bytes.TrimLeft(data[match[5]:], " \t")
+	return len(rest) > 0 && bytes.IndexByte([]byte("(,);"), rest[0]) >= 0
 }
 
 func main() {

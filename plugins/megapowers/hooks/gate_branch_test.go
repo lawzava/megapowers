@@ -81,6 +81,9 @@ func TestGateDiscardKeepsBranchDeleteWhenWorkCouldBeLost(t *testing.T) {
 		{name: "cd first", cwd: repo, command: "cd ../other && git branch -D merged"},
 		{name: "git dir override", cwd: repo, command: "git --git-dir=/elsewhere/.git branch -D merged"},
 		{name: "merged plus reset", cwd: repo, command: "git branch -D merged && git reset --hard"},
+		{name: "exported git dir", cwd: repo, command: "export GIT_DIR=/elsewhere/.git; git branch -D merged"},
+		{name: "git dir assignment", cwd: repo, command: "GIT_DIR=/elsewhere/.git git branch -D merged"},
+		{name: "exported work tree", cwd: repo, command: "export GIT_WORK_TREE=/elsewhere && git branch -D merged"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
