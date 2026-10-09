@@ -576,6 +576,11 @@
       "kind": "workflow",
       "task": "Commit the change in the working tree with a conventional commit message.",
       "git_init": true,
+      "oracle_command": [
+        "go",
+        "test",
+        "./..."
+      ],
       "files": {
         "go.mod": "module example.com/rate\n\ngo 1.24\n",
         "rate.go": "package rate\n\n// Allow reports whether n requests fit under limit.\nfunc Allow(n, limit int) bool { return n < limit }\n",
