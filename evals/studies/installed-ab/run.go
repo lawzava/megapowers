@@ -1258,7 +1258,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 		row.DurationMS = max(result.Duration.Milliseconds(), 0)
 		row.RC = result.RC
 		row.Artifacts = map[string]string{"response": hashBytes([]byte(result.Response)), "trace": hashBytes(result.Trace)}
-		if err := writePrivateResponse(opts.Out, row, result.Response); err != nil {
+		if err := writePrivateResponse(opts.Out, row, result.Response, result.Trace); err != nil {
 			return rows, manifest, fmt.Errorf("persist private response: %w", err)
 		}
 		inventory := cleanInventory(result.Inventory)
@@ -2327,13 +2327,20 @@ func redactedTestCommand(command string) string {
 	return "other"
 }
 
-// writePrivateResponse retains each arm's raw final response for local
-// diagnosis. Raw responses never enter publish/.
-func writePrivateResponse(out string, row resultRow, response string) error {
+// writePrivateResponse retains each arm's raw final response and trace for
+// local diagnosis. Raw responses and traces never enter publish/.
+func writePrivateResponse(out string, row resultRow, response string, trace []byte) error {
+	if err := writePrivateArtifact(out, "traces", ".jsonl", row, trace); err != nil {
+		return err
+	}
+	return writePrivateArtifact(out, "responses", ".txt", row, []byte(response))
+}
+
+func writePrivateArtifact(out, kind, extension string, row resultRow, data []byte) error {
 	if out == "" {
 		return nil
 	}
-	directory := filepath.Join(out, "private", "responses")
+	directory := filepath.Join(out, "private", kind)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return err
 	}
@@ -2344,7 +2351,7 @@ func writePrivateResponse(out string, row resultRow, response string) error {
 		return err
 	}
 	name := strings.ReplaceAll(portableIdentifier(row.CaseID+"-"+row.BlockID+"-"+row.Arm+"-"+row.RunID), "/", "-")
-	return atomicWrite(filepath.Join(directory, name+".txt"), []byte(response), 0o600)
+	return atomicWrite(filepath.Join(directory, name+extension), data, 0o600)
 }
 
 func writeFailureReceipt(out string, row resultRow, c studyCase, result actorResult) error {

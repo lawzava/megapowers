@@ -829,6 +829,14 @@ func TestExecuteStudyRetainsResponsesPrivatelyOutsidePublish(t *testing.T) {
 			if string(content) != "private-response-"+row.Arm+" keeps the fact." || hashBytes(content) != row.Artifacts["response"] {
 				t.Fatalf("retained response %q does not match hashed response %s", content, row.Artifacts["response"])
 			}
+			tracePath := filepath.Join(out, "private", "traces", row.CaseID+"-"+row.BlockID+"-"+row.Arm+"-"+row.RunID+".jsonl")
+			trace, err := os.ReadFile(tracePath)
+			if err != nil {
+				t.Fatalf("%s/%s trace was not retained: %v", row.BlockID, row.Arm, err)
+			}
+			if traceInfo, _ := os.Stat(tracePath); traceInfo.Mode().Perm() != 0o600 || hashBytes(trace) != row.Artifacts["trace"] {
+				t.Fatalf("retained trace mode %04o or content does not match hashed trace", traceInfo.Mode().Perm())
+			}
 		}
 		if !publishFilesOnly(out) {
 			t.Fatalf("fail arm %q: publish bundle gained files beyond the manifest and results", failArm)

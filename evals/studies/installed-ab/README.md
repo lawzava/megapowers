@@ -374,10 +374,11 @@ test command names with exit codes. It contains no response text, command
 arguments, output, or filesystem paths, and it never enters `publish/`.
 
 Every arm, completed or failed, also writes its raw final response to
-`private/responses/<case>-<block>-<arm>-<run_id>.txt` with mode `0600` in a
-`0700` directory. These files match the published `response` artifact hash
-and may contain task content, so `private/` must stay local and never be
-shared or committed.
+`private/responses/<case>-<block>-<arm>-<run_id>.txt` and its raw harness
+trace to `private/traces/<case>-<block>-<arm>-<run_id>.jsonl`, each with mode
+`0600` in a `0700` directory. These files match the published `response` and
+`trace` artifact hashes and may contain task content, so `private/` must stay
+local and never be shared or committed.
 
 A TDD failure with no trusted broker receipt records the bounded
 observability gap `trusted_test_execution_receipt_missing`; native test
