@@ -1350,6 +1350,7 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 			return harnessRun{version: version, response: response, trace: trace, events: events, rc: result.rc, duration: result.duration, secrets: []string{auth.credential}, inventory: inventory, catalog: catalog}, nil
 		}
 		args = []string{"exec", "--json", "--ephemeral", "--ignore-rules", "--skip-git-repo-check", "-C", req.Project, "-s", "workspace-write", "-c", `approval_policy="never"`, "-c", `sandbox_workspace_write.network_access=false`, "-c", `shell_environment_policy.inherit="none"`, "-m", req.Model}
+		args = append(args, codexExecEnvironmentArgs(req)...)
 		if req.Effort != "" {
 			args = append(args, "-c", "model_reasoning_effort="+strconv.Quote(req.Effort))
 		}
@@ -1707,7 +1708,7 @@ func runCodexAppServer(ctx context.Context, req brokerRequest, binary, codexHome
 	// the runner, so nothing persists beyond the run.
 	threadResult, err := sendRequest(3, "thread/start", map[string]any{
 		"model": req.Model, "cwd": req.Project, "approvalPolicy": "never", "sandbox": "danger-full-access", "ephemeral": false,
-		"config": map[string]any{"shell_environment_policy": map[string]any{"inherit": "none"}},
+		"config": codexThreadConfig(req),
 	})
 	if err != nil {
 		return processResult{stdout: trace.Bytes(), stderr: stderr.Bytes(), rc: 125, duration: time.Since(started)}, err
@@ -7023,4 +7024,40 @@ func shellWrapperBody(command string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(body), true
+}
+
+// codexShellEnvironment is the non-secret part of actorEnvironment. Codex
+// keeps inherit="none" so credentials never reach commands, but without PATH
+// and HOME its commands could not find Go or read the login profile.
+func codexShellEnvironment(req brokerRequest) map[string]string {
+	return map[string]string{
+		"HOME":                req.ActorHome,
+		"PATH":                actorPath,
+		"TMPDIR":              "/tmp",
+		"LANG":                "C.UTF-8",
+		"LC_ALL":              "C.UTF-8",
+		"NO_COLOR":            "1",
+		"GIT_CONFIG_NOSYSTEM": "1",
+		"XDG_CONFIG_HOME":     filepath.Join(req.ActorHome, ".config"),
+		"XDG_CACHE_HOME":      filepath.Join(req.ActorHome, ".cache"),
+		"XDG_DATA_HOME":       filepath.Join(req.ActorHome, ".local", "share"),
+	}
+}
+
+func codexThreadConfig(req brokerRequest) map[string]any {
+	return map[string]any{"shell_environment_policy": map[string]any{"inherit": "none", "set": codexShellEnvironment(req)}}
+}
+
+func codexExecEnvironmentArgs(req brokerRequest) []string {
+	env := codexShellEnvironment(req)
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	args := make([]string, 0, 2*len(keys))
+	for _, key := range keys {
+		args = append(args, "-c", "shell_environment_policy.set."+key+"="+strconv.Quote(env[key]))
+	}
+	return args
 }

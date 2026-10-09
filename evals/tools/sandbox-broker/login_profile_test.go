@@ -41,3 +41,24 @@ func TestCommandEventsSeeThroughReceiptShellWrapper(t *testing.T) {
 		}
 	}
 }
+
+// shell_environment_policy.inherit="none" started every Codex command with no
+// PATH or HOME, so go was missing and the login profile never ran.
+func TestCodexShellEnvironmentSetsActorPathAndHome(t *testing.T) {
+	req := brokerRequest{ActorHome: "/home/actor"}
+	config := codexThreadConfig(req)
+	policy, _ := config["shell_environment_policy"].(map[string]any)
+	set, _ := policy["set"].(map[string]string)
+	if policy["inherit"] != "none" || set["PATH"] != actorPath || set["HOME"] != "/home/actor" || set["TMPDIR"] != "/tmp" {
+		t.Fatalf("shell_environment_policy = %#v", policy)
+	}
+	for key := range set {
+		if strings.Contains(strings.ToUpper(key), "TOKEN") || strings.Contains(strings.ToUpper(key), "KEY") {
+			t.Fatalf("shell environment must not carry credentials: %s", key)
+		}
+	}
+	args := strings.Join(codexExecEnvironmentArgs(req), " ")
+	if !strings.Contains(args, `shell_environment_policy.set.PATH="`+actorPath+`"`) || !strings.Contains(args, `shell_environment_policy.set.HOME="/home/actor"`) {
+		t.Fatalf("exec args = %s", args)
+	}
+}
