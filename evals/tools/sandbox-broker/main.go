@@ -2063,10 +2063,14 @@ func writeClaudeSettings(req brokerRequest) (string, error) {
 			},
 		},
 		"disableAllHooks": false,
-		// Claude Code 2.1.285 enables this built-in in a fresh config and lists
-		// it in system/init. Disabling it keeps both arms at the exact inventory
+		// Claude Code enables these built-ins in a fresh config and lists them
+		// in system/init (agents-md since 2.1.285, plugin-authoring since
+		// 2.1.295). Disabling them keeps both arms at the exact inventory
 		// earlier runs measured.
-		"enabledPlugins": map[string]any{"cc-plugin-agents-md@builtin": false},
+		"enabledPlugins": map[string]any{
+			"cc-plugin-agents-md@builtin":        false,
+			"cc-plugin-plugin-authoring@builtin": false,
+		},
 	}
 	content, err := json.Marshal(settings)
 	if err != nil {

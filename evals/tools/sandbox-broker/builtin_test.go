@@ -25,9 +25,12 @@ func TestClaudeSettingsDisableBuiltinPlugins(t *testing.T) {
 	if err := json.Unmarshal(content, &settings); err != nil {
 		t.Fatal(err)
 	}
-	enabled, listed := settings.EnabledPlugins["cc-plugin-agents-md@builtin"]
-	if !listed || enabled {
-		t.Fatalf("enabledPlugins = %v, want cc-plugin-agents-md@builtin disabled", settings.EnabledPlugins)
+	// Claude Code 2.1.295 adds cc-plugin-plugin-authoring@builtin the same way.
+	for _, builtin := range []string{"cc-plugin-agents-md@builtin", "cc-plugin-plugin-authoring@builtin"} {
+		enabled, listed := settings.EnabledPlugins[builtin]
+		if !listed || enabled {
+			t.Fatalf("enabledPlugins = %v, want %s disabled", settings.EnabledPlugins, builtin)
+		}
 	}
 }
 
