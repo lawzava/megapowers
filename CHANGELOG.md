@@ -79,6 +79,18 @@ OpenAI guidance for Opus 5.5 and GPT-6.1 Sol.
   an isolated Codex home.
 - The unused `verification/megapowers.json` pilot and its doc.
 
+### Evaluation
+
+- The installed A/B was rebuilt after most never-passing cases proved to be
+  grader defects. The runner keeps raw responses and traces privately, ignores
+  negated or quoted forbidden phrases, and supports git fixtures, word caps,
+  and event order. The broker records outward writes and commits, binds red
+  test runs, and gives Codex commands a real `PATH` and `HOME`. A blind
+  [fact judge](evals/tools/fact-judge/main.go) re-grades fact checks by meaning.
+- Seven cases come from 2026-10 session failures. On Opus 5.5 and Sol 6.1 the
+  plugin passed 138/145 and 125/145 checks against 130/145 and 120/145
+  without it; see [evals/RESULTS.md](evals/RESULTS.md).
+
 ## 0.34.0 - 2026-10-03
 
 Applies Anthropic's
