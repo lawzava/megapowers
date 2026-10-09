@@ -78,6 +78,33 @@ link, and discovery checks without a baseline model run. Move stable,
 machine-checkable requirements into a validator or test instead of adding more
 prose.
 
+Before trusting a difference between variants:
+
+- Preflight one probe session and confirm it can run the task. Nested
+  sessions can fail on expired authentication or a permission classifier;
+  get approval for spawning probe sessions before building a harness.
+- Confirm every trial actually ran the task. A harness, authentication,
+  broker, or plugin-loading failure can produce a clean-looking zero.
+- Run at least three trials per variant and report the count. One run per
+  arm cannot separate a change from run-to-run variation.
+- Compare complete outcomes, such as the full diff and test results, not one
+  visible difference. A gap smaller than the spread between runs is no
+  difference.
+
+On Claude Code, `/doctor prompt-audit` flags instruction text written for
+older models, such as fixed multi-step procedures and verify-twice rules.
+Treat its findings as candidates and validate each removal as above.
+
+## Sources reviewed 2026-10-08
+
+- [Anthropic, Hooks](https://code.claude.com/docs/en/hooks): write injected
+  context as factual statements, not imperative system instructions.
+- [OpenAI, Build skills for plugins](https://developers.openai.com/plugins/build/skills):
+  state that explicit user instructions take precedence over skill guidance.
+- [OpenAI, Using GPT-6](https://developers.openai.com/api/docs/guides/latest-model):
+  do not write tests for reversible, low-impact changes that mirror the
+  implementation.
+
 ## Sources reviewed 2026-09-05
 
 - [OpenAI, Build skills](https://developers.openai.com/codex/skills): skill

@@ -38,8 +38,8 @@ go run "$review_tool" review --file path/to/file --intent "$intent" \
   --author <author-family> --approve-external "$approval_token"
 ```
 
-Author and provider labels must differ and name real vendor families. The
-prompt arrives on stdin unless the command names `{prompt_file}`. Credentials
+Author and provider labels must differ and name real vendor families.
+`--file` also accepts a `.diff` or `.patch` file under `$TMPDIR`. Credentials
 pass only through `--provider-env NAME`. A preflight probe fails fast on login,
 usage-limit, or stall before any artifact bytes leave the machine. Any file,
 intent, binary, or command change requires a new inspection and token.
@@ -49,17 +49,19 @@ intent, binary, or command change requires a new inspection and token.
 External dispatch sends artifact bytes to another vendor. Before sending, write
 one declaration: the file list or immutable commit range, total bytes, and
 destination provider. Ask approval with that same declaration and dispatch
-that identical scope, so any harness approval reviewer sees one payload. A review mandate alone does not authorize disclosure. If the
+that identical scope, so any harness approval reviewer sees one payload. A
+review mandate alone does not authorize disclosure; without it, ask with the
+declaration instead of silently substituting a same-provider review. If the
 artifact changes after approval, declare and approve again. If the harness's
 own reviewer still denies the send, report its reason and stop; do not retry
 with a different payload. Surface a permission prompt or provider stall
 instead of waiting silently.
 
-Receipts are advisory, not an approval gate; they stay under private Git
-metadata unless `--out` names an existing absolute directory outside the
-repository. Use `--retain-transcript` only after a sensitive-data decision.
-Treat the review verdict as a claim. Record credible findings and explain
-dismissals against the artifact intent. Fix as the single writer and rerun
-acceptance tests after every material change. Bound correction rounds:
+Receipts are advisory, not an approval gate; `--out`, when given, must name an
+existing absolute directory outside the repository. If the tool fails, report
+its error; a direct provider call skips its secret scan. Use
+`--retain-transcript` only after a sensitive-data decision. Treat the review
+verdict as a claim. Record credible findings and explain dismissals against the
+artifact intent. Rerun acceptance tests after every material change. Bound correction rounds:
 re-review only fixes, affected boundaries, and new evidence. Join every
 requested review before completion; approval cannot settle a queued review.

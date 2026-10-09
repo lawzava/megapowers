@@ -8,9 +8,6 @@ metadata:
 
 # Evidence Research
 
-Keep repository-only code tracing and summaries of already provided material in
-the ordinary task flow.
-
 Define the exact question, decision, time boundary, and stopping rule. Start
 from the code or artifact anchor. Use repository and Git history before broader
 search when they can answer the question; `git log -S` and `git blame` find

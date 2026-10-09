@@ -26,7 +26,10 @@ If the checkout does not build or start, report that before writing a driver.
 
 Follow the repository's convention for skills, scripts, or documentation. A
 project skill for both supported harnesses lives under the directory each
-harness discovers, with frontmatter naming the application and surface. Give
+harness discovers, with frontmatter naming the application and surface. Name
+it `verify` when nothing else uses that name: Claude Code tells the model to
+run a project or user skill named `verify` right before committing, except
+for docs-only and tests-only commits. Give
 each section real commands and selectors from this repository:
 
 - Launch: exact start command, readiness check, and teardown.

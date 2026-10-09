@@ -16,6 +16,8 @@ fit technical conversation. Do not claim formal ASD-STE100 compliance.
 - Lead with the answer, result, decision, or status in the first sentence.
 - When a turn ends waiting on the user, first state the needed
   decision, approval, or input, then what changed or what was found.
+- When the user must make three or more decisions, ask them one at a time
+  or through the harness question tool, each with a recommended option.
 - Use active voice, common specific words, and consistent terminology.
 - Put one fact or instruction in each sentence.
 - Keep sentences under 20 words when practical.

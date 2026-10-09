@@ -21,14 +21,10 @@ independent lead work, then join every returned identity until completion,
 failure, or confirmed cancellation.
 
 Before dispatch, read
-[native dispatch examples](references/native-dispatch.md) and use only the
-active harness's call shape. One bounded output-only lane may use one
+[native dispatch and lane lifecycle](references/native-dispatch.md) and use
+only the active harness's call shape. One bounded output-only lane may use one
 fresh-context child returning `verdict`, `evidence`, `uncertainty`, and `next`.
 Keep bulky raw payloads in an artifact.
-
-Prefer scoped searches, selected fields, and native summary options. Preserve
-source and diff context needed for correctness. Keep small results inline without
-artifacts.
 
 For verbose checks, save complete stdout and stderr in scratch storage.
 Preserve command exit status independently of pipelines. Report command, exit
@@ -58,12 +54,10 @@ review until terminal or cancellation is confirmed. Target follow-ups at fixes
 and affected boundaries. A spent budget leaves unresolved findings open; it
 never converts them into approval.
 
-Report failures and retain successful evidence. Prefer completion events or
-asynchronous waits within tool deadlines and required update cadence. Avoid
-foreground sleeps beyond those limits and repeated reads of unchanged status;
-keep a final readback. Join all identities before synthesis. Treat each
-lane's report as a claim: check its evidence before using it.
-After a scope or context change, scan again and use delta-only follow-ups.
+Report failures and retain successful evidence. Join all identities before
+synthesis. Treat each lane's report as a claim: check its evidence before
+using it. After a scope or context change, scan again and use delta-only
+follow-ups.
 
 Ordinary handoffs use inline inspection plus `verify-and-finish`; only a
 currently approved goal surviving interruption uses `autonomous-run`. Stop at

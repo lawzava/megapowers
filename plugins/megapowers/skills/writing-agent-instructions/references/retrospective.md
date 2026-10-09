@@ -27,6 +27,13 @@ Look for candidates in these categories:
 - Information access: a fact the agent needed was unavailable, such as server
   logs or read-only access to a service.
 
+Group repeated mistakes into classes; a class counts after two occurrences.
+Fix each class at the highest level that works: a design that removes the
+mistake, then a type, then a lint whose error message names the fix, then a
+behavior test, and prose last. Prove each new check fails on a real past
+instance of the mistake, and run the same command locally and in CI. When a
+check makes a mistake impossible, delete the prose rule it replaces.
+
 Order candidates by how much time or risk each would have saved. For each one,
 name the target file or tool, the change, and the observed failure it
 addresses. Validate an instruction change as the parent skill describes before

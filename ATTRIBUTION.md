@@ -9,6 +9,10 @@ The workflow core descends from
 planning, test-first, debugging, verification, worktree, and delegation methods
 were rewritten and consolidated into the current task-level skills.
 
+The independent-review prompt's reasonable-user standard for behavior a spec
+does not mention comes from the v6.4.1 reviewer guidance, reviewed at
+`8ca22dba9a94f28898bbce59f2537ff4d87c747d`.
+
 Upstream license: MIT, Copyright (c) 2025 Jesse Vincent.
 
 > Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -68,6 +72,10 @@ take concepts from `diagnosing-bugs`, `tdd`, `to-tickets`, `handoff`, `retro`,
 The text is rewritten in repository style. The git check is a new Go
 implementation on the existing hook gate.
 
+Adaptations reviewed at `b0618bc436ad893b3c5e84e55fba86586d34a404` add proof
+that a forced test failure actually changed the code, from `diagnosing-bugs`,
+and grilling questions worded so that "yes" accepts the recommendation.
+
 ## pstack
 
 Guidance in `autonomous-run`, `systematic-debugging`, `design-and-plan`,
@@ -88,6 +96,15 @@ are:
 - rebase-stable verdicts through `git patch-id`;
 - the one fact that makes a change safe;
 - line-history and intent reasoning from `why`.
+
+Adaptations reviewed at `df581122cde17e6e27686b5a448bde23e4ad4318` add:
+
+- checks before trusting a measured number, ordered fix families with a stop
+  rule, and trial validity for evaluations;
+- design red flags for split ownership, duplicate paths, importable internals,
+  hand-synced lists, and designs read by an agent contributor;
+- fixing repeated mistakes at the highest enforceable level and proving each
+  new check on a past instance.
 
 The text is rewritten for Claude Code and Codex. No scripts, personas, or
 Cursor-specific workflows were copied.

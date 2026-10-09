@@ -1,7 +1,7 @@
 ---
 name: humanizing-prose
 description: Use when the task itself is to draft, rewrite, edit, or preserve human-facing prose for clarity, attribution, or proportion; do not select merely because other work ends with a response.
-when_to_use: "Trigger phrases: rewrite this, make it read human, remove AI slop, no em dashes, tighten this doc, draft the announcement, edit the blog post, polish the PR description, sounds robotic."
+when_to_use: "Trigger phrases: rewrite this, make it read human, remove AI slop, no em dashes, tighten this doc, draft the announcement, edit the blog post, polish the PR description, sounds robotic, write it in my style."
 metadata:
   short-description: Draft or edit human-facing prose without AI-slop markers
 ---
@@ -11,7 +11,9 @@ metadata:
 Use the available context to identify the speaker, recipient, purpose, and
 what the conversation has settled. Write a message that belongs in that
 exchange. Ask for missing context only when it materially changes the message.
-Follow explicit user requirements for voice and format.
+Follow explicit user requirements for voice and format. When the user asks
+for their own voice, model it on their messages and writing samples available
+in context: sentence length, vocabulary, punctuation, and formatting habits.
 Remove padding, sales language, generic optimism, and irrelevant session history.
 
 Preserve the requested substance, including every recommendation the user
@@ -44,7 +46,8 @@ Collapse stacked hedges to one confidence level while preserving material
 uncertainty.
 
 For a status update or review summary, give the current verdict, material
-impact, and minimum evidence. For a discussion reply, include the requested
+impact, and minimum evidence in plain paragraphs without bold labels; do not
+repeat findings already posted inline. For a discussion reply, include the requested
 recommendations, useful reasons, and unresolved questions. Check that the
 recipient can understand what the message adds and any response needed.
 Do not publish routine progress narration, session handoffs, repeated findings,

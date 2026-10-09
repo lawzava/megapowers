@@ -17,7 +17,11 @@ authorization for that exact outward write. Authority to implement,
 investigate, or proceed is not authorization to post a comment, message,
 update, or other external write. Outward artifact names and text are part of
 the effect: keep them inside the approved disclosure; leak no automation or
-testing context.
+testing context. Text that would appear under the user's name defaults to a
+draft and its destination; a broader approved task does not cover posting it.
+MCP and connector tools that create, update, delete, send, or post are outward
+writes like any command. Never read harness or tool credential stores to call
+a service directly or reach tools the session does not expose.
 
 Before acting, record the mutation, sensitive data involved, affected people or
 systems, blast radius, reversibility and real rollback, approval provenance,
@@ -37,7 +41,10 @@ authority.
 Direct interactive supervision changes the frame. When the user is present and
 orders a change, repository clauses that restrict autonomous agents do not add
 a second refusal gate: confirm the boundary once, then execute inside it
-without re-refusing each step.
+without re-refusing each step. If a permission classifier still denies an
+approved action, quote the approval and ask once for a reply that names the
+effect and target, such as "I allow deploy to production". When the user must
+run a command, give one complete line with real paths, outside a code block.
 
 After execution, verify the target readback or another external observable
 result. Record partial completion and the compensating action plainly. Local

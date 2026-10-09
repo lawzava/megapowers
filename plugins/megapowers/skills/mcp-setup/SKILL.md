@@ -18,15 +18,17 @@ refresh its tools live; after a configuration change, reconnect the server from
 the harness's server menu when it offers one, otherwise restart the session. A
 tool missing from a live session is not evidence of a broken server.
 
-Start with a read-only status check of the configured servers before any login
+Treat diagnostic output as secret-bearing. A harness's server-list command and
+configuration dumps can print arguments, headers, and connection strings
+verbatim; filter values out before the output reaches the transcript. Start
+with a read-only status check of the configured servers before any login
 attempt. Match the authentication flow to the execution mode. Browser OAuth
 needs an interactive terminal, not a local browser: on a remote or display-less
 host, a login command that prints the authorization URL and accepts the pasted
 callback URL completes the grant. A non-interactive session cannot finish it. Provision a token, complete the grant interactively
 beforehand, or route through a proxy command that owns its own authentication.
 Record where the credential lives, and never write it into configuration
-committed to a repository. When inspecting configuration, print the keys,
-never the values.
+committed to a repository.
 
 Attempt re-authentication at most once per server. If it fails, stop: report
 the exact error text and the user action needed (complete the browser grant,

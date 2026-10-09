@@ -11,8 +11,7 @@ metadata:
 Start with the cheapest fresh state or oracle that can establish whether the
 requested outcome already holds. If it shows no change or effect remains and no
 review or manual gate is pending, report a verified no-op and stop before broad
-checks. An external no-op needs an external readback; local proof cannot
-establish an external state or effect.
+checks. An external no-op needs an external readback.
 
 Evidence precedes every load-bearing claim. Run each acceptance oracle fresh
 against the current artifact, read the whole result, and state only what it
@@ -20,10 +19,8 @@ proves. A focused test does not prove the full suite; artifact inspection does
 not prove runtime behavior. Never weaken a test, baseline, threshold, or
 predicate to obtain a pass.
 
-Check the original command's exit status and the raw evidence supporting each
-claim. A filtered summary alone cannot establish success or rule out hidden
-failures. Missing or truncated evidence needed for a claim leaves it unverified
-until recovered.
+Check the original command's exit status; a filtered or truncated summary
+leaves a claim unverified until the raw evidence is recovered.
 
 Label inspection and inference; neither is an executed check. Bind stale-prone
 results to the artifact identity and commit; after a rebase, rerun them unless
@@ -37,7 +34,8 @@ the environment and correlation identity. If a required tool or environment is
 unavailable, report the criterion as unverified rather than substituting a
 nearby check.
 
-Run the real user journey; name any agreed substitute's limits. On request,
+When the change can affect a user journey, run that journey for real; name
+any agreed substitute's limits. On request,
 build a repeatable [verification driver](references/verification-driver.md).
 
 Reconcile each affected repository-owned specification with verified behavior.

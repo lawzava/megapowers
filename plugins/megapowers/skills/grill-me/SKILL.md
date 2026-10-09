@@ -15,27 +15,28 @@ shared understanding.
 ## Map the decision tree
 
 Model the topic as a tree of decisions. Each answer can open new decisions
-under it. The interview is topic-agnostic: designs, plans, architecture,
-product ideas, processes, and prose all qualify. Track each decision as
-settled, open, or blocked by an open decision.
+under it. Track each decision as settled, open, or blocked by an open
+decision.
 
 ## Ask in rounds
 
 The frontier is every open decision whose prerequisites are settled. Ask the
 whole frontier in one round. Number each question. Give each question one
-recommended answer and its tradeoff. A question that depends on another open
+recommended answer and its tradeoff, worded so that "yes" accepts the
+recommendation. A question that depends on another open
 question belongs to a later round. After each round, wait for the answers,
 update the tree, and recompute the frontier. Open each round with a short
 restatement of settled decisions and open branches; the restated tree, not
 earlier history, carries the interview state. Rounds are requested depth: they
-may exceed a standing prose cap but stay scannable.
+may exceed a standing prose cap or one-at-a-time question rule but stay
+scannable.
 
 ## Resolve facts yourself
 
 Facts are your job; decisions are the user's. Resolve repository and
 environment facts before asking, as in design-and-plan. When a fact needs a
 long lookup, ask the rest of the frontier now and mark dependent questions
-blocked. Do not ask the user for a fact you can look up.
+blocked.
 
 ## Finish
 

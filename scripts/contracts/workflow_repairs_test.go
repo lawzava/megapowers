@@ -15,6 +15,7 @@ import (
 // (a linked reference, a stop rule, a named artifact), not phrasing.
 var requiredSkillFacts = map[string][]string{
 	"autonomous-run": {
+		"already reachable", "blocking watcher", ".git/info/exclude",
 		"compaction does not revoke",
 		"charter.md", "checkpoint.md", "journal.jsonl", "handoff.md",
 		"native goal",
@@ -35,12 +36,16 @@ var requiredSkillFacts = map[string][]string{
 		"one fact",
 		"hard to reverse, surprising",
 	},
+	"grill-me": {
+		"\"yes\" accepts the recommendation",
+	},
 	"evidence-research": {
 		"git log -s",
 		"its own intent",
 		"what was searched",
 	},
 	"humanizing-prose": {
+		"their own voice", "without bold labels",
 		"../../output-styles/megapowers.md",
 		"every recommendation",
 	},
@@ -53,7 +58,7 @@ var requiredSkillFacts = map[string][]string{
 	},
 	"mcp-setup": {
 		"restart the session",
-		"print the keys, never the values",
+		"filter values out before the output reaches the transcript",
 		"at most once per server",
 		"user action",
 	},
@@ -75,6 +80,7 @@ var requiredSkillFacts = map[string][]string{
 		"check its evidence before using it",
 	},
 	"safe-effects": {
+		"under the user's name", "credential stores", "i allow",
 		"paid batch",
 	},
 	"systematic-debugging": {
@@ -88,6 +94,7 @@ var requiredSkillFacts = map[string][]string{
 		"redact",
 	},
 	"test-first-implementation": {
+		"low-impact", "mutation landed",
 		"production code follows a failing test",
 		"references/go.md", "references/python.md", "references/typescript.md",
 		"do not add production apis only for tests",

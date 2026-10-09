@@ -21,15 +21,16 @@ cannot establish a win.
 ## Change one thing at a time
 
 Tie each hypothesis to a mechanism the measurement shows. A family of fixes
-earns an attempt only when the profile shows its signal:
+earns an attempt only when the profile shows its signal. Try them roughly in
+this order, and stop when one meets the target:
 
 - elimination of work nobody consumes;
-- smaller or parallel pieces when cost scales with input size;
 - caching repeated work on identical inputs, with its invalidation named;
-- an index, queue, or other cheaper intermediate on the hot path;
 - batching many small operations that each pay a fixed overhead;
 - deferring work until first use;
-- moving unavoidable work away from the moment someone waits.
+- moving unavoidable work away from the moment someone waits;
+- smaller or parallel pieces when cost scales with input size;
+- an index, queue, or other cheaper intermediate on the hot path.
 
 Make one change, measure with the frozen harness, and run the regression tests.
 Keep the change only when the metric moves beyond run-to-run noise and the tests
@@ -37,6 +38,21 @@ stay green; otherwise revert it completely. Do not stack unmeasured changes.
 Keep a private log of each attempt, its before and after numbers, and whether
 it was kept. Correctness outranks the number. Do not relax the stop condition
 to declare success.
+
+## Before trusting a number
+
+Treat a result as inconclusive until each check holds:
+
+- Name what limits the result, from a profile or resource readings, and
+  confirm the load generator or client is not the bottleneck.
+- Count errors and inspect outputs. A failed, cached, skipped, or discarded
+  run can still print a fast time.
+- Confirm the work happened: no lazy, unawaited, or optimized-away path.
+- Tune both sides the way production runs them before comparing.
+- Alternate the two sides for at least five runs each and report the median
+  and range. A gap smaller than the spread is no difference.
+- Check the number against physical limits and the share of end-to-end time
+  the changed path accounts for.
 
 ## Captured profiles and traces
 

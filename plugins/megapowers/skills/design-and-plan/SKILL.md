@@ -8,9 +8,6 @@ metadata:
 
 # Design and Plan
 
-Keep mechanical edits, status updates, and settled plans inline unless
-requirements or material tradeoffs change.
-
 ## Understand the system
 
 Read repository instructions and relevant code. Establish entry points,

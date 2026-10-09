@@ -14,7 +14,8 @@ budget, and continuation; this skill adds
 only the portable state below. Native goal state does not transfer across
 harnesses.
 
-Keep ignored `.megapowers/run/<id>/` state:
+Keep `.megapowers/run/<id>/` state, adding `.megapowers/` to
+`.git/info/exclude` when Git does not already ignore it:
 
 - `charter.md`: objective, done criteria, scope, authority, and cap.
 - `checkpoint.md`: milestone, workspace, branch or worktree, HEAD, artifact
@@ -39,13 +40,18 @@ While work is owed and nothing blocks it, do not end a turn with a summary
 that announces the next step instead of taking it, an offer to continue, a
 decision list that blocks nothing, or a milestone report. Put status notes and
 recommendations in the same message as the next tool call. Stop only when no
-work can advance without the user or protected access. A text-only turn is a
+work can advance without the user or protected access. Before asking, use
+what is already reachable: linked pull requests and tickets, authenticated
+CLIs, existing previews, and the charter. Ask only for missing authority,
+secrets, or decisions. A text-only turn is a
 report, not completion: if checklist items remain, continue. After two or
 three automatic continuations on the same item, record it as blocked for
 review. This never overrides confirmation for risky or destructive actions.
 
 Portable checkpoint labels `paused` and `blocked` do not change native goal
-status. Record dependency evidence and its unblocking event without repeated
-unchanged status reads. Mark done only after every criterion passes its oracle.
+status. Record dependency evidence and its unblocking event. To watch for a
+change, run one blocking watcher that exits when the state changes, or a
+harness scheduler; check human-paced channels at most every five minutes and
+report nothing for an unchanged check. Mark done only after every criterion passes its oracle.
 Use `safe-effects` for external mutations. To babysit a pull request,
 follow [PR babysitting](references/pr-babysit.md).
