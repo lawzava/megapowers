@@ -80,7 +80,7 @@ var requiredSkillFacts = map[string][]string{
 		"check its evidence before using it",
 	},
 	"safe-effects": {
-		"under the user's name", "credential stores", "i allow", "unexecuted, with its authorization status",
+		"under the user's name", "credential stores", "i allow", "say whether it is authorized",
 		"paid batch",
 	},
 	"systematic-debugging": {

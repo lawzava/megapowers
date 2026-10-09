@@ -49,5 +49,5 @@ run a command, give one complete line with real paths, outside a code block.
 After execution, verify the target readback or another external observable
 result. Record partial completion and the compensating action plainly. Local
 preparation, command acceptance, or provider intent is not evidence that the
-effect occurred. Report a prepared effect as unexecuted, with its authorization
-status.
+effect occurred. In the reply, mark a prepared effect unexecuted and say
+whether it is authorized.
