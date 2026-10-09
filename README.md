@@ -254,21 +254,25 @@ is 201 to 417 words and loads only when that skill is used.
 - 16 skills under `skills/`, listed in `skills/catalog.json`.
 - One output style, `output-styles/megapowers.md`, shared by both tools.
 - Go hooks on three events, compiled once into a local cache:
-  - `SessionStart`: a reminder to load a matching skill before acting, plus the
-    style on Codex.
+  - `SessionStart`: a reminder that skill guidance applies once its file is
+    loaded and that your instructions take precedence, plus the style on Codex.
   - `SubagentStart`: the same reminder and a compact report contract for
     subagents: lead with the result, cite `file:line` or command evidence, no
     padding, no em dashes.
-  - `PreToolUse` on Bash and PowerShell: denies a narrow set of catastrophic
-    commands. The first `git commit`, `git push`, or `gh pr create` in a
-    session stops once and names `verify-and-finish`, and the first publish,
-    deploy, or `gh` command that writes to GitHub stops once and
-    names `safe-effects`; the retry runs. A skill already loaded in the
-    transcript skips the stop, and without a session ID the hook only adds a
-    reminder. A git command that discards uncommitted, stashed, or unmerged
-    work (`reset --hard`, a forced `clean`, a forced or whole-tree `checkout`,
-    a whole-tree `restore`, `branch -D`, `stash drop` or `clear`) stops once
-    per exact command with a reminder to check `git status` first.
+  - `PreToolUse` on Bash, PowerShell, and MCP tools: denies a narrow set of
+    catastrophic commands. The first `git commit`, `git push`, or
+    `gh pr create` in a session stops once and names `verify-and-finish`. The
+    first publish, deploy, write request to a remote API, `gh` command that
+    writes to GitHub, or MCP tool that creates, updates, deletes, sends, or
+    posts stops once and names `safe-effects`. The retry runs. Calls of the
+    same kind made within the next minute also stop until the skill loads, so
+    parallel calls cannot slip past. A skill already loaded in the transcript
+    skips the stop, and without a session ID the hook only adds a reminder. A
+    git command that discards uncommitted, stashed, or unmerged work
+    (`reset --hard`, a forced `clean`, a forced or whole-tree `checkout`, a
+    whole-tree `restore`, `branch -D` of an unmerged branch, `stash drop` or
+    `clear`) stops once per exact command with a reminder to check
+    `git status` first.
 - Two Go standard-library tools that load only with their skill: the
   memory-audit validator for `memory-hygiene` and the review packager for
   `independent-review`.
@@ -320,7 +324,6 @@ skill fired in your transcripts.
 - [Orchestration and task shapes](./docs/orchestration.md)
 - [Independent review workflow](./docs/advanced/independent-review.md)
 - [Evaluation and release evidence](./docs/advanced/evals.md)
-- [Verification maps](./docs/advanced/verification-maps.md)
 - [Security policy](./SECURITY.md), [Contributing](./CONTRIBUTING.md),
   [Changelog](./CHANGELOG.md)
 

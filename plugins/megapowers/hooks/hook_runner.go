@@ -16,11 +16,15 @@ const maxHookInputBytes = 256 << 10
 const hookUsage = "expected deny-destructive, session-start, subagent-start, output-style, or doctor"
 
 type preToolUseInput struct {
-	SessionID      string `json:"session_id"`
-	TranscriptPath string `json:"transcript_path"`
-	ToolInput      struct {
-		Command string `json:"command"`
-	} `json:"tool_input"`
+	SessionID      string          `json:"session_id"`
+	TranscriptPath string          `json:"transcript_path"`
+	Cwd            string          `json:"cwd"`
+	ToolName       string          `json:"tool_name"`
+	ToolInput      json.RawMessage `json:"tool_input"`
+}
+
+type shellToolInput struct {
+	Command string `json:"command"`
 }
 
 type hookOutput struct {
@@ -102,12 +106,23 @@ func runDenyDestructive(getenv getenvFunc, input io.Reader, output, errors io.Wr
 		return 1
 	}
 	var event preToolUseInput
-	if err := json.Unmarshal(payload, &event); err != nil || event.ToolInput.Command == "" {
+	if err := json.Unmarshal(payload, &event); err != nil {
+		fmt.Fprintln(errors, "megapowers destructive guard: cannot evaluate command input")
+		return 1
+	}
+	// MCP arguments differ per server, so only the tool name decides; an
+	// unrecognized name passes silently.
+	if strings.HasPrefix(event.ToolName, mcpToolPrefix) {
+		deny, remind := skillGates(mcpGateSkills(event.ToolName), event.SessionID, event.TranscriptPath, getenv)
+		return emitGate(deny, remind, output, errors)
+	}
+	var shell shellToolInput
+	if err := json.Unmarshal(event.ToolInput, &shell); err != nil || shell.Command == "" {
 		fmt.Fprintln(errors, "megapowers destructive guard: cannot evaluate command input")
 		return 1
 	}
 
-	verdict := classifyCommand(event.ToolInput.Command, getenv("HOME"))
+	verdict := classifyCommand(shell.Command, getenv("HOME"))
 	if verdict.Deny {
 		err = emitHookOutput(output, hookSpecificOutput{
 			HookEventName:            "PreToolUse",
@@ -123,7 +138,13 @@ func runDenyDestructive(getenv getenvFunc, input io.Reader, output, errors io.Wr
 
 	// Allowed commands that complete work or reach outside the machine stop
 	// once per session until the matching skill loads.
-	deny, remind := gateDecision(event.ToolInput.Command, event.SessionID, event.TranscriptPath, getenv)
+	deny, remind := gateDecision(shell.Command, event.SessionID, event.TranscriptPath, event.Cwd, getenv)
+	return emitGate(deny, remind, output, errors)
+}
+
+// emitGate writes the gate denial, or the non-blocking reminder when no gate
+// denies, and stays silent when neither applies.
+func emitGate(deny, remind []string, output, errors io.Writer) int {
 	var specific hookSpecificOutput
 	switch {
 	case len(deny) > 0:

@@ -39,7 +39,15 @@ Git commands that discard uncommitted, stashed, or unmerged work are not
 denied. The first run of each distinct such command in a session stops once
 with a reminder to check `git status` and `git stash list`; the identical retry
 runs. Without a session ID or a writable hook cache, the hook only adds that
-reminder.
+reminder. Deleting a branch that is already an ancestor of `HEAD` does not
+stop; the hook checks this with a local `git merge-base --is-ancestor` call
+bounded to two seconds, and keeps the stop on any error.
+
+A second matcher sends MCP tool calls to the same runner. It reads only the
+tool name: a name whose action word creates, updates, deletes, sends, or posts
+gets the once-per-session `safe-effects` stop, and other MCP calls pass
+silently. Tool arguments are not inspected, so this is a reminder gate, not a
+policy on what MCP servers may do.
 
 One matcher covers the Bash and PowerShell tools, and both receive the same
 high-confidence denials. PowerShell hands over the

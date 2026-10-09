@@ -573,11 +573,11 @@ func verifyInstalledHookRuntime(parent context.Context, home, installedRoot stri
 		return errors.New("output-style opt-out did not produce silent success")
 	}
 	stdout, stderr, err = run("session-start", `{"hook_event_name":"SessionStart","source":"startup"}`)
-	if err != nil || len(stderr) != 0 || !bytes.Contains(stdout, []byte("Do not claim a skill without loading it.")) || bytes.Contains(stdout, []byte("ASD-STE100-inspired")) {
+	if err != nil || len(stderr) != 0 || !bytes.Contains(stdout, []byte("A skill counts as used only when its file was loaded.")) || bytes.Contains(stdout, []byte("ASD-STE100-inspired")) {
 		return errors.New("session-start must retain workflow guidance with style disabled")
 	}
 	stdout, stderr, err = run("session-start", `{}`, "MEGAPOWERS_HARNESS=codex", "MEGAPOWERS_OUTPUT_STYLE=")
-	if err != nil || len(stderr) != 0 || bytes.Count(stdout, []byte("Do not claim a skill without loading it.")) != 1 || !bytes.Contains(stdout, []byte("ASD-STE100-inspired")) {
+	if err != nil || len(stderr) != 0 || bytes.Count(stdout, []byte("A skill counts as used only when its file was loaded.")) != 1 || !bytes.Contains(stdout, []byte("ASD-STE100-inspired")) {
 		return errors.New("installed Codex session-start must load style and one workflow reminder")
 	}
 	info, err = os.Lstat(runners[0])
@@ -620,7 +620,9 @@ func hookCommandsUseWrapper(path string) bool {
 		}
 	}
 	walk(value)
-	if len(commands) != 3 {
+	// The cached tree is byte-compared with the source first, so this check
+	// only proves every hook goes through the wrapper, not how many exist.
+	if len(commands) == 0 {
 		return false
 	}
 	for _, cmd := range commands {

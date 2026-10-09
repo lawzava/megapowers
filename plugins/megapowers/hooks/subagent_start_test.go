@@ -42,7 +42,8 @@ func TestSubagentStartInjectsReminderAndReportContract(t *testing.T) {
 		}
 		context := decodeSubagentContext(t, stdout)
 		for _, want := range []string{
-			"Do not claim a skill without loading it.",
+			"A skill counts as used only when its file was loaded.",
+			"take precedence over skill guidance",
 			"Lead with the result",
 			"file:line",
 			"em dashes",
@@ -68,7 +69,7 @@ func TestSubagentStartHonorsStyleOptOut(t *testing.T) {
 		t.Fatalf("rc=%d stderr=%q", rc, stderr)
 	}
 	context := decodeSubagentContext(t, stdout)
-	if !strings.Contains(context, "Do not claim a skill without loading it.") || strings.Contains(context, "Lead with the result") {
+	if !strings.Contains(context, "A skill counts as used only when its file was loaded.") || strings.Contains(context, "Lead with the result") {
 		t.Fatalf("style opt-out must keep the skill reminder and drop the report contract:\n%s", context)
 	}
 }

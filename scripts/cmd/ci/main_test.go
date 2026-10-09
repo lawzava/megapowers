@@ -270,8 +270,8 @@ func TestReleaseSmokeStreamsMaintainerOutput(t *testing.T) {
 func TestWindowsHookChecksRequirePropagatedFailureAndDenyJSON(t *testing.T) {
 	runner := &scriptedExecutor{results: []commandResult{
 		{},
-		{Stdout: "Do not claim a skill without loading it."},
-		{Stdout: "ASD-STE100-inspired. Do not claim a skill without loading it."},
+		{Stdout: "A skill counts as used only when its file was loaded."},
+		{Stdout: "ASD-STE100-inspired. A skill counts as used only when its file was loaded."},
 		{},
 		{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked"}}`},
 		{ExitCode: 1, Stderr: "cannot evaluate command input"},
@@ -293,8 +293,8 @@ func TestWindowsHookChecksRequirePropagatedFailureAndDenyJSON(t *testing.T) {
 
 	broken := &scriptedExecutor{results: []commandResult{
 		{},
-		{Stdout: "Do not claim a skill without loading it."},
-		{Stdout: "ASD-STE100-inspired. Do not claim a skill without loading it."},
+		{Stdout: "A skill counts as used only when its file was loaded."},
+		{Stdout: "ASD-STE100-inspired. A skill counts as used only when its file was loaded."},
 		{},
 		{Stdout: `{"hookSpecificOutput":{"permissionDecision":"deny"}}`},
 		{},

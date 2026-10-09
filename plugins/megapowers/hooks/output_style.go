@@ -12,9 +12,10 @@ const skillLoadingReminder = `
 # Skills
 
 The available-skills catalog lists trigger descriptions, not skill content.
-When a task matches a skill's description, load that skill's SKILL.md with
-the skills tool or a direct file read before you act on the task, and follow
-what it says. Do not claim a skill without loading it.
+A skill's guidance applies only after its SKILL.md is loaded with the skills
+tool or a direct file read, so a task that matches a description starts by
+loading that file. A skill counts as used only when its file was loaded.
+Explicit user and repository instructions take precedence over skill guidance.
 `
 
 const subagentReportContract = `

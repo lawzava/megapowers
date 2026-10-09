@@ -87,14 +87,14 @@ func checkWindowsHooks(ctx context.Context, hook string, runner commandExecutor)
 	if err != nil {
 		return err
 	}
-	if bootstrap.ExitCode != 0 || !strings.Contains(bootstrap.Stdout, "Do not claim a skill without loading it.") || strings.Contains(bootstrap.Stdout, "ASD-STE100-inspired") {
+	if bootstrap.ExitCode != 0 || !strings.Contains(bootstrap.Stdout, "A skill counts as used only when its file was loaded.") || strings.Contains(bootstrap.Stdout, "ASD-STE100-inspired") {
 		return fmt.Errorf("session-start must retain workflow guidance with style disabled (exit %d)", bootstrap.ExitCode)
 	}
 	codex, err := run([]string{"session-start"}, `{}`, map[string]string{"MEGAPOWERS_HARNESS": "codex", "MEGAPOWERS_OUTPUT_STYLE": ""})
 	if err != nil {
 		return err
 	}
-	if codex.ExitCode != 0 || strings.Count(codex.Stdout, "Do not claim a skill without loading it.") != 1 || !strings.Contains(codex.Stdout, "ASD-STE100-inspired") {
+	if codex.ExitCode != 0 || strings.Count(codex.Stdout, "A skill counts as used only when its file was loaded.") != 1 || !strings.Contains(codex.Stdout, "ASD-STE100-inspired") {
 		return fmt.Errorf("codex session-start must load style and one workflow reminder (exit %d)", codex.ExitCode)
 	}
 	safe, err := run([]string{"deny-destructive"}, `{"tool_input":{"command":"git status"}}`, nil)

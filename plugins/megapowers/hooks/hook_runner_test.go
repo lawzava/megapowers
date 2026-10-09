@@ -336,8 +336,15 @@ func TestHookManifestUsesGoRunnerWithoutStopGate(t *testing.T) {
 		t.Fatalf("unexpected SessionStart hook: %+v", session)
 	}
 	preTool := parsed.Hooks["PreToolUse"]
-	if len(preTool) != 1 || preTool[0].Matcher != "Bash|PowerShell" || len(preTool[0].Hooks) != 1 || !strings.HasSuffix(preTool[0].Hooks[0].Command, "run-hook.cmd deny-destructive") || preTool[0].Hooks[0].Timeout < 30 {
-		t.Fatalf("unexpected PreToolUse hook: %+v", preTool)
+	// Shell commands and MCP tool calls both reach the same runner; MCP names
+	// look like mcp__<server>__<tool> in Claude Code and Codex.
+	if len(preTool) != 2 {
+		t.Fatalf("unexpected PreToolUse hooks: %+v", preTool)
+	}
+	for i, matcher := range []string{"Bash|PowerShell", "mcp__.*"} {
+		if preTool[i].Matcher != matcher || len(preTool[i].Hooks) != 1 || !strings.HasSuffix(preTool[i].Hooks[0].Command, "run-hook.cmd deny-destructive") || preTool[i].Hooks[0].Timeout < 30 {
+			t.Fatalf("unexpected PreToolUse hook %d: %+v", i, preTool[i])
+		}
 	}
 	subagent := parsed.Hooks["SubagentStart"]
 	if len(subagent) != 1 || subagent[0].Matcher != "" || len(subagent[0].Hooks) != 1 || !strings.HasSuffix(subagent[0].Hooks[0].Command, "run-hook.cmd subagent-start") || subagent[0].Hooks[0].Timeout < 30 {

@@ -1,6 +1,7 @@
 # Harness support
 
-Last reviewed: 2026-09-04 (UTC).
+Last reviewed: 2026-10-08 (UTC), against Claude Code 2.1.295 and Codex
+0.162.0.
 
 Current stable Claude Code and Codex are the only supported harnesses. Portable
 skills may load elsewhere, but this repository does not test or document those
@@ -15,8 +16,8 @@ environments.
 | Skill reminder at session start | `SessionStart` hook | `SessionStart` hook |
 | Subagent context | `SubagentStart` hook: skill reminder and compact report contract | `SubagentStart` hook: same text |
 | Destructive-command guard | High-confidence denies only | High-confidence denies only |
-| Completion and effect gate | `PreToolUse` denies the first commit, push, PR, publish, deploy, or outward `gh` write once per session with a reason naming the matching skill, unless it already loaded; the retry runs | Same, where Codex honors a `PreToolUse` deny |
-| Git discard check | `PreToolUse` denies each distinct `git reset --hard`, forced `clean`, forced or whole-tree `checkout`, whole-tree `restore`, `branch -D`, or `stash drop` or `clear` once per session with a `git status` reminder; the retry runs | Same, where Codex honors a `PreToolUse` deny |
+| Completion and effect gate | `PreToolUse` denies the first commit, push, PR, publish, deploy, remote API write, outward `gh` write, or MCP write tool once per session with a reason naming the matching skill, unless it already loaded; same-kind calls within 60 seconds also stop until it loads; the retry runs | Same, where Codex honors a `PreToolUse` deny; Codex names MCP tools in the same `mcp__<server>__<tool>` form |
+| Git discard check | `PreToolUse` denies each distinct `git reset --hard`, forced `clean`, forced or whole-tree `checkout`, whole-tree `restore`, `branch -D` of a branch not merged into `HEAD`, or `stash drop` or `clear` once per session with a `git status` reminder; the retry runs | Same, where Codex honors a `PreToolUse` deny |
 | Self-diagnosis | `megapowers-doctor` skill over the Go `doctor` command | Same |
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
@@ -32,7 +33,7 @@ frontmatter; `memory-hygiene` sets `disable-model-invocation` for Claude Code.
 Claude Code concatenates `description` and `when_to_use` in its skill listing.
 Codex matches implicit invocation on `description`.
 
-Codex's skill documentation, retrieved 2026-09-25, names `agents/openai.yaml`
+Codex's skill documentation, retrieved 2026-10-08, names `agents/openai.yaml`
 `interface.short_description` and the plugin manifest
 `interface.shortDescription` as short-description carriers. The skills that
 ship with Codex also set `metadata.short-description`, so this plugin keeps
@@ -48,7 +49,7 @@ forces no vendor. Channel-specific upgrade commands live in a linked reference
 loaded only after the install channel is detected.
 
 Install smoke verifies the cached invocation-policy file and native skill
-discovery. Codex 0.153.3 does not expose invocation policy in `skills/list`,
+discovery. Codex 0.162.0 does not expose invocation policy in `skills/list`,
 so that response cannot prove effective implicit-selection behavior. Treat
 model-based policy behavior as a separate evaluation.
 
@@ -76,7 +77,7 @@ default and 250-word ceiling and use no em dashes.
 
 Codex has no output-style component. Its bundled `SessionStart` hook adds the
 same body as developer context on startup, resume, clear, and compaction. The
-Codex hooks reference retrieved 2026-09-25 lists `compact` as a `SessionStart`
+Codex hooks reference retrieved 2026-10-08 lists `compact` as a `SessionStart`
 `source` and states that matching hooks run before the next model request; the
 plugin's hook declares no source matcher. Codex requires the user to review and
 trust non-managed plugin hooks before it runs them, and asks again when a
@@ -85,9 +86,13 @@ release changes the hook definition. The adapter does not edit
 launching Codex to suppress style injection without disabling the guard or the
 reminders.
 
-The same `SessionStart` command tells both harnesses to load a matching skill
-before acting on a task and not to claim a skill without loading it. This is
-instruction guidance, not an interpreter block, and it does not depend on the
+The same `SessionStart` command tells both harnesses, as factual context, that
+skill guidance applies only after its file loads, that a skill counts as used
+only when loaded, and that explicit user and repository instructions take
+precedence over skill guidance. Claude Code's hooks reference asks for factual
+rather than imperative injected context, and OpenAI's skill guidance asks
+skills to state that user instructions come first. This is instruction
+guidance, not an interpreter block, and it does not depend on the
 selected style or `MEGAPOWERS_OUTPUT_STYLE`. The plugin ships no helper-code
 language rule; that stays with each repository's own instructions. Disabling
 the plugin removes its hooks and skills.
@@ -116,10 +121,17 @@ outside the machine. The same `PreToolUse` hook also stops the first allowed
 command in a session that looks like a completion step (`git commit`,
 `git push`, `gh pr create` or `merge`, `gh release`) or a change outside the
 machine (`npm`, `cargo`, or `pnpm publish`, `docker push`, `kubectl apply`,
-`terraform apply`, `railway up`, `fly deploy`, `vercel --prod`). It denies that
-command once with a reason naming `verify-and-finish` or `safe-effects`, and
-the retry runs. If the skill already loaded in the transcript, there is no
-stop. Without a session ID or a writable hook cache, the hook returns
+`terraform apply`, `railway up`, `fly deploy`, `vercel --prod`,
+`wrangler deploy`, a `curl`, `wget`, HTTPie, or `xh` write request to a
+non-loopback host, or a wrapper script given `POST`, `PUT`, `PATCH`, or
+`DELETE` with a remote URL or API path). A second `PreToolUse` matcher,
+`mcp__.*`, applies the same `safe-effects` stop to MCP tools whose name's
+action word creates, updates, deletes, sends, or posts; it reads only the tool
+name. The hook denies that call once with a reason naming `verify-and-finish`
+or `safe-effects`, and the retry runs. Calls of the same kind within 60
+seconds of that denial also stop until the skill loads, so parallel calls
+cannot pass early; after the window a missed detection fails open. If the
+skill already loaded in the transcript, there is no stop. Without a session ID or a writable hook cache, the hook returns
 non-blocking `additionalContext` instead.
 
 Hook policy and JSON handling run in Go. The entrypoint only launches a cached
@@ -156,30 +168,30 @@ authorize automatic policy adoption. Keep claims uncertain until tested.
 [
   {
     "source": "https://code.claude.com/docs/en/skills",
-    "reviewed": "2026-09-04",
+    "reviewed": "2026-10-08",
     "cli": "claude",
-    "version": "2.1.258",
+    "version": "2.1.295",
     "oracle": ["scripts/validate.sh", "evals/studies/trigger-recall/policy_test.go"]
   },
   {
     "source": "https://code.claude.com/docs/en/output-styles",
-    "reviewed": "2026-09-04",
+    "reviewed": "2026-10-08",
     "cli": "claude",
-    "version": "2.1.258",
+    "version": "2.1.295",
     "oracle": ["scripts/validate.sh", "plugins/megapowers/output-styles/megapowers.md"]
   },
   {
     "source": "https://learn.chatgpt.com/docs/build-skills",
-    "reviewed": "2026-09-04",
+    "reviewed": "2026-10-08",
     "cli": "codex",
-    "version": "0.153.3",
+    "version": "0.162.0",
     "oracle": ["scripts/codex-install-smoke.sh", "evals/studies/trigger-recall/policy_test.go"]
   },
   {
     "source": "https://learn.chatgpt.com/docs/hooks",
-    "reviewed": "2026-09-04",
+    "reviewed": "2026-10-08",
     "cli": "codex",
-    "version": "0.153.3",
+    "version": "0.162.0",
     "oracle": ["plugins/megapowers/hooks/hook_runner_test.go", "plugins/megapowers/hooks/output_style_test.go"]
   }
 ]

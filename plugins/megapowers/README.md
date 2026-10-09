@@ -22,11 +22,11 @@ orchestration daemon, or vendor choice.
   same reminder and a compact report contract for subagents. `PreToolUse`
   denies a narrow set of catastrophic shell commands. It also stops the first
   commit, push, or PR command in a session once and names `verify-and-finish`,
-  and the first publish or deploy command once and names `safe-effects`;
-  the retry runs, and an already loaded skill skips the stop. A git command
-  that discards uncommitted, stashed, or
-  unmerged work stops once per exact command with a reminder to check
-  `git status`. The same runner's `doctor` command backs `megapowers-doctor`.
+  and the first publish, deploy, remote API write, or MCP write once and
+  names `safe-effects`; the retry runs, and an already loaded skill skips the
+  stop. A git command that discards uncommitted, stashed, or unmerged work
+  stops once per exact command with a reminder to check `git status`; deleting
+  a branch already merged into `HEAD` does not stop. The same runner's `doctor` command backs `megapowers-doctor`.
 - `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: plugin
   metadata for each harness.
 

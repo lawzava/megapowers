@@ -66,7 +66,7 @@ func TestDoctorReportsHealthyClaudeSetup(t *testing.T) {
 		"go toolchain: go1.",
 		"runner cache: " + filepath.Join(home, ".cache", "megapowers-hooks"),
 		"claude outputStyle: megapowers:Megapowers",
-		"hooks.json events: PreToolUse (Bash|PowerShell), SessionStart, SubagentStart",
+		"hooks.json events: PreToolUse (Bash|PowerShell, mcp__.*), SessionStart, SubagentStart",
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("doctor report lacks %q:\n%s", want, report)
