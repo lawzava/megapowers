@@ -1295,6 +1295,9 @@ func runHarness(ctx context.Context, req brokerRequest, binary string, auth auth
 		if err != nil {
 			return harnessRun{}, err
 		}
+		if err := writeLoginProfiles(req.ActorHome); err != nil {
+			return harnessRun{}, err
+		}
 		inventory = observedInventory
 		if auth.mode == authSubscription || auth.mode == authSubswapper {
 			effectMonitor, err := startProtectedEffectMonitor(req.Project)
@@ -2537,7 +2540,7 @@ func actorEnvironment(req brokerRequest, additions map[string]string) []string {
 		"XDG_CONFIG_HOME":     filepath.Join(req.ActorHome, ".config"),
 		"XDG_CACHE_HOME":      filepath.Join(req.ActorHome, ".cache"),
 		"XDG_DATA_HOME":       filepath.Join(req.ActorHome, ".local", "share"),
-		"PATH":                "/opt/megapowers-receipt/bin:/opt/megapowers-runtime/go/bin:/usr/bin:/bin",
+		"PATH":                actorPath,
 		"TMPDIR":              "/tmp",
 		"LANG":                "C.UTF-8",
 		"LC_ALL":              "C.UTF-8",
@@ -4574,16 +4577,11 @@ type commandSegment struct {
 // reports whether the line contains command substitution.
 func splitCommandSegments(command string) ([]commandSegment, bool, bool) {
 	command = strings.TrimSpace(command)
-	for _, prefix := range []string{"/usr/bin/bash -lc ", "/bin/bash -lc ", "bash -lc ", "/usr/bin/sh -lc ", "/bin/sh -lc ", "sh -lc "} {
-		if !strings.HasPrefix(command, prefix) {
-			continue
-		}
-		inner := strings.TrimSpace(strings.TrimPrefix(command, prefix))
+	if inner, ok := shellWrapperBody(command); ok {
 		if len(inner) < 2 || (inner[0] != '\'' && inner[0] != '"') || inner[len(inner)-1] != inner[0] {
 			return nil, false, false
 		}
 		command = strings.TrimSpace(inner[1 : len(inner)-1])
-		break
 	}
 	if command == "" {
 		return nil, false, false
@@ -6993,4 +6991,36 @@ func selftestInventory() error {
 		return errors.New("codex cache executable-mode mismatch accepted")
 	}
 	return nil
+}
+
+// actorPath puts the receipt wrappers and the Go toolchain ahead of the system.
+const actorPath = "/opt/megapowers-receipt/bin:/opt/megapowers-runtime/go/bin:/usr/bin:/bin"
+
+// writeLoginProfiles restores actorPath after the system profile runs. Codex
+// executes commands with `bash -lc`, and a login shell otherwise lets the
+// system profile put its own directories, including another Go, ahead of the
+// receipt wrappers, so test runs went unrecorded or Go was missing.
+func writeLoginProfiles(home string) error {
+	profile := []byte("# Written by the megapowers eval broker.\nPATH=" + strings.SplitN(actorPath, ":/usr/bin", 2)[0] + ":$PATH\nexport PATH\n")
+	for _, name := range []string{".bash_profile", ".profile"} {
+		if err := os.WriteFile(filepath.Join(home, name), profile, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// shellWrapperBody returns the quoted body of "<shell> -c" or "<shell> -lc"
+// when shell is bash or sh at any path, such as Codex's
+// /opt/megapowers-receipt/bin/bash -lc '...'.
+func shellWrapperBody(command string) (string, bool) {
+	name, rest, ok := strings.Cut(command, " ")
+	if !ok || (filepath.Base(name) != "bash" && filepath.Base(name) != "sh") {
+		return "", false
+	}
+	flag, body, ok := strings.Cut(strings.TrimLeft(rest, " "), " ")
+	if !ok || (flag != "-c" && flag != "-lc") {
+		return "", false
+	}
+	return strings.TrimSpace(body), true
 }
