@@ -3248,9 +3248,10 @@ func normalizeTraceTurns(harness string, trace []byte, processRC, expectedRootTu
 		var claudeLifecycleEvents []actorEvent
 		if harness == "claude" {
 			isInit := lowerString(object["type"]) == "system" && lowerString(object["subtype"]) == "init"
-			preInitHook := lowerString(object["type"]) == "system" && (lowerString(object["subtype"]) == "hook_started" || lowerString(object["subtype"]) == "hook_response")
-			// Rate-limit notices carry no actor evidence and can arrive while a
-			// SessionStart hook delays init, so they are discarded like hooks.
+			preInitHook := lowerString(object["type"]) == "system" && (lowerString(object["subtype"]) == "hook_started" || lowerString(object["subtype"]) == "hook_progress" || lowerString(object["subtype"]) == "hook_response")
+			// Rate-limit notices and hook progress carry no actor evidence and
+			// arrive while a slow SessionStart hook delays init, so they are
+			// discarded like the other hook frames.
 			preInitHook = preInitHook || lowerString(object["type"]) == "rate_limit_event"
 			if claudeSegments == 0 && !isInit && !preInitHook {
 				valid = false

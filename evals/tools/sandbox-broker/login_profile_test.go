@@ -78,3 +78,18 @@ func TestRateLimitEventBeforeInitKeepsTraceComplete(t *testing.T) {
 		t.Fatal("rate_limit_event before init made a successful trace incomplete")
 	}
 }
+
+// A slow SessionStart hook, such as the megapowers runner compiling on first
+// use, makes Claude emit hook_progress before init.
+func TestHookProgressBeforeInitKeepsTraceComplete(t *testing.T) {
+	trace := `{"type":"system","subtype":"hook_started","hook_id":"h1","hook_name":"SessionStart:startup","hook_event_name":"SessionStart"}
+{"type":"system","subtype":"hook_progress","hook_id":"h1","hook_name":"SessionStart:startup","hook_event_name":"SessionStart"}
+{"type":"system","subtype":"hook_response","hook_id":"h1","hook_name":"SessionStart:startup","hook_event_name":"SessionStart","outcome":"success"}
+{"type":"system","subtype":"init","session_id":"s","plugins":[]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"done"}
+`
+	if _, _, complete := normalizeTraceTurns("claude", []byte(trace), 0, 1); !complete {
+		t.Fatal("hook_progress before init made a successful trace incomplete")
+	}
+}
