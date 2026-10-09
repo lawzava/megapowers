@@ -194,13 +194,14 @@ without the style. These numbers are not a token-saving or cost claim.
 
 ## Results
 
-On current models the plugin changes few outcomes. In a 2026-10-09 A/B on
-Claude Opus 5.5 and GPT-6.1 Sol (30 cases, five pairs each), runs with the
-plugin passed 138/145 and 125/145 checks against 130/145 and 120/145 without
-it. Both arms finish the coding tasks equally; the differences sit in a few
-judgment cases, such as summarizing review findings without repeating them,
-drafting rather than posting under the user's name, and resolving an
-ambiguous contract, mostly in the plugin's favor. Details:
+In a 2026-10-09 A/B on Claude Opus 5.5 and GPT-6.1 Sol (30 cases, five pairs
+each), runs with the plugin passed 143/145 and 136/145 checks against 131/145
+and 121/145 without it. Both arms finish the coding tasks equally; the gains
+are in judgment cases. Without the plugin, both models posted comments under
+the user's name after a broad go-ahead (Opus 5 of 5, Sol 4 of 5); with it,
+none did. The plugin also stated what checks and prepared changes leave
+unverified or unauthorized, summarized review findings without repeating
+them, and resolved an ambiguous contract. Details:
 [evals/RESULTS.md](./evals/RESULTS.md).
 
 The study below measured earlier models with graders since found to fail

@@ -88,7 +88,7 @@ OpenAI guidance for Opus 5.5 and GPT-6.1 Sol.
   test runs, and gives Codex commands a real `PATH` and `HOME`. A blind
   [fact judge](evals/tools/fact-judge/main.go) re-grades fact checks by meaning.
 - Seven cases come from 2026-10 session failures. On Opus 5.5 and Sol 6.1 the
-  plugin passed 138/145 and 125/145 checks against 130/145 and 120/145
+  plugin passed 143/145 and 136/145 checks against 131/145 and 121/145
   without it; see [evals/RESULTS.md](evals/RESULTS.md).
 
 ## 0.34.0 - 2026-10-03
