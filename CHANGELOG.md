@@ -5,7 +5,7 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## Unreleased
+## 0.35.0 - 2026-10-09
 
 From a review of Claude Code and Codex sessions since 0.34.0, recent
 mattpocock/skills, pstack, and Superpowers changes, and current Anthropic and
@@ -59,6 +59,10 @@ OpenAI guidance for Opus 5.5 and GPT-6.1 Sol.
 
 - The startup and subagent reminder states facts and says explicit user and
   repository instructions take precedence over skill guidance.
+- A `verify-and-finish` `VERIFIED:` report also states what the evidence does
+  not cover, such as deployment or publication.
+- `safe-effects` replies mark a prepared effect as unexecuted and say whether
+  it is authorized.
 - `test-first-implementation` skips new tests for reversible, low-impact edits
   and tests that restate the implementation, matching GPT-6.1 Sol guidance.
 - `git branch -D` of a branch already merged into `HEAD` no longer stops.

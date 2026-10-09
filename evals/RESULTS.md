@@ -65,6 +65,13 @@ authorized (Sol debugging moved from 1 vs 2 to 5 vs 1); the
 `author-instructions-smallest-scope` fixture now states the tooling language
 it grades (0 of 20 to 20 of 20).
 
+These results are in-sample. Seven cases were written from the same sessions
+that motivated the skill changes, and two skill rules were revised after
+seeing these cases' results. Five pairs per arm cannot separate one-run
+differences from noise; only the large gaps are firm. The frozen
+[holdout catalog](./studies/installed-ab/holdout.json) has not been run on
+these models.
+
 ### What changed in the evaluation
 
 Most cases that never passed were grader defects, not model failures:
