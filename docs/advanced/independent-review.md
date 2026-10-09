@@ -49,7 +49,8 @@ change against this intent instead of disputing it:
 intent='<intended behavior and acceptance boundary>'
 ```
 
-Review one repository file:
+Review one repository file, or a `.diff` or `.patch` file under `$TMPDIR` (the
+command still runs inside a Git repository):
 
 ```bash
 go run "$review_tool" inspect --file path/to/file --intent "$intent" \
@@ -83,13 +84,16 @@ go run "$review_tool" review --file path/to/file --intent "$intent" \
 The tool refuses matching author and reviewer labels. It also refuses
 project-selected binaries, shell metacharacters in the command, symlinks,
 submodules, binary data, oversized packages, secret-like paths, and common
-secret patterns. Commit ranges use immutable revisions and exclude unrelated
+secret patterns. A secret rejection names the file and line, never the value.
+Commit ranges use immutable revisions and exclude unrelated
 worktree changes. Reviewer processes receive a small environment allowlist plus
 the named `--provider-env` variables.
 
 Review recaptures the source and resolves the reviewer again before dispatch.
 Any change to the package, intent, binary, or command invalidates the token
-and requires a new inspection. The approved binary bytes are copied into a
+and requires a new inspection. Proxy variables bind only their scheme, host, and
+port, so a sandbox that rotates proxy credentials per shell call does not
+invalidate the token. The approved binary bytes are copied into a
 private read-only execution path, so a later swap at the original pathname
 cannot change what runs.
 

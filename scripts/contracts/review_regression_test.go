@@ -40,6 +40,9 @@ func main() {
  case "usage-json": fmt.Println("{\"response\":\"OK\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}"); return
  case "stall": time.Sleep(30*time.Second)
 case "overflow": for i:=0;i<64;i++ { if _,err:=fmt.Print(strings.Repeat("x",1<<20));err!=nil{return} }; return
+ case "echo": os.Stderr.Write(input)
+ case "echo-fail": if strings.Contains(string(input),"review-package") { os.Stderr.Write(input); fmt.Fprintln(os.Stderr,"error: unexpected provider failure"); os.Exit(1) }
+ case "overflow-review": if strings.Contains(string(input),"review-package") { fmt.Println("oauth token refresh is unsafe"); for i:=0;i<4;i++ { if _,err:=fmt.Print(strings.Repeat("x",1<<20));err!=nil{return} }; return }
  case "later": data,_:=os.ReadFile(filepath.Join(record,"count")); n,_:=strconv.Atoi(string(data)); n++; write("count",strconv.Itoa(n)); if n>=3 { fmt.Fprintln(os.Stderr,"rate limit exceeded"); os.Exit(1) }
  }
  fmt.Printf("reviewed by fake provider via %s\n",delivery)
@@ -457,7 +460,9 @@ func TestReviewPromptAsksForMergeBlockingFindings(t *testing.T) {
 	token := f.inspect(f.command, "--file", "app.go")["approval_token"].(string)
 	f.call("", f.review(token, f.command, "--file", "app.go")...)
 	input := f.recordText("input")
-	for _, needle := range []string{"block the merge", "path and line", "shows it fails"} {
+	// obra/superpowers v6.4.1 reviewer standard: behavior the request or spec
+	// leaves open is judged by what a reasonable user of the change expects.
+	for _, needle := range []string{"block the merge", "path and line", "shows it fails", "reasonable user of the change would expect"} {
 		if !strings.Contains(input, needle) {
 			t.Errorf("reviewer prompt lacks %q:\n%s", needle, input)
 		}
@@ -714,4 +719,132 @@ func TestReviewPackageIgnoresDiffSuppressingAttributes(t *testing.T) {
 	if !strings.Contains(input, "return true") || strings.Contains(input, "Binary files") {
 		t.Fatalf("the provider must receive the textual change despite -diff:\n%s", input)
 	}
+}
+
+// Codex echoes the prompt to stderr. A payload above the stderr cap must not
+// kill the provider, and words such as "oauth" in the echoed diff must not
+// turn a failure into an authentication diagnosis.
+func TestReviewDrainsLongProviderStderr(t *testing.T) {
+	f := newReviewFixture(t)
+	f.write(filepath.Join(f.repo, "auth.go"), "package example\n"+strings.Repeat("// refresh the oauth token before the api key expires\n", 3500))
+	out := filepath.Join(f.root, "echo")
+	if err := os.Mkdir(out, 0700); err != nil {
+		t.Fatal(err)
+	}
+	command := "fake-reviewer --mode echo"
+	token := f.inspect(command, "--file", "auth.go")["approval_token"].(string)
+	result := f.call("", f.review(token, command, "--file", "auth.go", "--out", out, "--retain-transcript")...)
+	if !strings.Contains(result, "reviewed by fake provider") {
+		t.Fatalf("review output missing:\n%s", result)
+	}
+	if len(f.recordText("input")) <= 128*1024 {
+		t.Fatal("fixture prompt must exceed the stderr cap")
+	}
+	for _, file := range reviewFiles(t, out) {
+		if filepath.Base(file) != "provider.stderr" {
+			continue
+		}
+		data, _ := os.ReadFile(file)
+		if len(data) > 128*1024 || !strings.HasSuffix(string(data), "</review-package>\n") {
+			t.Fatalf("retained stderr must be the bounded tail; got %d bytes", len(data))
+		}
+	}
+
+	command = "fake-reviewer --mode echo-fail"
+	token = f.inspect(command, "--file", "auth.go")["approval_token"].(string)
+	result = f.call("provider exited unsuccessfully", f.review(token, command, "--file", "auth.go", "--out", out)...)
+	if strings.Contains(result, "authentication failed") || strings.Contains(result, "broken pipe") {
+		t.Fatalf("echoed payload was classified as a provider diagnostic:\n%s", result)
+	}
+}
+
+func TestReviewReportsProviderStdoutOverflow(t *testing.T) {
+	f := newReviewFixture(t)
+	command := "fake-reviewer --mode overflow-review"
+	token := f.inspect(command, "--file", "app.go")["approval_token"].(string)
+	result := f.call("exceeded", f.review(token, command, "--file", "app.go")...)
+	if strings.Contains(result, "authentication failed") {
+		t.Fatalf("oversized review output was classified as an authentication failure:\n%s", result)
+	}
+}
+
+// The Claude Code sandbox injects a proxy URL whose credentials change on
+// every shell call, so approval binds the proxy endpoint, not its userinfo.
+func TestReviewApprovalIgnoresProxyCredentials(t *testing.T) {
+	f := newReviewFixture(t)
+	t.Setenv("HTTPS_PROXY", "http://call-one:secret-one@localhost:3128")
+	t.Setenv("ALL_PROXY", "http://call-one:secret-one@localhost:3128/?session=1")
+	token := f.inspect(f.command, "--file", "app.go")["approval_token"].(string)
+	t.Setenv("HTTPS_PROXY", "http://call-two:secret-two@localhost:3128")
+	t.Setenv("ALL_PROXY", "http://call-two:secret-two@localhost:3128/?session=2")
+	if f.inspect(f.command, "--file", "app.go")["approval_token"] != token {
+		t.Fatal("proxy credentials changed the approval token")
+	}
+	f.call("", f.review(token, f.command, "--file", "app.go")...)
+	t.Setenv("HTTPS_PROXY", "http://call-two:secret-two@proxy.example.invalid:3128")
+	if f.inspect(f.command, "--file", "app.go")["approval_token"] == token {
+		t.Fatal("a different proxy host must change the approval token")
+	}
+	f.clearCalls()
+	f.call("approval token does not match", f.review(token, f.command, "--file", "app.go")...)
+	f.noCalls()
+}
+
+func TestReviewSecretScanSeparatesCodeFromLiterals(t *testing.T) {
+	f := newReviewFixture(t)
+	f.write(filepath.Join(f.repo, "client.go"), "package example\nvar c = Config{\n\tapiKey: someLongIdentifier.NewClient(apiKey),\n\tPassword: defaultPassword,\n\tclientSecret: settings.ClientSecret,\n}\n")
+	f.inspect(f.command, "--file", "client.go")
+	for _, tc := range []struct{ content, value string }{
+		{"# config\n\napi_key = \"a1b2c3d4e5f6g7h8i9\"\n", "a1b2c3d4e5f6g7h8i9"},
+		{"# config\n\npassword: hunter2hunter2hunter2\n", "hunter2hunter2hunter2"},
+	} {
+		f.write(filepath.Join(f.repo, "settings.txt"), tc.content)
+		result := f.call("likely secret content rejected: settings.txt:3", "inspect", "--file", "settings.txt", "--provider", "vendor-a", "--provider-command", f.command)
+		if strings.Contains(result, tc.value) {
+			t.Fatalf("rejection printed the secret value:\n%s", result)
+		}
+	}
+}
+
+// An explicit diff or patch under TMPDIR is reviewable without a scratch
+// repository; every other check still applies.
+func TestReviewAcceptsPatchFileUnderTMPDIR(t *testing.T) {
+	f := newReviewFixture(t)
+	scratch := filepath.Join(f.root, "scratch")
+	elsewhere := filepath.Join(f.root, "elsewhere")
+	for _, dir := range []string{scratch, elsewhere} {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(f.root, "scratch-link")
+	if err := os.Symlink(scratch, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", link)
+	patch := "diff --git a/app.go b/app.go\n--- a/app.go\n+++ b/app.go\n@@ -1,2 +1,2 @@\n package example\n-func Value() int { return 1 }\n+func Value() int { return 2 }\n"
+	f.write(filepath.Join(scratch, "change.diff"), patch)
+	info := f.inspect(f.command, "--file", filepath.Join(link, "change.diff"))
+	token := info["approval_token"].(string)
+	if paths, _ := json.Marshal(info["paths"]); !bytes.Contains(paths, []byte("change.diff")) || bytes.Contains(paths, []byte(f.root)) {
+		t.Fatalf("disclosure must name the patch without the machine path: %s", paths)
+	}
+	f.call("", f.review(token, f.command, "--file", filepath.Join(scratch, "change.diff"))...)
+	if !strings.Contains(f.recordText("input"), "return 2") {
+		t.Fatal("patch content did not reach the reviewer")
+	}
+	for _, tc := range []struct{ path, content, needle string }{
+		{filepath.Join(scratch, "notes.txt"), "plain text\n", "inside the repository"},
+		{filepath.Join(elsewhere, "change.diff"), patch, "inside the repository"},
+		{filepath.Join(scratch, "secret.patch"), patch + "+api_key = \"a1b2c3d4e5f6g7h8i9\"\n", "likely secret content"},
+		{filepath.Join(scratch, ".ssh", "key.patch"), patch, "secret-like path"},
+		{filepath.Join(scratch, "large.diff"), strings.Repeat("+a\n", 200000), "size limit"},
+	} {
+		f.write(tc.path, tc.content)
+		f.call(tc.needle, "inspect", "--file", tc.path, "--provider", "vendor-a", "--provider-command", f.command)
+	}
+	if err := os.Symlink(filepath.Join(scratch, "change.diff"), filepath.Join(scratch, "alias.diff")); err != nil {
+		t.Fatal(err)
+	}
+	f.call("symlink", "inspect", "--file", filepath.Join(scratch, "alias.diff"), "--provider", "vendor-a", "--provider-command", f.command)
 }

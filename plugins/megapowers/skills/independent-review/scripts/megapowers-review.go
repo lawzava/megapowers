@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -229,7 +230,41 @@ var secretContentPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
 	regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{30,}`),
 	regexp.MustCompile(`sk-[A-Za-z0-9_-]{20,}`),
-	regexp.MustCompile(`(?im)^\s*(?:export\s+)?(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|client[_-]?secret|secret[_-]?key|aws_secret_access_key)\s*[:=]\s*["']?[A-Za-z0-9/+_.=-]{12,}`),
+}
+
+// secretAssignmentPattern finds a credential-named key given a long value at
+// the start of a line, after an optional diff marker. Group 1 is the opening
+// quote and group 2 the value; codeReference filters values that are code.
+var secretAssignmentPattern = regexp.MustCompile(`(?im)^[+-]?\s*(?:export\s+)?(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|client[_-]?secret|secret[_-]?key|aws_secret_access_key)\s*[:=]\s*(["']?)([A-Za-z0-9/+_.=-]{12,})`)
+
+var identifierOrSelector = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$`)
+
+// codeReference reports whether an unquoted assignment value is code: an
+// identifier or selector that is called, or one without digits written in
+// dotted, snake, or camel form, which names a variable rather than a literal.
+func codeReference(data []byte, match []int) bool {
+	if match[3] > match[2] {
+		return false
+	}
+	value := data[match[4]:match[5]]
+	if !identifierOrSelector.Match(value) {
+		return false
+	}
+	if rest := bytes.TrimLeft(data[match[5]:], " \t"); len(rest) > 0 && rest[0] == '(' {
+		return true
+	}
+	if bytes.ContainsAny(value, "0123456789") {
+		return false
+	}
+	if bytes.ContainsAny(value, "._") {
+		return true
+	}
+	for i := 1; i < len(value); i++ {
+		if value[i-1] >= 'a' && value[i-1] <= 'z' && value[i] >= 'A' && value[i] <= 'Z' {
+			return true
+		}
+	}
+	return false
 }
 
 func main() {
@@ -533,19 +568,23 @@ func captureFile(root, name string) (capture, error) {
 		return capture{}, fmt.Errorf("resolve file %q: %w", name, err)
 	}
 	physical = filepath.Clean(physical)
-	if !insideRoot(physical, root) {
-		return capture{}, fmt.Errorf("file must be inside the repository: %s", name)
+	rel, inTemp := "", false
+	if insideRoot(physical, root) {
+		rel, err = filepath.Rel(root, physical)
+		if err != nil {
+			return capture{}, fmt.Errorf("relativize file: %w", err)
+		}
+		rel = filepath.ToSlash(rel)
+	} else if rel, inTemp = tempPatchPath(physical); !inTemp {
+		return capture{}, fmt.Errorf("file must be inside the repository, or be a .diff or .patch file under $TMPDIR: %s", name)
 	}
-	rel, err := filepath.Rel(root, physical)
-	if err != nil {
-		return capture{}, fmt.Errorf("relativize file: %w", err)
-	}
-	rel = filepath.ToSlash(rel)
 	if secretLikePath(rel) {
 		return capture{}, fmt.Errorf("secret-like path rejected: %s", rel)
 	}
-	if err := rejectTrackedSubmodule(root, rel); err != nil {
-		return capture{}, err
+	if !inTemp {
+		if err := rejectTrackedSubmodule(root, rel); err != nil {
+			return capture{}, err
+		}
 	}
 	data, err := os.ReadFile(physical)
 	if err != nil {
@@ -566,6 +605,31 @@ func captureFile(root, name string) (capture, error) {
 	}
 	chunk := reviewChunk{Source: source, Paths: []string{rel}, Package: pkg, PackageSHA256: hashBytes(pkg)}
 	return capture{Source: source, Paths: []string{rel}, Chunks: []reviewChunk{chunk}}, nil
+}
+
+// tempPatchPath accepts a .diff or .patch file outside the repository when it
+// resolves under the physical temporary directory, so a prepared diff needs
+// no scratch repository. The returned label hides the machine-specific prefix.
+func tempPatchPath(physical string) (string, bool) {
+	switch strings.ToLower(filepath.Ext(physical)) {
+	case ".diff", ".patch":
+	default:
+		return "", false
+	}
+	temp, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil || !filepath.IsAbs(temp) {
+		return "", false
+	}
+	temp = filepath.Clean(temp)
+	// A temporary directory at the filesystem root would admit any file.
+	if temp == string(filepath.Separator) || physical == temp || !insideRoot(physical, temp) {
+		return "", false
+	}
+	rel, err := filepath.Rel(temp, physical)
+	if err != nil {
+		return "", false
+	}
+	return "$TMPDIR/" + filepath.ToSlash(rel), true
 }
 
 // rangeFile is one changed file with its patch and the exact number of bytes
@@ -894,9 +958,16 @@ func validateText(path string, data []byte) error {
 	if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
 		return fmt.Errorf("binary or non-UTF-8 input rejected: %s", path)
 	}
+	// The message names the line, never the matched value.
+	line := func(offset int) int { return 1 + bytes.Count(data[:offset], []byte{'\n'}) }
 	for _, pattern := range secretContentPatterns {
-		if pattern.Match(data) {
-			return fmt.Errorf("likely secret content rejected: %s", path)
+		if match := pattern.FindIndex(data); match != nil {
+			return fmt.Errorf("likely secret content rejected: %s:%d", path, line(match[0]))
+		}
+	}
+	for _, match := range secretAssignmentPattern.FindAllSubmatchIndex(data, -1) {
+		if !codeReference(data, match) {
+			return fmt.Errorf("likely secret content rejected: %s:%d", path, line(match[4]))
 		}
 	}
 	return nil
@@ -1134,11 +1205,19 @@ func approvalToken(binary providerExecutable, packageSHA256s, envDigests []strin
 	return "mpr1_" + hex.EncodeToString(sum[:])
 }
 
-// environmentDigests maps each NAME=value entry to NAME=sha256(value).
+// environmentDigests maps each NAME=value entry to NAME=sha256(value). A
+// proxy URL contributes only its scheme, host, and port: the Claude Code
+// sandbox rotates proxy credentials on every shell call, and the endpoint is
+// what decides where traffic goes.
 func environmentDigests(env []string) []string {
 	digests := make([]string, 0, len(env))
 	for _, entry := range env {
 		name, value, _ := strings.Cut(entry, "=")
+		if upper := strings.ToUpper(name); strings.HasSuffix(upper, "_PROXY") && upper != "NO_PROXY" {
+			if parsed, err := url.Parse(value); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+				value = parsed.Scheme + "://" + parsed.Host
+			}
+		}
 		digests = append(digests, name+"="+hashBytes([]byte(value)))
 	}
 	return digests
@@ -1165,7 +1244,7 @@ func approvalTokenMatches(provided string, binary providerExecutable, packageSHA
 
 func makePrompt(pkg []byte, chunk chunkInfo, intent string) ([]byte, error) {
 	var prompt bytes.Buffer
-	prompt.WriteString("<task>Adversarially review the supplied static change. Report only defects you would block the merge for, such as correctness, security, or data-integrity failures. For each finding, give the path and line, why it is wrong, and the input or sequence that shows it fails. Give a clear approve or needs-attention verdict.</task>\n")
+	prompt.WriteString("<task>Adversarially review the supplied static change. Report only defects you would block the merge for, such as correctness, security, or data-integrity failures. Judge behavior the request or spec does not mention by what a reasonable user of the change would expect. For each finding, give the path and line, why it is wrong, and the input or sequence that shows it fails. Give a clear approve or needs-attention verdict.</task>\n")
 	if intent != "" {
 		// JSON encoding escapes angle brackets, so the intent cannot open or
 		// close prompt markup.
@@ -1313,12 +1392,19 @@ func (s *providerSession) invoke(prompt []byte, timeout time.Duration) (stdout, 
 	cmd.Stdin = stdin
 	cmd.WaitDelay = providerWaitDelay
 	out := &limitedBuffer{max: maxProviderOutput}
-	errBuf := &limitedBuffer{max: maxProviderError}
+	// Stderr keeps draining past its cap: a provider that echoes a large
+	// prompt there must not die of SIGPIPE.
+	errBuf := &tailBuffer{max: maxProviderError}
 	cmd.Stdout = out
 	cmd.Stderr = errBuf
 	err = cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		return out.Bytes(), errBuf.Bytes(), true, err
+	}
+	if out.exceeded {
+		// A truncated review is not a review; report the cap instead of
+		// classifying the partial output.
+		return out.Bytes(), errBuf.Bytes(), false, fmt.Errorf("provider stdout exceeded %d-byte limit: %w", maxProviderOutput, errOutputLimit)
 	}
 	return out.Bytes(), errBuf.Bytes(), false, err
 }
@@ -1327,6 +1413,9 @@ func (s *providerSession) dispatch(prompt []byte) ([]byte, []byte, error) {
 	stdout, stderr, timedOut, err := s.invoke(prompt, providerTimeout)
 	if timedOut {
 		return nil, nil, fmt.Errorf("provider exceeded %s timeout; no receipt written", providerTimeout)
+	}
+	if errors.Is(err, errOutputLimit) {
+		return nil, nil, fmt.Errorf("provider exited unsuccessfully; no receipt written: %w", err)
 	}
 	if err != nil {
 		detail := classifyProviderDiagnostic(stderr)
@@ -1358,6 +1447,9 @@ func preflight(session *providerSession, timeout time.Duration) error {
 	provider := session.binary.Provider
 	if timedOut {
 		return fmt.Errorf("preflight probe for provider %s failed (timeout): no response within %s; no receipt written", provider, timeout)
+	}
+	if errors.Is(err, errOutputLimit) {
+		return fmt.Errorf("preflight probe for provider %s failed (provider-error): %w; no receipt written", provider, err)
 	}
 	combined := strings.ToLower(string(bytes.ToValidUTF8(append(append([]byte(nil), stderr...), stdout...), []byte("?"))))
 	authOrLimit := false
@@ -1391,6 +1483,13 @@ func preflight(session *providerSession, timeout time.Duration) error {
 }
 
 func classifyProviderDiagnostic(raw []byte) string {
+	// A provider may echo the prompt before its own diagnostics. The package
+	// is JSON-encoded, so its closing fence appears only where the prompt
+	// ends; classify only what follows it, so words in the reviewed change
+	// cannot pose as a provider diagnosis.
+	if i := bytes.LastIndex(raw, []byte("</review-package>")); i >= 0 {
+		raw = raw[i+len("</review-package>"):]
+	}
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return ""
 	}
@@ -1682,17 +1781,20 @@ func writePrivate(root *os.Root, name string, data []byte) error {
 }
 
 type limitedBuffer struct {
-	buf bytes.Buffer
-	max int
+	buf      bytes.Buffer
+	max      int
+	exceeded bool
 }
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {
 	remaining := b.max - b.buf.Len()
 	if remaining <= 0 {
+		b.exceeded = true
 		return 0, errOutputLimit
 	}
 	if len(p) > remaining {
 		n, _ := b.buf.Write(p[:remaining])
+		b.exceeded = true
 		return n, errOutputLimit
 	}
 	return b.buf.Write(p)
@@ -1700,6 +1802,29 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 
 func (b *limitedBuffer) Bytes() []byte {
 	return b.buf.Bytes()
+}
+
+// tailBuffer accepts every write and retains only the last max bytes, where
+// a provider's own diagnostics land.
+type tailBuffer struct {
+	buf []byte
+	max int
+}
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	if len(p) >= b.max {
+		b.buf = append(b.buf[:0], p[len(p)-b.max:]...)
+		return len(p), nil
+	}
+	if excess := len(b.buf) + len(p) - b.max; excess > 0 {
+		b.buf = append(b.buf[:0], b.buf[excess:]...)
+	}
+	b.buf = append(b.buf, p...)
+	return len(p), nil
+}
+
+func (b *tailBuffer) Bytes() []byte {
+	return b.buf
 }
 
 func runGit(root string, limit int, args ...string) ([]byte, error) {
