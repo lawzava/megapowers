@@ -102,6 +102,12 @@ mounting or copying the store. API-key authentication requires the explicit
 `MEGAPOWERS_BROKER_AUTH_MODE=api-key` fallback. See the broker README for the
 provider-specific containment and refresh limits.
 
+Claude actors run with Claude Code's own sandbox inside the broker boundary as
+a second credential guard. That sandbox places empty placeholder files such as
+`package.json`, lockfiles, and `.env*` in the project, and actors sometimes
+reason from them. Write case facts so they do not depend on what the project
+lacks; state the relevant environment facts in a fixture file instead.
+
 ### Request and response
 
 The broker reads one schema-version `2` JSON request from standard input and

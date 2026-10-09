@@ -6,7 +6,7 @@
       "kind": "workflow",
       "task": "Review the proposed project and subfolder agent instructions using repository-facts.md. Recommend the smallest effective AGENTS.md and CLAUDE.md layout. State the language to use if a deterministic helper becomes necessary. Report only. Do not create files, install a tool, or require routine approval for already-authorized fixes.",
       "files": {
-        "repository-facts.md": "This repository supports Codex and Claude Code. Root AGENTS.md is the existing shared source. Root CLAUDE.md duplicates it today. services/payments owns a unique invariant: amounts use integer cents. No other service has that rule. The team proposes copying all root rules into services/payments/AGENTS.md and installing a Node-based instruction validator. No task-specific reusable capability is needed.\n"
+        "repository-facts.md": "This repository supports Codex and Claude Code. Root AGENTS.md is the existing shared source. Root CLAUDE.md duplicates it today. services/payments owns a unique invariant: amounts use integer cents. No other service has that rule. The team proposes copying all root rules into services/payments/AGENTS.md and installing a Node-based instruction validator. No task-specific reusable capability is needed. Deterministic repository tooling is written in Go, and no Node runtime is installed.\n"
       },
       "required_facts": ["@AGENTS.md", "services/payments", "integer cents", "delta||only the payment||only the service||only the local||one scoped line", "Go"],
       "forbidden_facts": ["Node is required", "routine fixes require approval"],
