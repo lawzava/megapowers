@@ -5,6 +5,20 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.35.1 - 2026-10-11
+
+### Fixed
+
+- `independent-review` no longer stops for approval before every review round.
+  A reviewer bound to `independent-review` in the capability registry, or named
+  in user or repository instructions, is standing approval: the agent decides
+  when to review and dispatches without asking. It still asks when no reviewer
+  is configured, the payload exceeds the intended scope, or an instruction
+  requires approval. On the new `review-dispatch` eval, Opus 5.5 chose
+  `ask-approval` in 3 of 3 runs on 0.35.0 and dispatched in 3 of 3 on 0.35.1.
+- The capability-card template, global instruction templates (Claude v4,
+  Codex v3), README, SECURITY.md, and docs state the same rule.
+
 ## 0.35.0 - 2026-10-09
 
 From a review of Claude Code and Codex sessions since 0.34.0, recent
