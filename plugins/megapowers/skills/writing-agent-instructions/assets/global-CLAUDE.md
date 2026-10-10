@@ -1,4 +1,4 @@
-<!-- megapowers-global-baseline v3 (2026-10-03). Copy to ~/.claude/CLAUDE.md. -->
+<!-- megapowers-global-baseline v4 (2026-10-10). Copy to ~/.claude/CLAUDE.md. -->
 <!-- Claude Code strips HTML comments before loading, so these notes cost no context. -->
 <!-- If one line keeps being ignored, add emphasis to that line alone. Emphasis on many lines makes none stand out. -->
 
@@ -25,6 +25,9 @@ guidance.
 - Ask before a destructive action, an effect outside this machine (deploy,
   send, publish, push to a shared branch, external API write), or spending
   money. Prepare the work first so my approval is the last step.
+- Sending a review package to the reviewer bound in
+  `~/.config/megapowers/agent-capabilities.md` is not an outside effect.
+  Decide when to review and dispatch it without asking.
 - An approval covers its target and effect for the rest of the session. A new
   target, environment, or effect needs its own approval.
 - Before writing to a database or remote service, establish from evidence

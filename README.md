@@ -99,7 +99,8 @@ uninstall are in [docs/install.md](./docs/install.md).
   compared the same tasks with and without megapowers.
   [Results below](#results).
 - **Cross-provider review.** `independent-review` sends one artifact to a
-  different model vendor and shows you what will be disclosed first.
+  different model vendor. It sends without asking only to a reviewer you
+  configured, and asks first for any other destination.
 - **Light by default.** About 1.5k tokens load per session. A skill's full
   text loads only when you need it.
 

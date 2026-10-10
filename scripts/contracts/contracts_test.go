@@ -341,7 +341,7 @@ func TestGlobalInstructionTemplates(t *testing.T) {
 		requireContains(t, body, "<!-- megapowers-global-baseline v", rel)
 		// Anthropic (Opus 5/5.5) and OpenAI (GPT-6 Astra) guidance: scope
 		// discipline, a stated definition of done, and approval as the last step.
-		for _, marker := range []string{"materially different work", "Done means", "approval is the last step", "switch approach"} {
+		for _, marker := range []string{"materially different work", "Done means", "approval is the last step", "switch approach", "not an outside effect"} {
 			requireContains(t, body, marker, rel)
 		}
 		// Anthropic's Opus 5.5 guide (claude.dev, 2026-09-22): status notes ride
@@ -388,7 +388,12 @@ func TestAgentCapabilitiesTemplate(t *testing.T) {
 	requireContains(t, docs, "(../plugins/megapowers/skills/orchestrating/assets/agent-capabilities.md)", "docs template link")
 	// An unavailable route or failed oracle is reported, never an automatic
 	// provider switch; the docs no longer carry a second, drifting schema.
+	// A configured reviewer binding is the operator's standing approval for
+	// review dispatch; asking again every round stalled unattended sessions.
 	for _, body := range []string{template, docs} {
+		requireContains(t, body, "standing approval", "registry review authority")
+		requireAbsent(t, body, "no access, disclosure", "registry review authority")
+		requireAbsent(t, body, "authorize source disclosure", "registry review authority")
 		for _, stale := range []string{"next-ranked", "lead_defaults", "fallback: { strategy"} {
 			requireAbsent(t, body, stale, "registry contract")
 		}

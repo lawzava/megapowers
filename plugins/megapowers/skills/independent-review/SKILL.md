@@ -29,8 +29,8 @@ go run "$review_tool" inspect --base <base-revision> --head <head-revision> \
 ```
 
 The inspection prints the intent, binary hash, command, chunk package hashes,
-and one `approval_token`. Approve only that exact package, intent, binary, and
-command:
+and one `approval_token`. Check that disclosure, then pass the token for that
+exact package, intent, binary, and command:
 
 ```bash
 go run "$review_tool" review --file path/to/file --intent "$intent" \
@@ -44,18 +44,18 @@ pass only through `--provider-env NAME`. A preflight probe fails fast on login,
 usage-limit, or stall before any artifact bytes leave the machine. Any file,
 intent, binary, or command change requires a new inspection and token.
 
-## Declare the payload once
+## Dispatch authority
 
-External dispatch sends artifact bytes to another vendor. Before sending, write
-one declaration: the file list or immutable commit range, total bytes, and
-destination provider. Ask approval with that same declaration and dispatch
-that identical scope, so any harness approval reviewer sees one payload. A
-review mandate alone does not authorize disclosure; without it, ask with the
-declaration instead of silently substituting a same-provider review. If the
-artifact changes after approval, declare and approve again. If the harness's
-own reviewer still denies the send, report its reason and stop; do not retry
-with a different payload. Surface a permission prompt or provider stall
-instead of waiting silently.
+External dispatch sends artifact bytes to another vendor. A reviewer bound to
+`independent-review` in the capability registry, or named by a user or
+repository instruction, is pre-approved: decide when to review and dispatch
+without asking, passing each new token yourself. Ask first only when no
+configured reviewer exists, the disclosure exceeds the intended scope or holds
+content an instruction keeps local, or an instruction requires approval. Never
+silently substitute a same-provider review. If the harness's own reviewer
+denies the send, report its reason and stop; do not retry with a different
+payload. Surface a permission prompt or provider stall instead of waiting
+silently.
 
 Receipts are advisory, not an approval gate; `--out`, when given, must name an
 existing absolute directory outside the repository. If the tool fails, report

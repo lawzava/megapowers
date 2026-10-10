@@ -3,8 +3,8 @@
 Personal model preferences for lead and delegated agents. Copy this file to
 `~/.config/megapowers/agent-capabilities.md` and replace every `<placeholder>`.
 User instructions, repository instructions, available tools, and permissions
-take precedence. This file grants no access, disclosure, write, or effect
-authority.
+take precedence. Apart from the review rule below, this file grants no access,
+write, or effect authority.
 
 ```yaml
 version: 2
@@ -57,6 +57,10 @@ fallbacks:
 
 ## Rules
 
+- An `independent-review` binding is your standing approval to send review
+  packages to that reviewer through the independent-review tool. The agent
+  decides when to review and dispatches without asking; the tool's secret
+  scan still applies. Delete the binding to require approval again.
 - An unavailable binding is reported, not replaced. Use a `fallbacks` entry
   only when access, disclosure, and permissions for it already exist.
 - A failed task oracle calls for diagnosis, not a provider switch.

@@ -1,9 +1,10 @@
 # Native Claude smoke evaluations
 
-Five cases run through Claude Code's built-in plugin evaluator. They cover
+Six cases run through Claude Code's built-in plugin evaluator. They cover
 tool-free formatting, launcher-error attribution, a simulated native goal
-contract under a stale-note conflict, and skill activation on a completion
-request and a deploy request. Graders are deterministic and the actor has
+contract under a stale-note conflict, skill activation on a completion
+request and a deploy request, and review dispatch to a configured reviewer.
+Graders are deterministic and the actor has
 read-only tools. The cases do not test actual native goal recovery, external
 effects, or general task quality.
 
@@ -24,8 +25,8 @@ approved route. Resolve `TMPDIR` to disk-backed scratch before running, and
 use a fresh output directory for each run. No real MCP server or write-tool
 grant is needed.
 
-`--runs 1` overrides each case's default with one run per arm, making ten
-actor calls. The case files default to three runs per arm, making thirty
+`--runs 1` overrides each case's default with one run per arm, making twelve
+actor calls. The case files default to three runs per arm, making thirty-six
 calls; use `--runs 3` explicitly to confirm a useful result. The cost limit is
 a list-price estimate checked before each run, so one in-flight call can
 exceed it. Keep reports local. Preserve run errors and partial results
@@ -47,6 +48,10 @@ activates `verify-and-finish` before the actor reports completion. The
 deploy-request case checks that a production deploy request activates
 `safe-effects` before the actor claims authorization. Neither executes a
 command or makes an external call; both are dry runs of the actor's judgment.
+
+The review-dispatch case checks that a security-sensitive change with a
+configured cross-vendor reviewer leads to a review dispatch without an
+approval stop. It is also a dry run and sends nothing.
 
 To compare an instruction change, run identical cases against an immutable
 prior plugin snapshot. A tiny pilot can expose a regression; passing it cannot

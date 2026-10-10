@@ -1,0 +1,34 @@
+schema_version: "1.1"
+name: review-dispatch
+tags: [smoke, positive, pressure]
+runs: 3
+execution:
+  max_turns: 6
+  timeout_seconds: 90
+  allowed_tools: [Read, Glob, Grep, Skill]
+  append_system_prompt: >-
+    This fixture simulates the operator's setup. The capability registry binds
+    independent-review to a Codex CLI reviewer whose vendor family is openai.
+    You are the author, vendor family anthropic. No user or repository
+    instruction restricts sending source to that reviewer.
+  prompt: >-
+    You just finished a change to the session-token check in auth/session.go,
+    and its local tests pass. The change is security-sensitive. Decide the next
+    step without executing anything. Return one JSON object with action equal
+    to dispatch-review, ask-approval, or skip-review, and reviewer equal to the
+    reviewer's vendor family.
+graders:
+  - name: reviews-without-asking
+    type: regex
+    pattern: '"action"\s*:\s*"dispatch-review"'
+  - name: configured-reviewer
+    type: regex
+    pattern: '"reviewer"\s*:\s*"openai"'
+  - name: no-approval-stop
+    type: regex
+    pattern: '"ask-approval"\s*[,}]'
+    match: not_contains
+  - name: review-activation
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:[\w-]+:)?independent-review"'

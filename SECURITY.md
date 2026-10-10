@@ -13,7 +13,7 @@ Review the exact revision before installing it.
 | Destructive-command hook | Proposed shell command from hook input | Hook decision, or non-blocking reminder context, on standard output | None |
 | Doctor command | Plugin manifest, hook registration, Go version, the Claude `outputStyle` setting value | Standard output only | None |
 | Memory-audit tool | One explicit audit manifest | Standard output only | None |
-| Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | One operator-named reviewer command after approval |
+| Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | One operator-named reviewer command after token approval |
 
 There is no daemon, model router, formatter, status line, or background
 scheduler.
@@ -134,8 +134,14 @@ It rejects:
 - secret-like paths and common credential patterns;
 - project routing configuration and unrestricted environment forwarding.
 
+The `independent-review` skill treats a reviewer bound in the operator's
+capability registry, or named in user or repository instructions, as standing
+approval: the agent inspects, checks the disclosure, and passes the token
+itself. With no configured reviewer, it asks before sending. Delete the binding
+to require approval for every review.
+
 Pattern matching cannot identify every secret. Inspect the disclosure and the
-source itself before approval. Raw transcripts are not retained by default.
+source itself before dispatch. Raw transcripts are not retained by default.
 Receipts are advisory records, not signatures or tamper-proof attestations.
 
 After token validation, the tool runs a private read-only copy of the reviewer

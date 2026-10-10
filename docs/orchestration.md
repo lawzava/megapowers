@@ -65,9 +65,11 @@ readable `expires_at`.
 
 `manual` describes something the operator can run; `approved-external` still
 requires the explicit disclosure workflow. Neither is a native agent. The
-registry is advisory. It cannot grant permissions, authorize source
-disclosure, or approve writes and side effects. Do not put credentials,
-account identifiers, command lines, or private source paths in it.
+registry is advisory, with one exception: an `independent-review` binding is
+the operator's standing approval to send review packages to that reviewer
+through the independent-review tool, so the agent reviews without asking. It
+cannot grant permissions or approve writes and side effects. Do not put
+credentials, account identifiers, command lines, or private source paths in it.
 
 ## Delegate safely
 

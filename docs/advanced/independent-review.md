@@ -16,7 +16,10 @@ handling; those live in the operator's registry and instructions.
 - Go 1.25 or newer available for `go run` and rooted receipt writes.
 - A reviewer CLI installed and authenticated, from a vendor family different
   from the artifact author's.
-- Human approval for the disclosed package.
+- Approval for the disclosed package. A reviewer bound to `independent-review`
+  in the capability registry, or named in user or repository instructions, is
+  standing approval, so the agent dispatches without asking. Any other
+  destination needs human approval.
 
 Resolve the tool from the installed skill, not from the project being reviewed:
 
