@@ -5,7 +5,7 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## Unreleased
+## 0.36.0 - 2026-10-11
 
 From a review of sessions since 2026-10-08, Lauren Tan's (pstack) talk with
 Matt Pocock on 2026-10-02, and an audit of the hooks, skills, and evals.
