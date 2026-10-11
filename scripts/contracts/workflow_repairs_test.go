@@ -69,7 +69,7 @@ var requiredSkillFacts = map[string][]string{
 		"doctor",
 		"WARN",
 		"references/fixes.md",
-		"skills/<name>",
+		"skill loads",
 	},
 	"orchestrating": {
 		"native agents are the default",

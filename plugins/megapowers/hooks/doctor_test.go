@@ -51,6 +51,7 @@ func doctorOutput(t *testing.T, env map[string]string) string {
 func TestDoctorReportsHealthyClaudeSetup(t *testing.T) {
 	home := t.TempDir()
 	writeClaudeSettings(t, home, `{"outputStyle":"megapowers:Megapowers"}`)
+	writeFile(t, filepath.Join(home, ".cache", "megapowers-hooks", "hook-ran-claude-session-start"), "")
 	env := map[string]string{
 		"HOME":                      home,
 		"MEGAPOWERS_HARNESS":        "claude",
@@ -249,5 +250,93 @@ func TestDoctorWarnsOnHookEventsWithoutCommands(t *testing.T) {
 	}
 	if strings.Contains(report, "does not register SubagentStart") {
 		t.Errorf("a registered command must satisfy the check:\n%s", report)
+	}
+}
+
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Doctor reads only the declared hooks.json, so it cannot see a harness that
+// never ran the hooks (an untrusted Codex install). A per-harness marker that
+// each hook run touches makes that visible.
+func TestDoctorReportsWhetherHooksRanPerHarness(t *testing.T) {
+	home := t.TempDir()
+	cache := filepath.Join(home, ".cache", "megapowers-hooks")
+	// The launcher creates the cache before any hook runs.
+	if err := os.MkdirAll(cache, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hookEnv := map[string]string{"HOME": home, "MEGAPOWERS_HOOK_CACHE_DIR": cache, "PLUGIN_ROOT": filepath.Dir(packageDir(t)), "MEGAPOWERS_PLUGIN_ROOT": filepath.Dir(packageDir(t))}
+	var stdout, stderr bytes.Buffer
+	if rc := runHook([]string{"session-start"}, func(key string) string { return hookEnv[key] }, strings.NewReader(`{}`), &stdout, &stderr); rc != 0 {
+		t.Fatalf("session-start rc=%d stderr=%q", rc, stderr.String())
+	}
+	base := map[string]string{"HOME": home, "MEGAPOWERS_PLUGIN_ROOT": filepath.Dir(packageDir(t)), "MEGAPOWERS_HOOK_CACHE_DIR": cache}
+	codex := map[string]string{"MEGAPOWERS_HARNESS": "codex"}
+	for key, value := range base {
+		codex[key] = value
+	}
+	if report := doctorOutput(t, codex); !strings.Contains(report, "hooks last ran (codex): session-start") {
+		t.Errorf("codex report lacks the session-start run:\n%s", report)
+	}
+	claude := map[string]string{"MEGAPOWERS_HARNESS": "claude"}
+	for key, value := range base {
+		claude[key] = value
+	}
+	if report := doctorOutput(t, claude); !strings.Contains(report, "WARN: no megapowers hook has run on claude") {
+		t.Errorf("claude report must warn that no hook ran:\n%s", report)
+	}
+}
+
+func TestDoctorCountsSkillLoadsInTheWorkspace(t *testing.T) {
+	home := t.TempDir()
+	writeClaudeSettings(t, home, `{"outputStyle":"megapowers:Megapowers"}`)
+	writeFile(t, filepath.Join(home, ".claude", "projects", "-work-app", "s1.jsonl"),
+		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"megapowers:verify-and-finish"}}]}}`+"\n")
+	writeFile(t, filepath.Join(home, ".claude", "projects", "-work-other", "s2.jsonl"),
+		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"megapowers:grill-me"}}]}}`+"\n")
+	writeFile(t, filepath.Join(home, ".codex", "sessions", "2026", "10", "11", "rollout-a.jsonl"),
+		`{"type":"session_meta","payload":{"cwd":"/work/app"}}`+"\n"+
+			`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:safe-effects</name>\n<path>/p/skills/safe-effects/SKILL.md</path>"}]}}`+"\n")
+	writeFile(t, filepath.Join(home, ".codex", "sessions", "2026", "10", "11", "rollout-b.jsonl"),
+		`{"type":"session_meta","payload":{"cwd":"/work/other"}}`+"\n"+
+			`{"type":"response_item","payload":{"type":"function_call","arguments":"cat /p/skills/grill-me/SKILL.md"}}`+"\n")
+	env := map[string]string{
+		"HOME":                      home,
+		"PWD":                       "/work/app",
+		"MEGAPOWERS_PLUGIN_ROOT":    filepath.Dir(packageDir(t)),
+		"MEGAPOWERS_HOOK_CACHE_DIR": filepath.Join(home, ".cache", "megapowers-hooks"),
+	}
+	report := doctorOutput(t, env)
+	want := "skill loads, last 7 days in /work/app: 2 transcript(s); safe-effects 1, verify-and-finish 1"
+	if !strings.Contains(report, want) {
+		t.Errorf("doctor report lacks %q:\n%s", want, report)
+	}
+	if strings.Contains(report, "grill-me") {
+		t.Errorf("loads from another workspace leaked into the count:\n%s", report)
+	}
+}
+
+func TestDoctorComparesTheMarketplaceCopy(t *testing.T) {
+	home := t.TempDir()
+	writeClaudeSettings(t, home, `{"outputStyle":"megapowers:Megapowers"}`)
+	writeFile(t, filepath.Join(home, ".claude", "plugins", "marketplaces", "megapowers", "plugins", "megapowers", ".claude-plugin", "plugin.json"), `{"version":"99.0.0"}`)
+	env := map[string]string{
+		"HOME":                      home,
+		"MEGAPOWERS_HARNESS":        "claude",
+		"MEGAPOWERS_PLUGIN_ROOT":    filepath.Dir(packageDir(t)),
+		"MEGAPOWERS_HOOK_CACHE_DIR": filepath.Join(home, ".cache", "megapowers-hooks"),
+	}
+	report := doctorOutput(t, env)
+	want := "WARN: claude marketplace copy is 99.0.0 but " + pluginVersion(t) + " is installed; use upgrading-megapowers"
+	if !strings.Contains(report, want) {
+		t.Errorf("doctor report lacks %q:\n%s", want, report)
 	}
 }

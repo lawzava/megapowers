@@ -16,20 +16,18 @@ this skill's directory:
 ```
 
 It prints the plugin version and root, the detected harness, the Go toolchain
-against the cached hook runner, the output-style setting, and the registered
-hook events. Problems start with `WARN`. Quote only those lines and give one
+against the cached hook runner, the output-style setting, the registered hook
+events, whether the hooks ran, the local marketplace copy, and recent skill
+loads in this workspace. Problems start with `WARN`. Quote only those lines and give one
 fix per line from [fixes by check](references/fixes.md). If the command itself
 fails, report its exit status and raw error; that failure is the diagnosis.
 
 ## Did a skill fire?
 
 A skill fired only if the session loaded its body; a catalog entry or a
-prose mention is not a load. Search the harness session store without
-printing transcripts and count only load records: a skill tool call naming
-the skill, an injected skill body, or a tool call that reads
-`skills/<name>/SKILL.md`.
-The [session-store entry](references/fixes.md) gives the exact search per
-harness. Report counts and session identifiers, not contents.
+prose mention is not a load. Read the doctor's `skill loads` line, which
+counts load records only; [fixes](references/fixes.md) explains it. Report
+counts and session identifiers, not contents.
 
 If a matching task never loaded the skill, the defect is trigger wording or
 the startup reminder, not the installation; use `writing-agent-instructions`

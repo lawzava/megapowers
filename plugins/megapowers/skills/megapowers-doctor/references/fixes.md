@@ -23,12 +23,18 @@
   out. The orchestrating skill ships a template in `assets/`.
 - Version or root mismatch: the installed cache differs from the marketplace
   head. Use `upgrading-megapowers`.
-- Session stores: Claude Code keeps transcripts under
-  `~/.claude/projects/<project>/`; Codex keeps rollouts under
-  `~/.codex/sessions/<year>/<month>/<day>/`. Count load records only, because
-  every Codex session lists each skill path in its catalog:
-  - Claude Code: `find ~/.claude/projects -mtime -7 -name '*.jsonl' -exec grep -l '"skill":"megapowers:<name>"' {} + | wc -l`
-  - Codex: `find ~/.codex/sessions -mtime -7 -name '*.jsonl' -exec grep -lE '"(function_call|custom_tool_call)".*skills/<name>/SKILL\.md' {} + | wc -l`
+- Skill loads: the `skill loads` line counts this workspace's sessions from
+  the last seven days that loaded each skill, with the same detection the
+  gates use, on both harnesses. A skill missing from the line did not load in
+  any of them; check its trigger with the user's own wording before changing
+  its text. For other workspaces or periods, use the session miner in
+  `writing-agent-instructions`.
+- No hook run: `no megapowers hook has run on <harness>` means the harness
+  never executed the hooks in this cache. On Codex, review and trust the
+  plugin hooks, then start a new session. On Claude Code, check that the
+  plugin is enabled.
+- Marketplace copy differs: the harness refreshed its marketplace but not the
+  install. Use `upgrading-megapowers`.
 - Completion or effect gate: a `PreToolUse` denial that names
   `verify-and-finish` or `safe-effects` is the once-per-session gate, not a
   fault. Load the named skill and run the command again; the retry passes. A

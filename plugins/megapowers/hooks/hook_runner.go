@@ -72,6 +72,7 @@ func runSessionStart(getenv getenvFunc, input io.Reader, output, errors io.Write
 		fmt.Fprintln(errors, "megapowers session start: cannot read hook input")
 		return 1
 	}
+	markHookRun(getenv, "session-start")
 	// Workflow guidance remains active when the operator disables prose styling.
 	if _, err := io.WriteString(output, skillLoadingReminder); err != nil {
 		fmt.Fprintln(errors, "megapowers session start: cannot emit workflow guidance")
@@ -100,6 +101,7 @@ func runSubagentStart(getenv getenvFunc, input io.Reader, output, errors io.Writ
 }
 
 func runDenyDestructive(getenv getenvFunc, input io.Reader, output, errors io.Writer) int {
+	markHookRun(getenv, "pre-tool-use")
 	payload, err := readHookInput(input)
 	if err != nil {
 		fmt.Fprintln(errors, "megapowers destructive guard: cannot evaluate command input")

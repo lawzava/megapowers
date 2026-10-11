@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -66,6 +68,9 @@ func runDoctor(getenv getenvFunc, output, errors io.Writer) int {
 		doctorCodexOutputStyle(report, getenv)
 	}
 	doctorHooks(report, root)
+	doctorHookRuns(report, getenv, harness)
+	doctorMarketplace(report, getenv, harness, root)
+	doctorSkillLoads(report, getenv, root)
 	doctorAgentRegistry(report, getenv)
 
 	if _, err := io.WriteString(output, strings.Join(report.lines, "\n")+"\n"); err != nil {
@@ -345,5 +350,203 @@ func doctorHooks(report *doctorReport, root string) {
 		if !registered {
 			report.warn("hooks.json does not register %s", required)
 		}
+	}
+}
+
+// markHookRun touches one marker per harness and hook in the runner cache, so
+// doctor can tell a harness that never ran the hooks, such as a Codex install
+// whose hooks were never trusted. It never creates the cache directory.
+func markHookRun(getenv getenvFunc, hook string) {
+	dir := gateMarkerRoot(getenv)
+	harness, _ := detectHarness(getenv)
+	if dir == "" || harness == "unknown" {
+		return
+	}
+	path := filepath.Join(dir, "hook-ran-"+harness+"-"+hook)
+	now := time.Now()
+	if os.Chtimes(path, now, now) == nil {
+		return
+	}
+	if file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+		file.Close()
+	}
+}
+
+func doctorHookRuns(report *doctorReport, getenv getenvFunc, harness string) {
+	dir := gateMarkerRoot(getenv)
+	if dir == "" {
+		return
+	}
+	harnesses := []string{harness}
+	if harness == "unknown" {
+		harnesses = []string{"claude", "codex"}
+	}
+	for _, name := range harnesses {
+		markers, _ := filepath.Glob(filepath.Join(dir, "hook-ran-"+name+"-*"))
+		if len(markers) == 0 {
+			fix := "check that the plugin is enabled, then start a new session"
+			if name == "codex" {
+				fix = "review and trust the plugin hooks, then start a new session"
+			}
+			report.warn("no megapowers hook has run on %s; %s", name, fix)
+			continue
+		}
+		sort.Strings(markers)
+		var runs []string
+		for _, marker := range markers {
+			info, err := os.Stat(marker)
+			if err != nil {
+				continue
+			}
+			hook := strings.TrimPrefix(filepath.Base(marker), "hook-ran-"+name+"-")
+			runs = append(runs, fmt.Sprintf("%s %s ago", hook, time.Since(info.ModTime()).Round(time.Second)))
+		}
+		report.add("hooks last ran (%s): %s", name, strings.Join(runs, ", "))
+	}
+}
+
+// doctorSkillLoads counts, per skill, the sessions in this workspace from the
+// last seven days whose transcript records the skill loading, using the same
+// detection as the gates. It reads session stores only and prints counts.
+func doctorSkillLoads(report *doctorReport, getenv getenvFunc, root string) {
+	workspace := getenv("PWD")
+	if workspace == "" {
+		workspace, _ = os.Getwd()
+	}
+	var catalog struct {
+		Skills []struct {
+			Name string `json:"name"`
+		} `json:"skills"`
+	}
+	data, err := os.ReadFile(filepath.Join(root, "skills", "catalog.json"))
+	if err != nil || json.Unmarshal(data, &catalog) != nil || workspace == "" {
+		return
+	}
+	files := sessionFiles(getenv, workspace, time.Now().Add(-7*24*time.Hour))
+	if len(files) == 0 {
+		report.add("skill loads, last 7 days in %s: no sessions found", workspace)
+		return
+	}
+	var loads []string
+	for _, skill := range catalog.Skills {
+		count := 0
+		for _, file := range files {
+			if loaded, _ := skillLoaded(file, skill.Name); loaded {
+				count++
+			}
+		}
+		if count > 0 {
+			loads = append(loads, fmt.Sprintf("%s %d", skill.Name, count))
+		}
+	}
+	sort.Strings(loads)
+	summary := "none"
+	if len(loads) > 0 {
+		summary = strings.Join(loads, ", ")
+	}
+	report.add("skill loads, last 7 days in %s: %d transcript(s); %s", workspace, len(files), summary)
+}
+
+// maxDoctorSessions bounds the transcripts doctor reads in one report.
+const maxDoctorSessions = 500
+
+var claudeProjectSlug = regexp.MustCompile(`[^A-Za-z0-9]`)
+
+// sessionFiles lists Claude Code transcripts in the workspace's project
+// directory and Codex rollouts whose session_meta names the workspace,
+// modified after cutoff.
+func sessionFiles(getenv getenvFunc, workspace string, cutoff time.Time) []string {
+	home := getenv("HOME")
+	claudeDir := getenv("CLAUDE_CONFIG_DIR")
+	if claudeDir == "" && home != "" {
+		claudeDir = filepath.Join(home, ".claude")
+	}
+	codexDir := getenv("CODEX_HOME")
+	if codexDir == "" && home != "" {
+		codexDir = filepath.Join(home, ".codex")
+	}
+	recent := func(path string) bool {
+		info, err := os.Stat(path)
+		return err == nil && info.Mode().IsRegular() && info.ModTime().After(cutoff)
+	}
+	var files []string
+	if claudeDir != "" {
+		project := filepath.Join(claudeDir, "projects", claudeProjectSlug.ReplaceAllString(workspace, "-"))
+		for _, pattern := range []string{"*.jsonl", "*/subagents/*.jsonl"} {
+			matches, _ := filepath.Glob(filepath.Join(project, pattern))
+			for _, match := range matches {
+				if recent(match) && len(files) < maxDoctorSessions {
+					files = append(files, match)
+				}
+			}
+		}
+	}
+	if codexDir == "" {
+		return files
+	}
+	quoted, _ := json.Marshal(workspace)
+	cwdField := []byte(`"cwd":` + string(quoted))
+	filepath.WalkDir(filepath.Join(codexDir, "sessions"), func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || len(files) >= maxDoctorSessions {
+			return nil
+		}
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "rollout-") || !strings.HasSuffix(entry.Name(), ".jsonl") || !recent(path) {
+			return nil
+		}
+		if firstLineContains(path, cwdField) {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files
+}
+
+func firstLineContains(path string, needle []byte) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	line, _ := bufio.NewReaderSize(file, 64<<10).ReadBytes('\n')
+	return bytes.Contains(line, needle)
+}
+
+// doctorMarketplace compares the installed version with the harness's local
+// marketplace copy, which a refresh updates before the install does.
+func doctorMarketplace(report *doctorReport, getenv getenvFunc, harness, root string) {
+	installed, err := manifestVersion(filepath.Join(root, ".claude-plugin", "plugin.json"))
+	if err != nil {
+		return
+	}
+	home := getenv("HOME")
+	copies := map[string]string{}
+	if harness != "codex" {
+		if dir := getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+			copies["claude"] = filepath.Join(dir, "plugins", "marketplaces", "megapowers", "plugins", "megapowers", ".claude-plugin", "plugin.json")
+		} else if home != "" {
+			copies["claude"] = filepath.Join(home, ".claude", "plugins", "marketplaces", "megapowers", "plugins", "megapowers", ".claude-plugin", "plugin.json")
+		}
+	}
+	if harness != "claude" {
+		if dir := getenv("CODEX_HOME"); dir != "" {
+			copies["codex"] = filepath.Join(dir, ".tmp", "marketplaces", "megapowers", "plugins", "megapowers", ".codex-plugin", "plugin.json")
+		} else if home != "" {
+			copies["codex"] = filepath.Join(home, ".codex", ".tmp", "marketplaces", "megapowers", "plugins", "megapowers", ".codex-plugin", "plugin.json")
+		}
+	}
+	for _, name := range []string{"claude", "codex"} {
+		path, ok := copies[name]
+		if !ok {
+			continue
+		}
+		version, err := manifestVersion(path)
+		if err != nil {
+			continue
+		}
+		if version != installed {
+			report.warn("%s marketplace copy is %s but %s is installed; use upgrading-megapowers", name, version, installed)
+			continue
+		}
+		report.add("%s marketplace copy: %s", name, version)
 	}
 }
