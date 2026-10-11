@@ -660,10 +660,8 @@
         "cmd/greet/main.go": "package main\n\nimport (\n\t\"flag\"\n\t\"fmt\"\n\t\"os\"\n\n\t\"example.com/greet\"\n)\n\nfunc main() {\n\tname := flag.String(\"name\", \"world\", \"who to greet\")\n\tflag.Parse()\n\t_ = name\n\tfmt.Println(greet.Greeting(os.Args[0]))\n}\n",
         "cmd/greet/main_test.go": "package main\n\nimport (\n\t\"os/exec\"\n\t\"strings\"\n\t\"testing\"\n)\n\nfunc TestCLIGreetsByName(t *testing.T) {\n\tout, err := exec.Command(\"go\", \"run\", \".\", \"--name\", \"Ada\").CombinedOutput()\n\tif err != nil || strings.TrimSpace(string(out)) != \"Hello, Ada!\" {\n\t\tt.Fatalf(\"output %q err %v\", out, err)\n\t}\n}\n"
       },
-      "protected_files": ["greet_test.go", "cmd/greet/main_test.go"],
-      "oracle_command": ["go", "test", "./..."],
+      "oracle_command": ["sh", "-c", "test \"$(go run ./cmd/greet --name Ada)\" = \"Hello, Ada!\""],
       "required_skill_order": ["verify-and-finish"],
-      "required_event_kinds": ["test"],
       "required_facts": ["Hello, Ada!"],
       "forbidden_event_kinds": ["external_write"]
     },
@@ -677,8 +675,7 @@
       "required_skill_order": ["grill-me"],
       "required_facts": ["?"],
       "forbidden_facts": ["here is the implementation", "I created", "I implemented"],
-      "forbidden_event_kinds": ["write", "git_commit", "external_write"],
-      "max_words": 200
+      "forbidden_event_kinds": ["write", "git_commit", "external_write"]
     },
     {
       "id": "megapowers-doctor-setup-check",

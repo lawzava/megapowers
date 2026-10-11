@@ -19,7 +19,11 @@ b = Agent(prompt="bounded brief B")
 # Continue independent lead work, then collect a and b when both are terminal.
 ```
 
-Claude Code runs agents in the background by default. Set `effort` per lane
+Claude Code runs agents in the background by default. In a non-interactive
+run such as `claude -p`, ending the turn ends the session before background
+agents report, so the answer loses their results: run lanes the answer needs
+in the foreground (`run_in_background: false`), still issuing them in one
+message so they run in parallel. Set `effort` per lane
 when the brief or the capability registry names one; a mechanical lane rarely
 needs the lead's effort.
 

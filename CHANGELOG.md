@@ -53,6 +53,11 @@ Matt Pocock on 2026-10-02, and an audit of the hooks, skills, and evals.
   standing approval.
 - `systematic-debugging` lists and groups many failures by likely shared
   cause before fixing the first.
+- The orchestration dispatch reference: in a non-interactive run such as
+  `claude -p`, ending the turn ends the session before background agents
+  report, so lanes the answer needs run in the foreground, issued together.
+  On the frozen holdout, Opus 5.5 ended its turn after dispatching three
+  background lanes in 3 of 3 plugin runs and 2 of 3 control runs.
 - `autonomous-run` uses the run state tool, looks in connected MCP tools and
   environment key names before asking, and opens a returning user's report
   with the number of decisions waiting on them.
@@ -113,10 +118,16 @@ Matt Pocock on 2026-10-02, and an audit of the hooks, skills, and evals.
   exit code and penalized the commit gate's declined first attempt.
   `verify-finish-cited-gaps` requires the named check to pass instead of the
   plugin's `VERIFIED` stamp.
-- New A/B cases `verify-finish-drive-cli` (unit tests pass but the CLI is
-  wrong), `grill-me-plan-interview`, `megapowers-doctor-setup-check`, and
-  `independent-review-configured-dispatch` (the review-dispatch check on both
-  harnesses); `coverage.tsv` declares the `mcp-setup`, `grill-me`,
+- New A/B cases:
+  - `verify-finish-drive-cli`: unit tests pass but the CLI is wrong; the
+    oracle runs the CLI, so an agent may add tests.
+  - `grill-me-plan-interview`: no word cap, because the skill's rounds may
+    exceed one.
+  - `megapowers-doctor-setup-check`.
+  - `independent-review-configured-dispatch`: the review-dispatch check on
+    both harnesses.
+
+  `coverage.tsv` now declares the `mcp-setup`, `grill-me`,
   `megapowers-doctor`, and `recall` coverage it lacked.
 
 ## 0.35.1 - 2026-10-11
