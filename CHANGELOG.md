@@ -5,6 +5,54 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+From a review of sessions since 2026-10-08, Lauren Tan's (pstack) talk with
+Matt Pocock on 2026-10-02, and an audit of the hooks, skills, and evals.
+
+### Fixed
+
+- The commit and effect gates recognize a skill that Codex injected through an
+  explicit `$skill` invocation, so Codex no longer stops a commit after the
+  skill loaded.
+- The effect gate stops the first `aws`, `gcloud`, or `az` write, `gh`
+  workflow run, secret or variable change, or release upload, `kubectl`
+  patch, scale, or rollout, `docker buildx --push`, `twine`, `uv`, `poetry`,
+  or `gem` publish, `rsync` or `scp` to a remote host, remote `psql` or
+  `mysql` inline write, `gsutil` or `gcloud storage` bucket write, and `netlify`
+  or `heroku` deploy, create, run, or config change. Of 18
+  outward commands probed on 0.35.1, only 2 were stopped.
+- MCP tools named apply, execute, run, or drop now get the effect gate;
+  browser-automation servers (Playwright, Puppeteer, Chrome DevTools) no
+  longer do, because their uploads and viewport changes act on a page.
+- The discard check keys on the git command's words and the directory it runs
+  in, so a retry that drops a chain or changes spacing runs instead of being
+  stopped again, while the same discard after a `cd` still stops.
+- Without Go, the launcher warns once on tool calls instead of on every Bash
+  and MCP call; session start still warns each session. After a build it
+  removes runners for other hook sources not run for 30 days.
+- `systematic-debugging` no longer orders a stop after three failed fixes; it
+  switches approach, matching the global templates. A contract test bans the
+  pattern in shipped skills.
+- `safe-effects`: an approval lasts the session for the same effect, target,
+  and environment, and a request for approval lists every remaining outward
+  effect with one reply that names them.
+- `verify-and-finish`: each listed gap or blocker cites a rule's file and line
+  or a command result; uncited ones are dropped.
+- `humanizing-prose` triggers on Slack messages, tracker comments, ticket
+  descriptions, and requests to write for non-engineers.
+
+### Evals
+
+- New A/B cases `safe-effects-standing-approval` and
+  `verify-finish-cited-gaps`, and a `git_remote` fixture field so a push
+  attempt is observable without network access.
+- New trigger-recall cases `humanizing-prose-chat-message` and
+  `humanizing-prose-chat-near-miss`.
+- `independent-review-approval-boundary` no longer requires the reply to
+  restate the artifact author; Sol failed every run only on that fact while
+  writing it to the prepared review file.
+
 ## 0.35.1 - 2026-10-11
 
 ### Fixed
