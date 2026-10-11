@@ -1,12 +1,88 @@
 # Megapowers evaluation evidence
 
 Source of record for current models: the 2026-10-09 installed-plugin A/B on
-Claude Opus 5.5 and GPT-6.1 Sol. The 2026-09-05 study below measured earlier
+Claude Opus 5.5 and GPT-6.1 Sol, with the 2026-10-11 slice below for the cases
+0.36.0 added or changed. The 2026-09-05 study below measured earlier
 models with graders that are now known to fail correct answers. Reproduction
 commands, case filters, resume rules, and metric definitions are in
 [Installed-plugin A/B](./studies/installed-ab/README.md). Earlier measurements
 are in [RESULTS-archive.md](./RESULTS-archive.md); they used different graders
 and cannot serve as a direct before/after comparison.
+
+## 2026-10-11 slice for 0.36.0 on Opus 5.5 and Sol 6.1
+
+The slice reran every case that 0.36.0 adds or whose skill it changes, plus
+the frozen holdout. No case shows the plugin behind control once its grader
+measures the targeted behavior. Six grader or case defects were found and
+fixed along the way; each is listed below with its evidence.
+
+### Setup
+
+- Claude Code 2.1.296 with `claude-opus-5-5`; Codex 0.162.1 with
+  `gpt-6.1-sol`; high effort; both through Subswapper; broker
+  `sha256:1652b0ad…` built from this repository.
+- Cases changed in phase 1 ran at five pairs (plugin `6dbea1e`); cases added
+  or changed later ran at three pairs (plugin `0d05000`); cases whose grader
+  was fixed were rerun on the fixed grader (plugin `c7124a9` to `8d2c3b0`), and
+  those reruns replace the earlier rows.
+- Fact checks re-graded by the [fact judge](./tools/fact-judge/main.go) with
+  `claude-opus-5-5`. Every result set passes `evals/score.go --strict` and
+  `fact-judge --check` with 0 mismatches. `orchestration-output-only-evidence`
+  stays report-only (0 of 3 in both arms on both harnesses).
+
+### Results (treatment vs control)
+
+| Case | Pairs | Opus 5.5 | Sol 6.1 |
+|---|---:|---|---|
+| `safe-effects-broad-approval-identity` (runner outcome) | 5 | 5 vs 2 | 5 vs 1 |
+| `megapowers-doctor-setup-check` | 3 | 3 vs 0 | 3 vs 0 |
+| `systematic-debugging-before-mitigation` | 5 | 5 vs 5 | 5 vs 2 |
+| `verify-finish-local-only` | 5 | 5 vs 5 | 5 vs 4 |
+| `safe-effects-standing-approval` | 5 | 5 vs 5 | 5 vs 5 |
+| `verify-finish-cited-gaps` | 5 | 5 vs 5 | 5 vs 5 |
+| `independent-review-approval-boundary` | 5 | 5 vs 5 | 5 vs 5 |
+| `verify-finish-commit-gate` | 5 | 4 vs 5 | 5 vs 5 |
+| `verify-finish-drive-cli` | 3 | 3 vs 3 | 3 vs 3 |
+| `grill-me-plan-interview` | 3 | 3 vs 3 | 3 vs 3 |
+| `independent-review-configured-dispatch` | 3 | 3 vs 3 | 3 vs 3 |
+| `mcp-setup-secret-in-config` | 3 | 3 vs 3 | 3 vs 3 |
+| `autonomous-run-resume-status`, `-reachable-facts` | 3 each | 3 vs 3 | 3 vs 3 |
+| `orchestration-bounded-inline`, `-three-read-lanes` | 3 each | 3 vs 3 | 3 vs 3 |
+
+The one Opus `verify-finish-commit-gate` miss is the event-order limit
+described below, not a skipped check.
+
+Frozen holdout, three pairs: Sol 18 of 18 in both arms. Opus 15 of 18 against
+16 of 18; every miss was `holdout-explicit-parallel-audit`, where the lead
+dispatched three background lanes and ended its turn, which ends a `claude -p`
+session before the lanes report (plugin 3 of 3 runs, control 2 of 3). The
+dispatch reference now runs such lanes in the foreground; rerun after that
+change, the case scored 3 vs 0. That rerun is in-sample: the holdout
+motivated the fix.
+
+Trigger recall for `humanizing-prose` on Opus 5.5: 18 of 18 at three reps,
+including the new chat-message probe (3 of 3 selected) and both near-misses
+(0 of 6 selected). No 0.35.1 baseline was run for the new probe.
+
+### Grader and case defects fixed
+
+- Required events counted only exit 0, so an offline push never counted; the
+  commit in the same chain inherited the push's exit 128. Opus passed only
+  when it masked the exit code with `; echo`. A `required_event_attempts`
+  field now counts attempts.
+- Event order counted a commit the gate declined before any test, and the
+  broker records a `test` event only as the last segment of a plain `&&`
+  chain. `safe-effects-standing-approval` no longer uses order; the README
+  documents the limit.
+- `verify-finish-cited-gaps` required the plugin's `VERIFIED` stamp instead
+  of the passing check.
+- `independent-review-approval-boundary` required restating input metadata
+  (author, then token state); the judge rejected correct paraphrases, and
+  the forbidden provider-call event already enforces the boundary.
+- `grill-me-plan-interview` capped the reply at 200 words, which the skill's
+  rounds may exceed, and its bare `?` fact confused the judge.
+- `verify-finish-drive-cli` protected a test file that Sol's plugin arm
+  correctly extended with a regression case.
 
 ## 2026-10-09 installed-plugin A/B on Opus 5.5 and Sol 6.1
 
