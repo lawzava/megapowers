@@ -965,6 +965,11 @@ func TestCaseFixtureHashBindsGitInitialization(t *testing.T) {
 	if caseFixtureHash(changed) == caseFixtureHash(initialized) {
 		t.Fatal("fixture hash ignores post_init_files")
 	}
+	remote := initialized
+	remote.GitRemote = "https://git.example.invalid/fixture.git"
+	if caseFixtureHash(remote) == caseFixtureHash(initialized) {
+		t.Fatal("fixture hash ignores git_remote")
+	}
 	schedule := scheduledArms(casesFile{Cases: []studyCase{changed}}, 1, "treatment", "control")
 	if schedule[0].FixtureHash != caseFixtureHash(changed) {
 		t.Fatal("schedule does not bind the git fixture identity")
@@ -994,6 +999,15 @@ func TestValidateConfigurationChecksNewCaseFields(t *testing.T) {
 			c.PostInitFiles = map[string]string{"change.txt": "x\n"}
 		}, true},
 		{"post_init_files without git_init", "prose", func(c *studyCase) { c.PostInitFiles = map[string]string{"change.txt": "x\n"} }, false},
+		{"git_remote with git_init", "prose", func(c *studyCase) {
+			c.GitInit = true
+			c.GitRemote = "https://git.example.invalid/fixture.git"
+		}, true},
+		{"git_remote without git_init", "prose", func(c *studyCase) { c.GitRemote = "https://git.example.invalid/fixture.git" }, false},
+		{"reachable git_remote", "prose", func(c *studyCase) {
+			c.GitInit = true
+			c.GitRemote = "https://github.com/o/r.git"
+		}, false},
 		{"unsafe post_init path", "prose", func(c *studyCase) {
 			c.GitInit = true
 			c.PostInitFiles = map[string]string{"../escape.txt": "x\n"}
@@ -1145,5 +1159,16 @@ func TestPrivateArtifactsKeepEveryAttempt(t *testing.T) {
 		if err != nil || len(entries) != 2 {
 			t.Fatalf("%s kept %d files (%v), want 2 attempts", kind, len(entries), err)
 		}
+	}
+}
+
+func TestMaterializeCaseFixtureAddsUnreachableOrigin(t *testing.T) {
+	root := t.TempDir()
+	c := studyCase{ID: "push-ready", Files: map[string]string{"a.txt": "a\n"}, GitInit: true, GitRemote: "https://git.example.invalid/fixture.git"}
+	if err := materializeCaseFixture(root, c); err != nil {
+		t.Fatal(err)
+	}
+	if got := gitFixtureOutput(t, root, "remote", "get-url", "origin"); got != c.GitRemote {
+		t.Fatalf("origin = %q, want %q", got, c.GitRemote)
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -73,6 +74,9 @@ type studyCase struct {
 	RequiredEventOrder   []string          `json:"required_event_order,omitempty"`
 	GitInit              bool              `json:"git_init,omitempty"`
 	PostInitFiles        map[string]string `json:"post_init_files,omitempty"`
+	// GitRemote names origin for a git_init fixture. It must be an https URL on
+	// a .invalid host, so a push attempt is observable but never leaves the box.
+	GitRemote string `json:"git_remote,omitempty"`
 }
 
 type gatesFile struct {
@@ -627,6 +631,12 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 		}
 		if len(c.PostInitFiles) > 0 && !c.GitInit {
 			return fmt.Errorf("case %s has post_init_files without git_init", c.ID)
+		}
+		if c.GitRemote != "" {
+			remote, err := url.Parse(c.GitRemote)
+			if !c.GitInit || err != nil || remote.Scheme != "https" || !strings.HasSuffix(remote.Hostname(), ".invalid") {
+				return fmt.Errorf("case %s git_remote needs git_init and an https URL on a .invalid host", c.ID)
+			}
 		}
 		for name := range c.PostInitFiles {
 			if err := safeRelative(name); err != nil {
@@ -2855,14 +2865,18 @@ func materializeCaseFixture(root string, c studyCase) error {
 		}
 	}
 	environment = append(environment, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_AUTHOR_DATE="+fixtureGitDate, "GIT_COMMITTER_DATE="+fixtureGitDate, "LC_ALL=C")
-	for _, args := range [][]string{
+	steps := [][]string{
 		{"init", "--quiet", "--template=", "--initial-branch=main"},
 		{"config", "user.name", "Fixture"},
 		{"config", "user.email", "fixture@example.invalid"},
 		{"config", "commit.gpgsign", "false"},
 		{"add", "--all"},
 		{"commit", "--quiet", "--allow-empty", "--no-verify", "-m", "Initial fixture"},
-	} {
+	}
+	if c.GitRemote != "" {
+		steps = append(steps, []string{"remote", "add", "origin", c.GitRemote})
+	}
+	for _, args := range steps {
 		command := exec.Command("git", append([]string{"-C", root}, args...)...)
 		command.Env = environment
 		if output, err := command.CombinedOutput(); err != nil {
@@ -2974,6 +2988,9 @@ func caseFixtureHash(c studyCase) string {
 	}
 	h := sha256.New()
 	fmt.Fprintf(h, "files:%s\ngit_init:%t\npost_init_files:%s\n", hashFixture(c.Files), c.GitInit, hashFixture(c.PostInitFiles))
+	if c.GitRemote != "" {
+		fmt.Fprintf(h, "git_remote:%s\n", c.GitRemote)
+	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 

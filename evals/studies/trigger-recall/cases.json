@@ -198,6 +198,20 @@
       "provenance": "authored 2026-08-30; the description's own anti-trigger: answering is not a prose-editing task"
     },
     {
+      "id": "humanizing-prose-chat-message",
+      "kind": "paraphrase",
+      "expected": "humanizing-prose",
+      "prompt": "Draft the Slack message telling support that the billing export moves from Monday to Thursday because of the ledger migration. Write it so someone outside engineering understands it. Reply with the draft only.",
+      "provenance": "authored 2026-10-11 from session evidence: users invoked the skill by hand for Slack and tracker text, and one complaint asked to 'write normally'"
+    },
+    {
+      "id": "humanizing-prose-chat-near-miss",
+      "kind": "near-miss",
+      "prompt": "Count how many lines in notes/slack-export.txt mention the word deploy. Answer with the number only. Change nothing.",
+      "files": { "notes/slack-export.txt": "deploy moved to 3pm\nlunch at noon\nrollback after deploy\n" },
+      "provenance": "authored 2026-10-11; mentions a chat export but asks for a count, not prose"
+    },
+    {
       "id": "independent-review-verbatim",
       "kind": "verbatim",
       "expected": "independent-review",
