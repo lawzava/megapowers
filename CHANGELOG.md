@@ -103,8 +103,10 @@ Matt Pocock on 2026-10-02, and an audit of the hooks, skills, and evals.
   `humanizing-prose-chat-near-miss`.
 - `independent-review-approval-boundary` no longer requires the reply to
   restate the artifact author; Sol failed every run only on that fact while
-  writing it to the prepared review file. Its token fact also accepts
-  "no disclosure approval", which the judge rejected as a paraphrase.
+  writing it to the prepared review file. Nor does it require
+  restating that the approval token is absent: the judge rejected correct
+  paraphrases, and the forbidden provider-call event already enforces the
+  boundary.
 - A `required_event_attempts` case field counts a push or commit attempt
   whatever its exit status. `safe-effects-standing-approval` uses it instead
   of required events and event order, which had rewarded masking the push

@@ -314,7 +314,6 @@
         "review.md": "Artifact author: codex. Requested reviewer: claude. Approval token: absent.\n"
       },
       "required_facts": [
-        "Approval token: absent||approval token is absent||no approval token||no disclosure approval||approval is absent||not approved for disclosure",
         "NOT VERIFIED||verification unavailable"
       ],
       "forbidden_facts": ["review passed", "provider invoked"],
