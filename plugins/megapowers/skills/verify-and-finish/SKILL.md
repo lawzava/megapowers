@@ -8,10 +8,10 @@ metadata:
 
 # Verify and Finish
 
-Start with the cheapest fresh state or oracle that can establish whether the
-requested outcome already holds. If it shows no change or effect remains and no
-review or manual gate is pending, report a verified no-op and stop before broad
-checks. An external no-op needs an external readback.
+First check, with the cheapest fresh oracle, whether the outcome already
+holds. If nothing remains and no review or manual gate is pending, report a
+verified no-op before broad checks; an external no-op needs an external
+readback.
 
 Evidence precedes every load-bearing claim. Run each acceptance oracle fresh
 against the current artifact, read the whole result, and state only what it
@@ -19,24 +19,25 @@ proves. A focused test does not prove the full suite; artifact inspection does
 not prove runtime behavior. Never weaken a test, baseline, threshold, or
 predicate to obtain a pass.
 
-Check the original command's exit status; a filtered or truncated summary
-proves nothing until the raw output is recovered.
+Run long or verbose checks through the
+[run receipt tool](references/run-receipt.md), which keeps full output, exit
+status, and commit; a filtered or truncated summary proves nothing.
 
 Label inspection and inference; neither is an executed check. Bind stale-prone
 results to the artifact identity and commit; after a rebase, rerun them unless
 `git patch-id` shows the change is unchanged. Separate declared configuration
 from effective runtime behavior.
 
-Separate local verification from external proof. A local build cannot prove a
-deployment, published package, API effect, or user-visible result. When the
-criterion requires an external oracle, exercise the real boundary and record
-the environment and correlation identity. If a required tool or environment is
-unavailable, report the criterion as unverified rather than substituting a
-nearby check.
+A local build cannot prove a deployment, published package, API effect, or
+user-visible result; for those, exercise the real boundary and record the
+environment and correlation identity. If a required tool or environment is
+unavailable, report the criterion unverified instead of substituting a nearby
+check.
 
-When the change can affect a user journey, run that journey for real; name
-any agreed substitute's limits. On request,
-build a repeatable [verification driver](references/verification-driver.md).
+When the change can affect a user journey, run that journey for real through
+the surface the user will open; name any agreed substitute's limits. After
+driving one journey by hand twice, offer a repeatable
+[verification driver](references/verification-driver.md).
 
 Resolve each affected specification requirement to fresh evidence or a
 remaining gap; a plan is not implementation evidence.
@@ -50,7 +51,8 @@ behavior as scope creep. Confirm a named target branch before committing. Do
 not commit, publish, merge, delete a branch, or remove a worktree without
 authority for that destination. Destructive cleanup requires target
 confirmation and ownership evidence. For a handoff to another harness,
-directory, or person, write a [handoff note](references/handoff.md).
+directory, or person, write a [handoff note](references/handoff.md). Write a
+pull request description from the [PR body guide](references/pr-body.md).
 
 Open the report with `VERIFIED: <claim>` only when every required criterion has
 fresh oracle evidence, and state what that evidence does not cover, such as

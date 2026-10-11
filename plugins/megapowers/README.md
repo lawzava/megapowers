@@ -1,6 +1,6 @@
 # megapowers plugin
 
-One workflow plugin for current Claude Code and Codex: 16 task skills, one
+One workflow plugin for current Claude Code and Codex: 17 task skills, one
 short output style, a hook that blocks a few catastrophic shell commands, and a
 doctor. It uses the planning, agents, goals, permissions, memory, worktrees,
 and browser tools each harness already has. It ships no model router,

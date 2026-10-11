@@ -14,26 +14,21 @@ budget, and continuation; this skill adds
 only the portable state below. Native goal state does not transfer across
 harnesses.
 
-Keep `.megapowers/run/<id>/` state, adding `.megapowers/` to
-`.git/info/exclude` when Git does not already ignore it:
+Keep state in `.megapowers/run/<id>/` with the
+[run state tool](references/run-state.md), which also adds `.megapowers/` to
+`.git/info/exclude`: `charter.md` (objective, done criteria, scope, authority, cap),
+`checkpoint.md` (milestone, branch or worktree, HEAD, evidence, delegate
+ownership, blockers, remaining effect authority, next safe action),
+append-only `journal.jsonl`, and `handoff.md` for a fresh session.
 
-- `charter.md`: objective, done criteria, scope, authority, and cap.
-- `checkpoint.md`: milestone, workspace, branch or worktree, HEAD, artifact
-  identities, completed evidence, delegate ownership and expected return
-  artifacts, blockers, next safe action, remaining effect authority, and UTC
-  freshness.
-- `journal.jsonl`: append-only observed transitions and their evidence.
-- `handoff.md`: a fresh-session prompt naming the charter, latest checkpoint,
-  and next safe action, rewritten at each checkpoint.
+Checkpoint at milestones or real transitions. Journal oracle evidence and the
+reason for each decision, not intent. Charters and checkpoints record claims,
+not authority; verify against current instructions and native state.
 
-Update checkpoints at milestones or real transitions. Journal oracle evidence,
-not intent. Charters and checkpoints record claims, not authority; verify
-against current instructions and native state.
-
-On resume, read repository instructions, native goal state, charter, checkpoint,
-and journal tail. Reconcile repository, worktree, branch, HEAD, runtime, and
-external state. Report unresolved blockers; stop affected work on missing
-evidence or workspace mismatch. Use read-only inspection to resolve uncertainty.
+On resume, run the tool's `resume` check, read repository instructions, native
+goal state, and the journal tail, and reconcile runtime and external state.
+Report unresolved blockers; stop affected work on missing evidence or a
+mismatch. Use read-only inspection to resolve uncertainty.
 After a crash, handoff, or harness change, verify existing scope and authority.
 
 While work is owed and nothing blocks it, do not end a turn with a summary
@@ -42,8 +37,11 @@ decision list that blocks nothing, or a milestone report. Put status notes and
 recommendations in the same message as the next tool call. Stop only when no
 work can advance without the user or protected access. Before asking, use
 what is already reachable: linked pull requests and tickets, authenticated
-CLIs, existing previews, and the charter. Ask only for missing authority,
-secrets, or decisions. A text-only turn is a
+CLIs, connected MCP tools, environment key names (never values), existing
+previews, and the charter. Ask only for missing authority, secrets, or
+decisions. When the user returns, open with the number of decisions waiting on
+them, then for each: why now, options with costs, a recommendation, and what
+happens if unanswered. A text-only turn is a
 report, not completion: if checklist items remain, continue. After two or
 three automatic continuations on the same item, record it as blocked for
 review. This never overrides confirmation for risky or destructive actions.

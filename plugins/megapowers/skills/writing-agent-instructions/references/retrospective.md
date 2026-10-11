@@ -9,6 +9,11 @@ Read the primary record first: the session transcript, the diff, and command
 output. Use the current session when the user names none. Cite the moment in
 the session that motivates each candidate.
 
+When the user asks about a period or a pattern rather than one session, run
+[session mining](session-mining.md) first. It lists the turns where the user
+corrected the agent, grouped into candidate classes across sessions. Read each
+example before counting it, and cite sessions by file and time.
+
 Look for candidates in these categories:
 
 - Navigation: the agent spent long searching for a file or fact. A short
@@ -17,7 +22,10 @@ Look for candidates in these categories:
   hook could catch. Read the repository's existing check commands and CI first;
   an existing check that is unwired or broken is the finding. A mechanical rule,
   such as a banned API, import shape, or file location, gets a deterministic
-  check rather than prose.
+  check rather than prose. A repository with no check of that kind at all is
+  itself a finding.
+- Review: a reviewer agent passed the mistake. Give the reviewer's brief the
+  standard it should have applied.
 - Judgment rules: a mistake no check could catch. Add or clarify the rule where
   review or the relevant skill reads it.
 - Instruction weight: always-loaded files carry detail that belongs in a skill,

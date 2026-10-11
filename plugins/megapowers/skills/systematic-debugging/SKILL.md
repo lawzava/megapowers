@@ -11,7 +11,8 @@ metadata:
 Find the root cause before attempting a fix. A symptom patch without a causal
 explanation creates a second unknown.
 
-Read the complete failure. Reproduce it with a fast, deterministic loop that
+Read the complete failure. When many checks fail, list them and group by
+likely shared cause before fixing the first. Reproduce it with a fast, deterministic loop that
 goes red on the reported symptom, then minimize it. Trace the bad value or
 condition backward across boundaries, compare it with a working path, and
 inspect recent changes without assuming they are causal. For flakiness,

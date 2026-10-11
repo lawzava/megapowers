@@ -34,6 +34,9 @@ Attempt re-authentication at most once per server. If it fails, stop: report
 the exact error text and the user action needed (complete the browser grant,
 issue a token with the missing scope, or fix the registration). Do not retry,
 probe other login commands, or substitute a CLI for the server unless asked.
+When a server needs login again the same day, find why before asking: a
+provider with short-lived tokens and rejected refresh keeps expiring. Propose
+a durable token or header setup; ask to reconnect once per root cause.
 
 Verify with a fresh probe, not the current session: start a new
 non-interactive session, list the server's tools, and call one read-only tool.

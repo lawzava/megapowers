@@ -6,7 +6,7 @@
 
 <p align="center">
   Plan, test, debug, and ship with more care in Claude Code and Codex.<br>
-  One plugin, 16 skills, and safety hooks. About 1.5k tokens per session.
+  One plugin, 17 skills, and safety hooks. About 1.5k tokens per session.
 </p>
 
 <p align="center">
@@ -113,7 +113,7 @@ that site.
 |---|---|---|---|
 | Works with | Claude Code and Codex, one plugin, shared hook code | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
 | Get it from | This repository's marketplace | The official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
-| What you get | 16 skills, one style, three hooks, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
+| What you get | 17 skills, one style, three hooks, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
 | Published measurements | The A/B study below, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
 
 Which one fits:
@@ -170,6 +170,7 @@ only when your request matches. The *experimental* labels come from
 | `upgrading-megapowers` | You want to update, reinstall, or repair the plugin |
 | `mcp-setup` *(experimental)* | An MCP server needs installing or fixing, or its tools are missing |
 | `memory-hygiene` *(experimental)* | You ask to audit or prune the agent's saved memory (only when you invoke it by name) |
+| `recall` *(experimental)* | You ask what was decided or built in earlier sessions (only when you invoke it by name) |
 
 [docs/orchestration.md](./docs/orchestration.md) explains which kinds of task
 go to which skill.
@@ -265,7 +266,7 @@ is 201 to 417 words and loads only when that skill is used.
 <details>
 <summary>Exactly what installs</summary>
 
-- 16 skills under `skills/`, listed in `skills/catalog.json`.
+- 17 skills under `skills/`, listed in `skills/catalog.json`.
 - One output style, `output-styles/megapowers.md`, shared by both tools.
 - Go hooks on three events, compiled once into a local cache:
   - `SessionStart`: a reminder that skill guidance applies once its file is
@@ -285,12 +286,16 @@ is 201 to 417 words and loads only when that skill is used.
     git command that discards uncommitted, stashed, or unmerged work
     (`reset --hard`, a forced `clean`, a forced or whole-tree `checkout`, a
     whole-tree `restore`, `branch -D` of an unmerged branch, `stash drop` or
-    `clear`) stops once per exact command with a reminder to check
+    `clear`) stops once per command and directory with a reminder to check
     `git status` first.
-- Two Go standard-library tools that load only with their skill: the
-  memory-audit validator for `memory-hygiene` and the review packager for
-  `independent-review`.
-- A `doctor` command behind `megapowers-doctor`.
+- Five Go standard-library tools that load only with their skill: the
+  memory-audit validator for `memory-hygiene`, the review packager for
+  `independent-review`, a run receipt for `verify-and-finish` that keeps full
+  output and the exit status, run state for `autonomous-run`, and a session
+  miner for retrospectives and `recall`.
+- A `doctor` command behind `megapowers-doctor`. It also reports whether the
+  hooks ran on each harness, recent skill loads in the workspace, and a newer
+  local marketplace copy.
 
 The plugin does not edit global user configuration and supplies no model,
 provider, or agent configuration. For non-trivial delegation, `orchestrating`

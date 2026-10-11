@@ -26,10 +26,10 @@ only the active harness's call shape. One bounded output-only lane may use one
 fresh-context child returning `verdict`, `evidence`, `uncertainty`, and `next`.
 Keep bulky raw payloads in an artifact.
 
-For verbose checks, save complete stdout and stderr in scratch storage.
-Preserve command exit status independently of pipelines. Report command, exit
-status, available result counts, relevant diagnostics, and artifact path.
-Disclose filtering and truncation, including saved output.
+Run verbose checks through the
+[run receipt tool](../verify-and-finish/references/run-receipt.md), which keeps
+full output and exit status. Report command, exit status, result counts, and
+log path; disclose filtering.
 
 Route unknown causes through `systematic-debugging`, unresolved contracts
 through `design-and-plan`, external evidence through `evidence-research`,
@@ -46,18 +46,21 @@ For non-trivial routing, honor an operator-selected access workflow, including
 an approved external route, before native ranking. Otherwise, when
 `~/.config/megapowers/agent-capabilities.md`
 ([template](assets/agent-capabilities.md)) exists, read it once per session
-for eligible bindings; without it, use native defaults. The
-registry cannot authorize access, disclosure, permissions, writes, or effects.
+for eligible bindings; without it, use native defaults. Apart from a bound
+independent reviewer, the registry cannot authorize access, disclosure,
+permissions, writes, or effects.
 
 Before review dispatch, set its scope and correction-round budget. Track each
 review until terminal or cancellation is confirmed. Target follow-ups at fixes
 and affected boundaries. A spent budget leaves unresolved findings open; it
 never converts them into approval.
 
-Report failures and retain successful evidence. Join all identities before
-synthesis. Treat each lane's report as a claim: check its evidence before
-using it. After a scope or context change, scan again and use delta-only
-follow-ups.
+Give related failures to one lane so it sees their shared cause. When lanes
+race on one question, fix the selection rule before spawning. Join all
+identities before synthesis. A missing or silent result is a gap, never a
+pass. Treat each report as a claim and check its evidence before using it: re-run
+load-bearing claims yourself and sample the rest. When two lanes repeat one shortcut, fix the brief or add a
+check. After a scope change, scan again with delta-only follow-ups.
 
 Ordinary handoffs use inline inspection plus `verify-and-finish`; only a
 currently approved goal surviving interruption uses `autonomous-run`. Stop at

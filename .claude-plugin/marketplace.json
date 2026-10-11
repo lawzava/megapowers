@@ -7,7 +7,7 @@
     {
       "name": "megapowers",
       "source": "./plugins/megapowers",
-      "description": "16 task skills (plan, TDD, debug, verify, safe effects, cross-provider review, orchestration), a concise optional output style, a destructive-command tripwire, and a doctor for self-diagnosis. Uses native agents, goals, and permissions; about 1.5k always-loaded tokens.",
+      "description": "17 task skills (plan, TDD, debug, verify, safe effects, cross-provider review, orchestration), a concise optional output style, a destructive-command tripwire, and a doctor for self-diagnosis. Uses native agents, goals, and permissions; about 1.5k always-loaded tokens.",
       "category": "workflow",
       "tags": ["workflow", "skills", "safety", "tdd", "debugging", "verification", "orchestration", "codex"]
     }

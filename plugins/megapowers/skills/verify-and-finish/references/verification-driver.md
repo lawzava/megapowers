@@ -1,8 +1,11 @@
 # Verification driver
 
 Use this reference when the user asks for a repeatable way to drive the
-project's real user journey, such as a project skill, script, or journey map.
-It writes project files, so build it only on request.
+project's real user journey, such as a project skill, script, or journey map,
+or after you drove the same journey by hand twice. It writes project files, so
+offer it and build it only after the user agrees. Put the fixed steps (launch,
+readiness, teardown) in a script the driver calls, so every agent runs them
+the same way and only the judgment stays in prose.
 
 ## Learn the surface from the repository
 
@@ -53,3 +56,17 @@ Run the driver once end to end: launch, doctor, drive one mapped feature,
 capture evidence, and clean up. Confirm the evidence survives cleanup. Run
 cleanup after every failed attempt. A driver that was never executed is a
 draft.
+
+## Keep it working
+
+When a driven run fails for a reason in the driver rather than the product,
+or the product's launch, routes, or selectors changed, maintain the driver:
+
+- Recheck each mapped feature against the current source, one feature at a
+  time, and update only the driver's own files.
+- Run it live once. Check health again after any surprise, confirm the
+  evidence survives cleanup, and confirm no process this run started is left.
+- End with one outcome: `clean` (no change needed), `changed` (driver
+  updated and rerun), or `blocked` (name what stops it).
+- A product regression is a finding to report, never a reason to edit the
+  driver around it.

@@ -29,7 +29,8 @@ environments.
 ## Shared contract
 
 Skills use `name`, `description`, `when_to_use`, and `metadata.short-description`
-frontmatter; `memory-hygiene` sets `disable-model-invocation` for Claude Code.
+frontmatter; `memory-hygiene` and `recall` set `disable-model-invocation` for
+Claude Code.
 Claude Code concatenates `description` and `when_to_use` in its skill listing.
 Codex matches implicit invocation on `description`.
 
@@ -39,7 +40,7 @@ Codex's skill documentation, retrieved 2026-10-08, names `agents/openai.yaml`
 ship with Codex also set `metadata.short-description`, so this plugin keeps
 it. Claude Code documents that it does not act on `metadata` contents.
 
-Codex's explicit-only policy lives in `memory-hygiene/agents/openai.yaml` as
+Codex's explicit-only policy lives in each such skill's `agents/openai.yaml` as
 `policy.allow_implicit_invocation: false`. The trigger evaluation reads each
 harness's own policy and tests explicit invocation separately.
 
