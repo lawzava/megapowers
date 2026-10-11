@@ -80,6 +80,49 @@ func TestRunStateContract(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(repo, ".megapowers")); err == nil {
 		t.Error("bad id created run state")
 	}
+	if output, _ := state(repo, "init", "--id", "Bad", "--objective", "x"); !strings.Contains(output, "result: error (exit 125)") {
+		t.Errorf("error output lacks result line: %s", output)
+	}
+
+	for _, target := range []string{"file", "dir"} {
+		t.Run("symlinked exclude "+target, func(t *testing.T) {
+			symRepo := filepath.Join(tmp, "sym-"+target)
+			if err := os.Mkdir(symRepo, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			git(symRepo, "init", "-q", "-b", "main")
+			notes := filepath.Join(tmp, "notes-"+target)
+			if err := os.MkdirAll(notes, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			notesFile := filepath.Join(notes, "exclude")
+			original := "unrelated notes\n"
+			if err := os.WriteFile(notesFile, []byte(original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			info := filepath.Join(symRepo, ".git", "info")
+			link, dest := filepath.Join(info, "exclude"), notesFile
+			if target == "dir" {
+				link, dest = info, notes
+			}
+			if err := os.RemoveAll(link); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(dest, link); err != nil {
+				t.Fatal(err)
+			}
+			output, code := state(symRepo, "init", "--id", "alpha", "--objective", "x")
+			if code != 125 || !strings.Contains(output, "symlink") {
+				t.Errorf("symlinked exclude: want 125 naming symlink, got %d: %s", code, output)
+			}
+			if got := readFile(t, notesFile); got != original {
+				t.Errorf("init wrote through symlink: %q", got)
+			}
+			if _, err := os.Lstat(filepath.Join(symRepo, ".megapowers")); err == nil {
+				t.Error("refused init still created run state")
+			}
+		})
+	}
 
 	output, code := state(repo, "init", "--id", "alpha", "--objective", "Ship the\nwidget")
 	if code != 0 {
@@ -180,7 +223,7 @@ func TestRunStateContract(t *testing.T) {
 
 	commit(repo, "two.txt")
 	output, code = state(repo, "resume", "--id", "alpha")
-	if code != 3 || !strings.Contains(output, "head: mismatch: recorded "+head) {
+	if code != 3 || !strings.Contains(output, "head: mismatch: recorded "+head) || !strings.Contains(output, "(exit 3)") {
 		t.Errorf("HEAD drift: want 3 naming head mismatch, got %d: %s", code, output)
 	}
 	if output, code := state(repo, "checkpoint", "--id", "alpha", "--milestone", "Second", "--next", "Continue"); code != 0 {

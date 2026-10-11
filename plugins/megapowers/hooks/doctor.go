@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -484,31 +483,59 @@ func sessionFiles(getenv getenvFunc, workspace string, cutoff time.Time) []strin
 	if codexDir == "" {
 		return files
 	}
-	quoted, _ := json.Marshal(workspace)
-	cwdField := []byte(`"cwd":` + string(quoted))
-	filepath.WalkDir(filepath.Join(codexDir, "sessions"), func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || len(files) >= maxDoctorSessions {
-			return nil
+	// Codex stores rollouts under sessions/YYYY/MM/DD by start date. Reading
+	// only the window's days, plus a week for long sessions, and capping the
+	// headers examined bounds the work on a large store.
+	examined := 0
+	for day := 0; day <= 14 && len(files) < maxDoctorSessions && examined < maxDoctorHeaders; day++ {
+		dir := filepath.Join(codexDir, "sessions", filepath.FromSlash(time.Now().AddDate(0, 0, -day).Format("2006/01/02")))
+		entries, _ := os.ReadDir(dir)
+		for _, entry := range entries {
+			if len(files) >= maxDoctorSessions || examined >= maxDoctorHeaders {
+				break
+			}
+			path := filepath.Join(dir, entry.Name())
+			if entry.IsDir() || !strings.HasPrefix(entry.Name(), "rollout-") || !strings.HasSuffix(entry.Name(), ".jsonl") || !recent(path) {
+				continue
+			}
+			examined++
+			if cwd := codexSessionCwd(path); cwd != "" && filepath.Clean(cwd) == filepath.Clean(workspace) {
+				files = append(files, path)
+			}
 		}
-		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "rollout-") || !strings.HasSuffix(entry.Name(), ".jsonl") || !recent(path) {
-			return nil
-		}
-		if firstLineContains(path, cwdField) {
-			files = append(files, path)
-		}
-		return nil
-	})
+	}
 	return files
 }
 
-func firstLineContains(path string, needle []byte) bool {
+// maxDoctorHeaders bounds the Codex rollout headers doctor reads, and
+// maxCodexHeaderBytes the first line it buffers from one rollout.
+const (
+	maxDoctorHeaders    = 2000
+	maxCodexHeaderBytes = 8 << 20
+)
+
+// codexSessionCwd returns the cwd from a rollout's session_meta first line,
+// or "" when the line is not a session_meta record or exceeds the limit.
+func codexSessionCwd(path string) string {
 	file, err := os.Open(path)
 	if err != nil {
-		return false
+		return ""
 	}
 	defer file.Close()
-	line, _ := bufio.NewReaderSize(file, 64<<10).ReadBytes('\n')
-	return bytes.Contains(line, needle)
+	line, err := bufio.NewReader(io.LimitReader(file, maxCodexHeaderBytes)).ReadBytes('\n')
+	if err != nil {
+		return ""
+	}
+	var meta struct {
+		Type    string `json:"type"`
+		Payload struct {
+			Cwd string `json:"cwd"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(line, &meta) != nil || meta.Type != "session_meta" {
+		return ""
+	}
+	return meta.Payload.Cwd
 }
 
 // doctorMarketplace compares the installed version with the harness's local

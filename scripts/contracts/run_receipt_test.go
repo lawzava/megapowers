@@ -289,11 +289,63 @@ func TestRunReceiptContract(t *testing.T) {
 		if digest, _ := receipt["tree_digest"].(string); len(digest) != 64 || !strings.HasPrefix(digest, strings.TrimPrefix(dirty.tree, "dirty:")) {
 			t.Errorf("json tree_digest %q does not extend %s", digest, dirty.tree)
 		}
+
+		untracked := filepath.Join(repo, "untracked.txt")
+		if err := os.WriteFile(untracked, []byte("first\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		first := runReceiptIn(t, bin, repo, env, "--dir", receipts, "--", "sh", "-c", "true")
+		if err := os.WriteFile(untracked, []byte("second\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		second := runReceiptIn(t, bin, repo, env, "--dir", receipts, "--", "sh", "-c", "true")
+		if !strings.HasPrefix(first.tree, "dirty:") || first.tree == second.tree {
+			t.Errorf("untracked content change kept digest: %s then %s", first.tree, second.tree)
+		}
 	})
 
 	t.Run("missing command exits 127", func(t *testing.T) {
 		result := runReceiptIn(t, bin, outside, env, "--dir", receipts, "--", "megapowers-no-such-command-for-receipt")
 		requireReceipt(t, result, 127, "missing command")
+	})
+
+	t.Run("non-executable command exits 126", func(t *testing.T) {
+		script := filepath.Join(outside, "check.sh")
+		if err := os.WriteFile(script, []byte("#!/bin/sh\necho unreachable\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		result := runReceiptIn(t, bin, outside, env, "--dir", receipts, "--", "./check.sh")
+		requireReceipt(t, result, 126, "non-executable command")
+		if !strings.Contains(result.output, "cannot run") {
+			t.Errorf("non-executable command did not say cannot run: %s", result.output)
+		}
+	})
+
+	t.Run("receipt directory is private", func(t *testing.T) {
+		wide := filepath.Join(tmp, "wide")
+		if err := os.Mkdir(wide, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(wide, 0o777); err != nil {
+			t.Fatal(err)
+		}
+		requireReceipt(t, runReceiptIn(t, bin, outside, env, "--dir", wide, "--", "true"), 0, "wide dir")
+		info, err := os.Stat(wide)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o700 {
+			t.Errorf("pre-existing receipt dir mode %v, want 0700", info.Mode().Perm())
+		}
+
+		link := filepath.Join(tmp, "linked")
+		if err := os.Symlink(wide, link); err != nil {
+			t.Fatal(err)
+		}
+		result := runReceiptIn(t, bin, outside, env, "--dir", link, "--", "true")
+		if result.code != 125 || result.log != "" {
+			t.Errorf("symlinked receipt dir: exit %d, want 125 and no receipt: %s", result.code, result.output)
+		}
 	})
 
 	t.Run("tool errors exit 125", func(t *testing.T) {

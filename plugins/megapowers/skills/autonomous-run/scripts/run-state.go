@@ -133,7 +133,7 @@ func run(args []string) int {
 }
 
 func report(err error) int {
-	fmt.Fprintf(os.Stderr, "run-state: %v\n", err)
+	fmt.Fprintf(os.Stderr, "run-state: %v\nresult: error (exit %d)\n", err, exitError)
 	return exitError
 }
 
@@ -285,11 +285,15 @@ func inspect(repo string) (gitState, error) {
 	} else {
 		st.workspace = common
 	}
-	exclude, err := git(st.worktree, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude")
+	// Plain --git-path keeps symlinks visible; --path-format=absolute resolves them.
+	exclude, err := git(st.worktree, "rev-parse", "--git-path", "info/exclude")
 	if err != nil || exclude == "" {
 		return st, fail("cannot resolve info/exclude")
 	}
-	st.exclude = exclude
+	if !filepath.IsAbs(exclude) {
+		exclude = filepath.Join(st.worktree, exclude)
+	}
+	st.exclude = filepath.Clean(exclude)
 	if branch, err := git(st.worktree, "symbolic-ref", "--short", "-q", "HEAD"); err == nil && branch != "" {
 		st.branch = branch
 	} else {
@@ -347,6 +351,33 @@ func existingRun(st gitState, id string) (string, error) {
 func refuseSymlink(path string) error {
 	if info, err := os.Lstat(path); err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular()) {
 		return fail("%s is not a regular file", path)
+	}
+	return nil
+}
+
+// checkExclude refuses a symlinked or non-regular info/exclude and a symlinked
+// or non-directory parent, so init never writes into an unrelated file.
+func checkExclude(st gitState) error {
+	for _, check := range []struct {
+		path string
+		dir  bool
+	}{{filepath.Dir(st.exclude), true}, {st.exclude, false}} {
+		info, err := os.Lstat(check.path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fail("cannot inspect %s", check.path)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fail("refusing to write %s: it is a symlink", check.path)
+		}
+		if check.dir && !info.IsDir() {
+			return fail("refusing to write %s: not a directory", check.path)
+		}
+		if !check.dir && !info.Mode().IsRegular() {
+			return fail("refusing to write %s: not a regular file", check.path)
+		}
 	}
 	return nil
 }
@@ -456,6 +487,9 @@ func cmdInit(opt options) error {
 	dir := runDir(st, opt.id)
 	if _, err := os.Lstat(dir); err == nil {
 		return fail("run %q already exists at %s", opt.id, dir)
+	}
+	if err := checkExclude(st); err != nil {
+		return err
 	}
 	if err := ensureExcluded(st); err != nil {
 		return err
@@ -670,9 +704,9 @@ func cmdResume(opt options) (int, error) {
 		}
 	}
 	if mismatch {
-		fmt.Println("result: mismatch; stop affected work and reconcile before continuing")
+		fmt.Printf("result: mismatch (exit %d); stop affected work and reconcile before continuing\n", exitMismatch)
 		return exitMismatch, nil
 	}
-	fmt.Println("result: match")
+	fmt.Printf("result: match (exit %d)\n", exitOK)
 	return exitOK, nil
 }

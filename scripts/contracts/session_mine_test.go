@@ -29,6 +29,7 @@ type sessionMineCorrections struct {
 	HumanTurns      int                `json:"human_turns"`
 	ClassifiedTurns int                `json:"classified_turns"`
 	SkippedLines    int                `json:"skipped_lines"`
+	SkippedFiles    int                `json:"skipped_files"`
 	Classes         []sessionMineClass `json:"classes"`
 	OneOffs         []sessionMineClass `json:"one_offs"`
 }
@@ -265,6 +266,7 @@ func TestSessionMineRedaction(t *testing.T) {
 		"b64":     strings.Repeat("Qm9vYmFy", 5),
 		"email":   "pat.doe@example.com",
 		"userinf": "hunter" + "secretpw",
+		"letters": strings.Repeat("QwErTy", 6),
 	}
 	prompts := []string{
 		"Did you test " + values["openai"] + " here",
@@ -279,13 +281,20 @@ func TestSessionMineRedaction(t *testing.T) {
 		"Did you test https://deploy:" + values["userinf"] + "@git.example.com/repo here",
 		"Did you test /home/alice/project and /Users/bob/src here",
 		"Did you test the long one " + strings.Repeat("word ", 80),
+		"Did you test token " + values["letters"] + " here",
+		"Did you test plugins/megapowers/skills/writing-agent-instructions/scripts here",
+		"Did you test /root/.aws/credentials here",
+		`Did you test C:\Users\carol\Documents\notes here`,
+		"Did you test /srv/people/zed/notes and /srv/people/zedd/x here",
+		"Did you test /srv/profiles/quinn/x here",
 	}
 	var lines []string
 	for i, prompt := range prompts {
 		lines = append(lines, claudeAssistant("2026-10-02T09:00:00Z", textBlock("Agent reply "+string(rune('a'+i)))), claudeUser("2026-10-02T09:01:00Z", prompt))
 	}
 	writeLines(t, filepath.Join(claudeRoot, "-work-redact", "r1.jsonl"), lines...)
-	output, code := run(t, root, nil, tool, "--workspace", "/work/redact", "--harness", "claude", "--claude-root", claudeRoot, "--limit", "20", "--format", "json")
+	homes := []string{"HOME=/srv/people/zed", "USERPROFILE=/srv/profiles/quinn"}
+	output, code := run(t, root, homes, tool, "--workspace", "/work/redact", "--harness", "claude", "--claude-root", claudeRoot, "--limit", "20", "--format", "json")
 	if code != 0 {
 		t.Fatalf("redaction run failed (%d): %s", code, output)
 	}
@@ -309,12 +318,13 @@ func TestSessionMineRedaction(t *testing.T) {
 		}
 		joined += example.User + "\n"
 	}
-	for _, want := range []string{"<secret>", "<email>", "Bearer <secret>", "https://git.example.com/repo", "~/project", "~/src"} {
+	for _, want := range []string{"<secret>", "<email>", "Bearer <secret>", "https://git.example.com/repo", "~/project", "~/src",
+		"plugins/megapowers/skills/writing-agent-instructions/scripts", "~/.aws/credentials", `~\Documents\notes`, "~/notes", "/srv/people/zedd/x", "~/x"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("redacted output missing %q:\n%s", want, joined)
 		}
 	}
-	for _, leaked := range []string{"alice", "bob", "deploy:"} {
+	for _, leaked := range []string{"alice", "bob", "deploy:", "/root", "carol", "zed/", "quinn", "~d"} {
 		if strings.Contains(joined, leaked) {
 			t.Errorf("redaction kept %q", leaked)
 		}
@@ -343,6 +353,12 @@ func TestSessionMineRecall(t *testing.T) {
 		t.Fatalf("recall order = %v, want %v", order, want)
 	}
 	s1 := report.Sessions[2]
+	for _, format := range []string{"text", "json"} {
+		output, code := run(t, root, nil, tool, "recall", "--topic", "Dev.Person@example.com", "--workspace", "/work/demo.v2", "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", format)
+		if code != 0 || strings.Contains(strings.ToLower(output), "dev.person") || !strings.Contains(output, "<email>") {
+			t.Errorf("%s recall topic not redacted (%d): %s", format, code, output)
+		}
+	}
 	if s1.FirstPrompt != "You didn't verify the parser change." || !strings.Contains(s1.LastReply, "<email>") || strings.Contains(s1.LastReply, "dev.person") {
 		t.Errorf("s1 recall excerpts wrong: %+v", s1)
 	}
@@ -367,6 +383,87 @@ func TestSessionMineRecall(t *testing.T) {
 	if len(everywhere.Sessions) != 5 {
 		t.Errorf("all-workspaces recall found %d sessions, want 5: %s", len(everywhere.Sessions), output)
 	}
+}
+
+func claudeUserIn(cwd, ts, content string) string {
+	body, _ := json.Marshal(map[string]any{"type": "user", "cwd": cwd, "timestamp": ts, "message": map[string]any{"role": "user", "content": content}})
+	return string(body)
+}
+
+func TestSessionMineScoping(t *testing.T) {
+	root := repoRoot(t)
+	tool := buildSessionMine(t, root)
+	tmp := t.TempDir()
+	mine := func(claudeRoot, workspace string) (sessionMineCorrections, string) {
+		t.Helper()
+		output, code := run(t, root, nil, tool, "--workspace", workspace, "--harness", "claude", "--claude-root", claudeRoot, "--format", "json")
+		var report sessionMineCorrections
+		if code != 0 || json.Unmarshal([]byte(output), &report) != nil {
+			t.Fatalf("run failed (%d): %s", code, output)
+		}
+		return report, output
+	}
+
+	t.Run("workspaces sharing a slug", func(t *testing.T) {
+		claudeRoot := filepath.Join(tmp, "shared")
+		// /work/a-b and /work/a/b both map to the project directory -work-a-b.
+		dir := filepath.Join(claudeRoot, "-work-a-b")
+		writeLines(t, filepath.Join(dir, "c1.jsonl"),
+			claudeUserIn("/work/a-b/sub", "2026-10-02T09:00:00Z", "Status please\n<system-reminder>don't ask</system-reminder>"),
+			claudeUserIn("/work/a-b", "2026-10-02T09:01:00Z", "Why did you stop here?"),
+			claudeUserIn("/work/a-b", "2026-10-02T09:02:00Z", "<system-reminder>keep going</system-reminder>\n<command-name>/x</command-name>"),
+		)
+		writeLines(t, filepath.Join(dir, "c2.jsonl"),
+			claudeUserIn("/work/a/b", "2026-10-02T09:00:00Z", "too long collision"),
+			claudeUserIn("/work/a/b", "2026-10-02T09:01:00Z", "too long collision twice"),
+			claudeUser("2026-10-02T09:02:00Z", "too long nocwd"),
+		)
+		report, output := mine(claudeRoot, "/work/a-b")
+		if report.HumanTurns != 2 || report.ClassifiedTurns != 1 || findClass(report.OneOffs, "stopped-unnecessarily") == nil {
+			t.Errorf("a-b report wrong: %s", output)
+		}
+		for _, leaked := range []string{"collision", "nocwd", "don't ask", "keep going"} {
+			if strings.Contains(output, leaked) {
+				t.Errorf("a-b output kept %q: %s", leaked, output)
+			}
+		}
+		// The reminder-carrying turn is human but classifies as other; recall
+		// shows its excerpt as the first prompt.
+		output, _ = run(t, root, nil, tool, "recall", "--topic", "status", "--workspace", "/work/a-b", "--harness", "claude", "--claude-root", claudeRoot, "--format", "json")
+		var recalled sessionMineRecall
+		if json.Unmarshal([]byte(output), &recalled) != nil || len(recalled.Sessions) != 1 || recalled.Sessions[0].FirstPrompt != "Status please" {
+			t.Errorf("embedded reminder not stripped from excerpt: %s", output)
+		}
+		report, output = mine(claudeRoot, "/work/a/b")
+		if verbosity := findClass(report.Classes, "verbosity"); verbosity == nil || verbosity.Count != 2 || strings.Contains(output, "nocwd") || strings.Contains(output, "Why did you stop") {
+			t.Errorf("a/b report wrong: %s", output)
+		}
+	})
+
+	t.Run("symlinked store", func(t *testing.T) {
+		outside := filepath.Join(tmp, "outside")
+		writeLines(t, filepath.Join(outside, "x.jsonl"), claudeUser("2026-10-02T09:00:00Z", "why did you stop outsidestore"))
+		claudeRoot := filepath.Join(tmp, "escape")
+		if err := os.MkdirAll(claudeRoot, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(claudeRoot, "-work-esc")); err != nil {
+			t.Fatal(err)
+		}
+		report, output := mine(claudeRoot, "/work/esc")
+		if report.HumanTurns != 0 || report.SkippedFiles != 1 || strings.Contains(output, "outsidestore") {
+			t.Errorf("symlink escape read or not counted: %s", output)
+		}
+		real := filepath.Join(tmp, "real-store")
+		writeLines(t, filepath.Join(real, "-work-ok", "ok.jsonl"), claudeUser("2026-10-02T09:00:00Z", "keep going inside"))
+		link := filepath.Join(tmp, "store-link")
+		if err := os.Symlink(real, link); err != nil {
+			t.Fatal(err)
+		}
+		if report, output := mine(link, "/work/ok"); report.HumanTurns != 1 || report.SkippedFiles != 0 {
+			t.Errorf("symlinked root not resolved: %s", output)
+		}
+	})
 }
 
 func TestSessionMineUsage(t *testing.T) {

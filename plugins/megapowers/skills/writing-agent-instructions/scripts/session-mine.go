@@ -49,6 +49,7 @@ type message struct {
 	role string
 	text string
 	ts   time.Time
+	cwd  string
 }
 
 type session struct {
@@ -59,6 +60,7 @@ type session struct {
 
 type scanStats struct {
 	skippedLines    int
+	skippedFiles    int
 	unreadableFiles int
 }
 
@@ -83,6 +85,7 @@ type correctionsReport struct {
 	ClassifiedTurns int           `json:"classified_turns"`
 	OtherTurns      int           `json:"other_turns"`
 	SkippedLines    int           `json:"skipped_lines"`
+	SkippedFiles    int           `json:"skipped_files"`
 	UnreadableFiles int           `json:"unreadable_files"`
 	Classes         []classReport `json:"classes"`
 	OneOffs         []classReport `json:"one_offs"`
@@ -102,6 +105,7 @@ type recallReport struct {
 	Topic           string       `json:"topic"`
 	SessionsScanned int          `json:"sessions_scanned"`
 	SkippedLines    int          `json:"skipped_lines"`
+	SkippedFiles    int          `json:"skipped_files"`
 	UnreadableFiles int          `json:"unreadable_files"`
 	Sessions        []recallItem `json:"sessions"`
 }
@@ -136,12 +140,15 @@ var (
 	// Wrapper-tagged blocks are harness injections: slash-command echoes,
 	// system reminders, task notifications, Codex environment and skill blocks.
 	injectedTag      = regexp.MustCompile(`^<[a-z][a-z0-9_-]*[ >]`)
+	openTag          = regexp.MustCompile(`<([a-z][a-z0-9_-]*)(?:\s[^<>]*)?>`)
 	injectedPrefixes = []string{"Base directory for this skill:", "# AGENTS.md", "[Request interrupted by user", "Caveat: The messages below were generated"}
 
 	reUserinfo = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@]+@`)
-	reHomePath = regexp.MustCompile(`(?:/home|/Users)/[A-Za-z0-9._-]+`)
-	reBearer   = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
-	reTokens   = []*regexp.Regexp{
+	reHomePath = regexp.MustCompile(`(?i:\b[a-z]:[\\/]users[\\/][^\\/\s]+)|(?:/home|/Users)/[A-Za-z0-9._-]+|/root\b`)
+	// The literal $HOME and USERPROFILE values, when set, become "~" as well.
+	reHomeValues = homeValuePatterns()
+	reBearer     = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
+	reTokens     = []*regexp.Regexp{
 		regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}`),
 		regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}`),
 		regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,}`),
@@ -149,9 +156,18 @@ var (
 		regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
 	}
 	reEmail   = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
-	reLongHex = regexp.MustCompile(`\b[0-9a-fA-F]{32,}\b`)
 	reLongB64 = regexp.MustCompile(`[A-Za-z0-9+/=_-]{32,}`)
 )
+
+func homeValuePatterns() []*regexp.Regexp {
+	var patterns []*regexp.Regexp
+	for _, name := range []string{"HOME", "USERPROFILE"} {
+		if value := strings.TrimRight(os.Getenv(name), `/\`); len(value) > 1 {
+			patterns = append(patterns, regexp.MustCompile(regexp.QuoteMeta(value)+`([^A-Za-z0-9._-]|$)`))
+		}
+	}
+	return patterns
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -317,52 +333,68 @@ func claudeSlug(path string) string {
 	return b.String()
 }
 
+// within reports whether path is dir or below it.
+func within(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
 func loadSessions(opt options, stats *scanStats) []session {
 	var sessions []session
 	if opt.harness != "codex" && opt.claudeRoot != "" {
-		var dirs []string
-		if opt.all {
-			entries, _ := os.ReadDir(opt.claudeRoot)
-			for _, entry := range entries {
-				if entry.IsDir() {
-					dirs = append(dirs, filepath.Join(opt.claudeRoot, entry.Name()))
+		if root, err := filepath.EvalSymlinks(opt.claudeRoot); err == nil {
+			var dirs []string
+			if opt.all {
+				entries, _ := os.ReadDir(root)
+				for _, entry := range entries {
+					dirs = append(dirs, filepath.Join(root, entry.Name()))
 				}
+			} else {
+				dirs = []string{filepath.Join(root, claudeSlug(opt.workspace))}
 			}
-		} else {
-			dirs = []string{filepath.Join(opt.claudeRoot, claudeSlug(opt.workspace))}
-		}
-		for _, dir := range dirs {
-			top, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
-			sub, _ := filepath.Glob(filepath.Join(dir, "*", "subagents", "*.jsonl"))
-			for _, path := range append(top, sub...) {
-				if s, ok := readFile(path, "claude", opt, stats); ok {
-					sessions = append(sessions, s)
+			for _, dir := range dirs {
+				top, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+				sub, _ := filepath.Glob(filepath.Join(dir, "*", "subagents", "*.jsonl"))
+				for _, path := range append(top, sub...) {
+					if s, ok := readFile(path, root, "claude", opt, stats); ok {
+						sessions = append(sessions, s)
+					}
 				}
 			}
 		}
 	}
 	if opt.harness != "claude" && opt.codexRoot != "" {
-		paths, _ := filepath.Glob(filepath.Join(opt.codexRoot, "[0-9][0-9][0-9][0-9]", "[0-9][0-9]", "[0-9][0-9]", "rollout-*.jsonl"))
-		for _, path := range paths {
-			if s, ok := readFile(path, "codex", opt, stats); ok {
-				sessions = append(sessions, s)
+		if root, err := filepath.EvalSymlinks(opt.codexRoot); err == nil {
+			paths, _ := filepath.Glob(filepath.Join(root, "[0-9][0-9][0-9][0-9]", "[0-9][0-9]", "[0-9][0-9]", "rollout-*.jsonl"))
+			for _, path := range paths {
+				if s, ok := readFile(path, root, "codex", opt, stats); ok {
+					sessions = append(sessions, s)
+				}
 			}
 		}
 	}
 	return sessions
 }
 
-// readFile returns a session with at least one in-range message.
-func readFile(path, harness string, opt options, stats *scanStats) (session, bool) {
+// readFile returns a session with at least one in-range message. A file whose
+// real path leaves the resolved store root, or is not a regular file, is
+// skipped and counted.
+func readFile(path, root, harness string, opt options, stats *scanStats) (session, bool) {
 	s := session{harness: harness, base: filepath.Base(path)}
-	info, err := os.Lstat(path)
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil || !within(real, root) {
+		stats.skippedFiles++
+		return s, false
+	}
+	info, err := os.Stat(real)
 	if err != nil || !info.Mode().IsRegular() {
+		stats.skippedFiles++
 		return s, false
 	}
 	if opt.hasSince && info.ModTime().Before(opt.since) {
 		return s, false
 	}
-	file, err := os.Open(path)
+	file, err := os.Open(real)
 	if err != nil {
 		stats.unreadableFiles++
 		return s, false
@@ -370,6 +402,7 @@ func readFile(path, harness string, opt options, stats *scanStats) (session, boo
 	defer file.Close()
 	reader := bufio.NewReaderSize(file, 1<<20)
 	codexScoped, codexSubagent := false, false
+	origin := ""
 	for {
 		line, readErr := reader.ReadBytes('\n')
 		line = bytes.TrimSpace(line)
@@ -377,7 +410,16 @@ func readFile(path, harness string, opt options, stats *scanStats) (session, boo
 			var msgs []message
 			var ok bool
 			if harness == "claude" {
-				msgs, ok = parseClaude(line)
+				var cwd string
+				msgs, cwd, ok = parseClaude(line)
+				// Workspaces can share a slug (/work/a-b and /work/a/b), so the
+				// first recorded cwd decides which workspace owns the file.
+				if origin == "" && cwd != "" {
+					origin = cwd
+					if !opt.all && !within(origin, opt.workspace) {
+						return s, false
+					}
+				}
 			} else {
 				var meta *codexMeta
 				msgs, meta, ok = parseCodex(line, codexSubagent)
@@ -408,6 +450,16 @@ func readFile(path, harness string, opt options, stats *scanStats) (session, boo
 	if harness == "codex" && !codexScoped && !opt.all {
 		return s, false
 	}
+	if origin != "" && !opt.all {
+		// In a file that records cwd, a record without one cannot be scoped.
+		kept := s.msgs[:0]
+		for _, msg := range s.msgs {
+			if msg.cwd != "" {
+				kept = append(kept, msg)
+			}
+		}
+		s.msgs = kept
+	}
 	return s, len(s.msgs) > 0
 }
 
@@ -437,20 +489,42 @@ func parseTime(raw string) time.Time {
 	return ts.UTC()
 }
 
-func parseClaude(line []byte) ([]message, bool) {
-	var record struct {
-		Type         string `json:"type"`
-		Timestamp    string `json:"timestamp"`
-		IsMeta       bool   `json:"isMeta"`
-		IsSidechain  bool   `json:"isSidechain"`
-		PromptSource string `json:"promptSource"`
-		Message      *struct {
-			Content json.RawMessage `json:"content"`
-		} `json:"message"`
-	}
+type claudeRecord struct {
+	Type         string `json:"type"`
+	Cwd          string `json:"cwd"`
+	Timestamp    string `json:"timestamp"`
+	IsMeta       bool   `json:"isMeta"`
+	IsSidechain  bool   `json:"isSidechain"`
+	PromptSource string `json:"promptSource"`
+	Message      *struct {
+		Content json.RawMessage `json:"content"`
+	} `json:"message"`
+}
+
+// humanText strips embedded tag blocks and reports whether human text remains.
+func humanText(raw string) (string, bool) {
+	text := stripTagged(raw)
+	return text, !injected(text)
+}
+
+// parseClaude returns the record's kept messages and its cwd, if any.
+func parseClaude(line []byte) ([]message, string, bool) {
+	var record claudeRecord
 	if err := json.Unmarshal(line, &record); err != nil {
-		return nil, false
+		return nil, "", false
 	}
+	cwd := ""
+	if record.Cwd != "" {
+		cwd = filepath.Clean(record.Cwd)
+	}
+	msgs, ok := claudeMessages(record)
+	for i := range msgs {
+		msgs[i].cwd = cwd
+	}
+	return msgs, cwd, ok
+}
+
+func claudeMessages(record claudeRecord) ([]message, bool) {
 	if (record.Type != "user" && record.Type != "assistant") || record.Message == nil || len(record.Message.Content) == 0 {
 		return nil, true
 	}
@@ -482,8 +556,11 @@ func parseClaude(line []byte) ([]message, bool) {
 		if block.Type == "tool_result" {
 			return nil, true
 		}
-		if block.Type == "text" && !injected(block.Text) {
-			texts = append(texts, block.Text)
+		if block.Type != "text" {
+			continue
+		}
+		if text, ok := humanText(block.Text); ok {
+			texts = append(texts, text)
 		}
 	}
 	if len(texts) == 0 {
@@ -540,8 +617,10 @@ func parseCodex(line []byte, subagent bool) ([]message, *codexMeta, bool) {
 			switch {
 			case payload.Role == "assistant" && block.Type == "output_text" && strings.TrimSpace(block.Text) != "":
 				texts = append(texts, block.Text)
-			case payload.Role == "user" && block.Type == "input_text" && !injected(block.Text):
-				texts = append(texts, block.Text)
+			case payload.Role == "user" && block.Type == "input_text":
+				if text, ok := humanText(block.Text); ok {
+					texts = append(texts, text)
+				}
 			}
 		}
 		if len(texts) == 0 {
@@ -571,19 +650,51 @@ func classify(text string) string {
 
 func redact(text string) string {
 	text = reUserinfo.ReplaceAllString(text, "${1}")
+	for _, pattern := range reHomeValues {
+		text = pattern.ReplaceAllString(text, "~${1}")
+	}
 	text = reHomePath.ReplaceAllString(text, "~")
 	text = reBearer.ReplaceAllString(text, "Bearer <secret>")
 	for _, pattern := range reTokens {
 		text = pattern.ReplaceAllString(text, "<secret>")
 	}
 	text = reEmail.ReplaceAllString(text, "<email>")
-	text = reLongHex.ReplaceAllString(text, "<secret>")
+	// Any 32+ run of base64 or hex characters is a secret candidate. A run
+	// with several "/" is a path; only its long segments are redacted.
 	return reLongB64.ReplaceAllStringFunc(text, func(run string) string {
-		if strings.ContainsAny(run, "0123456789") && strings.IndexFunc(run, unicode.IsUpper) >= 0 && strings.IndexFunc(run, unicode.IsLower) >= 0 {
+		if strings.Count(run, "/") <= 1 {
 			return "<secret>"
 		}
-		return run
+		segments := strings.Split(run, "/")
+		for i, segment := range segments {
+			if len(segment) >= 32 {
+				segments[i] = "<secret>"
+			}
+		}
+		return strings.Join(segments, "/")
 	})
+}
+
+// stripTagged removes every lowercase-tag block that has a matching close
+// tag, such as an embedded system reminder or slash-command echo.
+func stripTagged(text string) string {
+	var b strings.Builder
+	for {
+		loc := openTag.FindStringSubmatchIndex(text)
+		if loc == nil {
+			b.WriteString(text)
+			return strings.TrimSpace(b.String())
+		}
+		closing := "</" + text[loc[2]:loc[3]] + ">"
+		end := strings.Index(text[loc[1]:], closing)
+		if end < 0 {
+			b.WriteString(text[:loc[1]])
+			text = text[loc[1]:]
+			continue
+		}
+		b.WriteString(text[:loc[0]])
+		text = text[loc[1]+end+len(closing):]
+	}
 }
 
 // excerpt returns a single-line, redacted prefix of at most max runes.
@@ -617,6 +728,7 @@ func corrections(opt options, sessions []session, stats scanStats) correctionsRe
 		Note:            "keyword classes are candidates; read each turn before treating it as a finding",
 		SessionsScanned: len(sessions),
 		SkippedLines:    stats.skippedLines,
+		SkippedFiles:    stats.skippedFiles,
 		UnreadableFiles: stats.unreadableFiles,
 		Classes:         []classReport{},
 		OneOffs:         []classReport{},
@@ -672,7 +784,7 @@ func corrections(opt options, sessions []session, stats scanStats) correctionsRe
 }
 
 func recall(opt options, sessions []session, stats scanStats) recallReport {
-	report := recallReport{Topic: strings.Join(opt.topic, " "), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
+	report := recallReport{Topic: redact(strings.Join(opt.topic, " ")), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, SkippedFiles: stats.skippedFiles, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
 	for _, s := range sessions {
 		matched := false
 		for _, msg := range s.msgs {
@@ -753,6 +865,9 @@ func printCorrections(w io.Writer, r correctionsReport) {
 		}
 	}
 	fmt.Fprintf(w, "\nsummary: sessions scanned %d, human turns %d, classified turns %d, skipped lines %d", r.SessionsScanned, r.HumanTurns, r.ClassifiedTurns, r.SkippedLines)
+	if r.SkippedFiles > 0 {
+		fmt.Fprintf(w, ", skipped files %d", r.SkippedFiles)
+	}
 	if r.UnreadableFiles > 0 {
 		fmt.Fprintf(w, ", unreadable files %d", r.UnreadableFiles)
 	}
@@ -765,6 +880,9 @@ func printRecall(w io.Writer, r recallReport) {
 		fmt.Fprintf(w, "\n%s %s %s .. %s\n  first prompt: %s\n  last reply:   %s\n", item.Harness, item.Session, item.FirstTimestamp, item.LastTimestamp, item.FirstPrompt, item.LastReply)
 	}
 	fmt.Fprintf(w, "\nsummary: sessions scanned %d, skipped lines %d", r.SessionsScanned, r.SkippedLines)
+	if r.SkippedFiles > 0 {
+		fmt.Fprintf(w, ", skipped files %d", r.SkippedFiles)
+	}
 	if r.UnreadableFiles > 0 {
 		fmt.Fprintf(w, ", unreadable files %d", r.UnreadableFiles)
 	}

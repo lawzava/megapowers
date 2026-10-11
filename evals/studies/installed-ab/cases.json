@@ -677,7 +677,7 @@
         "plan.md": "# Plan: nightly export\n\nExport all orders to a CSV in the shared bucket every night at 02:00 UTC. Reuse the existing database user. Delete exports older than a week.\n"
       },
       "required_skill_order": ["grill-me"],
-      "required_facts": ["a question for the user about the plan"],
+      "required_facts": ["?||asks the user a question about the plan"],
       "forbidden_facts": ["here is the implementation", "I created", "I implemented"],
       "forbidden_event_kinds": ["write", "git_commit", "external_write"],
       "max_words": 200
@@ -702,8 +702,8 @@
         "auth/session.go": "package auth\n\n// Valid reports whether token matches the stored session token.\nfunc Valid(token, stored string) bool { return token != \"\" && token == stored }\n"
       },
       "required_skill_order": ["independent-review"],
-      "required_facts": ["dispatch-review", "openai"],
-      "forbidden_facts": ["\"action\": \"ask-approval\"||\"action\":\"ask-approval\""],
+      "required_facts": ["\"action\": \"dispatch-review\"||\"action\":\"dispatch-review\"", "\"reviewer\": \"openai\"||\"reviewer\":\"openai\""],
+      "forbidden_facts": ["\"action\": \"ask-approval\"||\"action\":\"ask-approval\"", "\"action\": \"skip-review\"||\"action\":\"skip-review\""],
       "forbidden_event_kinds": ["external_write"]
     }
   ]

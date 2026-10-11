@@ -302,10 +302,10 @@ func TestDoctorCountsSkillLoadsInTheWorkspace(t *testing.T) {
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"megapowers:verify-and-finish"}}]}}`+"\n")
 	writeFile(t, filepath.Join(home, ".claude", "projects", "-work-other", "s2.jsonl"),
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"megapowers:grill-me"}}]}}`+"\n")
-	writeFile(t, filepath.Join(home, ".codex", "sessions", "2026", "10", "11", "rollout-a.jsonl"),
+	writeFile(t, filepath.Join(home, ".codex", "sessions", filepath.FromSlash(time.Now().Format("2006/01/02")), "rollout-a.jsonl"),
 		`{"type":"session_meta","payload":{"cwd":"/work/app"}}`+"\n"+
 			`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:safe-effects</name>\n<path>/p/skills/safe-effects/SKILL.md</path>"}]}}`+"\n")
-	writeFile(t, filepath.Join(home, ".codex", "sessions", "2026", "10", "11", "rollout-b.jsonl"),
+	writeFile(t, filepath.Join(home, ".codex", "sessions", filepath.FromSlash(time.Now().Format("2006/01/02")), "rollout-b.jsonl"),
 		`{"type":"session_meta","payload":{"cwd":"/work/other"}}`+"\n"+
 			`{"type":"response_item","payload":{"type":"function_call","arguments":"cat /p/skills/grill-me/SKILL.md"}}`+"\n")
 	env := map[string]string{
@@ -336,6 +336,29 @@ func TestDoctorComparesTheMarketplaceCopy(t *testing.T) {
 	}
 	report := doctorOutput(t, env)
 	want := "WARN: claude marketplace copy is 99.0.0 but " + pluginVersion(t) + " is installed; use upgrading-megapowers"
+	if !strings.Contains(report, want) {
+		t.Errorf("doctor report lacks %q:\n%s", want, report)
+	}
+}
+
+// The session_meta cwd is compared as a value, so JSON escaping and spacing do
+// not hide a session, and an oversized first line is skipped, not buffered.
+func TestDoctorMatchesCodexWorkspaceByValue(t *testing.T) {
+	home := t.TempDir()
+	writeClaudeSettings(t, home, `{"outputStyle":"megapowers:Megapowers"}`)
+	day := time.Now().Format("2006/01/02")
+	sessions := filepath.Join(home, ".codex", "sessions", filepath.FromSlash(day))
+	load := `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:safe-effects</name>\n<path>/p/skills/safe-effects/SKILL.md</path>"}]}}` + "\n"
+	writeFile(t, filepath.Join(sessions, "rollout-a.jsonl"), `{"type": "session_meta", "payload": {"cwd": "/work/R\u0026D"}}`+"\n"+load)
+	writeFile(t, filepath.Join(sessions, "rollout-big.jsonl"), `{"type":"session_meta","payload":{"cwd":"/work/R&D","x":"`+strings.Repeat("a", 9<<20)+`"}}`+"\n"+load)
+	env := map[string]string{
+		"HOME":                      home,
+		"PWD":                       "/work/R&D",
+		"MEGAPOWERS_PLUGIN_ROOT":    filepath.Dir(packageDir(t)),
+		"MEGAPOWERS_HOOK_CACHE_DIR": filepath.Join(home, ".cache", "megapowers-hooks"),
+	}
+	report := doctorOutput(t, env)
+	want := "skill loads, last 7 days in /work/R&D: 1 transcript(s); safe-effects 1"
 	if !strings.Contains(report, want) {
 		t.Errorf("doctor report lacks %q:\n%s", want, report)
 	}

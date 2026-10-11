@@ -26,8 +26,9 @@ go run <skill-dir>/scripts/run-state.go resume --id ID
   next safe action, and blockers.
 
 Exit codes: 0 success, 3 resume mismatch (stop affected work and reconcile),
-125 tool or usage error. `go run` reports a non-zero exit as `exit status N`
-and itself exits 1; read that line or the final `result:` line.
+125 tool or usage error, including a symlinked `info/exclude`. Through
+`go run`, any failure exits 1; the final `result:` line carries the real code,
+for example `result: mismatch (exit 3)`.
 
 Text is folded to one line and capped at 2000 characters. Files are 0600.
 The journal is never rewritten.

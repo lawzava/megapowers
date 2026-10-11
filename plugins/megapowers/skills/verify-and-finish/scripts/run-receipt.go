@@ -24,11 +24,12 @@ import (
 )
 
 const (
-	exitToolError   = 125
-	exitNotRunnable = 126
-	exitNotFound    = 127
-	defaultTail     = 40
-	maxTailBytes    = 1 << 20
+	exitToolError     = 125
+	exitNotRunnable   = 126
+	exitNotFound      = 127
+	defaultTail       = 40
+	maxTailBytes      = 1 << 20
+	maxUntrackedBytes = 16 << 20
 )
 
 const usage = `Usage: go run run-receipt.go [--dir DIR] [--tail N] [--shell] -- <command> [args...]
@@ -41,12 +42,13 @@ prints the last N lines after it exits, then one final line:
 Options:
   --dir DIR   receipt directory (default $TMPDIR/megapowers-receipts)
   --tail N    output lines to print after the run (default 40)
-  --shell     run the single argument after -- through sh -c (cmd /c on
-              Windows); the exit status is then the shell's, so a failing
-              pipeline stage counts only under the shell's own rules
+  --shell     run the single argument after -- through sh -c; the exit
+              status is then the shell's, so a failing pipeline stage counts
+              only under the shell's own rules (not supported on Windows)
   --help      print this help
 
-Exit status is the command's; 127 if it cannot be found, 125 for a tool error.
+Exit status is the command's; 127 if it cannot be found, 126 if it cannot
+run, 125 for a tool error.
 `
 
 type receipt struct {
@@ -93,6 +95,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return fail(stderr, "no command given after --")
 	case *tail < 0:
 		return fail(stderr, "--tail must be zero or more")
+	case *shell && runtime.GOOS == "windows":
+		// Go quotes arguments for CommandLineToArgvW, which cmd /c does not parse.
+		return fail(stderr, "--shell is not supported on Windows; pass the command as argv after --")
 	case *shell && len(command) != 1:
 		return fail(stderr, "--shell takes exactly one argument after --; quote the whole command line")
 	}
@@ -128,6 +133,16 @@ func execute(command []string, shell bool, dir string, tail int, stdout io.Write
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return 0, toolError{fmt.Sprintf("create receipt directory: %v", err)}
 	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return 0, toolError{fmt.Sprintf("inspect receipt directory: %v", err)}
+	}
+	if info.Mode()&fs.ModeSymlink != 0 || !info.IsDir() {
+		return 0, toolError{fmt.Sprintf("receipt directory %s is a symlink or not a directory", dir)}
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return 0, toolError{fmt.Sprintf("restrict receipt directory to 0700: %v", err)}
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return 0, toolError{fmt.Sprintf("read working directory: %v", err)}
@@ -146,11 +161,7 @@ func execute(command []string, shell bool, dir string, tail int, stdout io.Write
 
 	argv := command
 	if shell {
-		if runtime.GOOS == "windows" {
-			argv = []string{"cmd", "/c", command[0]}
-		} else {
-			argv = []string{"sh", "-c", command[0]}
-		}
+		argv = []string{"sh", "-c", command[0]}
 	}
 	code, sig := runCommand(argv, logFile)
 	duration := time.Since(started)
@@ -204,18 +215,19 @@ func execute(command []string, shell bool, dir string, tail int, stdout io.Write
 func runCommand(argv []string, log *os.File) (int, string) {
 	path, err := exec.LookPath(argv[0])
 	if err != nil {
-		fmt.Fprintf(log, "run-receipt: command not found: %s\n", argv[0])
-		return exitNotFound, ""
+		if errors.Is(err, exec.ErrNotFound) {
+			fmt.Fprintf(log, "run-receipt: command not found: %s\n", argv[0])
+			return exitNotFound, ""
+		}
+		fmt.Fprintf(log, "run-receipt: cannot run %s: %v\n", argv[0], err)
+		return exitNotRunnable, ""
 	}
 	cmd := exec.Command(path, argv[1:]...)
 	cmd.Args[0] = argv[0]
 	cmd.Stdin = nil
 	cmd.Stdout, cmd.Stderr = log, log
 	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(log, "run-receipt: cannot start %s: %v\n", argv[0], err)
-		if errors.Is(err, fs.ErrNotExist) {
-			return exitNotFound, ""
-		}
+		fmt.Fprintf(log, "run-receipt: cannot run %s: %v\n", argv[0], err)
 		return exitNotRunnable, ""
 	}
 
@@ -272,11 +284,55 @@ func gitIdentity() (head, state, digest string) {
 	if len(status) == 0 && len(diff) == 0 {
 		return head, "clean", ""
 	}
+	top, err := gitOutput("rev-parse", "--show-toplevel")
+	if err != nil {
+		return head, "none", ""
+	}
+	root := strings.TrimSpace(string(top))
+	untracked, err := gitOutput("-C", root, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return head, "none", ""
+	}
 	hash := sha256.New()
 	hash.Write(status)
 	hash.Write([]byte{0})
 	hash.Write(diff)
+	for _, rel := range strings.Split(string(untracked), "\x00") {
+		if rel != "" {
+			hashUntracked(hash, root, rel)
+		}
+	}
 	return head, "dirty", hex.EncodeToString(hash.Sum(nil))
+}
+
+// hashUntracked adds an untracked path and its content to the digest. Files
+// over maxUntrackedBytes contribute their path and size only.
+func hashUntracked(hash io.Writer, root, rel string) {
+	fmt.Fprintf(hash, "\x00untracked\x00%s\x00", rel)
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	info, err := os.Lstat(path)
+	switch {
+	case err != nil:
+		fmt.Fprintf(hash, "error:%v", err)
+	case info.Mode()&fs.ModeSymlink != 0:
+		target, _ := os.Readlink(path)
+		fmt.Fprintf(hash, "symlink:%s", target)
+	case !info.Mode().IsRegular():
+		fmt.Fprintf(hash, "mode:%v", info.Mode().Type())
+	case info.Size() > maxUntrackedBytes:
+		fmt.Fprintf(hash, "size:%d", info.Size())
+	default:
+		file, err := os.Open(path)
+		if err != nil {
+			fmt.Fprintf(hash, "error:%v", err)
+			return
+		}
+		defer file.Close()
+		fmt.Fprintf(hash, "content:%d:", info.Size())
+		if _, err := io.Copy(hash, io.LimitReader(file, maxUntrackedBytes)); err != nil {
+			fmt.Fprintf(hash, "error:%v", err)
+		}
+	}
 }
 
 func gitOutput(args ...string) ([]byte, error) {
