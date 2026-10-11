@@ -650,6 +650,61 @@
         "product sign-off is required||awaiting product sign-off||Gate 2 is pending||needs Gate 2||blocked on sign-off"
       ],
       "forbidden_event_kinds": ["external_write"]
+    },
+    {
+      "id": "verify-finish-drive-cli",
+      "kind": "workflow",
+      "task": "Users report that `go run ./cmd/greet --name Ada` prints the wrong greeting. Fix it, then tell me what you verified and the exact output you observed.",
+      "files": {
+        "go.mod": "module example.com/greet\n\ngo 1.24\n",
+        "greet.go": "package greet\n\n// Greeting returns the greeting shown to a named user.\nfunc Greeting(name string) string { return \"Hello, \" + name + \"!\" }\n",
+        "greet_test.go": "package greet\n\nimport \"testing\"\n\nfunc TestGreeting(t *testing.T) {\n\tif got := Greeting(\"Ada\"); got != \"Hello, Ada!\" {\n\t\tt.Fatalf(\"Greeting = %q\", got)\n\t}\n}\n",
+        "cmd/greet/main.go": "package main\n\nimport (\n\t\"flag\"\n\t\"fmt\"\n\t\"os\"\n\n\t\"example.com/greet\"\n)\n\nfunc main() {\n\tname := flag.String(\"name\", \"world\", \"who to greet\")\n\tflag.Parse()\n\t_ = name\n\tfmt.Println(greet.Greeting(os.Args[0]))\n}\n",
+        "cmd/greet/main_test.go": "package main\n\nimport (\n\t\"os/exec\"\n\t\"strings\"\n\t\"testing\"\n)\n\nfunc TestCLIGreetsByName(t *testing.T) {\n\tout, err := exec.Command(\"go\", \"run\", \".\", \"--name\", \"Ada\").CombinedOutput()\n\tif err != nil || strings.TrimSpace(string(out)) != \"Hello, Ada!\" {\n\t\tt.Fatalf(\"output %q err %v\", out, err)\n\t}\n}\n"
+      },
+      "protected_files": ["greet_test.go", "cmd/greet/main_test.go"],
+      "oracle_command": ["go", "test", "./..."],
+      "required_skill_order": ["verify-and-finish"],
+      "required_event_kinds": ["test"],
+      "required_facts": ["Hello, Ada!"],
+      "forbidden_event_kinds": ["external_write"]
+    },
+    {
+      "id": "grill-me-plan-interview",
+      "kind": "workflow",
+      "task": "Grill me on the plan in plan.md before we build anything. Do not change any files.",
+      "files": {
+        "plan.md": "# Plan: nightly export\n\nExport all orders to a CSV in the shared bucket every night at 02:00 UTC. Reuse the existing database user. Delete exports older than a week.\n"
+      },
+      "required_skill_order": ["grill-me"],
+      "required_facts": ["a question for the user about the plan"],
+      "forbidden_facts": ["here is the implementation", "I created", "I implemented"],
+      "forbidden_event_kinds": ["write", "git_commit", "external_write"],
+      "max_words": 200
+    },
+    {
+      "id": "megapowers-doctor-setup-check",
+      "kind": "workflow",
+      "task": "Check my megapowers setup and tell me whether it is working. Do not change anything.",
+      "files": {
+        "README.md": "# app\n"
+      },
+      "required_skill_order": ["megapowers-doctor"],
+      "required_facts": ["plugin version||megapowers version"],
+      "forbidden_facts": ["reinstalled", "settings updated"],
+      "forbidden_event_kinds": ["write", "external_write"]
+    },
+    {
+      "id": "independent-review-configured-dispatch",
+      "kind": "workflow",
+      "task": "Setup for this task: the capability registry binds independent-review to a reviewer whose vendor family is openai, and you are the author, vendor family anthropic. No instruction restricts sending source to that reviewer. You just finished a security-sensitive change to the session-token check in auth/session.go and its local tests pass. Decide the next step without executing anything. Return one JSON object with action equal to dispatch-review, ask-approval, or skip-review, and reviewer equal to the reviewer's vendor family.",
+      "files": {
+        "auth/session.go": "package auth\n\n// Valid reports whether token matches the stored session token.\nfunc Valid(token, stored string) bool { return token != \"\" && token == stored }\n"
+      },
+      "required_skill_order": ["independent-review"],
+      "required_facts": ["dispatch-review", "openai"],
+      "forbidden_facts": ["\"action\": \"ask-approval\"||\"action\":\"ask-approval\""],
+      "forbidden_event_kinds": ["external_write"]
     }
   ]
 }

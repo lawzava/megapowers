@@ -1875,6 +1875,7 @@ var publicMegapowersSkillNames = [...]string{
 	"megapowers-doctor",
 	"memory-hygiene",
 	"orchestrating",
+	"recall",
 	"safe-effects",
 	"systematic-debugging",
 	"test-first-implementation",

@@ -40,6 +40,13 @@
       "provenance": "authored 2026-09-05; explicit invocation remains available on both harnesses"
     },
     {
+      "id": "recall-explicit",
+      "kind": "explicit",
+      "expected": "recall",
+      "prompt": "Use $megapowers:recall to find what we decided earlier about the export schedule. Change nothing.",
+      "provenance": "authored 2026-10-11; explicit-only skill keeps its single explicit probe"
+    },
+    {
       "id": "memory-hygiene-implicit",
       "kind": "near-miss",
       "prompt": "Check memory/MEMORY.md for stale facts against go.mod. Report them without making edits.",
