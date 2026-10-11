@@ -120,14 +120,21 @@ the sandbox, OS permissions, review, or `safe-effects` approval for changes
 outside the machine. The same `PreToolUse` hook also stops the first allowed
 command in a session that looks like a completion step (`git commit`,
 `git push`, `gh pr create` or `merge`, `gh release`) or a change outside the
-machine (`npm`, `cargo`, or `pnpm publish`, `docker push`, `kubectl apply`,
+machine (package publishes such as `npm`, `cargo`, `uv`, or `poetry publish`,
+`twine upload`, and `gem push`; `docker push` or `buildx --push`; `kubectl`
+writes such as `apply`, `patch`, `scale`, or `rollout restart`;
 `terraform apply`, `railway up`, `fly deploy`, `vercel --prod`,
-`wrangler deploy`, a `curl`, `wget`, HTTPie, or `xh` write request to a
-non-loopback host, or a wrapper script given `POST`, `PUT`, `PATCH`, or
+`netlify` and `heroku` deploys, creates, runs, and config changes,
+`wrangler deploy`; `aws`, `gcloud`, `gsutil`, and `az` commands that create,
+change, deploy, or delete;
+`gh` workflow runs, secret and variable changes, and release uploads;
+`rsync` or `scp` to a remote host; `psql` or `mysql` inline writes to a
+non-loopback host; a `curl`, `wget`, HTTPie, or `xh` write request to a
+non-loopback host; or a wrapper script given `POST`, `PUT`, `PATCH`, or
 `DELETE` with a remote URL or API path). A second `PreToolUse` matcher,
 `mcp__.*`, applies the same `safe-effects` stop to MCP tools whose name's
-action word creates, updates, deletes, sends, or posts; it reads only the tool
-name. The hook denies that call once with a reason naming `verify-and-finish`
+action word creates, updates, deletes, sends, posts, applies, executes, or
+runs; it reads only the tool name and skips browser-automation servers. The hook denies that call once with a reason naming `verify-and-finish`
 or `safe-effects`, and the retry runs. Calls of the same kind within 60
 seconds of that denial also stop until the skill loads, so parallel calls
 cannot pass early; after the window a missed detection fails open. If the

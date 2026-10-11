@@ -66,6 +66,35 @@ func TestGateDiscardKeysOnTheExactCommand(t *testing.T) {
 	}
 }
 
+// The marker keys on the discarding git words, so a retry that drops a chain
+// or changes spacing is the same command, while a new target stops again.
+func TestGateDiscardKeysOnTheGitWordsNotTheShellText(t *testing.T) {
+	t.Parallel()
+
+	env := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
+	first, _, _ := runGate(t, env, "session-w", "git status && git branch -D worktree-agent-1")
+	if !strings.Contains(first, `"permissionDecision":"deny"`) {
+		t.Fatalf("first discard must stop: %q", first)
+	}
+	for _, retry := range []string{
+		"git branch -D worktree-agent-1",
+		"git  branch   -D worktree-agent-1",
+		"git log -1; git branch -D worktree-agent-1",
+	} {
+		if out, _, _ := runGate(t, env, "session-w", retry); out != "" {
+			t.Fatalf("retry %q of the same discard must run: %q", retry, out)
+		}
+	}
+	other, _, _ := runGate(t, env, "session-w", "git branch -D worktree-agent-2")
+	if !strings.Contains(other, `"permissionDecision":"deny"`) {
+		t.Fatalf("a different branch must stop once: %q", other)
+	}
+	elsewhere, _, _ := runGate(t, env, "session-w", "cd ../other-repo && git branch -D worktree-agent-1")
+	if !strings.Contains(elsewhere, `"permissionDecision":"deny"`) {
+		t.Fatalf("the same discard in another directory must stop once: %q", elsewhere)
+	}
+}
+
 func TestGateDiscardStaysQuietForSafeGit(t *testing.T) {
 	t.Parallel()
 

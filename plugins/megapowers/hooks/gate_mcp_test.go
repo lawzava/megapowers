@@ -34,6 +34,10 @@ func TestGateStopsFirstMCPWriteOncePerSession(t *testing.T) {
 		"mcp__stripe__cancel_subscription",
 		"mcp__drive__upload_file",
 		"mcp__linear__delete_comment",
+		"mcp__supabase__apply_migration",
+		"mcp__supabase__execute_sql",
+		"mcp__postgres__run_sql",
+		"mcp__db__drop_table",
 	} {
 		t.Run(tool, func(t *testing.T) {
 			t.Parallel()
@@ -70,6 +74,10 @@ func TestGateLetsMCPReadsPassSilently(t *testing.T) {
 		"mcp__dns__lookup_record",
 		"mcp__drive__view_file",
 		"mcp__playwright__browser_snapshot",
+		"mcp__playwright__browser_file_upload",
+		"mcp__plugin_playwright_playwright__browser_file_upload",
+		"mcp__chrome-devtools__upload_file",
+		"mcp__puppeteer__set_viewport",
 		"mcp__linear",
 		"mcp__linear__",
 		"mcp____save_issue_without_server",

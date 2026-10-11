@@ -40,7 +40,7 @@ if defined GO_VERSION (
     set "GO_KEY=!GO_VERSION:devel =!"
     for /f "tokens=1" %%k in ("!GO_KEY!") do set "GO_KEY=%%k"
 )
-set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-a1bafd163c4ec2ae-windows-%PROCESSOR_ARCHITECTURE%"
+set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-8be2553790a42e20-windows-%PROCESSOR_ARCHITECTURE%"
 set "RUNNER="
 if defined GO_KEY (
     set "RUNNER=!RUNNER_PREFIX!-!GO_KEY!.exe"
@@ -122,6 +122,7 @@ if not exist "!RUNNER!" (
     )
 )
 
+if exist "!CACHE_DIR!\guard-inactive.warned" del /q "!CACHE_DIR!\guard-inactive.warned" >nul 2>nul
 set "MEGAPOWERS_PLUGIN_ROOT=!PLUGIN_DIR!"
 set "MEGAPOWERS_HOOK_CACHE_DIR=!CACHE_DIR!"
 "!RUNNER!" %*
@@ -133,10 +134,14 @@ setlocal enabledelayedexpansion
 rem A launcher failure never blocks the tool call: the guard hooks warn the
 rem user through systemMessage and exit 0; doctor keeps a hard failure.
 echo megapowers hook: !REASON! 1>&2
-if /i "!HOOK_NAME!"=="deny-destructive" goto warn
+if /i "!HOOK_NAME!"=="deny-destructive" goto warnonce
 if /i "!HOOK_NAME!"=="session-start" goto warn
 if /i "!HOOK_NAME!"=="subagent-start" exit /b 0
 exit /b 1
+:warnonce
+rem Tool calls warn once per breakage; session-start still warns every session.
+if defined CACHE_DIR if exist "!CACHE_DIR!\guard-inactive.warned" exit /b 0
+if defined CACHE_DIR if exist "!CACHE_DIR!\" type nul > "!CACHE_DIR!\guard-inactive.warned" 2>nul
 :warn
 set "JSON_REASON=!REASON:\=\\!"
 set JSON_REASON=!JSON_REASON:"=\"!
@@ -176,7 +181,17 @@ json_escape() {
 fail() {
   printf 'megapowers hook: %s\n' "$1" >&2
   case "$hook_name" in
-    deny-destructive|session-start)
+    deny-destructive)
+      # Tool calls warn once per breakage; session-start still warns every
+      # session. A working runner removes the marker.
+      if [ "${ephemeral_cache:-1}" -eq 0 ] && [ -d "${cache_dir:-}" ]; then
+        [ -e "$cache_dir/guard-inactive.warned" ] && exit 0
+        : > "$cache_dir/guard-inactive.warned" 2>/dev/null
+      fi
+      printf '{"systemMessage":"megapowers: destructive-command guard is inactive (%s). Run megapowers-doctor for the fix."}\n' "$(json_escape "$1")"
+      exit 0
+      ;;
+    session-start)
       printf '{"systemMessage":"megapowers: destructive-command guard is inactive (%s). Run megapowers-doctor for the fix."}\n' "$(json_escape "$1")"
       exit 0
       ;;
@@ -254,7 +269,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-runner_prefix="$cache_dir/megapowers-hook-a1bafd163c4ec2ae-$platform_os-$platform_arch"
+runner_prefix="$cache_dir/megapowers-hook-8be2553790a42e20-$platform_os-$platform_arch"
 if [ -n "$go_key" ]; then
   runner="$runner_prefix-$go_key"
 else
@@ -313,8 +328,19 @@ if [ ! -x "$runner" ]; then
     fi
   fi
   chmod 700 "$runner" || fail "cannot secure cached hook runner"
+  # Remove runners for other hook sources not run for 30 days, judged by
+  # access time because running a runner never changes its mtime. Another
+  # install may still use a recent one, so those stay; a pruned runner that is
+  # still needed is rebuilt once.
+  if command -v find >/dev/null 2>&1; then
+    find "$cache_dir" -maxdepth 1 -type f -name 'megapowers-hook-*' ! -name "${runner_prefix##*/}-*" \
+      -atime +30 -exec rm -f -- {} + 2>/dev/null || :
+  fi
 fi
 
+if [ -e "$cache_dir/guard-inactive.warned" ]; then
+  rm -f -- "$cache_dir/guard-inactive.warned" 2>/dev/null || :
+fi
 export MEGAPOWERS_PLUGIN_ROOT="$plugin_dir" MEGAPOWERS_HOOK_CACHE_DIR="$cache_dir"
 if [ "$ephemeral_cache" -eq 1 ]; then
   "$runner" "$hook_name"

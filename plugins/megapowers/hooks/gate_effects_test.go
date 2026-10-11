@@ -133,3 +133,130 @@ func TestGateIgnoresHTTPNearMisses(t *testing.T) {
 		})
 	}
 }
+
+func TestGateStopsCloudPublishAndRemoteWrites(t *testing.T) {
+	t.Parallel()
+
+	for _, command := range []string{
+		"aws s3 rm s3://bucket/key",
+		"aws s3 cp dist/ s3://bucket/ --recursive",
+		"aws s3 sync ./site s3://bucket",
+		"aws --profile prod ec2 terminate-instances --instance-ids i-1",
+		"aws lambda update-function-code --function-name f --zip-file fileb://f.zip",
+		"aws ecs update-service --cluster c --service s --force-new-deployment",
+		"gcloud run deploy api --image registry.example.com/p/i",
+		"gcloud --project p app deploy",
+		"gcloud compute instances delete vm-1 --zone us-central1-a",
+		"az webapp deploy --name app --src-path app.zip",
+		"az group delete --name rg",
+		"gh workflow run deploy.yml",
+		"gh secret set API_KEY",
+		"gh variable set ENV --body prod",
+		"gh release upload v1.0.0 dist.tar.gz",
+		"gh repo delete o/r",
+		"gh run cancel 123",
+		"kubectl patch deployment api -p '{}'",
+		"kubectl rollout restart deployment/api",
+		"kubectl --context prod scale deployment api --replicas=0",
+		"docker buildx build --push -t registry.example.com/app .",
+		"docker image push registry.example.com/app",
+		"twine upload dist/*",
+		"uv publish",
+		"poetry publish --build",
+		"gem push app.gem",
+		"rsync -avz ./dist/ deploy@host.example.com:/srv/app/",
+		"rsync -e ssh -a dist/ host.example.com:/srv/",
+		"scp build.tar.gz deploy@host.example.com:/srv/",
+		"scp -i key.pem -P 2222 app.zip host.example.com:~/",
+		"psql -h db.example.com -c \"DELETE FROM users WHERE id = 1\"",
+		"psql \"$DATABASE_URL\" -c 'drop table x'",
+		"mysql -h db.example.com -e \"UPDATE t SET a=1\"",
+		"netlify deploy --prod",
+		"heroku config:set KEY=v -a app",
+		"aws s3 mv s3://bucket/key ./key",
+		"aws route53 change-resource-record-sets --hosted-zone-id Z123 --change-batch file://change.json",
+		"gcloud storage cp ./artifact gs://bucket/artifact",
+		"gsutil rm gs://bucket/old",
+		"az storage blob upload-batch --account-name acct --destination container --source ./dist",
+		"az account management-group create --name new-group",
+		"docker buildx build --push=true -t registry.example.com/app .",
+		"docker buildx build --output type=registry -t registry.example.com/app .",
+		"scp artifact p:/tmp/artifact",
+		"psql -h db.example.com -c BEGIN -c 'DELETE FROM users' -c COMMIT",
+		"psql -hdb.example.com -c 'DELETE FROM users'",
+		"psql 'host=db.example.com dbname=app' -c 'DELETE FROM users'",
+		"heroku create review-app",
+		"heroku run --app prod 'rake db:migrate'",
+		"netlify env:set API_TOKEN value",
+		"gcloud storage buckets create gs://new-bucket",
+		"gcloud logging logs delete app-log --quiet",
+		"psql -h db.example.com -v host=localhost -c 'DELETE FROM users'",
+		"psql -h db.example.com -c \"SELECT 1 -- '\" -c \"DELETE FROM users -- '\"",
+		"heroku pg:backups:delete b001 --app prod",
+	} {
+		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+			env := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
+			stdout, stderr, rc := runGate(t, env, "session-cloud", command)
+			if rc != 0 || stderr != "" {
+				t.Fatalf("rc=%d stderr=%q", rc, stderr)
+			}
+			if stdout == "" {
+				t.Fatalf("want a safe-effects denial, got silence")
+			}
+			if text := gateText(decodeGate(t, stdout)); !strings.Contains(text, "megapowers safe-effects skill") {
+				t.Fatalf("gate message = %q, want safe-effects", text)
+			}
+		})
+	}
+}
+
+func TestGateIgnoresCloudReadsAndLocalCopies(t *testing.T) {
+	t.Parallel()
+
+	for _, command := range []string{
+		"aws s3 ls s3://bucket",
+		"aws s3 cp s3://bucket/key ./key",
+		"aws ec2 describe-instances",
+		"aws sts get-caller-identity",
+		"aws logs tail /aws/lambda/f",
+		"gcloud config set project p",
+		"gcloud run services list",
+		"gcloud auth login",
+		"az account set --subscription x",
+		"az group list",
+		"gh workflow list",
+		"gh secret list",
+		"gh run view 123",
+		"gh release view v1",
+		"kubectl get pods",
+		"kubectl rollout status deployment/api",
+		"docker buildx build -t app .",
+		"docker image ls",
+		"rsync -av host.example.com:/var/log/app/ ./logs/",
+		"rsync -av ./a/ ./b/",
+		"scp host.example.com:/etc/hosts ./hosts",
+		"psql -c 'select 1'",
+		"psql -h localhost -c 'DELETE FROM x'",
+		"mysql -e 'SELECT * FROM t'",
+		"heroku logs --tail -a app",
+		"netlify status",
+		"uv run pytest",
+		"poetry install",
+		"gcloud compute instances describe update --zone us-central1-a",
+		"psql -h db.example.com -c \"SELECT * FROM audit_log WHERE action = 'delete'\"",
+		"az account set --subscription prod",
+		"gcloud storage cp gs://bucket/artifact ./artifact",
+		"netlify env:list",
+		"heroku apps:info -a app",
+	} {
+		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+			env := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
+			stdout, stderr, rc := runGate(t, env, "session-cloud-read", command)
+			if rc != 0 || stdout != "" || stderr != "" {
+				t.Fatalf("rc=%d stdout=%q stderr=%q, want silence", rc, stdout, stderr)
+			}
+		})
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -94,8 +95,8 @@ func isDryRun(words []string) bool {
 func gateDecision(command, sessionID, transcriptPath, cwd string, getenv getenvFunc) (deny, remind []string) {
 	root := gateMarkerRoot(getenv)
 	deny, remind = skillGates(gateSkills(command), sessionID, transcriptPath, getenv)
-	if gitDiscards(command, cwd) {
-		digest := sha256.Sum256([]byte(command))
+	if key := gitDiscardKey(command, cwd); key != "" {
+		digest := sha256.Sum256([]byte(key))
 		switch markGate(root, sessionID, discardGate+"-"+hex.EncodeToString(digest[:8])) {
 		case markerNew:
 			deny = append(deny, discardGate)
@@ -154,9 +155,10 @@ func gateMessages(gates []string, deny bool) string {
 }
 
 // skillLoaded reports whether the transcript records the skill body loading:
-// a Skill tool call, an injected skill body, or a tool call that reads the
-// skill's SKILL.md. Catalog entries and prose mentions do not count. An
-// unreadable transcript counts as not loaded and reports readable false.
+// a Skill tool call, an injected skill body (Claude's base-directory header or
+// Codex's explicit <skill> block), or a tool call that reads the skill's
+// SKILL.md. Catalog entries and prose mentions do not count. An unreadable
+// transcript counts as not loaded and reports readable false.
 func skillLoaded(transcriptPath, skill string) (loaded, readable bool) {
 	if transcriptPath == "" {
 		return false, false
@@ -169,6 +171,9 @@ func skillLoaded(transcriptPath, skill string) (loaded, readable bool) {
 	skillCall := []byte("\"megapowers:" + skill + "\"")
 	skillDir := []byte("skills/" + skill)
 	skillBody := []byte("skills/" + skill + "/SKILL.md")
+	// Codex writes the injection as a user message whose text starts with the
+	// block; the JSONL escapes the newline, so the bytes hold a literal \n.
+	codexBlock := []byte(`"role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:` + skill + `</name>`)
 	reader := bufio.NewReaderSize(file, 64<<10)
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -176,6 +181,8 @@ func skillLoaded(transcriptPath, skill string) (loaded, readable bool) {
 		case bytes.Contains(line, []byte("\"name\":\"Skill\"")) && bytes.Contains(line, skillCall):
 			return true, true
 		case bytes.Contains(line, []byte("Base directory for this skill:")) && bytes.Contains(line, skillDir):
+			return true, true
+		case bytes.Contains(line, codexBlock) && bytes.Contains(line, skillBody):
 			return true, true
 		case bytes.Contains(line, skillBody) && (bytes.Contains(line, []byte("\"function_call\"")) ||
 			bytes.Contains(line, []byte("\"custom_tool_call\"")) || bytes.Contains(line, []byte("\"local_shell_call\"")) ||
@@ -266,6 +273,8 @@ func gateKind(name string, words []string) string {
 			return effectSkill
 		case sub == "issue" && hasKey(ghIssueWrites, second):
 			return effectSkill
+		case ghWritesTo(sub, second):
+			return effectSkill
 		}
 	case "npm", "pnpm", "cargo":
 		if subcommand(words, npmValueOptions) == "publish" {
@@ -276,12 +285,53 @@ func gateKind(name string, words []string) string {
 		if sub == "publish" || (sub == "npm" && secondSubcommand(words, nil) == "publish") {
 			return effectSkill
 		}
+	case "uv", "poetry", "hatch", "flit", "pdm":
+		if subcommand(words, nil) == "publish" {
+			return effectSkill
+		}
+	case "twine", "gem":
+		if sub := subcommand(words, nil); sub == "upload" || sub == "push" {
+			return effectSkill
+		}
 	case "docker":
-		if subcommand(words, dockerValueOptions) == "push" {
+		if dockerPushes(words) {
 			return effectSkill
 		}
 	case "kubectl":
-		if sub := subcommand(words, kubectlValueOptions); sub == "apply" || sub == "delete" {
+		if kubectlWritesTo(words) {
+			return effectSkill
+		}
+	case "aws":
+		if awsWrites(words) {
+			return effectSkill
+		}
+	case "gsutil":
+		subs := subcommands(words, gsutilValueOptions, 0)
+		if len(subs) > 0 && objectStoreWrites(subs[0], subs[1:], "gs://") {
+			return effectSkill
+		}
+	case "gcloud":
+		if cloudVerbWrites(words, gcloudValueOptions, "gs://") {
+			return effectSkill
+		}
+	case "az":
+		if cloudVerbWrites(words, azValueOptions, "") {
+			return effectSkill
+		}
+	case "rsync":
+		if remoteCopyWrites(words, rsyncValueOptions) {
+			return effectSkill
+		}
+	case "scp":
+		if remoteCopyWrites(words, scpValueOptions) {
+			return effectSkill
+		}
+	case "psql", "mysql":
+		if sqlClientWrites(name, words) {
+			return effectSkill
+		}
+	case "netlify", "heroku":
+		if colonCLIWrites(words) {
 			return effectSkill
 		}
 	case "helm":
@@ -327,30 +377,42 @@ func gateKind(name string, words []string) string {
 	return ""
 }
 
-// gitDiscards reports a git command that discards work the repository cannot
-// recover on its own: a hard reset, a forced clean, a forced or whole-tree
+// gitDiscardKey returns, for each git invocation in command that discards work
+// the repository cannot recover on its own, the directory it acts in and its
+// words, or "" when there is none. Keying the once-marker on these, not the
+// shell text, lets a retry that drops a chain or changes spacing run as the
+// same command while a discard in another directory stops again.
+//
+// Discarding covers a hard reset, a forced clean, a forced or whole-tree
 // checkout, a whole-tree worktree restore, a forced branch delete, or a dropped
 // or cleared stash.
 //
 // A forced branch delete passes when every named branch is already reachable
 // from HEAD in the hook's working directory, because the delete loses no
 // commits. A cd before it makes the directory unknown, so the check stays.
-func gitDiscards(command, cwd string) bool {
+func gitDiscardKey(command, cwd string) string {
 	if len(command) > maxCommandBytes {
-		return false
+		return ""
 	}
+	var keys []string
 	dir := cwd
+	// place names the repository each git invocation acts on: the hook's
+	// directory plus every directory change before it. A GIT_ variable can
+	// also move it, so then the whole command text is part of the key.
+	place := cwd
 	// An export in an earlier segment, such as GIT_DIR, moves the repository
 	// for git but not for the hook's own ancestry check. Any GIT_ name, after
 	// removing the quotes a shell would join (GIT_''DIR), disables the
 	// exemption; the stop it keeps costs one retry.
 	if strings.Contains(strings.NewReplacer(`'`, "", `"`, "", `\`, "").Replace(command), "GIT_") {
 		dir = ""
+		place += "\x00" + command
 	}
 	for _, segment := range splitSegments(command) {
 		name, tail, ok := resolveCommand(segment)
 		if ok && (name == "cd" || name == "pushd" || name == "popd") {
 			dir = ""
+			place += "\x00" + name + " " + tail
 		}
 		if !ok || name != "git" {
 			continue
@@ -368,9 +430,9 @@ func gitDiscards(command, cwd string) bool {
 		if commandBaseName(first) == "git" && mergedBranchDelete(words, dir) {
 			continue
 		}
-		return true
+		keys = append(keys, place+"\x01"+strings.Join(words, "\x00"))
 	}
-	return false
+	return strings.Join(keys, "\n")
 }
 
 // mergedBranchDelete reports a branch delete whose every named branch is an
@@ -700,7 +762,8 @@ var (
 		"deploy": {}, "redeploy": {}, "upload": {}, "write": {}, "edit": {}, "comment": {}, "reply": {}, "merge": {},
 		"close": {}, "archive": {}, "add": {}, "set": {}, "patch": {}, "put": {}, "cancel": {}, "invite": {},
 		"assign": {}, "move": {}, "rename": {}, "restore": {}, "trigger": {}, "restart": {}, "submit": {},
-		"approve": {}, "insert": {}, "upsert": {},
+		"approve": {}, "insert": {}, "upsert": {}, "apply": {}, "execute": {}, "exec": {}, "run": {}, "drop": {}, "grant": {},
+		"revoke": {}, "rollback": {}, "promote": {}, "transfer": {},
 	}
 	mcpReadVerbs = map[string]struct{}{
 		"get": {}, "list": {}, "search": {}, "read": {}, "fetch": {}, "query": {}, "describe": {}, "view": {},
@@ -716,7 +779,7 @@ func mcpGateSkills(toolName string) []string {
 		return nil
 	}
 	cut := strings.LastIndex(rest, "__")
-	if cut < 0 {
+	if cut < 0 || isBrowserServer(rest[:cut]) {
 		return nil
 	}
 	for _, word := range actionWords(rest[cut+2:]) {
@@ -1074,4 +1137,285 @@ func isLoopbackTarget(target string) bool {
 	}
 	addr, err := netip.ParseAddr(host)
 	return err == nil && addr.IsLoopback()
+}
+
+// Cloud CLIs, release tools, remote copies, and database clients that change
+// state outside this machine. The gate stops the first one per session, so a
+// list that errs toward writes costs one retry, while a miss skips the
+// safe-effects skill entirely.
+
+var (
+	awsValueOptions = map[string]struct{}{"--profile": {}, "--region": {}, "--output": {}, "--endpoint-url": {}, "--query": {},
+		"--color": {}, "--ca-bundle": {}, "--cli-connect-timeout": {}, "--cli-read-timeout": {}}
+	// awsWritePrefixes name AWS operations that create, change, or remove
+	// resources; describe-, get-, and list- operations fall through as reads.
+	awsWritePrefixes = []string{"create-", "delete-", "put-", "update-", "modify-", "terminate-", "run-", "start-", "stop-",
+		"reboot-", "attach-", "detach-", "associate-", "disassociate-", "invoke", "publish", "send-", "deploy", "register-",
+		"deregister-", "tag-", "untag-", "set-", "remove-", "add-", "enable-", "disable-", "import-", "restore-", "reset-",
+		"revoke-", "authorize-", "upload-", "copy-", "cancel-", "execute-", "replace-", "rotate-", "change-"}
+	gcloudValueOptions = map[string]struct{}{"--project": {}, "--region": {}, "--zone": {}, "--account": {}, "--configuration": {},
+		"--format": {}, "--verbosity": {}, "--impersonate-service-account": {}}
+	azValueOptions = map[string]struct{}{"--subscription": {}, "-o": {}, "--output": {}, "--query": {}}
+	// cloudWriteVerbs are gcloud and az verbs that change remote state.
+	cloudWriteVerbs = map[string]struct{}{"deploy": {}, "create": {}, "delete": {}, "update": {}, "patch": {}, "set": {},
+		"add": {}, "remove": {}, "submit": {}, "import": {}, "start": {}, "stop": {}, "restart": {}, "reset": {}, "resize": {},
+		"scale": {}, "swap": {}, "purge": {}, "upload": {}, "upload-batch": {}, "delete-batch": {}, "sync": {},
+		"set-iam-policy": {}, "add-iam-policy-binding": {}, "remove-iam-policy-binding": {}}
+	// cloudReadVerbs end the verb search as a read.
+	cloudReadVerbs = map[string]struct{}{"describe": {}, "list": {}, "get": {}, "show": {}, "read": {}, "tail": {},
+		"wait": {}, "browse": {}, "download": {}, "download-batch": {}, "get-iam-policy": {}, "exists": {}}
+	// cloudLocalGroups configure the local CLI rather than a remote resource.
+	cloudLocalGroups = map[string]struct{}{"config": {}, "configure": {}, "auth": {}, "login": {}, "logout": {},
+		"components": {}, "extension": {}, "init": {}, "info": {}, "version": {}, "upgrade": {}, "interactive": {}, "cloud": {}}
+	// azAccountLocal are "az account" commands that select or read the local
+	// login; other account commands, such as management-group create, write.
+	azAccountLocal     = map[string]struct{}{"set": {}, "show": {}, "list": {}, "clear": {}, "get-access-token": {}, "list-locations": {}}
+	gsutilValueOptions = map[string]struct{}{"-o": {}, "-h": {}, "-u": {}}
+	// objectStoreOperations are the object verbs of gsutil and gcloud storage;
+	// other storage commands, such as buckets create, use the verb search.
+	objectStoreOperations = map[string]struct{}{"cp": {}, "mv": {}, "rm": {}, "rsync": {}, "sync": {}, "rb": {}, "mb": {}}
+	// sqlValueOptions take a separate value that is not a connection target.
+	sqlValueOptions = map[string]struct{}{"-v": {}, "--set": {}, "--variable": {}, "-U": {}, "-u": {}, "--username": {}, "--user": {},
+		"-d": {}, "-D": {}, "--dbname": {}, "--database": {}, "-p": {}, "-P": {}, "--port": {}, "-f": {}, "--file": {}, "-o": {}, "-F": {}, "-R": {}, "-T": {}, "-L": {}}
+
+	ghWrites = map[string]map[string]struct{}{
+		"workflow": {"run": {}, "enable": {}, "disable": {}},
+		"secret":   {"set": {}, "delete": {}, "remove": {}},
+		"variable": {"set": {}, "delete": {}},
+		"release":  {"upload": {}, "delete": {}, "edit": {}, "delete-asset": {}},
+		"repo":     {"create": {}, "delete": {}, "edit": {}, "archive": {}, "unarchive": {}, "rename": {}},
+		"run":      {"cancel": {}, "rerun": {}, "delete": {}},
+		"cache":    {"delete": {}},
+		"label":    {"create": {}, "edit": {}, "delete": {}, "clone": {}},
+		"gist":     {"create": {}, "edit": {}, "delete": {}},
+	}
+	kubectlWrites   = map[string]struct{}{"apply": {}, "delete": {}, "patch": {}, "replace": {}, "scale": {}, "edit": {}, "create": {}, "set": {}, "annotate": {}, "label": {}, "cordon": {}, "uncordon": {}, "drain": {}, "taint": {}, "autoscale": {}, "expose": {}}
+	kubectlRollouts = map[string]struct{}{"restart": {}, "undo": {}, "pause": {}, "resume": {}}
+
+	rsyncValueOptions = map[string]struct{}{"-e": {}, "--rsh": {}, "--exclude": {}, "--include": {}, "-f": {}, "--filter": {},
+		"--exclude-from": {}, "--include-from": {}, "--files-from": {}, "--rsync-path": {}, "-T": {}, "--temp-dir": {}}
+	scpValueOptions  = map[string]struct{}{"-i": {}, "-P": {}, "-o": {}, "-F": {}, "-c": {}, "-l": {}, "-J": {}, "-S": {}}
+	sqlWriteKeywords = []string{"insert", "update", "delete", "drop", "alter", "truncate", "create", "grant", "revoke", "replace", "merge"}
+	sqlLiteral       = regexp.MustCompile(`'[^']*'`)
+)
+
+func awsWrites(words []string) bool {
+	subs := subcommands(words, awsValueOptions, 0)
+	if len(subs) < 2 {
+		return false
+	}
+	service, operation := subs[0], subs[1]
+	if service == "s3" {
+		return objectStoreWrites(operation, subs[2:], "s3://")
+	}
+	for _, prefix := range awsWritePrefixes {
+		if strings.HasPrefix(operation, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// objectStoreWrites reports a bucket command that changes remote objects: a
+// removal, a copy or sync into a bucket, or a move with a bucket on either
+// side, because moving out of a bucket deletes the source.
+func objectStoreWrites(operation string, args []string, scheme string) bool {
+	switch operation {
+	case "rm", "rb", "mb":
+		return true
+	case "mv":
+		for _, arg := range args {
+			if strings.HasPrefix(arg, scheme) {
+				return true
+			}
+		}
+	case "cp", "sync", "rsync":
+		return len(args) >= 2 && strings.HasPrefix(args[len(args)-1], scheme)
+	}
+	return false
+}
+
+// cloudVerbWrites covers gcloud and az, whose commands name resource groups,
+// then a verb, then resource names. The first verb decides, so a resource
+// named "update" after "describe" stays a read.
+func cloudVerbWrites(words []string, valueOptions map[string]struct{}, bucketScheme string) bool {
+	subs := subcommands(words, valueOptions, 0)
+	if len(subs) == 0 || hasKey(cloudLocalGroups, subs[0]) {
+		return false
+	}
+	if bucketScheme != "" && subs[0] == "storage" && len(subs) > 1 && hasKey(objectStoreOperations, subs[1]) {
+		return objectStoreWrites(subs[1], subs[2:], bucketScheme)
+	}
+	if subs[0] == "account" && (len(subs) < 2 || hasKey(azAccountLocal, subs[1])) {
+		return false
+	}
+	for _, sub := range subs {
+		if hasKey(cloudReadVerbs, sub) {
+			return false
+		}
+		if hasKey(cloudWriteVerbs, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+func ghWritesTo(sub, second string) bool {
+	seconds, ok := ghWrites[sub]
+	return ok && hasKey(seconds, second)
+}
+
+func kubectlWritesTo(words []string) bool {
+	sub := subcommand(words, kubectlValueOptions)
+	if sub == "rollout" {
+		return hasKey(kubectlRollouts, secondSubcommand(words, kubectlValueOptions))
+	}
+	return hasKey(kubectlWrites, sub)
+}
+
+func dockerPushes(words []string) bool {
+	sub := subcommand(words, dockerValueOptions)
+	second := secondSubcommand(words, dockerValueOptions)
+	switch sub {
+	case "push":
+		return true
+	case "image", "manifest":
+		return second == "push"
+	case "buildx":
+		for index, word := range words {
+			value := ""
+			switch {
+			case word == "--push" || word == "--push=true":
+				return true
+			case (word == "--output" || word == "-o") && index+1 < len(words):
+				value = words[index+1]
+			case strings.HasPrefix(word, "--output="):
+				value = word
+			}
+			if strings.Contains(value, "type=registry") || strings.Contains(value, "push=true") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// remoteCopyWrites reports an rsync or scp whose destination is a remote
+// host ("host:path" or "user@host:path"); a remote source is a download.
+func remoteCopyWrites(words []string, valueOptions map[string]struct{}) bool {
+	args := subcommands(words, valueOptions, 0)
+	if len(args) < 2 {
+		return false
+	}
+	return isRemoteCopyTarget(args[len(args)-1])
+}
+
+func isRemoteCopyTarget(word string) bool {
+	host, path, ok := strings.Cut(word, ":")
+	if !ok || host == "" || strings.ContainsAny(host, "/\\") {
+		return false
+	}
+	// A one-letter host before a backslash is a Windows drive such as C:\;
+	// otherwise it is an SSH alias.
+	return len(host) > 1 || !strings.HasPrefix(path, `\`)
+}
+
+// sqlClientWrites reports psql or mysql running inline SQL that changes data
+// or schema against a non-loopback host. A connection string counts as
+// remote because its host is not visible here.
+func sqlClientWrites(name string, words []string) bool {
+	inline := "-c"
+	if name == "mysql" {
+		inline = "-e"
+	}
+	var statements []string
+	host := ""
+	remote := false
+	for index := 0; index < len(words); index++ {
+		word := words[index]
+		value := ""
+		if index+1 < len(words) {
+			value = words[index+1]
+		}
+		switch {
+		case word == inline || word == "--command" || word == "--execute":
+			statements = append(statements, value)
+			index++
+		case strings.HasPrefix(word, "--command=") || strings.HasPrefix(word, "--execute="):
+			_, statement, _ := strings.Cut(word, "=")
+			statements = append(statements, statement)
+		case word == "-h" || word == "--host":
+			host = value
+			index++
+		case strings.HasPrefix(word, "--host="):
+			_, host, _ = strings.Cut(word, "=")
+		case strings.HasPrefix(word, "-h") && !strings.HasPrefix(word, "--"):
+			host = word[2:]
+		case hasKey(sqlValueOptions, word):
+			index++
+		case strings.HasPrefix(word, "-"):
+		case strings.Contains(word, "://") || strings.HasPrefix(word, "$"):
+			remote = true
+		default:
+			// A conninfo string such as "host=db dbname=app" names its host.
+			for _, field := range strings.Fields(word) {
+				if value, ok := strings.CutPrefix(field, "host="); ok {
+					host = value
+				}
+			}
+		}
+	}
+	if len(statements) == 0 {
+		return false
+	}
+	switch host {
+	case "", "localhost", "127.0.0.1", "::1":
+	default:
+		remote = true
+	}
+	if !remote {
+		return false
+	}
+	// Quoted literals hold data, not statements: WHERE action = 'delete' reads.
+	for index, statement := range statements {
+		statements[index] = sqlLiteral.ReplaceAllString(statement, "''")
+	}
+	sql := strings.Join(statements, ";")
+	fields := strings.FieldsFunc(strings.ToLower(sql), func(r rune) bool { return !('a' <= r && r <= 'z' || r == '_') })
+	for _, field := range fields {
+		for _, keyword := range sqlWriteKeywords {
+			if field == keyword {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// colonCLIWrites covers CLIs such as heroku and netlify whose commands are a
+// bare verb ("heroku create") or "topic:verb" ("netlify env:set").
+func colonCLIWrites(words []string) bool {
+	sub := subcommand(words, nil)
+	if cut := strings.LastIndex(sub, ":"); cut >= 0 {
+		sub = sub[cut+1:]
+	}
+	switch sub {
+	case "set", "unset", "import", "destroy", "delete", "reset", "rollback", "scale", "restart", "create", "remove",
+		"add", "promote", "deploy", "run":
+		return true
+	}
+	return false
+}
+
+// isBrowserServer reports an MCP server that drives a local browser. Its
+// actions (upload_file, set_viewport) act on the page, and the tool name
+// cannot tell a local page from a remote form, so the gate leaves them alone.
+func isBrowserServer(server string) bool {
+	server = strings.ToLower(server)
+	for _, name := range []string{"playwright", "puppeteer", "chrome-devtools", "chrome_devtools", "browser"} {
+		if strings.Contains(server, name) {
+			return true
+		}
+	}
+	return false
 }

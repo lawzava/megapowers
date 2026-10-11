@@ -253,6 +253,7 @@ func TestGateStaysQuietWhenSkillAlreadyLoaded(t *testing.T) {
 		"claude slash body": `{"type":"user","message":{"content":"Base directory for this skill: /cache/megapowers/0.31.1/skills/verify-and-finish\n\n# Verify"}}`,
 		"codex body read":   `{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"sed -n 1,200p /p/skills/verify-and-finish/SKILL.md\"}"}}`,
 		"codex custom tool": `{"type":"response_item","payload":{"type":"custom_tool_call","input":"cat /p/skills/verify-and-finish/SKILL.md"}}`,
+		"codex explicit":    `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:verify-and-finish</name>\n<path>/p/megapowers/0.35.1/skills/verify-and-finish/SKILL.md</path>\n---\nname: verify-and-finish"}]}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -273,6 +274,7 @@ func TestGateIgnoresCatalogMentionsOfTheSkill(t *testing.T) {
 	transcript := writeTranscript(t,
 		`{"type":"session_meta","payload":{"instructions":"- verify-and-finish: Use to verify (file: /p/skills/verify-and-finish/SKILL.md)"}}`,
 		`{"type":"user","message":{"content":"megapowers:verify-and-finish is listed in the catalog"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Codex injects <skill>\n<name>megapowers:verify-and-finish</name>\n<path>/p/skills/verify-and-finish/SKILL.md</path> blocks."}]}}`,
 	)
 	stdout, _, _ := runGateWithTranscript(t, env, "session-catalog", transcript, "git commit -m x")
 	if !strings.Contains(stdout, `"permissionDecision":"deny"`) {

@@ -697,3 +697,66 @@ func TestLauncherWarnsOnBuildFailure(t *testing.T) {
 	cmd.Env = append(environmentWithout("PATH", "MEGAPOWERS_HOOK_CACHE"), "PATH="+binDir+":"+os.Getenv("PATH"), "MEGAPOWERS_HOOK_CACHE="+t.TempDir())
 	expectLauncherWarning(t, cmd, "cannot build cached hook runner")
 }
+
+// A broken launcher warns at session start every time but at most once on
+// tool calls until a runner works again, so the user is told without a
+// warning on every Bash or MCP call.
+func TestLauncherToolCallWarningRepeatsOnlyAfterRecovery(t *testing.T) {
+	cache := t.TempDir()
+	run := func(hook string) (string, string) {
+		t.Helper()
+		cmd := noGoLauncher(t, hook)
+		cmd.Env = []string{cmd.Env[0], "MEGAPOWERS_HOOK_CACHE=" + cache}
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("%s: launcher must exit 0: %v", hook, err)
+		}
+		return stdout.String(), stderr.String()
+	}
+	if stdout, _ := run("deny-destructive"); !strings.Contains(stdout, "systemMessage") {
+		t.Fatalf("first tool call must warn: %q", stdout)
+	}
+	stdout, stderr := run("deny-destructive")
+	if stdout != "" || !strings.Contains(stderr, "Go 1.25 or newer is required") {
+		t.Fatalf("repeat tool call must stay quiet on stdout and keep the diagnostic: stdout=%q stderr=%q", stdout, stderr)
+	}
+	if stdout, _ := run("session-start"); !strings.Contains(stdout, "systemMessage") {
+		t.Fatalf("session start must always warn: %q", stdout)
+	}
+}
+
+func TestLauncherPrunesOnlyOldRunnersFromOtherSources(t *testing.T) {
+	cache := t.TempDir()
+	dir := filepath.Join(cache, "megapowers-hooks")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(dir, "megapowers-hook-0000000000000000-Linux-x86_64-go1.24.0")
+	recent := filepath.Join(dir, "megapowers-hook-1111111111111111-Linux-x86_64-go1.24.0")
+	for _, path := range []string{old, recent} {
+		if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stale := time.Now().Add(-40 * 24 * time.Hour)
+	if err := os.Chtimes(old, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	cmd.Env = append(environmentWithout("MEGAPOWERS_HOOK_CACHE"), "MEGAPOWERS_HOOK_CACHE="+cache)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("run launcher: %v\n%s", err, output)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatalf("a runner from other sources unused for 40 days must be pruned: %v", err)
+	}
+	if _, err := os.Stat(recent); err != nil {
+		t.Fatalf("a recent runner from other sources may serve another install and must stay: %v", err)
+	}
+	current, _ := filepath.Glob(filepath.Join(dir, "megapowers-hook-*"))
+	if len(current) != 2 {
+		t.Fatalf("runners after build = %v, want the recent one and the new one", current)
+	}
+}
