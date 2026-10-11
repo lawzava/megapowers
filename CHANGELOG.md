@@ -10,6 +10,58 @@ semver.
 From a review of sessions since 2026-10-08, Lauren Tan's (pstack) talk with
 Matt Pocock on 2026-10-02, and an audit of the hooks, skills, and evals.
 
+### Added
+
+- Three Go tools that load only with their skill, so agents run fixed steps
+  the same way instead of rebuilding them:
+  - `verify-and-finish/scripts/run-receipt.go` runs a check and keeps the full
+    output, the real exit status, and the commit and tree identity in a
+    receipt, instead of a filtered tail.
+  - `autonomous-run/scripts/run-state.go` writes the run's charter,
+    checkpoint, journal, and handoff, keeps `.megapowers/` out of Git, and on
+    resume reports any workspace, branch, worktree, or HEAD mismatch with
+    exit 3. Journal entries can record the reason for a decision.
+  - `writing-agent-instructions/scripts/session-mine.go` reads local Claude
+    Code and Codex transcripts read-only: `corrections` groups the turns where
+    the user corrected the agent into candidate classes across sessions, and
+    `recall` finds earlier sessions on a topic. Excerpts are short and
+    redacted.
+- `recall` (explicit only): rebuilds the context of earlier work on a topic
+  from this workspace's sessions, checks live Git and forge state, and
+  reports each thread with a status tag.
+- The doctor reports whether the hooks ran on each harness (an untrusted
+  Codex install shows as never run), the local marketplace copy's version,
+  and per-skill loads in this workspace over the last seven days, replacing
+  the hand-written search commands.
+- A PR body guide in `verify-and-finish`: smallest visual summary, before and
+  after evidence, and whether merging is a one-way or two-way door.
+
+### Changed
+
+- Retrospectives can cover many sessions through the session miner; a
+  repository with no check for a repeated mistake is itself a finding, and a
+  reviewer that passed the mistake gets the standard in its brief.
+- `verify-and-finish` runs a user journey through the surface the user will
+  open, and offers a repeatable verification driver after the same journey
+  was driven by hand twice. The driver reference gains a maintenance pass
+  that ends `clean`, `changed`, or `blocked`.
+- `orchestrating`: related failures go to one lane; a race fixes its
+  selection rule before spawning; a missing result is a gap, never a pass;
+  load-bearing claims are re-run and the rest sampled; a shortcut two lanes
+  repeat changes the brief or adds a check. Verbose checks go through the run
+  receipt. The registry text now agrees that a bound independent reviewer is
+  standing approval.
+- `systematic-debugging` lists and groups many failures by likely shared
+  cause before fixing the first.
+- `autonomous-run` uses the run state tool, looks in connected MCP tools and
+  environment key names before asking, and opens a returning user's report
+  with the number of decisions waiting on them.
+- `mcp-setup`: a server that needs login again the same day gets a root
+  cause (short-lived tokens, rejected refresh) and one reconnect request per
+  cause.
+- Global templates (Claude v5, Codex v4): look where a fact already is before
+  asking for it, and say what was checked.
+
 ### Fixed
 
 - The commit and effect gates recognize a skill that Codex injected through an
@@ -52,6 +104,11 @@ Matt Pocock on 2026-10-02, and an audit of the hooks, skills, and evals.
 - `independent-review-approval-boundary` no longer requires the reply to
   restate the artifact author; Sol failed every run only on that fact while
   writing it to the prepared review file.
+- New A/B cases `verify-finish-drive-cli` (unit tests pass but the CLI is
+  wrong), `grill-me-plan-interview`, `megapowers-doctor-setup-check`, and
+  `independent-review-configured-dispatch` (the review-dispatch check on both
+  harnesses); `coverage.tsv` declares the `mcp-setup`, `grill-me`,
+  `megapowers-doctor`, and `recall` coverage it lacked.
 
 ## 0.35.1 - 2026-10-11
 
