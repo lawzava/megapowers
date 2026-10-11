@@ -103,7 +103,14 @@ Matt Pocock on 2026-10-02, and an audit of the hooks, skills, and evals.
   `humanizing-prose-chat-near-miss`.
 - `independent-review-approval-boundary` no longer requires the reply to
   restate the artifact author; Sol failed every run only on that fact while
-  writing it to the prepared review file.
+  writing it to the prepared review file. Its token fact also accepts
+  "no disclosure approval", which the judge rejected as a paraphrase.
+- A `required_event_attempts` case field counts a push or commit attempt
+  whatever its exit status. `safe-effects-standing-approval` uses it instead
+  of required events and event order, which had rewarded masking the push
+  exit code and penalized the commit gate's declined first attempt.
+  `verify-finish-cited-gaps` requires the named check to pass instead of the
+  plugin's `VERIFIED` stamp.
 - New A/B cases `verify-finish-drive-cli` (unit tests pass but the CLI is
   wrong), `grill-me-plan-interview`, `megapowers-doctor-setup-check`, and
   `independent-review-configured-dispatch` (the review-dispatch check on both

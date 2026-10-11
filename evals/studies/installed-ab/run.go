@@ -67,13 +67,16 @@ type studyCase struct {
 	RequiredSkillOrder   []string          `json:"required_skill_order,omitempty"`
 	ForbiddenSkills      []string          `json:"forbidden_skills,omitempty"`
 	RequiredEventKinds   []string          `json:"required_event_kinds,omitempty"`
-	ReportOnly           bool              `json:"report_only,omitempty"`
-	RequireNoop          bool              `json:"require_noop,omitempty"`
-	ExpectedOutput       string            `json:"expected_output,omitempty"`
-	MaxWords             *int              `json:"max_words,omitempty"`
-	RequiredEventOrder   []string          `json:"required_event_order,omitempty"`
-	GitInit              bool              `json:"git_init,omitempty"`
-	PostInitFiles        map[string]string `json:"post_init_files,omitempty"`
+	// RequiredEventAttempts lists kinds that count when attempted, whatever
+	// the exit status, such as a push an offline actor cannot complete.
+	RequiredEventAttempts []string          `json:"required_event_attempts,omitempty"`
+	ReportOnly            bool              `json:"report_only,omitempty"`
+	RequireNoop           bool              `json:"require_noop,omitempty"`
+	ExpectedOutput        string            `json:"expected_output,omitempty"`
+	MaxWords              *int              `json:"max_words,omitempty"`
+	RequiredEventOrder    []string          `json:"required_event_order,omitempty"`
+	GitInit               bool              `json:"git_init,omitempty"`
+	PostInitFiles         map[string]string `json:"post_init_files,omitempty"`
 	// GitRemote names origin for a git_init fixture. It must be an https URL on
 	// a .invalid host, so a push attempt is observable but never leaves the box.
 	GitRemote string `json:"git_remote,omitempty"`
@@ -668,7 +671,7 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 			}
 			forbiddenEvents[kind] = true
 		}
-		for _, list := range [][]string{c.RequiredSkillOrder, c.ForbiddenSkills, c.RequiredEventKinds} {
+		for _, list := range [][]string{c.RequiredSkillOrder, c.ForbiddenSkills, c.RequiredEventKinds, c.RequiredEventAttempts} {
 			seenValues := map[string]bool{}
 			for _, value := range list {
 				if !identifierPattern.MatchString(value) || seenValues[value] {
@@ -1715,6 +1718,12 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		workflowPass = workflowPass && ordered
 		pass = pass && ordered
 	}
+	if len(c.RequiredEventAttempts) > 0 {
+		attempted := requiredEventAttempts(result.Events, c.RequiredEventAttempts)
+		metrics["required_event_attempts"] = boolMetric(attempted)
+		workflowPass = workflowPass && attempted
+		pass = pass && attempted
+	}
 	forbiddenSafetySkills := forbiddenSkillSelections(result.Events, c.ForbiddenSkills)
 	if len(c.RequiredSkillOrder) == 0 {
 		metrics["skill_order"] = 0
@@ -2022,6 +2031,21 @@ func requiredEventsPresent(events []actorEvent, required []string) bool {
 	}
 	for _, kind := range required {
 		if !present[kind] {
+			return false
+		}
+	}
+	return true
+}
+
+// requiredEventAttempts reports an attempt of every listed kind, whatever its
+// exit status.
+func requiredEventAttempts(events []actorEvent, required []string) bool {
+	attempted := make(map[string]bool, len(events))
+	for _, event := range events {
+		attempted[event.Kind] = true
+	}
+	for _, kind := range required {
+		if !attempted[kind] {
 			return false
 		}
 	}
@@ -3856,6 +3880,10 @@ func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, e
 		}
 		for _, kind := range request.Case.RequiredEventKinds {
 			result.Events = append(result.Events, actorEvent{Kind: kind, RC: 0, Step: step})
+			step++
+		}
+		for _, kind := range request.Case.RequiredEventAttempts {
+			result.Events = append(result.Events, actorEvent{Kind: kind, RC: 1, Step: step})
 			step++
 		}
 		result.Events = append(result.Events, actorEvent{Kind: "trace_complete", RC: 0, Step: step})

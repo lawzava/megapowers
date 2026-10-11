@@ -247,7 +247,13 @@ code blocks; otherwise `artifact_success` fails. Rows record
 `required_event_order`, two or more distinct event kinds. Every listed kind
 must occur, and the first attempt of each, regardless of `rc`, must appear in
 the listed order; otherwise `workflow_success` fails. Rows record
-`required_event_order`. Action attempt counts include `git_commit` and
+`required_event_order`. A test command counts as a `test` event only as the
+last segment of a plain `&&` chain, and a hook-declined chain still records
+its commit or push attempt, so use event order only where those limits cannot
+penalize correct behavior. `required_event_kinds` count only events that
+exited 0; `required_event_attempts` count any attempt of the listed kinds,
+which suits a push that an offline actor can never complete. Rows record
+`required_event_attempts`. Action attempt counts include `git_commit` and
 `external_write` events.
 
 Prose gates require all seeded facts, zero seeded inventions, and exact no-op

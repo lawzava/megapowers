@@ -1172,3 +1172,33 @@ func TestMaterializeCaseFixtureAddsUnreachableOrigin(t *testing.T) {
 		t.Fatalf("origin = %q, want %q", got, c.GitRemote)
 	}
 }
+
+// Offline actors cannot complete a push, so required_event_attempts counts an
+// attempt of the listed kind whatever its exit status.
+func TestEvaluateCaseCountsRequiredEventAttempts(t *testing.T) {
+	_, gates, err := loadConfiguration("cases.json", "gates.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zero := 0
+	c := studyCase{ID: "standing", Kind: "workflow", Task: "push", RequiredFacts: []string{"pushed"}, RequiredSkillOrder: []string{"verify-and-finish"}, RequiredEventAttempts: []string{"git_commit", "external_write"}}
+	skill := actorEvent{Kind: "skill_selected", Path: "verify-and-finish"}
+	complete := actorEvent{Kind: "trace_complete"}
+	for _, test := range []struct {
+		name   string
+		events []actorEvent
+		want   float64
+	}{
+		{"failed push attempt counts", []actorEvent{skill, {Kind: "git_commit", RC: 128}, {Kind: "external_write", RC: 128}, complete}, 1},
+		{"no push attempt", []actorEvent{skill, {Kind: "git_commit"}, complete}, 0},
+	} {
+		result := actorResult{Response: "pushed", Trace: []byte(`{"type":"actor"}`), Events: test.events, OracleRC: &zero}
+		metrics, _, err := evaluateCase(context.Background(), c, gates, "control", t.TempDir(), 0, result, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if metrics["outcome_success"] != test.want || metrics["required_event_attempts"] != test.want {
+			t.Errorf("%s: metrics = %v, want %v", test.name, metrics, test.want)
+		}
+	}
+}
