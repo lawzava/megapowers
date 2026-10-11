@@ -20,7 +20,7 @@ not prove runtime behavior. Never weaken a test, baseline, threshold, or
 predicate to obtain a pass.
 
 Check the original command's exit status; a filtered or truncated summary
-leaves a claim unverified until the raw evidence is recovered.
+proves nothing until the raw output is recovered.
 
 Label inspection and inference; neither is an executed check. Bind stale-prone
 results to the artifact identity and commit; after a rebase, rerun them unless
@@ -38,9 +38,8 @@ When the change can affect a user journey, run that journey for real; name
 any agreed substitute's limits. On request,
 build a repeatable [verification driver](references/verification-driver.md).
 
-Reconcile each affected repository-owned specification with verified behavior.
-Resolve every requirement to fresh evidence or a remaining gap; a plan is not
-implementation evidence.
+Resolve each affected specification requirement to fresh evidence or a
+remaining gap; a plan is not implementation evidence.
 
 Account for every requested review, including queued and running requests.
 Join them and resolve credible findings.
@@ -55,4 +54,5 @@ directory, or person, write a [handoff note](references/handoff.md).
 
 Open the report with `VERIFIED: <claim>` only when every required criterion has
 fresh oracle evidence, and state what that evidence does not cover, such as
-deployment or publication. Otherwise use `NOT VERIFIED. Remaining: <gap>`.
+deployment or publication. Otherwise use `NOT VERIFIED. Remaining: <gap>`. Each listed gap or blocker
+cites a rule's file and line or a command result; drop uncited ones.

@@ -598,3 +598,29 @@ func readBytes(t *testing.T, path string) []byte {
 	}
 	return data
 }
+
+// The global templates say "switch approach. Stop only when no in-scope
+// approach remains"; a skill that orders a stop after N failed attempts
+// contradicts them and pulls the model toward ending the turn early.
+func TestSkillsSwitchApproachInsteadOfStoppingAfterNFailures(t *testing.T) {
+	root := repoRoot(t)
+	hardStop := regexp.MustCompile(`(?i)after (?:two|three|four|five|\d+) failed [^.]*?,\s*stop\b`)
+	skills := filepath.Join(root, "plugins", "megapowers", "skills")
+	err := filepath.WalkDir(skills, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".md") {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if match := hardStop.Find(data); match != nil {
+			rel, _ := filepath.Rel(root, path)
+			t.Errorf("%s orders a hard stop after repeated failures: %q", rel, match)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

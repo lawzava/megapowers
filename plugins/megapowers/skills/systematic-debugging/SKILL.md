@@ -46,5 +46,5 @@ original failure path.
 
 When a deterministic local test is impossible, agree on a substitute oracle
 and record the environment, correlation key, pre-change failure, post-change
-result, and monitoring window. After three failed fixes on one approach, stop,
-report the evidence and remaining uncertainty, and reconsider the design.
+result, and monitoring window. After three failed fixes on one approach, record
+evidence and uncertainty, then switch approach; end only when none remains.

@@ -9,13 +9,12 @@ metadata:
 # Safe Effects
 
 Authorization must cover the exact target, effect, environment, and scope. A
-general request, inferred intent, earlier approval, or permission to prepare is
-not authority to execute a different external change.
+general request, inferred intent, or permission to prepare is not authority
+for a different external change. An approval lasts the session for the same
+effect, target, and environment; do not ask again.
 
-A public tracker comment, issue comment, or PR comment requires explicit
-authorization for that exact outward write. Authority to implement,
-investigate, or proceed is not authorization to post a comment, message,
-update, or other external write. Outward artifact names and text are part of
+Authority to implement, investigate, or proceed does not authorize posting a
+tracker, issue, or PR comment, message, update, or other external write. Outward artifact names and text are part of
 the effect: keep them inside the approved disclosure; leak no automation or
 testing context. Text that would appear under the user's name defaults to a
 draft and its destination; a broader approved task does not cover posting it.
@@ -35,15 +34,14 @@ bind execution and results to those IDs.
 
 Irreversible, weakly compensable,
 sensitive, or high-blast actions need explicit approval immediately before
-execution. Starting an automated or autonomous run never broadens that
+their first execution. Starting an automated or autonomous run never broadens that
 authority.
 
-Direct interactive supervision changes the frame. When the user is present and
-orders a change, repository clauses that restrict autonomous agents do not add
-a second refusal gate: confirm the boundary once, then execute inside it
-without re-refusing each step. If a permission classifier still denies an
-approved action, quote the approval and ask once for a reply that names the
-effect and target, such as "I allow deploy to production". When the user must
+When the user is present and orders a change, repository clauses that restrict
+autonomous agents do not add a second refusal gate: confirm the boundary once,
+then execute inside it without re-refusing each step. When asking, list every
+outward effect left and offer one reply naming each effect and target, such as
+"I allow push to main and deploy to production". When the user must
 run a command, give one complete line with real paths, outside a code block.
 
 After execution, verify the target readback or another external observable
