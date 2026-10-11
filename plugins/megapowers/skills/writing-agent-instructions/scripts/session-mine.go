@@ -144,7 +144,7 @@ var (
 	injectedPrefixes = []string{"Base directory for this skill:", "# AGENTS.md", "[Request interrupted by user", "Caveat: The messages below were generated"}
 
 	reUserinfo = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@]+@`)
-	reHomePath = regexp.MustCompile(`(?i:\b[a-z]:[\\/]users[\\/][^\\/\s]+)|(?:/home|/Users)/[A-Za-z0-9._-]+|/root\b`)
+	reHomePath = regexp.MustCompile(`(?i:\b[a-z]:[\\/]users[\\/][^\\/]+)|(?:/home|/Users)/[A-Za-z0-9._-]+|/root\b`)
 	// The literal $HOME and USERPROFILE values, when set, become "~" as well.
 	reHomeValues = homeValuePatterns()
 	reBearer     = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
@@ -659,21 +659,23 @@ func redact(text string) string {
 		text = pattern.ReplaceAllString(text, "<secret>")
 	}
 	text = reEmail.ReplaceAllString(text, "<email>")
-	// Any 32+ run of base64 or hex characters is a secret candidate. A run
-	// with several "/" is a path; only its long segments are redacted.
+	// Any 32+ run of base64 or hex characters is a secret candidate. A run is
+	// kept as a path only when it has several "/" and every segment looks like
+	// a lowercase path name; a token such as AAAA/BBBB/CCCC is redacted whole.
 	return reLongB64.ReplaceAllStringFunc(text, func(run string) string {
-		if strings.Count(run, "/") <= 1 {
+		if strings.Count(run, "/") < 2 {
 			return "<secret>"
 		}
-		segments := strings.Split(run, "/")
-		for i, segment := range segments {
-			if len(segment) >= 32 {
-				segments[i] = "<secret>"
+		for _, segment := range strings.Split(run, "/") {
+			if segment != "" && !rePathSegment.MatchString(segment) {
+				return "<secret>"
 			}
 		}
-		return strings.Join(segments, "/")
+		return run
 	})
 }
+
+var rePathSegment = regexp.MustCompile(`^[a-z0-9._-]{1,31}$`)
 
 // stripTagged removes every lowercase-tag block that has a matching close
 // tag, such as an embedded system reminder or slash-command echo.
@@ -685,15 +687,33 @@ func stripTagged(text string) string {
 			b.WriteString(text)
 			return strings.TrimSpace(b.String())
 		}
-		closing := "</" + text[loc[2]:loc[3]] + ">"
-		end := strings.Index(text[loc[1]:], closing)
+		end := matchingClose(text[loc[1]:], text[loc[2]:loc[3]])
 		if end < 0 {
 			b.WriteString(text[:loc[1]])
 			text = text[loc[1]:]
 			continue
 		}
 		b.WriteString(text[:loc[0]])
-		text = text[loc[1]+end+len(closing):]
+		text = text[loc[1]+end:]
+	}
+}
+
+// matchingClose returns the offset just past the close tag that balances an
+// already-open tag of this name, counting nested tags of the same name, or -1.
+func matchingClose(text, name string) int {
+	opening := regexp.MustCompile(`<` + regexp.QuoteMeta(name) + `(?:\s[^<>]*)?>`)
+	closing := "</" + name + ">"
+	depth, offset := 1, 0
+	for {
+		next := strings.Index(text[offset:], closing)
+		if next < 0 {
+			return -1
+		}
+		depth += len(opening.FindAllStringIndex(text[offset:offset+next], -1)) - 1
+		offset += next + len(closing)
+		if depth == 0 {
+			return offset
+		}
 	}
 }
 

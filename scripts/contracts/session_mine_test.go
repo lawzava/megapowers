@@ -267,6 +267,7 @@ func TestSessionMineRedaction(t *testing.T) {
 		"email":   "pat.doe@example.com",
 		"userinf": "hunter" + "secretpw",
 		"letters": strings.Repeat("QwErTy", 6),
+		"slashy":  strings.Repeat("A", 10) + "/" + strings.Repeat("B", 10) + "/" + strings.Repeat("C", 10),
 	}
 	prompts := []string{
 		"Did you test " + values["openai"] + " here",
@@ -287,6 +288,9 @@ func TestSessionMineRedaction(t *testing.T) {
 		`Did you test C:\Users\carol\Documents\notes here`,
 		"Did you test /srv/people/zed/notes and /srv/people/zedd/x here",
 		"Did you test /srv/profiles/quinn/x here",
+		"Did you test key " + values["slashy"] + " here",
+		`Did you test C:\Users\Jane Doe\app here`,
+		"Did you test this <ctx><ctx>x</ctx>private client Acme</ctx> please",
 	}
 	var lines []string
 	for i, prompt := range prompts {
@@ -294,7 +298,7 @@ func TestSessionMineRedaction(t *testing.T) {
 	}
 	writeLines(t, filepath.Join(claudeRoot, "-work-redact", "r1.jsonl"), lines...)
 	homes := []string{"HOME=/srv/people/zed", "USERPROFILE=/srv/profiles/quinn"}
-	output, code := run(t, root, homes, tool, "--workspace", "/work/redact", "--harness", "claude", "--claude-root", claudeRoot, "--limit", "20", "--format", "json")
+	output, code := run(t, root, homes, tool, "--workspace", "/work/redact", "--harness", "claude", "--claude-root", claudeRoot, "--limit", "50", "--format", "json")
 	if code != 0 {
 		t.Fatalf("redaction run failed (%d): %s", code, output)
 	}
@@ -324,7 +328,7 @@ func TestSessionMineRedaction(t *testing.T) {
 			t.Errorf("redacted output missing %q:\n%s", want, joined)
 		}
 	}
-	for _, leaked := range []string{"alice", "bob", "deploy:", "/root", "carol", "zed/", "quinn", "~d"} {
+	for _, leaked := range []string{"alice", "bob", "deploy:", "/root", "carol", "zed/", "quinn", "~d", "Jane", "Doe", "Acme", "</ctx>"} {
 		if strings.Contains(joined, leaked) {
 			t.Errorf("redaction kept %q", leaked)
 		}

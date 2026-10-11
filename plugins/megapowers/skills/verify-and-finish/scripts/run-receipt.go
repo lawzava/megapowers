@@ -288,7 +288,8 @@ func gitIdentity() (head, state, digest string) {
 	if err != nil {
 		return head, "none", ""
 	}
-	root := strings.TrimSpace(string(top))
+	// Trim only the line ending: a path may end with a space.
+	root := strings.TrimRight(string(top), "\r\n")
 	untracked, err := gitOutput("-C", root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return head, "none", ""

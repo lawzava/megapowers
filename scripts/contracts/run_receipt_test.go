@@ -235,7 +235,8 @@ func TestRunReceiptContract(t *testing.T) {
 			t.Errorf("outside repo head=%s tree=%s, want none", outsideResult.head, outsideResult.tree)
 		}
 
-		repo := filepath.Join(tmp, "repo")
+		// A trailing space in the repository path must survive Git path handling.
+		repo := filepath.Join(tmp, "repo ")
 		if err := os.MkdirAll(repo, 0o755); err != nil {
 			t.Fatal(err)
 		}
