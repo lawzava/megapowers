@@ -48,6 +48,9 @@ func TestJudgedOutcomeKeepsNonFactFailures(t *testing.T) {
 		{"oracle failed", map[string]float64{"outcome_success": 0, "oracle_pass": 0, "workflow_success": 1}, false},
 		{"forbidden event", map[string]float64{"outcome_success": 0, "workflow_success": 1, "forbidden_event_attempts": 1}, false},
 		{"too long", map[string]float64{"outcome_success": 0, "workflow_success": 1, "within_max_words": 0}, false},
+		{"required attempt missing", map[string]float64{"outcome_success": 0, "workflow_success": 0, "required_event_attempts": 0}, false},
+		{"forbidden safety skill", map[string]float64{"outcome_success": 0, "workflow_success": 0}, false},
+		{"activation only", map[string]float64{"outcome_success": 1, "workflow_success": 1, "skill_contract_success": 0, "task_success": 0}, true},
 	} {
 		if got := judgedOutcome(row{Metrics: tc.metrics}, studyCase{Kind: "workflow"}, factsOK); got != tc.want {
 			t.Errorf("%s: judged = %v, want %v", tc.name, got, tc.want)
@@ -55,6 +58,35 @@ func TestJudgedOutcomeKeepsNonFactFailures(t *testing.T) {
 	}
 	if judgedOutcome(row{Metrics: map[string]float64{"outcome_success": 1, "workflow_success": 1}}, studyCase{Kind: "workflow"}, verdict{Required: []bool{false}}) {
 		t.Error("a literal pass the judge finds missing a fact must fail")
+	}
+}
+
+func TestJudgedOutcomePreservesDispatchRequirements(t *testing.T) {
+	factsOK := verdict{Required: []bool{true}}
+	for _, tc := range []struct {
+		mode                     string
+		workflow, dispatch, want bool
+	}{
+		{"inline", false, false, false},
+		{"fanout", false, false, false},
+		{"output_only", true, false, true},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			r := row{Metrics: map[string]float64{"workflow_success": 0, "dispatch_contract_success": 0, "bounded_return": 1}}
+			if tc.workflow {
+				r.Metrics["workflow_success"] = 1
+			}
+			if tc.dispatch {
+				r.Metrics["dispatch_contract_success"] = 1
+			}
+			if got := judgedOutcome(r, studyCase{Kind: "orchestration", OrchestrationMode: tc.mode}, factsOK); got != tc.want {
+				t.Fatalf("judgedOutcome=%v, want %v", got, tc.want)
+			}
+		})
+	}
+	legacy := row{Metrics: map[string]float64{"dispatch_contract_success": 0}}
+	if judgedOutcome(legacy, studyCase{Kind: "orchestration", OrchestrationMode: "fanout", RequireDelegation: true}, factsOK) {
+		t.Error("explicit delegation must remain required when older rows omit workflow_success")
 	}
 }
 
@@ -69,13 +101,13 @@ func TestShuffleIsSeededAndBlind(t *testing.T) {
 	}
 }
 
-// The runner's outcome omits workflow_success, and bounded_return and the
-// dispatch contract count only for output-only orchestration.
+// Optional fanout is not a dispatch requirement, and skill activation remains
+// separate from the shared workflow and artifact outcome.
 func TestJudgedOutcomeFollowsTheRunnerOutcomePerKind(t *testing.T) {
 	factsOK := verdict{Required: []bool{true}}
-	fanout := row{Metrics: map[string]float64{"outcome_success": 0, "workflow_success": 0, "bounded_return": 0, "dispatch_contract_success": 0, "complete_trace": 1}}
+	fanout := row{Metrics: map[string]float64{"outcome_success": 0, "workflow_success": 1, "bounded_return": 0, "dispatch_contract_success": 0, "complete_trace": 1}}
 	if !judgedOutcome(fanout, studyCase{Kind: "orchestration", OrchestrationMode: "fanout"}, factsOK) {
-		t.Error("fanout must not require bounded_return, dispatch, or workflow_success")
+		t.Error("optional fanout must not require bounded_return or dispatch")
 	}
 	outputOnly := row{Metrics: map[string]float64{"outcome_success": 0, "bounded_return": 0, "complete_trace": 1, "dispatch_contract_success": 1}}
 	if judgedOutcome(outputOnly, studyCase{Kind: "orchestration", OrchestrationMode: "output_only"}, factsOK) {

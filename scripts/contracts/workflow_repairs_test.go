@@ -117,7 +117,7 @@ var requiredSkillFacts = map[string][]string{
 		"never weaken",
 		"references/handoff.md",
 		"references/verification-driver.md",
-		"git patch-id",
+		"rerun relevant checks after a rebase",
 		"scope creep",
 	},
 	"writing-agent-instructions": {

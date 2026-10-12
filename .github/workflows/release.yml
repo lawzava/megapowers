@@ -21,6 +21,16 @@ permissions:
 jobs:
   attest:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: minimum
+            claude: '@anthropic-ai/claude-code@2.1.257'
+            codex: '@openai/codex@0.152.0'
+          - profile: reviewed
+            claude: '@anthropic-ai/claude-code@2.1.296'
+            codex: '@openai/codex@0.162.1'
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
     steps:
@@ -56,8 +66,8 @@ jobs:
 
       - name: Install pinned harness CLIs
         run: |
-          npm install -g @anthropic-ai/claude-code@2.1.257
-          npm install -g @openai/codex@0.152.0
+          npm install -g '${{ matrix.claude }}'
+          npm install -g '${{ matrix.codex }}'
 
       - name: Validate repository
         run: go run ./scripts/cmd/maintainer validate
@@ -94,7 +104,7 @@ jobs:
       - name: Upload release attestation
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: release-attestation
+          name: release-attestation-${{ matrix.profile }}
           path: attestation.json
           if-no-files-found: error
           retention-days: 14

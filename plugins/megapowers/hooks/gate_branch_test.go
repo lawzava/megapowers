@@ -49,6 +49,7 @@ func TestGateDiscardSkipsDeletingBranchesMergedIntoHead(t *testing.T) {
 	repo := branchRepo(t)
 	for _, tt := range []struct{ cwd, command string }{
 		{cwd: repo, command: "git branch -D merged"},
+		{cwd: repo, command: "sh -c 'git branch -D merged'"},
 		{cwd: repo, command: "git branch -D merged lane-done"},
 		{cwd: repo, command: "git branch -d --force merged"},
 		{cwd: repo, command: "git branch --delete --force lane-done"},
@@ -85,6 +86,10 @@ func TestGateDiscardKeepsBranchDeleteWhenWorkCouldBeLost(t *testing.T) {
 		{name: "git dir assignment", cwd: repo, command: "GIT_DIR=/elsewhere/.git git branch -D merged"},
 		{name: "exported work tree", cwd: repo, command: "export GIT_WORK_TREE=/elsewhere && git branch -D merged"},
 		{name: "quoted git dir", cwd: repo, command: "export GIT_''DIR=/elsewhere/.git; git branch -D merged"},
+		{name: "remote branch", cwd: repo, command: "ssh host 'git branch -D merged'"},
+		{name: "remote absolute path", cwd: repo, command: "ssh host 'git -C " + repo + " branch -D merged'"},
+		{name: "remote heredoc", cwd: repo, command: "ssh host <<'EOF'\ngit branch -D merged\nEOF"},
+		{name: "remote substitution heredoc", cwd: repo, command: "out=$(ssh host <<'EOF'\ngit branch -D merged\nEOF\n)"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -98,5 +103,13 @@ func TestGateDiscardKeepsBranchDeleteWhenWorkCouldBeLost(t *testing.T) {
 				t.Fatalf("identical retry must run: %q", retry)
 			}
 		})
+	}
+}
+
+func TestRemoteDiscardKeysIncludeHost(t *testing.T) {
+	a := gitDiscardKey("ssh host-a 'git reset --hard'", "/repo")
+	b := gitDiscardKey("ssh host-b 'git reset --hard'", "/repo")
+	if a == "" || b == "" || a == b {
+		t.Fatalf("remote discard keys must distinguish hosts: %q, %q", a, b)
 	}
 }

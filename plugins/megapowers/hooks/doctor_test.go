@@ -299,12 +299,12 @@ func TestDoctorCountsSkillLoadsInTheWorkspace(t *testing.T) {
 	home := t.TempDir()
 	writeClaudeSettings(t, home, `{"outputStyle":"megapowers:Megapowers"}`)
 	writeFile(t, filepath.Join(home, ".claude", "projects", "-work-app", "s1.jsonl"),
-		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"megapowers:verify-and-finish"}}]}}`+"\n")
+		strings.Join(skillReadTrace(t, "Skill", `{"skill":"megapowers:verify-and-finish"}`, "Launching skill: megapowers:verify-and-finish", false), "\n")+"\n")
 	writeFile(t, filepath.Join(home, ".claude", "projects", "-work-other", "s2.jsonl"),
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"megapowers:grill-me"}}]}}`+"\n")
 	writeFile(t, filepath.Join(home, ".codex", "sessions", filepath.FromSlash(time.Now().Format("2006/01/02")), "rollout-a.jsonl"),
 		`{"type":"session_meta","payload":{"cwd":"/work/app"}}`+"\n"+
-			`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:safe-effects</name>\n<path>/p/skills/safe-effects/SKILL.md</path>"}]}}`+"\n")
+			`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:safe-effects</name>\n<path>/p/skills/safe-effects/SKILL.md</path>\n# Safe Effects\nCheck the target."}]}}`+"\n")
 	writeFile(t, filepath.Join(home, ".codex", "sessions", filepath.FromSlash(time.Now().Format("2006/01/02")), "rollout-b.jsonl"),
 		`{"type":"session_meta","payload":{"cwd":"/work/other"}}`+"\n"+
 			`{"type":"response_item","payload":{"type":"function_call","arguments":"cat /p/skills/grill-me/SKILL.md"}}`+"\n")
@@ -348,7 +348,7 @@ func TestDoctorMatchesCodexWorkspaceByValue(t *testing.T) {
 	writeClaudeSettings(t, home, `{"outputStyle":"megapowers:Megapowers"}`)
 	day := time.Now().Format("2006/01/02")
 	sessions := filepath.Join(home, ".codex", "sessions", filepath.FromSlash(day))
-	load := `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:safe-effects</name>\n<path>/p/skills/safe-effects/SKILL.md</path>"}]}}` + "\n"
+	load := `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:safe-effects</name>\n<path>/p/skills/safe-effects/SKILL.md</path>\n# Safe Effects\nCheck the target."}]}}` + "\n"
 	writeFile(t, filepath.Join(sessions, "rollout-a.jsonl"), `{"type": "session_meta", "payload": {"cwd": "/work/R\u0026D"}}`+"\n"+load)
 	writeFile(t, filepath.Join(sessions, "rollout-big.jsonl"), `{"type":"session_meta","payload":{"cwd":"/work/R&D","x":"`+strings.Repeat("a", 9<<20)+`"}}`+"\n"+load)
 	env := map[string]string{

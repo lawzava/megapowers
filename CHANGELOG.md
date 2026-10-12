@@ -5,6 +5,22 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.36.1 - 2026-10-12
+
+### Fixed
+
+- Hooks require an observed successful skill load, classify literal nested
+  shell effects, distinguish heredoc data from commands, and reject known
+  match-all regex exemptions for home-wide deletion.
+- Fact regrading preserves workflow failures, including required event
+  attempts and dispatch obligations, without requiring optional delegation.
+- Verification reruns relevant checks after a rebase onto a changed base.
+  PR failure diagnosis follows logs and affected callers instead of file
+  locations or repetition alone.
+- CI and release smoke cover both minimum and reviewed harness versions.
+  Evaluation summaries retain negative measurements and disclose that the
+  historical October totals have not been recomputed with the corrected judge.
+
 ## 0.36.0 - 2026-10-11
 
 From a review of sessions since 2026-10-08, Lauren Tan's (pstack) talk with

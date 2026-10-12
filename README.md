@@ -206,10 +206,12 @@ unverified or unauthorized, summarized review findings without repeating
 them, and resolved an ambiguous contract. Details:
 [evals/RESULTS.md](./evals/RESULTS.md).
 
-A 2026-10-11 slice reran the cases 0.36.0 adds or changes. No case showed the
-plugin behind control once its grader measured the targeted behavior. The new
-doctor check scored 3 of 3 against 0 of 3 on both models, and the frozen
-holdout tied on Sol (18 of 18 each).
+A 2026-10-11 slice reran the cases 0.36.0 adds or changes. The new doctor check
+scored 3 of 3 against 0 of 3 on both models. The frozen holdout tied on Sol
+(18 of 18 each); Opus scored 15 of 18 against 16 of 18. A delegation fix then
+scored 3 against 0 on the affected case in an in-sample rerun. A later grader
+correction has not been applied to these historical totals; see the results
+page for that limitation.
 
 The study below measured earlier models with graders since found to fail
 correct answers.

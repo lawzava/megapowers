@@ -76,6 +76,12 @@ jobs:
 
   plugin-validate:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - '@anthropic-ai/claude-code@2.1.257'
+          - '@anthropic-ai/claude-code@2.1.296'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -88,7 +94,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install pinned Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code@2.1.257
+        run: npm install -g '${{ matrix.package }}'
       - name: Validate Claude marketplace
         run: claude plugin validate --strict .claude-plugin/marketplace.json
       - name: Validate sole Claude plugin
@@ -96,6 +102,12 @@ jobs:
 
   codex-install-smoke:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - '@openai/codex@0.152.0'
+          - '@openai/codex@0.162.1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -104,8 +116,8 @@ jobs:
         with:
           go-version: '1.25.x'
           cache: false
-      - name: Install pinned minimum Codex CLI
-        run: npm install -g @openai/codex@0.152.0
+      - name: Install pinned Codex CLI
+        run: npm install -g '${{ matrix.package }}'
       - name: Codex install smoke
         run: go run ./scripts/cmd/maintainer codex-install-smoke
 

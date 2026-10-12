@@ -110,7 +110,7 @@ func TestGateMCPAndShellShareTheEffectMarker(t *testing.T) {
 	if stdout, _, _ := runMCPGate(t, env, "session-share", "", "mcp__linear__save_comment", `{}`); stdout != "" {
 		t.Fatalf("MCP write after the shell effect denial must pass: %q", stdout)
 	}
-	transcript := writeTranscript(t, `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"megapowers:safe-effects"}}]}}`)
+	transcript := writeTranscript(t, skillReadTrace(t, "Skill", `{"skill":"megapowers:safe-effects"}`, "Launching skill: megapowers:safe-effects", false)...)
 	fresh := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
 	if stdout, _, _ := runMCPGate(t, fresh, "session-loaded", transcript, "mcp__linear__save_comment", `{}`); stdout != "" {
 		t.Fatalf("MCP write after the skill loaded must pass: %q", stdout)

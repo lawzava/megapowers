@@ -12,9 +12,18 @@ and cannot serve as a direct before/after comparison.
 ## 2026-10-11 slice for 0.36.0 on Opus 5.5 and Sol 6.1
 
 The slice reran every case that 0.36.0 adds or whose skill it changes, plus
-the frozen holdout. No case shows the plugin behind control once its grader
-measures the targeted behavior. Six grader or case defects were found and
-fixed along the way; each is listed below with its evidence.
+the frozen holdout. The reported results include one negative case attributed
+to event-order grading and a negative Opus holdout result. The holdout prompted
+a fix and an in-sample rerun. Six grader or case defects were found and fixed
+along the way; each is listed below with its evidence.
+
+On 2026-10-12, a local regression audit found that fact regrading could drop
+required event attempts and inline or explicitly required dispatch obligations.
+It also imposed a dispatch requirement on output-only cases that allowed direct
+work. The judge now preserves the runner's workflow result and applicable
+dispatch requirements. The October result bundles were not available locally
+to recheck, so the historical totals below have not been recomputed with this
+correction.
 
 ### Setup
 

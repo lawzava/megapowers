@@ -248,17 +248,18 @@ func TestGateDeniesBothSkillsInOneReason(t *testing.T) {
 func TestGateStaysQuietWhenSkillAlreadyLoaded(t *testing.T) {
 	t.Parallel()
 
-	for name, line := range map[string]string{
-		"claude skill call": `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"megapowers:verify-and-finish"}}]}}`,
-		"claude slash body": `{"type":"user","message":{"content":"Base directory for this skill: /cache/megapowers/0.31.1/skills/verify-and-finish\n\n# Verify"}}`,
-		"codex body read":   `{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"sed -n 1,200p /p/skills/verify-and-finish/SKILL.md\"}"}}`,
-		"codex custom tool": `{"type":"response_item","payload":{"type":"custom_tool_call","input":"cat /p/skills/verify-and-finish/SKILL.md"}}`,
-		"codex explicit":    `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:verify-and-finish</name>\n<path>/p/megapowers/0.35.1/skills/verify-and-finish/SKILL.md</path>\n---\nname: verify-and-finish"}]}}`,
+	body := "---\nname: verify-and-finish\n---\n# Verify\nRun the check."
+	for name, lines := range map[string][]string{
+		"claude skill call": skillReadTrace(t, "Skill", `{"skill":"megapowers:verify-and-finish"}`, "Launching skill: megapowers:verify-and-finish", false),
+		"claude slash body": {`{"type":"user","message":{"content":"Base directory for this skill: /cache/megapowers/0.31.1/skills/verify-and-finish\n\n# Verify"}}`},
+		"codex body read":   codexSkillReadTrace(t, "function_call", `{"cmd":"sed -n 1,200p /p/skills/verify-and-finish/SKILL.md"}`, body),
+		"codex custom tool": codexSkillReadTrace(t, "custom_tool_call", "cat /p/skills/verify-and-finish/SKILL.md", body),
+		"codex explicit":    {`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:verify-and-finish</name>\n<path>/p/megapowers/0.35.1/skills/verify-and-finish/SKILL.md</path>\n---\nname: verify-and-finish\n---\n# Verify"}]}}`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			env := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
-			transcript := writeTranscript(t, `{"type":"user","message":{"content":"commit it"}}`, line)
+			transcript := writeTranscript(t, append([]string{`{"type":"user","message":{"content":"commit it"}}`}, lines...)...)
 			stdout, stderr, rc := runGateWithTranscript(t, env, "session-loaded", transcript, "git commit -m x")
 			if rc != 0 || stdout != "" || stderr != "" {
 				t.Fatalf("rc=%d stdout=%q stderr=%q, want silence after the skill loaded", rc, stdout, stderr)

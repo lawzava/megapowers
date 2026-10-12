@@ -79,6 +79,7 @@ func classifyCommand(command, home string) decision {
 }
 
 func analyzeCommand(command, home string, depth int) decision {
+	command, heredocPayloads := shellHeredocs(command)
 	verdict, payloads := scanLevel(command, home)
 	if verdict.Deny {
 		return verdict
@@ -86,7 +87,7 @@ func analyzeCommand(command, home string, depth int) decision {
 	if depth >= maxScanDepth {
 		return decision{}
 	}
-	for _, payload := range payloads {
+	for _, payload := range append(payloads, heredocPayloads...) {
 		if payload == "" {
 			continue
 		}
@@ -110,6 +111,7 @@ func scanLevel(command, home string) (decision, []string) {
 		} else if strings.EqualFold(name, "rd") {
 			name = "rd"
 		}
+		payloads = append(payloads, shellCommandPayloads(name, tail)...)
 
 		switch name {
 		case "rm":
@@ -158,54 +160,6 @@ func scanLevel(command, home string) (decision, []string) {
 			if recursiveRemoveIsCatastrophic(tail, home) {
 				return decision{true, "recursive Remove-Item/rd of a root, home, or system path. Delete a specific subdirectory instead."}, nil
 			}
-		case "bash", "sh", "zsh", "dash", "ash", "ksh":
-			words, ok := shellWords(tail)
-			if !ok {
-				break
-			}
-			take := false
-			for _, word := range words {
-				if take {
-					if word != "" {
-						payloads = append(payloads, word)
-					}
-					take = false
-					continue
-				}
-				if word == "-c" || shellFlagRunsCommand(word) {
-					take = true
-				}
-			}
-		case "pwsh", "powershell":
-			words, ok := literalWords(tail)
-			if !ok {
-				break
-			}
-			take := false
-			for _, word := range words {
-				if take {
-					if word != "" {
-						payloads = append(payloads, word)
-					}
-					take = false
-					continue
-				}
-				if powershellFlagRunsCommand(word) {
-					take = true
-				}
-			}
-		case "eval":
-			if words, ok := shellWords(tail); ok {
-				if payload := strings.Join(nonempty(words), " "); payload != "" {
-					payloads = append(payloads, payload)
-				}
-			}
-		case "ssh":
-			if words, ok := shellWords(tail); ok {
-				if payload := sshPayload(words); payload != "" {
-					payloads = append(payloads, payload)
-				}
-			}
 		default:
 			if strings.HasPrefix(name, "mkfs.") && formatIsCatastrophic(tail) {
 				return decision{true, name + " targeting a block device (would wipe a disk). Against a plain file this is allowed."}, nil
@@ -227,6 +181,278 @@ func scanLevel(command, home string) (decision, []string) {
 		return decision{true, "fork bomb"}, nil
 	}
 	return decision{}, payloads
+}
+
+// shellCommandPayloads is shared by catastrophic-command and workflow checks
+// so quoting a command for a literal shell invocation does not hide it.
+func shellCommandPayloads(name, tail string) []string {
+	var words []string
+	var ok bool
+	switch name {
+	case "bash", "sh", "zsh", "dash", "ash", "ksh", "eval", "ssh":
+		words, ok = shellWords(tail)
+	case "pwsh", "powershell":
+		words, ok = literalWords(tail)
+	default:
+		return nil
+	}
+	if !ok {
+		return nil
+	}
+	if name == "eval" {
+		return []string{strings.Join(nonempty(words), " ")}
+	}
+	if name == "ssh" {
+		return []string{sshPayload(words)}
+	}
+	for i, word := range words {
+		runs := word == "-c" || shellFlagRunsCommand(word)
+		if name == "pwsh" || name == "powershell" {
+			runs = powershellFlagRunsCommand(word)
+		}
+		if runs && i+1 < len(words) {
+			return []string{words[i+1]}
+		}
+	}
+	return nil
+}
+
+type shellHeredoc struct {
+	delimiter string
+	quoted    bool
+	stripTabs bool
+	operator  int
+	stdin     bool
+}
+
+// shellHeredocs removes data bodies before command scanning. Unquoted bodies
+// still expand substitutions; bodies supplied directly to a shell are code.
+func shellHeredocs(command string) (string, []string) {
+	var out strings.Builder
+	var pending []shellHeredoc
+	var payloads []string
+	start := 0
+	for i := 0; i < len(command); {
+		switch command[i] {
+		case '\\':
+			i += 2
+			continue
+		case '\'', '"', '`':
+			i = skipQuoted(command, i)
+			continue
+		case '(':
+			if i+1 < len(command) && command[i+1] == '(' {
+				// A shift inside arithmetic is not a redirection. The original
+				// expression remains available to the substitution scanner.
+				depth := 2
+				i += 2
+				for i < len(command) && depth > 0 {
+					switch command[i] {
+					case '(':
+						depth++
+					case ')':
+						depth--
+					}
+					i++
+				}
+				continue
+			}
+		case '#':
+			if i == 0 || isSpace(command[i-1]) || strings.ContainsRune(";&|(", rune(command[i-1])) {
+				for i < len(command) && command[i] != '\n' {
+					i++
+				}
+				continue
+			}
+		case '<':
+			if i+1 < len(command) && command[i+1] == '<' && (i == 0 || command[i-1] != '<') && (i+2 == len(command) || command[i+2] != '<') {
+				j := i + 2
+				stripTabs := j < len(command) && command[j] == '-'
+				if stripTabs {
+					j++
+				}
+				for j < len(command) && (command[j] == ' ' || command[j] == '\t') {
+					j++
+				}
+				end := j
+				for end < len(command) && !isSpace(command[end]) && !strings.ContainsRune(";&|<>()", rune(command[end])) {
+					if command[end] == '\'' || command[end] == '"' {
+						end = skipQuoted(command, end)
+					} else if command[end] == '\\' && end+1 < len(command) {
+						end += 2
+					} else {
+						end++
+					}
+				}
+				if words, ok := shellWords(command[j:end]); ok && len(words) == 1 {
+					fdStart := i
+					for fdStart > start && command[fdStart-1] >= '0' && command[fdStart-1] <= '9' {
+						fdStart--
+					}
+					if fdStart > start && !isSpace(command[fdStart-1]) && !strings.ContainsRune(";&|()", rune(command[fdStart-1])) {
+						fdStart = i
+					}
+					stdin := fdStart == i || strings.Trim(command[fdStart:i], "0") == ""
+					pending = append(pending, shellHeredoc{words[0], strings.ContainsAny(command[j:end], "'\"\\"), stripTabs, i - start, stdin})
+				}
+				i = end
+				continue
+			}
+		case '\n':
+			out.WriteString(command[start : i+1])
+			header := command[start:i]
+			i++
+			for _, doc := range pending {
+				bodyStart := i
+				terminated := false
+				var body strings.Builder
+				for i < len(command) {
+					end := strings.IndexByte(command[i:], '\n')
+					if end < 0 {
+						end = len(command)
+					} else {
+						end += i
+					}
+					line := command[i:end]
+					if doc.stripTabs {
+						line = strings.TrimLeft(line, "\t")
+					}
+					i = end
+					if i < len(command) {
+						i++
+					}
+					if line == doc.delimiter {
+						terminated = true
+						break
+					}
+					body.WriteString(line)
+					body.WriteByte('\n')
+				}
+				if !terminated {
+					// A malformed header must not hide the rest of the command.
+					out.WriteString(command[bodyStart:i])
+					break
+				}
+				if doc.stdin && shellReadsHeredoc(header, doc.operator) {
+					payloads = append(payloads, body.String())
+				} else if !doc.quoted {
+					payloads = append(payloads, shellSubstitutions(body.String(), false)...)
+				}
+			}
+			pending = nil
+			start = i
+			continue
+		}
+		i++
+	}
+	out.WriteString(command[start:])
+	return out.String(), payloads
+}
+
+// Follow only the owning command and its pipeline, never a later command in
+// a list. An unrelated shell on the same line does not consume this body.
+func shellReadsHeredoc(header string, operator int) bool {
+	start := 0
+	for i := 0; i < len(header); i++ {
+		if header[i] == '\\' {
+			i++
+			continue
+		}
+		if header[i] == '\'' || header[i] == '"' || header[i] == '`' {
+			i = skipQuoted(header, i) - 1
+			continue
+		}
+		if header[i] == '#' && (i == 0 || isSpace(header[i-1]) || strings.ContainsRune(";&|(", rune(header[i-1]))) {
+			return shellReadsStdin(header[start:i])
+		}
+		if header[i] == '(' {
+			start = i + 1
+			continue
+		}
+		if !strings.ContainsRune(";&|", rune(header[i])) {
+			continue
+		}
+		if i >= operator {
+			if shellReadsStdin(header[start:i]) {
+				return true
+			}
+			if header[i] != '|' || (i+1 < len(header) && header[i+1] == '|') {
+				return false
+			}
+		}
+		if header[i] == '|' && i+1 < len(header) && header[i+1] == '&' {
+			i++
+		}
+		start = i + 1
+	}
+	return shellReadsStdin(header[start:])
+}
+
+func shellReadsStdin(segment string) bool {
+	name, tail, ok := resolveCommand(segment)
+	if !ok {
+		return false
+	}
+	switch name {
+	case "bash", "sh", "zsh", "dash", "ash", "ksh":
+		return len(shellCommandPayloads(name, tail)) == 0 && shellUsesStdin(tail)
+	case "ssh":
+		words, ok := shellWords(tail)
+		if !ok {
+			return false
+		}
+		// Redirections belong to the local shell, not the remote command.
+		var args []string
+		skip := false
+		for _, word := range words {
+			if skip {
+				skip = false
+				continue
+			}
+			redirect := strings.TrimLeft(word, "0123456789")
+			if strings.HasPrefix(redirect, "<") || strings.HasPrefix(redirect, ">") {
+				skip = redirect == "<<" || redirect == "<<-" || redirect == "<" || redirect == ">" || redirect == ">>"
+				continue
+			}
+			args = append(args, word)
+		}
+		payload := sshPayload(args)
+		return payload == "" || shellReadsStdin(payload)
+	}
+	return false
+}
+
+func shellUsesStdin(tail string) bool {
+	words, ok := shellWords(tail)
+	if !ok {
+		return false
+	}
+	skip := false
+	for _, word := range words {
+		if skip {
+			skip = false
+			continue
+		}
+		redirect := strings.TrimLeft(word, "0123456789")
+		if strings.HasPrefix(redirect, "<") || strings.HasPrefix(redirect, ">") {
+			skip = redirect == "<<" || redirect == "<<-" || redirect == "<" || redirect == ">" || redirect == ">>"
+			continue
+		}
+		if word == "--noexec" || (strings.HasPrefix(word, "-") && !strings.HasPrefix(word, "--") && strings.Contains(word, "n")) {
+			return false
+		}
+		switch word {
+		case "-o", "+o", "--rcfile", "--init-file":
+			skip = true
+			continue
+		case "-", "-s":
+			return true
+		}
+		if !strings.HasPrefix(word, "-") && !strings.HasPrefix(word, "+") {
+			return false
+		}
+	}
+	return true
 }
 
 // isForkBomb reports a function that recurses into itself in the background.
@@ -374,13 +600,17 @@ func shellWords(text string) ([]string, bool) {
 // substitutions that the shell would execute: those outside single quotes and
 // not escaped. Quoted data such as echo '$(rm -rf /)' is not returned.
 func commandSubstitutions(text string) []string {
+	return shellSubstitutions(text, true)
+}
+
+func shellSubstitutions(text string, singleQuotes bool) []string {
 	var bodies []string
 	inDouble := false
 	for i := 0; i < len(text); i++ {
 		switch c := text[i]; {
 		case c == '\\':
 			i++
-		case c == '\'' && !inDouble:
+		case c == '\'' && !inDouble && singleQuotes:
 			end := strings.IndexByte(text[i+1:], '\'')
 			if end < 0 {
 				return bodies
@@ -888,7 +1118,7 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 			if index+1 < len(words) {
 				pattern = words[index+1]
 			}
-			if !negate && !(isNamePatternFilter(word) && strings.Trim(pattern, "*?.") == "") {
+			if !negate && !findPatternMatchesAll(word, pattern) {
 				filtered = true
 			}
 		}
@@ -910,6 +1140,22 @@ func findIsCatastrophic(tail, home string) (bool, []string) {
 		}
 	}
 	return deny, payloads
+}
+
+func findPatternMatchesAll(filter, pattern string) bool {
+	if !isNamePatternFilter(filter) {
+		return false
+	}
+	if filter != "-regex" && filter != "-iregex" {
+		return strings.Trim(pattern, "*?.") == ""
+	}
+	// Recognize common match-all expressions without trying to prove arbitrary
+	// regex equivalence. A suffix or directory component remains a real filter.
+	pattern = strings.TrimSuffix(strings.TrimPrefix(pattern, "^"), "$")
+	for strings.HasPrefix(pattern, "(") && strings.HasSuffix(pattern, ")") {
+		pattern = pattern[1 : len(pattern)-1]
+	}
+	return pattern == ".+" || (strings.Trim(pattern, ".*") == "" && strings.Contains(pattern, ".*"))
 }
 
 // isNamePatternFilter reports a find test whose argument is a glob or regex,

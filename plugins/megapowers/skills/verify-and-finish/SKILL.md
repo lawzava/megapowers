@@ -24,9 +24,10 @@ Run long or verbose checks through the
 status, and commit; a filtered or truncated summary proves nothing.
 
 Label inspection and inference; neither is an executed check. Bind stale-prone
-results to the artifact identity and commit; after a rebase, rerun them unless
-`git patch-id` shows the change is unchanged. Separate declared configuration
-from effective runtime behavior.
+results to the artifact identity and commit. Rerun relevant checks after a
+rebase onto a changed base; an identical patch does not establish the same
+tested tree or dependencies. Separate declared configuration from effective
+runtime behavior.
 
 A local build cannot prove a deployment, published package, API effect, or
 user-visible result; for those, exercise the real boundary and record the

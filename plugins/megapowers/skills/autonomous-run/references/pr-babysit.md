@@ -29,12 +29,13 @@ A merge conflict is reported, not resolved inside the run.
 
 Classify every failure before any retrigger:
 
-- A failure in code the change touches gets a fix and a commit.
-- A failure in code the change never touches suggests a stale base. Check with
-  `git merge-base --is-ancestor <base-tip> HEAD` and report a needed rebase
-  instead of retrying.
+- Read the failed job's logs and trace affected callers before attributing the
+  cause. A change can break a consumer in an untouched file.
+- Fix failures caused by the change. If the evidence points to a stale base,
+  check `git merge-base --is-ancestor <base-tip> HEAD` and report a needed rebase.
 - A suspected flake or infrastructure failure earns one fresh run. An identical
-  second failure is not a flake: read the job logs and reclassify.
+  second failure ends blind retries and requires diagnosis; repetition alone
+  does not establish that the failure is deterministic.
 
 Never retry blind, skip a check, or weaken a check to reach green.
 

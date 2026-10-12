@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"net/url"
@@ -155,9 +156,9 @@ func gateMessages(gates []string, deny bool) string {
 }
 
 // skillLoaded reports whether the transcript records the skill body loading:
-// a Skill tool call, an injected skill body (Claude's base-directory header or
-// Codex's explicit <skill> block), or a tool call that reads the skill's
-// SKILL.md. Catalog entries and prose mentions do not count. An unreadable
+// an injected skill body, or a successful tool result paired with a read or
+// Skill invocation. Catalog entries, pending reads, and failed calls do not
+// count. An unreadable
 // transcript counts as not loaded and reports readable false.
 func skillLoaded(transcriptPath, skill string) (loaded, readable bool) {
 	if transcriptPath == "" {
@@ -168,31 +169,154 @@ func skillLoaded(transcriptPath, skill string) (loaded, readable bool) {
 		return false, false
 	}
 	defer file.Close()
-	skillCall := []byte("\"megapowers:" + skill + "\"")
-	skillDir := []byte("skills/" + skill)
-	skillBody := []byte("skills/" + skill + "/SKILL.md")
-	// Codex writes the injection as a user message whose text starts with the
-	// block; the JSONL escapes the newline, so the bytes hold a literal \n.
-	codexBlock := []byte(`"role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:` + skill + `</name>`)
+	pending := make(map[string]bool)
 	reader := bufio.NewReaderSize(file, 64<<10)
 	for {
 		line, err := reader.ReadBytes('\n')
-		switch {
-		case bytes.Contains(line, []byte("\"name\":\"Skill\"")) && bytes.Contains(line, skillCall):
-			return true, true
-		case bytes.Contains(line, []byte("Base directory for this skill:")) && bytes.Contains(line, skillDir):
-			return true, true
-		case bytes.Contains(line, codexBlock) && bytes.Contains(line, skillBody):
-			return true, true
-		case bytes.Contains(line, skillBody) && (bytes.Contains(line, []byte("\"function_call\"")) ||
-			bytes.Contains(line, []byte("\"custom_tool_call\"")) || bytes.Contains(line, []byte("\"local_shell_call\"")) ||
-			bytes.Contains(line, []byte("\"type\":\"tool_use\""))):
-			return true, true
+		if len(pending) != 0 || bytes.Contains(line, []byte(skill)) {
+			var event skillTranscriptEvent
+			if json.Unmarshal(line, &event) == nil && event.loadedSkill(skill, pending) {
+				return true, true
+			}
 		}
 		if err != nil {
 			return false, true
 		}
 	}
+}
+
+type skillTranscriptEvent struct {
+	Type, Role, Name, ID string
+	CallID               string `json:"call_id"`
+	ToolUseID            string `json:"tool_use_id"`
+	IsError              bool   `json:"is_error"`
+	Arguments            json.RawMessage
+	Action               json.RawMessage
+	Input                json.RawMessage
+	Output               json.RawMessage
+	Content              json.RawMessage
+	Text                 string
+	Message, Payload     *skillTranscriptEvent
+}
+
+func (event skillTranscriptEvent) loadedSkill(skill string, pending map[string]bool) bool {
+	if event.Payload != nil {
+		return event.Payload.loadedSkill(skill, pending)
+	}
+	if event.Message != nil {
+		if event.Message.Role == "" {
+			event.Message.Role = event.Type
+		}
+		return event.Message.loadedSkill(skill, pending)
+	}
+	if event.Role == "user" {
+		text, _ := skillResultText(event.Content)
+		if strings.HasPrefix(text, "Base directory for this skill:") && strings.Contains(text, "skills/"+skill) && strings.Contains(text, "\n# ") {
+			return true
+		}
+		if strings.HasPrefix(text, "<skill>\n<name>megapowers:"+skill+"</name>") && strings.Contains(text, "skills/"+skill+"/SKILL.md") && strings.Contains(text, "\n# ") {
+			return true
+		}
+	}
+	if len(event.Content) > 0 && event.Content[0] == '[' {
+		var blocks []skillTranscriptEvent
+		if json.Unmarshal(event.Content, &blocks) == nil {
+			for _, block := range blocks {
+				if block.loadedSkill(skill, pending) {
+					return true
+				}
+			}
+		}
+	}
+	id := event.CallID
+	if id == "" {
+		id = event.ID
+	}
+	switch event.Type {
+	case "tool_use", "function_call", "custom_tool_call", "local_shell_call":
+		input := string(event.Input) + string(event.Arguments) + string(event.Action)
+		var invocation struct{ Skill string }
+		isSkill := event.Name == "Skill" && json.Unmarshal(event.Input, &invocation) == nil && invocation.Skill == "megapowers:"+skill
+		reads := event.Type == "local_shell_call"
+		switch event.Name {
+		case "Read", "Bash", "exec_command", "shell_command", "shell", "exec", "functions.exec", "functions.exec_command":
+			reads = true
+		}
+		if id != "" && (isSkill || (reads && strings.Contains(input, "skills/"+skill+"/SKILL.md"))) {
+			pending[id] = isSkill
+		}
+	case "tool_result", "function_call_output", "custom_tool_call_output", "local_shell_call_output":
+		if event.ToolUseID != "" {
+			id = event.ToolUseID
+		}
+		invocation, ok := pending[id]
+		delete(pending, id)
+		if !ok || event.IsError {
+			return false
+		}
+		output := event.Output
+		if len(output) == 0 {
+			output = event.Content
+		}
+		text, success := skillResultText(output)
+		return success && strings.TrimSpace(text) != "" && (invocation || containsSkillBody(text, skill))
+	}
+	return false
+}
+
+var readLineNumber = regexp.MustCompile(`(?m)^\s*[0-9]+[→\t :]+`)
+var failedReadExit = regexp.MustCompile(`(?m)(?:Process exited with code|Exit code:)[ \t]+[1-9][0-9]*\b`)
+
+func containsSkillBody(text, skill string) bool {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = readLineNumber.ReplaceAllString(text, "")
+	for _, name := range []string{skill, `"` + skill + `"`, "'" + skill + "'"} {
+		if strings.Contains(text, "\nname: "+name+"\n") && strings.Contains(text, "\n# ") {
+			return true
+		}
+	}
+	return false
+}
+
+// Tool results can be plain text, text blocks, or an encoded exec result.
+// Decode only output fields; a path in an input or an error is not evidence.
+func skillResultText(raw json.RawMessage) (string, bool) {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		trimmed := strings.TrimSpace(text)
+		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+			if nested, ok := skillResultText(json.RawMessage(trimmed)); nested != "" || !ok {
+				return nested, ok
+			}
+		}
+		return text, !failedReadExit.MatchString(text)
+	}
+	var blocks []json.RawMessage
+	if json.Unmarshal(raw, &blocks) == nil {
+		var texts []string
+		for _, block := range blocks {
+			text, ok := skillResultText(block)
+			if !ok {
+				return "", false
+			}
+			texts = append(texts, text)
+		}
+		return strings.Join(texts, "\n"), true
+	}
+	var result struct {
+		IsError                              bool `json:"is_error"`
+		ExitCode                             *int `json:"exit_code"`
+		Output, Content, Text, Stdout, Value json.RawMessage
+	}
+	if json.Unmarshal(raw, &result) != nil || result.IsError || (result.ExitCode != nil && *result.ExitCode != 0) {
+		return "", false
+	}
+	for _, field := range []json.RawMessage{result.Output, result.Content, result.Text, result.Stdout, result.Value} {
+		if len(field) != 0 {
+			return skillResultText(field)
+		}
+	}
+	return "", true
 }
 
 // gateRecentlyDenied reports a skill marker created within gateRetryWindow.
@@ -215,9 +339,14 @@ func hasKey(set map[string]struct{}, key string) bool {
 // gateSkills returns the skills a command implicates, completion first, each
 // at most once.
 func gateSkills(command string) []string {
+	return nestedGateSkills(command, 0)
+}
+
+func nestedGateSkills(command string, depth int) []string {
 	if len(command) > maxCommandBytes {
 		return nil
 	}
+	command, payloads := shellHeredocs(command)
 	completion, effect := false, false
 	for _, segment := range splitSegments(command) {
 		name, tail, ok := resolveCommand(segment)
@@ -233,6 +362,16 @@ func gateSkills(command string) []string {
 			completion = true
 		case effectSkill:
 			effect = true
+		}
+		payloads = append(payloads, shellCommandPayloads(name, tail)...)
+	}
+	payloads = append(payloads, commandSubstitutions(command)...)
+	if depth < maxScanDepth {
+		for _, payload := range payloads {
+			for _, skill := range nestedGateSkills(payload, depth+1) {
+				completion = completion || skill == completionSkill
+				effect = effect || skill == effectSkill
+			}
 		}
 	}
 	var skills []string
@@ -391,10 +530,17 @@ func gateKind(name string, words []string) string {
 // from HEAD in the hook's working directory, because the delete loses no
 // commits. A cd before it makes the directory unknown, so the check stays.
 func gitDiscardKey(command, cwd string) string {
+	return nestedGitDiscardKey(command, cwd, 0, true)
+}
+
+func nestedGitDiscardKey(command, cwd string, depth int, local bool) string {
 	if len(command) > maxCommandBytes {
 		return ""
 	}
+	command, payloads := shellHeredocs(command)
+	heredocCount := len(payloads)
 	var keys []string
+	var remoteContext []string
 	dir := cwd
 	// place names the repository each git invocation acts on: the hook's
 	// directory plus every directory change before it. A GIT_ variable can
@@ -410,6 +556,12 @@ func gitDiscardKey(command, cwd string) string {
 	}
 	for _, segment := range splitSegments(command) {
 		name, tail, ok := resolveCommand(segment)
+		if ok {
+			payloads = append(payloads, shellCommandPayloads(name, tail)...)
+			if name == "ssh" {
+				remoteContext = append(remoteContext, segment)
+			}
+		}
 		if ok && (name == "cd" || name == "pushd" || name == "popd") {
 			dir = ""
 			place += "\x00" + name + " " + tail
@@ -427,10 +579,30 @@ func gitDiscardKey(command, cwd string) string {
 		}
 		// A wrapper or assignment before git can move the repository.
 		first, _, _ := takeWord(trimLeftSpace(segment))
-		if commandBaseName(first) == "git" && mergedBranchDelete(words, dir) {
+		if local && commandBaseName(first) == "git" && mergedBranchDelete(words, dir) {
 			continue
 		}
 		keys = append(keys, place+"\x01"+strings.Join(words, "\x00"))
+	}
+	if depth < maxScanDepth {
+		payloads = append(payloads, commandSubstitutions(command)...)
+		// A local branch graph cannot prove a remote delete is recoverable.
+		// Include the SSH target in retry keys, also for its heredoc input.
+		nestedPlace := place
+		if len(remoteContext) > 0 {
+			nestedPlace += "\x00" + strings.Join(remoteContext, "\x00")
+		}
+		for i, payload := range payloads {
+			payloadPlace := nestedPlace
+			if i < heredocCount {
+				// Extracted bodies omit their consumer, which can be remote.
+				// Preserve its header in the key and require the ordinary check.
+				payloadPlace += "\x00" + command
+			}
+			if key := nestedGitDiscardKey(payload, payloadPlace, depth+1, local && len(remoteContext) == 0 && i >= heredocCount); key != "" {
+				keys = append(keys, key)
+			}
+		}
 	}
 	return strings.Join(keys, "\n")
 }

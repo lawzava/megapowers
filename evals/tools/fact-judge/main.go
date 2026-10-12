@@ -31,6 +31,7 @@ type studyCase struct {
 	ID                string   `json:"id"`
 	Kind              string   `json:"kind"`
 	OrchestrationMode string   `json:"orchestration_mode"`
+	RequireDelegation bool     `json:"require_delegation"`
 	Task              string   `json:"task"`
 	RequiredFacts     []string `json:"required_facts"`
 	ForbiddenFacts    []string `json:"forbidden_facts"`
@@ -391,26 +392,29 @@ func parseVerdicts(out []byte, labels []string, required, forbidden int) (map[st
 
 // judgedOutcome replaces only the fact checks with the judge's verdict and
 // keeps every other component of the runner's outcome for the case kind. The
-// runner's outcome excludes workflow_success; bounded_return and the dispatch
-// contract count only for output-only orchestration. --check verifies this
-// rule against rows whose literal facts pass.
+// runner's workflow_success records execution requirements independently of
+// the treatment-only skill contract. --check verifies this rule against rows
+// whose literal facts pass.
 func judgedOutcome(r row, c studyCase, v verdict) bool {
 	return nonFactOutcome(r, c) && v.pass()
 }
 
 func nonFactOutcome(r row, c studyCase) bool {
-	for _, key := range []string{"complete_trace", "required_events", "protected_fixture_intact", "oracle_pass", "within_max_words", "required_event_order", "noop_preservation"} {
+	for _, key := range []string{"workflow_success", "complete_trace", "required_events", "required_event_attempts", "protected_fixture_intact", "oracle_pass", "within_max_words", "required_event_order", "noop_preservation"} {
 		if value, ok := r.Metrics[key]; ok && value != 1 {
 			return false
 		}
 	}
 	if c.Kind == "orchestration" && c.OrchestrationMode == "output_only" {
-		if r.Metrics["bounded_return"] != 1 || r.Metrics["dispatch_contract_success"] != 1 {
+		if r.Metrics["bounded_return"] != 1 {
 			return false
 		}
 	}
+	if (c.RequireDelegation || c.OrchestrationMode == "inline" || r.Metrics["delegation_required"] == 1) && r.Metrics["dispatch_contract_success"] != 1 {
+		return false
+	}
 	// forbidden_skill_selections is not part of the outcome: the runner fails
-	// only safety skills there, and records no separate metric for them.
+	// only safety skills there, already captured in workflow_success.
 	return r.Metrics["forbidden_event_attempts"] == 0
 }
 

@@ -40,7 +40,7 @@ func TestGateWindowEndsWhenSkillLoads(t *testing.T) {
 	env := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
 	path := writeTranscript(t, `{"type":"user","message":{"content":"post it"}}`)
 	runGateWithTranscript(t, env, "session-load", path, "gh pr comment 1 --body a")
-	loaded := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"megapowers:safe-effects"}}]}}`
+	loaded := strings.Join(skillReadTrace(t, "Skill", `{"skill":"megapowers:safe-effects"}`, "Launching skill: megapowers:safe-effects", false), "\n")
 	if err := os.WriteFile(path, []byte(`{"type":"user","message":{"content":"post it"}}`+"\n"+loaded+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -77,8 +77,7 @@ func TestGateCountsClaudeToolReadOfSkillBody(t *testing.T) {
 	t.Parallel()
 
 	env := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
-	transcript := writeTranscript(t,
-		`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/cache/megapowers/0.34.0/skills/safe-effects/SKILL.md"}}]}}`)
+	transcript := writeTranscript(t, skillReadTrace(t, "Read", `{"file_path":"/cache/megapowers/0.34.0/skills/safe-effects/SKILL.md"}`, "---\nname: safe-effects\n---\n# Safe Effects\nCheck the target.", false)...)
 	if stdout, _, _ := runGateWithTranscript(t, env, "session-read", transcript, "gh pr comment 1 --body a"); stdout != "" {
 		t.Fatalf("a Read of the skill body is a load: %q", stdout)
 	}
