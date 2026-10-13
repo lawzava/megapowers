@@ -62,6 +62,8 @@ existing absolute directory outside the repository. If the tool fails, report
 its error; a direct provider call skips its secret scan. Use
 `--retain-transcript` only after a sensitive-data decision. Treat the review
 verdict as a claim. Record credible findings and explain dismissals against the
-artifact intent. Rerun acceptance tests after every material change. Bound correction rounds:
-re-review only fixes, affected boundaries, and new evidence. Join every
-requested review before completion; approval cannot settle a queued review.
+artifact intent. Bound correction rounds: focused tests per fix, the full suite
+once after the last round; re-review only
+[fixes since the prior round](references/correction-rounds.md), affected
+boundaries, and new evidence. Join every requested review before completion;
+approval cannot settle a queued review.

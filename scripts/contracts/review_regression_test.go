@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -853,4 +854,92 @@ func TestReviewAcceptsPatchFileUnderTMPDIR(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.call("symlink", "inspect", "--file", filepath.Join(scratch, "alias.diff"), "--provider", "vendor-a", "--provider-command", f.command)
+}
+
+func TestReviewDeltaCoversOnlyChangesSinceSnapshot(t *testing.T) {
+	f := newReviewFixture(t)
+	scratch := filepath.Join(f.root, "scratch")
+	if err := os.Mkdir(scratch, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", scratch)
+	f.write(filepath.Join(f.repo, "app.go"), "package example\nfunc Value() int { return 3 }\n")
+	f.write(filepath.Join(f.repo, "first.go"), "package example\nfunc First() int { return 1 }\n")
+	statusBefore := f.exec(f.repo, "git", "status", "--porcelain")
+	reviewed := strings.TrimSpace(f.call("", "snapshot"))
+	if !regexp.MustCompile(`^[0-9a-f]{40,64}$`).MatchString(reviewed) {
+		t.Fatalf("snapshot printed %q, want a tree id", reviewed)
+	}
+	if status := f.exec(f.repo, "git", "status", "--porcelain"); status != statusBefore {
+		t.Fatalf("snapshot changed the index or tree:\nbefore %q\nafter  %q", statusBefore, status)
+	}
+
+	f.write(filepath.Join(f.repo, "app.go"), "package example\nfunc Value() int { return 4 }\n")
+	f.write(filepath.Join(f.repo, "fix.go"), "package example\nfunc Fix() int { return 1 }\n")
+	out := filepath.Join(scratch, "fixes.patch")
+	f.call("", "delta", "--since", reviewed, "--out", out)
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := string(data)
+	for _, want := range []string{"-func Value() int { return 3 }", "+func Value() int { return 4 }", "b/fix.go"} {
+		if !strings.Contains(patch, want) {
+			t.Errorf("delta lacks %q:\n%s", want, patch)
+		}
+	}
+	if strings.Contains(patch, "first.go") || strings.Contains(patch, "return 1 }\n-") {
+		t.Errorf("delta repeats already reviewed changes:\n%s", patch)
+	}
+	if info, err := os.Stat(out); err != nil || info.Mode().Perm() != 0600 {
+		t.Errorf("delta file mode = %v (%v), want 0600", info.Mode().Perm(), err)
+	}
+	info := f.inspect(f.command, "--file", out)
+	f.call("", f.review(info["approval_token"].(string), f.command, "--file", out)...)
+	if !strings.Contains(f.recordText("input"), "return 4") {
+		t.Fatal("delta content did not reach the reviewer")
+	}
+
+	current := strings.TrimSpace(f.call("", "snapshot"))
+	f.call("no changes", "delta", "--since", current, "--out", filepath.Join(scratch, "empty.patch"))
+	f.call("$TMPDIR", "delta", "--since", reviewed, "--out", filepath.Join(f.root, "outside.patch"))
+	f.call("exists", "delta", "--since", reviewed, "--out", out)
+}
+
+func TestReviewDeltaKeepsIgnoredTrackedFilesAndTextconvChanges(t *testing.T) {
+	f := newReviewFixture(t)
+	scratch := filepath.Join(f.root, "scratch")
+	if err := os.Mkdir(scratch, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", scratch)
+	f.write(filepath.Join(f.repo, ".gitignore"), "forced.go\n")
+	f.write(filepath.Join(f.repo, "forced.go"), "package example\nfunc Forced() int { return 1 }\n")
+	f.write(filepath.Join(f.repo, ".gitattributes"), "*.go diff=firstline\n")
+	f.exec(f.repo, "git", "add", "-f", "--", ".gitignore", ".gitattributes", "forced.go")
+	f.exec(f.repo, "git", "-c", "commit.gpgsign=false", "commit", "-qm", "tracked but ignored")
+	f.exec(f.repo, "git", "config", "diff.firstline.textconv", "head -n 1")
+	f.write(filepath.Join(f.repo, "hidden.go"), "package example\nfunc Hidden() int { return 1 }\n")
+	f.commit("hidden", "hidden.go")
+	f.write(filepath.Join(f.repo, "sparse.go"), "package example\nfunc Sparse() int { return 1 }\n")
+	f.commit("sparse", "sparse.go")
+	f.exec(f.repo, "git", "update-index", "--skip-worktree", "sparse.go")
+	f.exec(f.repo, "git", "update-index", "--assume-unchanged", "hidden.go")
+
+	reviewed := strings.TrimSpace(f.call("", "snapshot"))
+	f.write(filepath.Join(f.repo, "forced.go"), "package example\nfunc Forced() int { return 2 }\n")
+	f.write(filepath.Join(f.repo, "app.go"), "package example\nfunc Value() int { return 9 }\n")
+	f.write(filepath.Join(f.repo, "hidden.go"), "package example\nfunc Hidden() int { return 2 }\n")
+	f.write(filepath.Join(f.repo, "sparse.go"), "package example\nfunc Sparse() int { return 2 }\n")
+	out := filepath.Join(scratch, "fixes.patch")
+	f.call("", "delta", "--since", reviewed, "--out", out)
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"+func Forced() int { return 2 }", "+func Value() int { return 9 }", "+func Hidden() int { return 2 }", "+func Sparse() int { return 2 }"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("delta lacks %q:\n%s", want, data)
+		}
+	}
 }

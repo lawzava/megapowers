@@ -269,9 +269,15 @@ func run(args []string) error {
 		return errors.New("megapowers-review runs on Linux and macOS; on Windows, run it from WSL")
 	}
 	if len(args) == 0 {
-		return errors.New("usage: megapowers-review inspect|review [options]")
+		return errors.New("usage: megapowers-review inspect|review|snapshot|delta [options]")
 	}
 	command := args[0]
+	switch command {
+	case "snapshot":
+		return runSnapshot(args[1:])
+	case "delta":
+		return runDelta(args[1:])
+	}
 	if command != "inspect" && command != "review" {
 		return fmt.Errorf("unknown command %q; want inspect or review", command)
 	}
@@ -1816,7 +1822,161 @@ func (b *tailBuffer) Bytes() []byte {
 	return b.buf
 }
 
+// runSnapshot prints a tree id for the working tree, untracked files
+// included, so a later delta can isolate changes made after a review.
+func runSnapshot(args []string) error {
+	if len(args) != 0 {
+		return errors.New("usage: megapowers-review snapshot")
+	}
+	root, err := repositoryRoot()
+	if err != nil {
+		return err
+	}
+	tree, err := worktreeTree(root)
+	if err != nil {
+		return err
+	}
+	fmt.Println(tree)
+	return nil
+}
+
+// runDelta writes the binary diff from a snapshot tree to the current working
+// tree into a new private .patch or .diff file under $TMPDIR. The file then
+// goes through the normal inspect and review path, so a correction round
+// discloses only the fixes.
+func runDelta(args []string) error {
+	fs := flag.NewFlagSet("delta", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	since := fs.String("since", "", "tree id printed by snapshot")
+	out := fs.String("out", "", "new .patch or .diff file under $TMPDIR")
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse options: %w", err)
+	}
+	if fs.NArg() != 0 || *since == "" || *out == "" {
+		return errors.New("usage: megapowers-review delta --since TREE --out $TMPDIR/NAME.patch")
+	}
+	abs, err := filepath.Abs(*out)
+	if err != nil {
+		return fmt.Errorf("resolve --out: %w", err)
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(abs))
+	if err != nil {
+		return fmt.Errorf("resolve --out directory: %w", err)
+	}
+	physical := filepath.Join(parent, filepath.Base(abs))
+	if _, ok := tempPatchPath(physical); !ok {
+		return fmt.Errorf("--out must be a .patch or .diff file under $TMPDIR: %s", *out)
+	}
+	root, err := repositoryRoot()
+	if err != nil {
+		return err
+	}
+	base, err := runGit(root, 1024, "rev-parse", "--verify", "--end-of-options", *since+"^{tree}")
+	if err != nil {
+		return fmt.Errorf("--since is not a tree id from snapshot: %w", err)
+	}
+	current, err := worktreeTree(root)
+	if err != nil {
+		return err
+	}
+	patch, err := runGit(root, maxFileBytes+1, "diff", "--binary", "--no-color", "--no-ext-diff", "--no-textconv", strings.TrimSpace(string(base)), current)
+	if err != nil {
+		return fmt.Errorf("diff since snapshot: %w", err)
+	}
+	if len(patch) == 0 {
+		return errors.New("no changes since the snapshot; nothing to re-review")
+	}
+	// Anchor the checked directory so a later swap of it or an ancestor
+	// cannot redirect the patch outside $TMPDIR.
+	dir, err := openAnchoredDirectory(parent)
+	if err != nil {
+		return fmt.Errorf("anchor --out directory: %w", err)
+	}
+	defer dir.Close()
+	opened, openedErr := dir.Stat(".")
+	named, namedErr := os.Stat(parent)
+	resolved, resolvedErr := filepath.EvalSymlinks(parent)
+	if openedErr != nil || namedErr != nil || resolvedErr != nil || resolved != parent || !os.SameFile(opened, named) {
+		return errors.New("--out directory changed while it was being opened")
+	}
+	file, err := dir.OpenFile(filepath.Base(physical), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return fmt.Errorf("create --out (it must not already exist): %w", err)
+	}
+	if _, err := file.Write(patch); err != nil {
+		file.Close()
+		return fmt.Errorf("write --out: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("write --out: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "delta: wrote %d bytes to %s\n", len(patch), *out)
+	return nil
+}
+
+// worktreeTree writes the working tree, untracked non-ignored files included,
+// as a tree object through a private temporary index; the real index stays
+// untouched.
+func worktreeTree(root string) (string, error) {
+	scratch, err := os.MkdirTemp("", "megapowers-snapshot-")
+	if err != nil {
+		return "", fmt.Errorf("create snapshot index: %w", err)
+	}
+	defer os.RemoveAll(scratch)
+	index := filepath.Join(scratch, "index")
+	// Start from the real index so tracked files that match ignore rules stay
+	// in the snapshot; an empty index would treat them as ignored untracked files.
+	realIndex, err := runGit(root, 16*1024, "rev-parse", "--path-format=absolute", "--git-path", "index")
+	if err != nil {
+		return "", fmt.Errorf("locate index: %w", err)
+	}
+	data, err := os.ReadFile(strings.TrimSpace(string(realIndex)))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("read index: %w", err)
+	}
+	if err == nil {
+		if err := os.WriteFile(index, data, 0600); err != nil {
+			return "", fmt.Errorf("copy index: %w", err)
+		}
+	}
+	env := []string{"GIT_INDEX_FILE=" + index}
+	// Clear assume-unchanged and skip-worktree bits copied from the real index;
+	// git add honors them and would keep stale content for edited files.
+	listing, err := runGitEnv(root, 64*1024*1024, env, "ls-files", "-z", "-v")
+	if err != nil {
+		return "", fmt.Errorf("list snapshot index: %w", err)
+	}
+	var flagged []string
+	for _, entry := range strings.Split(string(listing), "\x00") {
+		if len(entry) > 2 && (entry[0] == 'S' || (entry[0] >= 'a' && entry[0] <= 'z')) {
+			flagged = append(flagged, entry[2:])
+		}
+	}
+	// One update-index call applies only the first of these flags per path.
+	for _, flag := range []string{"--no-assume-unchanged", "--no-skip-worktree"} {
+		if len(flagged) == 0 {
+			break
+		}
+		args := append([]string{"update-index", flag, "--"}, flagged...)
+		if _, err := runGitEnv(root, 16*1024, env, args...); err != nil {
+			return "", fmt.Errorf("clear snapshot index flags: %w", err)
+		}
+	}
+	if _, err := runGitEnv(root, 16*1024, env, "add", "-A", "--", "."); err != nil {
+		return "", fmt.Errorf("stage snapshot: %w", err)
+	}
+	tree, err := runGitEnv(root, 1024, env, "write-tree")
+	if err != nil {
+		return "", fmt.Errorf("write snapshot tree: %w", err)
+	}
+	return strings.TrimSpace(string(tree)), nil
+}
+
 func runGit(root string, limit int, args ...string) ([]byte, error) {
+	return runGitEnv(root, limit, nil, args...)
+}
+
+func runGitEnv(root string, limit int, env []string, args ...string) ([]byte, error) {
 	gitArgs := make([]string, 0, len(args)+3)
 	gitArgs = append(gitArgs, "--literal-pathspecs")
 	if root != "" {
@@ -1824,7 +1984,7 @@ func runGit(root string, limit int, args ...string) ([]byte, error) {
 	}
 	gitArgs = append(gitArgs, args...)
 	cmd := exec.Command("git", gitArgs...)
-	cmd.Env = append(os.Environ(), "GIT_PAGER=cat", "GIT_EXTERNAL_DIFF=")
+	cmd.Env = append(append(os.Environ(), "GIT_PAGER=cat", "GIT_EXTERNAL_DIFF="), env...)
 	stdout := &limitedBuffer{max: limit}
 	stderr := &limitedBuffer{max: 16 * 1024}
 	cmd.Stdout = stdout
