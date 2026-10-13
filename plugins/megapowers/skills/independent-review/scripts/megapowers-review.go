@@ -1930,13 +1930,26 @@ func worktreeTree(root string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locate index: %w", err)
 	}
-	data, err := os.ReadFile(strings.TrimSpace(string(realIndex)))
+	realIndexPath := strings.TrimSpace(string(realIndex))
+	// Stat before reading: if Git rewrites the index in between, the older
+	// time only makes more entries racy and rehashed.
+	info, err := os.Stat(realIndexPath)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("read index: %w", err)
+		return "", fmt.Errorf("stat index: %w", err)
 	}
 	if err == nil {
+		data, err := os.ReadFile(realIndexPath)
+		if err != nil {
+			return "", fmt.Errorf("read index: %w", err)
+		}
 		if err := os.WriteFile(index, data, 0600); err != nil {
 			return "", fmt.Errorf("copy index: %w", err)
+		}
+		// Git rehashes an entry whose mtime is not older than the index file,
+		// which catches same-size edits made in the second they were staged.
+		// A fresh copy would look newer than every entry and skip that check.
+		if err := os.Chtimes(index, info.ModTime(), info.ModTime()); err != nil {
+			return "", fmt.Errorf("copy index time: %w", err)
 		}
 	}
 	env := []string{"GIT_INDEX_FILE=" + index}

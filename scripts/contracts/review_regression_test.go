@@ -943,3 +943,40 @@ func TestReviewDeltaKeepsIgnoredTrackedFilesAndTextconvChanges(t *testing.T) {
 		}
 	}
 }
+
+// A same-size edit that keeps the indexed stat data is caught only by Git's
+// racy-entry check, which compares entry mtimes with the index file's own
+// mtime. Pinning both to one past instant reproduces, without timing luck, an
+// edit made in the same second the file was staged.
+func TestReviewDeltaSeesRacilyCleanEdits(t *testing.T) {
+	f := newReviewFixture(t)
+	scratch := filepath.Join(f.root, "scratch")
+	if err := os.Mkdir(scratch, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", scratch)
+	// Ignore ctime, which a test cannot set, so only size and mtime decide.
+	f.exec(f.repo, "git", "config", "core.trustctime", "false")
+	past := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	app := filepath.Join(f.repo, "app.go")
+	if err := os.Chtimes(app, past, past); err != nil {
+		t.Fatal(err)
+	}
+	f.exec(f.repo, "git", "update-index", "--refresh")
+	reviewed := strings.TrimSpace(f.call("", "snapshot"))
+	f.write(app, "package example\nfunc Value() int { return 3 }\n")
+	for _, path := range []string{app, filepath.Join(f.repo, ".git", "index")} {
+		if err := os.Chtimes(path, past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := filepath.Join(scratch, "fixes.patch")
+	f.call("", "delta", "--since", reviewed, "--out", out)
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "+func Value() int { return 3 }") {
+		t.Errorf("delta lacks the same-size edit:\n%s", data)
+	}
+}
