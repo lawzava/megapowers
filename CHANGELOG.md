@@ -5,6 +5,23 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.38.0 - 2026-10-13
+
+### Added
+
+- `run-state continue` enforces the autonomous-run continuation cap from the
+  journal and exits 4 once an item has used it.
+- `run-state coverage` lists charter done-criterion IDs that a saved brief or
+  handoff omits. The charter skeleton now numbers criteria `C1`, `C2`, and so
+  on.
+
+### Changed
+
+- Native dispatch guidance covers schedulers that record the first end of
+  turn as a run's result.
+- Eval reporting rules require each arm's paired mean duration beside its
+  outcomes.
+
 ## 0.37.0 - 2026-10-13
 
 ### Added
