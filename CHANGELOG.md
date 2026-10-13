@@ -5,6 +5,23 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.37.0 - 2026-10-13
+
+### Added
+
+- `run-receipt --reuse` cites a passing receipt for the same command,
+  directory, commit, and uncommitted tree instead of rerunning the check.
+- The independent-review tool's `snapshot` and `delta` commands send a later
+  correction round only the fixes made since the prior review.
+- `maintainer hook-hash --write` refreshes the hook launcher cache key, and
+  the hooks test names that command when the key is stale.
+
+### Changed
+
+- Verification blocks on a running check instead of polling it with `sleep`.
+- Review correction rounds run focused tests per fix and the full suite once,
+  after the last round.
+
 ## 0.36.1 - 2026-10-12
 
 ### Fixed
