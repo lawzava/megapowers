@@ -5,6 +5,20 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.38.1 - 2026-10-13
+
+### Fixed
+
+- The completion and effect gates recognize a skill read inside a batched
+  Codex `exec` call whose results print as `Promise.allSettled` entries, and a
+  failed sibling command in that batch no longer hides the successful read.
+  Failed or rejected reads and catalog mentions still do not count. The deny
+  reason now says that a read in the same batched call as the gated command
+  does not count.
+- `run-receipt` names receipts with nanoseconds and random bytes after the PID
+  and retries a taken name, so concurrent runs in separate PID namespaces no
+  longer fail with `create log: file exists`.
+
 ## 0.38.0 - 2026-10-13
 
 ### Added
