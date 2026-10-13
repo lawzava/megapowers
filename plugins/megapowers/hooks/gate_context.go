@@ -40,8 +40,8 @@ const (
 
 	completionContext = "Before claiming this complete, load and follow the megapowers verify-and-finish skill if it is not already loaded for this outcome."
 	effectContext     = "Before running this outward effect, load and follow the megapowers safe-effects skill if it is not already loaded for this effect."
-	completionDeny    = "Load and follow the megapowers verify-and-finish skill before this completion step, then run the command again; this check blocks once per session."
-	effectDeny        = "Load and follow the megapowers safe-effects skill before this outward effect, then run the command again; this check blocks once per session."
+	completionDeny    = "Load and follow the megapowers verify-and-finish skill before this completion step, then run the command again; this check blocks once per session. A skill read in the same batched call as this command does not count, because its result is not recorded yet."
+	effectDeny        = "Load and follow the megapowers safe-effects skill before this outward effect, then run the command again; this check blocks once per session. A skill read in the same batched call as this command does not count, because its result is not recorded yet."
 	discardContext    = "This git command discards uncommitted, stashed, or unmerged work. Check git status and git stash list and confirm the work is disposable or the user asked to discard it."
 	discardDeny       = "This git command discards uncommitted, stashed, or unmerged work. Check git status and git stash list, confirm the work is disposable or the user asked to discard it, then run the same command again; this check blocks once per command."
 
@@ -258,10 +258,61 @@ func (event skillTranscriptEvent) loadedSkill(skill string, pending map[string]b
 		if len(output) == 0 {
 			output = event.Content
 		}
-		text, success := skillResultText(output)
-		return success && strings.TrimSpace(text) != "" && (invocation || containsSkillBody(text, skill))
+		if invocation {
+			text, success := skillResultText(output)
+			return success && strings.TrimSpace(text) != ""
+		}
+		for _, text := range successfulResultTexts(output) {
+			if containsSkillBody(text, skill) {
+				return true
+			}
+		}
+		return false
 	}
 	return false
+}
+
+// successfulResultTexts returns the text of each command result inside a tool
+// output that did not fail. A batched code-mode call prints one result per
+// command, often as Promise.allSettled entries ({"i":N,"result":{"status",
+// "value"}}), so each result counts on its own: a failed sibling command does
+// not hide a successful skill read, and a failed or rejected read never counts.
+func successfulResultTexts(raw json.RawMessage) []string {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		trimmed := strings.TrimSpace(text)
+		if (strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[")) && json.Valid([]byte(trimmed)) {
+			return successfulResultTexts(json.RawMessage(trimmed))
+		}
+		if failedReadExit.MatchString(text) {
+			return nil
+		}
+		return []string{text}
+	}
+	var blocks []json.RawMessage
+	if json.Unmarshal(raw, &blocks) == nil {
+		var texts []string
+		for _, block := range blocks {
+			texts = append(texts, successfulResultTexts(block)...)
+		}
+		return texts
+	}
+	var result struct {
+		IsError                                      bool   `json:"is_error"`
+		MCPError                                     bool   `json:"isError"`
+		ExitCode                                     *int   `json:"exit_code"`
+		Status                                       string `json:"status"`
+		Output, Content, Text, Stdout, Value, Result json.RawMessage
+	}
+	if json.Unmarshal(raw, &result) != nil || result.IsError || result.MCPError || (result.ExitCode != nil && *result.ExitCode != 0) || result.Status == "rejected" {
+		return nil
+	}
+	for _, field := range []json.RawMessage{result.Output, result.Content, result.Text, result.Stdout, result.Value, result.Result} {
+		if len(field) != 0 {
+			return successfulResultTexts(field)
+		}
+	}
+	return nil
 }
 
 var readLineNumber = regexp.MustCompile(`(?m)^\s*[0-9]+[→\t :]+`)
