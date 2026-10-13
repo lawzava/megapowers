@@ -65,6 +65,10 @@ condition, or measurement.
 
 ## Verification
 
+After editing a non-test Go file in `plugins/megapowers/hooks/`, run
+`go run ./scripts/cmd/maintainer hook-hash --write` to refresh the launcher
+cache key instead of editing `run-hook.cmd` by hand.
+
 Run `scripts/validate.sh` after meaningful changes. When installed, also run:
 
 ```bash

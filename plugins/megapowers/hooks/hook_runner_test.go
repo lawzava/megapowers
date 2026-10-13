@@ -534,7 +534,7 @@ func TestLauncherCacheKeyMatchesRunnerSources(t *testing.T) {
 	}
 	for _, match := range matches {
 		if match[1] != want {
-			t.Fatalf("launcher cache key = %s, want source hash %s", match[1], want)
+			t.Fatalf("launcher cache key = %s, want source hash %s; run: go run ./scripts/cmd/maintainer hook-hash --write", match[1], want)
 		}
 	}
 }
