@@ -5,6 +5,15 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.38.2 - 2026-10-13
+
+### Fixed
+
+- `megapowers-review snapshot` and `delta` keep the real index's mtime on
+  their private index copy, so Git's racy-entry check still catches a
+  same-size edit made in the second its file was staged. Before, `delta`
+  could report `no changes since the snapshot` for real fixes.
+
 ## 0.38.1 - 2026-10-13
 
 ### Fixed
