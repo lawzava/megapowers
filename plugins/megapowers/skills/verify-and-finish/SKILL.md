@@ -20,8 +20,8 @@ not prove runtime behavior. Never weaken a test, baseline, threshold, or
 predicate to obtain a pass.
 
 Run long or verbose checks through the
-[run receipt tool](references/run-receipt.md), which keeps full output, exit
-status, and commit; a filtered or truncated summary proves nothing.
+[run receipt tool](references/run-receipt.md); a filtered or truncated summary
+proves nothing. Block on a running check; never poll with `sleep`.
 
 Label inspection and inference; neither is an executed check. Bind stale-prone
 results to the artifact identity and commit. Rerun relevant checks after a

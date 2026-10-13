@@ -33,6 +33,21 @@ Through `go run`, the process exit is 1 for any failure. The receipt line's
 `exit=` field carries the real code. If a caller needs the real process exit,
 build once with `go build -o "$TMPDIR/run-receipt" <skill-dir>/scripts/run-receipt.go`.
 
+`--reuse` skips the run when `--dir` already holds a passing receipt for the
+same command, working directory, commit, and uncommitted-tree digest. It
+prints that receipt's tail, a `reused` note, and its receipt line. Use one
+`--dir` per check so later stages can reuse it, for example after a review
+that changed nothing. It compares repository state only, so do not use it for
+a check that depends on the network, the environment, or files outside the
+repository.
+
+Wait for a running check by blocking on it. Do not poll it or call `sleep`,
+because each poll costs a model turn and a fixed sleep overshoots the finish.
+In Codex, one `write_stdin` call with a long `yield_time_ms` returns early once
+the process exits. In Claude Code, a background command reports its exit. For
+CI, run `gh run watch <run-id> --exit-status` in the foreground. Start
+independent work before you block.
+
 `--shell` runs one quoted script through `sh -c` and reports the shell's exit
 status. It is refused on Windows; pass the command as arguments instead.
 

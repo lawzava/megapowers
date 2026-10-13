@@ -32,7 +32,7 @@ const (
 	maxUntrackedBytes = 16 << 20
 )
 
-const usage = `Usage: go run run-receipt.go [--dir DIR] [--tail N] [--shell] -- <command> [args...]
+const usage = `Usage: go run run-receipt.go [--dir DIR] [--tail N] [--shell] [--reuse] -- <command> [args...]
 
 Runs the command, writes its combined stdout and stderr to a private log,
 prints the last N lines after it exits, then one final line:
@@ -45,6 +45,9 @@ Options:
   --shell     run the single argument after -- through sh -c; the exit
               status is then the shell's, so a failing pipeline stage counts
               only under the shell's own rules (not supported on Windows)
+  --reuse     if DIR already holds a passing receipt for the same command,
+              working directory, commit, and uncommitted-tree digest, print
+              that receipt instead of running the check again
   --help      print this help
 
 Exit status is the command's; 127 if it cannot be found, 126 if it cannot
@@ -82,6 +85,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	dir := flags.String("dir", "", "receipt directory")
 	tail := flags.Int("tail", defaultTail, "tail lines")
 	shell := flags.Bool("shell", false, "run through the shell")
+	reuse := flags.Bool("reuse", false, "reuse a passing receipt for the same tree")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(stdout, usage)
@@ -102,7 +106,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return fail(stderr, "--shell takes exactly one argument after --; quote the whole command line")
 	}
 
-	code, err := execute(command, *shell, *dir, *tail, stdout)
+	code, err := execute(command, *shell, *reuse, *dir, *tail, stdout)
 	if err != nil {
 		var tool toolError
 		if errors.As(err, &tool) {
@@ -118,7 +122,7 @@ func fail(stderr io.Writer, msg string) int {
 	return exitToolError
 }
 
-func execute(command []string, shell bool, dir string, tail int, stdout io.Writer) (int, error) {
+func execute(command []string, shell, reuse bool, dir string, tail int, stdout io.Writer) (int, error) {
 	if dir == "" {
 		base := os.Getenv("TMPDIR")
 		if base == "" {
@@ -150,6 +154,21 @@ func execute(command []string, shell bool, dir string, tail int, stdout io.Write
 
 	// Record the tree the check ran against before the command can change it.
 	head, treeState, treeDigest := gitIdentity()
+	if reuse && treeState != "none" {
+		if prior, jsonPath, ok := findReusable(dir, command, shell, cwd, head, treeState, treeDigest); ok {
+			lines, _, err := readTail(prior.LogPath, tail)
+			if err != nil {
+				return 0, toolError{fmt.Sprintf("read reused log: %v", err)}
+			}
+			for _, line := range lines {
+				fmt.Fprintln(stdout, line)
+			}
+			fmt.Fprintf(stdout, "run-receipt: reused the passing receipt from %s; the commit and uncommitted tree are unchanged\n", prior.StartedAt)
+			fmt.Fprintf(stdout, "receipt: exit=0 duration=%dms head=%s tree=%s log=%s json=%s\n",
+				prior.DurationMS, short(head), treeLabel(treeState, treeDigest), prior.LogPath, jsonPath)
+			return 0, nil
+		}
+	}
 
 	started := time.Now().UTC()
 	stem := filepath.Join(dir, fmt.Sprintf("%s-%d", started.Format("20060102T150405Z"), os.Getpid()))
@@ -208,6 +227,45 @@ func execute(command []string, shell bool, dir string, tail int, stdout io.Write
 	fmt.Fprintf(stdout, "receipt: exit=%d duration=%dms head=%s tree=%s log=%s json=%s\n",
 		code, record.DurationMS, short(head), treeLabel(treeState, treeDigest), logPath, jsonPath)
 	return code, nil
+}
+
+// findReusable returns the newest passing receipt in dir whose command,
+// working directory, commit, and tree digest all match, and whose log still
+// exists. Only repository state is compared: a check that depends on the
+// network, environment, or files outside the repository must not use --reuse.
+func findReusable(dir string, command []string, shell bool, cwd, head, treeState, treeDigest string) (receipt, string, bool) {
+	// Read the directory itself: a glob would treat brackets in dir as a pattern.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return receipt{}, "", false
+	}
+	var matches []string
+	for _, entry := range entries {
+		if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".json") {
+			matches = append(matches, filepath.Join(dir, entry.Name()))
+		}
+	}
+	// Names start with a UTC timestamp, so reverse order is newest first.
+	for i := len(matches) - 1; i >= 0; i-- {
+		data, err := os.ReadFile(matches[i])
+		if err != nil {
+			continue
+		}
+		var prior receipt
+		if json.Unmarshal(data, &prior) != nil {
+			continue
+		}
+		if prior.ExitCode != 0 || prior.Signal != "" || prior.Shell != shell || prior.Cwd != cwd ||
+			prior.GitHead != head || prior.TreeState != treeState || prior.TreeDigest != treeDigest ||
+			strings.Join(prior.Argv, "\x00") != strings.Join(command, "\x00") {
+			continue
+		}
+		if _, err := os.Stat(prior.LogPath); err != nil {
+			continue
+		}
+		return prior, matches[i], true
+	}
+	return receipt{}, "", false
 }
 
 // runCommand runs argv with stdout and stderr on the same file, so the log

@@ -305,6 +305,100 @@ func TestRunReceiptContract(t *testing.T) {
 		}
 	})
 
+	t.Run("reuse skips a passing check on an unchanged tree", func(t *testing.T) {
+		repo := filepath.Join(tmp, "reuse-repo")
+		reuseDir := filepath.Join(tmp, "reuse-receipts")
+		counter := filepath.Join(tmp, "reuse-counter")
+		if err := os.MkdirAll(repo, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		gitCmd := func(args ...string) {
+			t.Helper()
+			cmd := exec.Command("git", append([]string{"-c", "user.name=Receipt Test", "-c", "user.email=receipt@example.com", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"}, args...)...)
+			cmd.Dir = repo
+			cmd.Env = append(os.Environ(), env...)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v\n%s", args, err, out)
+			}
+		}
+		gitCmd("init", "-q")
+		if err := os.WriteFile(filepath.Join(repo, "file.txt"), []byte("one\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		gitCmd("add", "file.txt")
+		gitCmd("commit", "-q", "-m", "initial")
+		runs := func() int {
+			t.Helper()
+			data, err := os.ReadFile(counter)
+			if os.IsNotExist(err) {
+				return 0
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			return strings.Count(string(data), "\n")
+		}
+		pass := "echo ran >> '" + counter + "'; echo check-output"
+		fail := "echo ran >> '" + counter + "'; exit 3"
+
+		first := runReceiptIn(t, bin, repo, env, "--dir", reuseDir, "--reuse", "--", "sh", "-c", pass)
+		requireReceipt(t, first, 0, "first reuse run")
+		if runs() != 1 {
+			t.Fatalf("first --reuse run did not execute the check: %d runs", runs())
+		}
+		second := runReceiptIn(t, bin, repo, env, "--dir", reuseDir, "--reuse", "--", "sh", "-c", pass)
+		requireReceipt(t, second, 0, "reused run")
+		if runs() != 1 {
+			t.Errorf("--reuse re-executed a passing check on an unchanged tree: %d runs", runs())
+		}
+		if second.json != first.json || !strings.Contains(second.output, "reused") || !strings.Contains(second.output, "check-output\n") {
+			t.Errorf("reused run did not cite the original receipt and tail:\n%s", second.output)
+		}
+
+		plain := runReceiptIn(t, bin, repo, env, "--dir", reuseDir, "--", "sh", "-c", pass)
+		requireReceipt(t, plain, 0, "run without --reuse")
+		if runs() != 2 {
+			t.Errorf("a run without --reuse did not execute: %d runs", runs())
+		}
+
+		if err := os.WriteFile(filepath.Join(repo, "file.txt"), []byte("two\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		changed := runReceiptIn(t, bin, repo, env, "--dir", reuseDir, "--reuse", "--", "sh", "-c", pass)
+		requireReceipt(t, changed, 0, "changed tree")
+		if runs() != 3 {
+			t.Errorf("--reuse skipped a check after the tree changed: %d runs", runs())
+		}
+
+		for range 2 {
+			failed := runReceiptIn(t, bin, repo, env, "--dir", reuseDir, "--reuse", "--", "sh", "-c", fail)
+			requireReceipt(t, failed, 3, "failing check")
+		}
+		if runs() != 5 {
+			t.Errorf("--reuse skipped a failing check: %d runs", runs())
+		}
+
+		for range 2 {
+			none := runReceiptIn(t, bin, outside, env, "--dir", reuseDir, "--reuse", "--", "sh", "-c", pass)
+			requireReceipt(t, none, 0, "outside repository")
+		}
+		if runs() != 7 {
+			t.Errorf("--reuse skipped a check outside a repository: %d runs", runs())
+		}
+	})
+
+	t.Run("reuse reads only the named receipt directory", func(t *testing.T) {
+		sibling := filepath.Join(tmp, "globbed1")
+		named := filepath.Join(tmp, "globbed[1]")
+		counter := filepath.Join(tmp, "glob-counter")
+		check := "echo ran >> '" + counter + "'"
+		requireReceipt(t, runReceiptIn(t, bin, repoRoot(t), env, "--dir", sibling, "--", "sh", "-c", check), 0, "sibling receipt")
+		requireReceipt(t, runReceiptIn(t, bin, repoRoot(t), env, "--dir", named, "--reuse", "--", "sh", "-c", check), 0, "named directory")
+		if data, _ := os.ReadFile(counter); strings.Count(string(data), "\n") != 2 {
+			t.Errorf("--reuse matched a receipt outside --dir: %d runs", strings.Count(string(data), "\n"))
+		}
+	})
+
 	t.Run("missing command exits 127", func(t *testing.T) {
 		result := runReceiptIn(t, bin, outside, env, "--dir", receipts, "--", "megapowers-no-such-command-for-receipt")
 		requireReceipt(t, result, 127, "missing command")
