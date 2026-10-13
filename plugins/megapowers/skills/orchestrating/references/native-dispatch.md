@@ -21,9 +21,11 @@ b = Agent(prompt="bounded brief B")
 
 Claude Code runs agents in the background by default. In a non-interactive
 run such as `claude -p`, ending the turn ends the session before background
-agents report, so the answer loses their results: run lanes the answer needs
-in the foreground (`run_in_background: false`), still issuing them in one
-message so they run in parallel. Set `effort` per lane
+agents report, so the answer loses their results. A scheduler or controller
+that records the first end of turn as the run's result does the same: it
+stores the interim note and marks the run done. In both cases, run lanes the
+answer needs in the foreground (`run_in_background: false`), still issuing
+them in one message so they run in parallel. Set `effort` per lane
 when the brief or the capability registry names one; a mechanical lane rarely
 needs the lead's effort.
 
