@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -171,9 +172,7 @@ func execute(command []string, shell, reuse bool, dir string, tail int, stdout i
 	}
 
 	started := time.Now().UTC()
-	stem := filepath.Join(dir, fmt.Sprintf("%s-%d", started.Format("20060102T150405Z"), os.Getpid()))
-	logPath, jsonPath := stem+".log", stem+".json"
-	logFile, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	logFile, logPath, jsonPath, err := createLog(dir, started)
 	if err != nil {
 		return 0, toolError{fmt.Sprintf("create log: %v", err)}
 	}
@@ -227,6 +226,32 @@ func execute(command []string, shell, reuse bool, dir string, tail int, stdout i
 	fmt.Fprintf(stdout, "receipt: exit=%d duration=%dms head=%s tree=%s log=%s json=%s\n",
 		code, record.DurationMS, short(head), treeLabel(treeState, treeDigest), logPath, jsonPath)
 	return code, nil
+}
+
+// createLog exclusively creates a private log under a fresh name and returns
+// it with the matching receipt path. A PID alone does not separate concurrent
+// runs: sandboxes that give each command its own PID namespace repeat it, so
+// the name adds nanoseconds and random bytes, and a taken name is retried.
+// The name still starts with the UTC start time, which keeps the newest-first
+// order findReusable relies on.
+func createLog(dir string, started time.Time) (*os.File, string, string, error) {
+	var err error
+	for range 8 {
+		suffix := make([]byte, 4)
+		if _, err = rand.Read(suffix); err != nil {
+			return nil, "", "", err
+		}
+		stem := filepath.Join(dir, fmt.Sprintf("%s-%d-%s", started.Format("20060102T150405.000000000Z"), os.Getpid(), hex.EncodeToString(suffix)))
+		var file *os.File
+		file, err = os.OpenFile(stem+".log", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			return file, stem + ".log", stem + ".json", nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, "", "", err
+		}
+	}
+	return nil, "", "", err
 }
 
 // findReusable returns the newest passing receipt in dir whose command,

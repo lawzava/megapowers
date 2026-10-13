@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -120,8 +121,8 @@ func TestRunReceiptContract(t *testing.T) {
 		if filepath.Dir(result.log) != receipts || filepath.Dir(result.json) != receipts {
 			t.Errorf("receipt files outside --dir: %s %s", result.log, result.json)
 		}
-		if !regexp.MustCompile(`^\d{8}T\d{6}Z-\d+\.log$`).MatchString(filepath.Base(result.log)) {
-			t.Errorf("log name %q does not match <UTC stamp>-<pid>.log", filepath.Base(result.log))
+		if !regexp.MustCompile(`^\d{8}T\d{6}\.\d{9}Z-\d+-[0-9a-f]{8}\.log$`).MatchString(filepath.Base(result.log)) {
+			t.Errorf("log name %q does not match <UTC stamp>-<pid>-<random>.log", filepath.Base(result.log))
 		}
 		if strings.TrimSuffix(result.log, ".log")+".json" != result.json {
 			t.Errorf("json %q is not next to log %q", result.json, result.log)
@@ -396,6 +397,45 @@ func TestRunReceiptContract(t *testing.T) {
 		requireReceipt(t, runReceiptIn(t, bin, repoRoot(t), env, "--dir", named, "--reuse", "--", "sh", "-c", check), 0, "named directory")
 		if data, _ := os.ReadFile(counter); strings.Count(string(data), "\n") != 2 {
 			t.Errorf("--reuse matched a receipt outside --dir: %d runs", strings.Count(string(data), "\n"))
+		}
+	})
+
+	t.Run("concurrent runs that share a PID keep separate receipts", func(t *testing.T) {
+		// Each run gets its own PID namespace, so every tool process is PID 1,
+		// as in sandboxes that give each command a fresh namespace.
+		if err := exec.Command("unshare", "--user", "--map-root-user", "--pid", "--fork", "true").Run(); err != nil {
+			t.Skipf("PID namespaces unavailable: %v", err)
+		}
+		shared := filepath.Join(tmp, "shared-pid-receipts")
+		const runs = 6
+		results := make(chan receiptResult, runs)
+		for i := range runs {
+			go func() {
+				results <- runReceiptIn(t, "unshare", outside, env, "--user", "--map-root-user", "--pid", "--fork",
+					bin, "--dir", shared, "--", "sh", "-c", fmt.Sprintf("echo run-%d; exit %d", i, i))
+			}()
+		}
+		seen := map[string]bool{}
+		for range runs {
+			result := <-results
+			if result.log == "" {
+				t.Fatalf("run without a receipt (tool exit %d):\n%s", result.code, result.output)
+			}
+			want := strings.TrimPrefix(strings.SplitN(result.output, "\n", 2)[0], "run-")
+			if result.exit != want || strconv.Itoa(result.code) != want {
+				t.Errorf("receipt exit=%s tool exit=%d, want %s:\n%s", result.exit, result.code, want, result.output)
+			}
+			if seen[result.log] || seen[result.json] {
+				t.Errorf("two runs share %s", result.log)
+			}
+			seen[result.log], seen[result.json] = true, true
+			if strings.TrimSuffix(result.log, ".log") != strings.TrimSuffix(result.json, ".json") {
+				t.Errorf("log %s and receipt %s do not share a stem", result.log, result.json)
+			}
+			data, err := os.ReadFile(result.log)
+			if err != nil || string(data) != "run-"+want+"\n" {
+				t.Errorf("log %s holds %q (%v), want this run's output", result.log, data, err)
+			}
 		}
 	})
 
