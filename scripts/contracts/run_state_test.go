@@ -2,8 +2,10 @@ package contracts
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -261,6 +263,88 @@ func TestRunStateContract(t *testing.T) {
 	requireContains(t, linkedCheckpoint, "Workspace: "+repo, "linked checkpoint workspace")
 	requireContains(t, linkedCheckpoint, "Worktree: "+linked, "linked checkpoint worktree")
 	requireContains(t, linkedCheckpoint, "Branch: lane", "linked checkpoint branch")
+}
+
+func TestRunStateContinuationCapAndCoverage(t *testing.T) {
+	root := repoRoot(t)
+	tmp := t.TempDir()
+	tool := filepath.Join(tmp, "run-state")
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/autonomous-run/scripts/run-state.go"); code != 0 {
+		t.Fatalf("build run-state (%d): %s", code, output)
+	}
+	gitEnv := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+	repo := filepath.Join(tmp, "repo")
+	if err := os.Mkdir(repo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := run(t, repo, gitEnv, "git", "init", "-q", "-b", "main"); code != 0 {
+		t.Fatalf("git init (%d): %s", code, output)
+	}
+	state := func(args ...string) (string, int) {
+		t.Helper()
+		return run(t, repo, gitEnv, tool, args...)
+	}
+	if output, code := state("init", "--id", "cap", "--objective", "Keep CI green"); code != 0 {
+		t.Fatalf("init failed (%d): %s", code, output)
+	}
+	runDir := filepath.Join(repo, ".megapowers", "run", "cap")
+	charterPath := filepath.Join(runDir, "charter.md")
+	requireContains(t, readFile(t, charterPath), "- C1:", "charter criterion ID skeleton")
+
+	// The cap is enforced by the tool, not left to the agent's count.
+	for i, want := range []string{"1 of 3", "2 of 3", "3 of 3"} {
+		output, code := state("continue", "--id", "cap", "--item", "fix lint on CI")
+		if code != 0 || !strings.Contains(output, want) {
+			t.Fatalf("continuation %d: want 0 naming %q, got %d: %s", i+1, want, code, output)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		output, code := state("continue", "--id", "cap", "--item", "fix lint on CI")
+		if code != 4 || !strings.Contains(output, "blocked for review") || !strings.Contains(output, "(exit 4)") {
+			t.Fatalf("over cap: want 4 naming blocked, got %d: %s", code, output)
+		}
+	}
+	if output, code := state("continue", "--id", "cap", "--item", "rebase on main", "--max", "1"); code != 0 || !strings.Contains(output, "1 of 1") {
+		t.Fatalf("independent item: want 0, got %d: %s", code, output)
+	}
+	if output, code := state("continue", "--id", "cap", "--item", "rebase on main", "--max", "1"); code != 4 {
+		t.Fatalf("custom cap: want 4, got %d: %s", code, output)
+	}
+	if output, code := state("continue", "--id", "cap", "--item", "x", "--max", "0"); code != 125 {
+		t.Errorf("--max 0: want 125, got %d: %s", code, output)
+	}
+	events := map[string]int{}
+	for _, r := range journalRecords(t, readFile(t, filepath.Join(runDir, "journal.jsonl"))) {
+		events[r["event"].(string)+"|"+fmt.Sprint(r["item"])]++
+	}
+	if events["continuation|fix lint on CI"] != 3 || events["blocked|fix lint on CI"] != 1 ||
+		events["continuation|rebase on main"] != 1 || events["blocked|rebase on main"] != 1 {
+		t.Errorf("journal continuation records wrong: %v", events)
+	}
+
+	brief := filepath.Join(tmp, "brief.md")
+	if err := os.WriteFile(brief, []byte("Lane brief: satisfy C1 and C2.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := state("coverage", "--id", "cap", "--brief", brief); code != 125 || !strings.Contains(output, "fill in") {
+		t.Errorf("coverage on unfilled charter: want 125 naming fill in, got %d: %s", code, output)
+	}
+	charter := strings.Replace(readFile(t, charterPath),
+		"## Done criteria\n\n", "## Done criteria\n\n- C1: lint passes | oracle: make lint\n- C2: tests pass | oracle: go test ./...\n- C10: docs updated | oracle: review\n", 1)
+	charter = regexp.MustCompile(`(?m)^- C1: \(fill in[^\n]*\n`).ReplaceAllString(charter, "")
+	if err := os.WriteFile(charterPath, []byte(charter), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, code := state("coverage", "--id", "cap", "--brief", brief)
+	if code != 3 || !strings.Contains(output, "missing: C10") || strings.Contains(output, "missing: C1,") || !strings.Contains(output, "(exit 3)") {
+		t.Errorf("coverage gap: want 3 naming only C10, got %d: %s", code, output)
+	}
+	if err := os.WriteFile(brief, []byte("Lane brief: satisfy C1, C2 and C10.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := state("coverage", "--id", "cap", "--brief", brief); code != 0 || !strings.Contains(output, "C1, C2, C10") {
+		t.Errorf("full coverage: want 0 naming all IDs, got %d: %s", code, output)
+	}
 }
 
 func readFile(t *testing.T, path string) string {

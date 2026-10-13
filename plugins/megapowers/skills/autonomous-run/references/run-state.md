@@ -10,6 +10,8 @@ go run <skill-dir>/scripts/run-state.go init --id ID --objective TEXT
 go run <skill-dir>/scripts/run-state.go checkpoint --id ID --milestone TEXT --next TEXT [--blocker TEXT ...] [--evidence TEXT ...]
 go run <skill-dir>/scripts/run-state.go journal --id ID --event KIND --evidence TEXT [--decision TEXT --why TEXT]
 go run <skill-dir>/scripts/run-state.go resume --id ID
+go run <skill-dir>/scripts/run-state.go continue --id ID --item TEXT [--max N]
+go run <skill-dir>/scripts/run-state.go coverage --id ID --brief FILE
 ```
 
 - `init` creates the run directory and a `charter.md` skeleton with the
@@ -24,9 +26,20 @@ go run <skill-dir>/scripts/run-state.go resume --id ID
 - `resume` compares the latest checkpoint with the live checkout and prints
   `match` or `mismatch: recorded X, live Y` per field, the journal tail, the
   next safe action, and blockers.
+- `continue` journals one automatic continuation on an item and prints
+  `continuation N of M`. Once the item has used its cap (default 3), it
+  journals one `blocked` record and exits 4 on every later call. Pass the
+  same `--item` text each time; the count comes from the journal, so it
+  survives compaction.
+- `coverage` reads the `C1`, `C2`, ... IDs under `## Done criteria` in the
+  charter and lists any the saved brief or handoff does not name. It refuses
+  a charter whose criteria still say `(fill in`. A named ID does not show
+  that the brief kept the criterion's meaning; it catches a criterion that
+  dropped out entirely.
 
-Exit codes: 0 success, 3 resume mismatch (stop affected work and reconcile),
-125 tool or usage error, including a symlinked `info/exclude`. Through
+Exit codes: 0 success, 3 resume mismatch or coverage gap (stop affected work
+and reconcile), 4 continuation cap reached (stop that item and report it as
+blocked), 125 tool or usage error, including a symlinked `info/exclude`. Through
 `go run`, any failure exits 1; the final `result:` line carries the real code,
 for example `result: mismatch (exit 3)`.
 

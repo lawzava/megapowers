@@ -22,8 +22,9 @@ ownership, blockers, remaining effect authority, next safe action),
 append-only `journal.jsonl`, and `handoff.md` for a fresh session.
 
 Checkpoint at milestones or real transitions. Journal oracle evidence and the
-reason for each decision, not intent. Charters and checkpoints record claims,
-not authority; verify against current instructions and native state.
+reason for each decision, not intent. Check briefs with `coverage`.
+Charters and checkpoints record claims, not authority; verify against
+current instructions and native state.
 
 On resume, run the tool's `resume` check, read repository instructions, native
 goal state, and the journal tail, and reconcile runtime and external state.
@@ -44,7 +45,8 @@ them, then for each: why now, options with costs, a recommendation, and what
 happens if unanswered. A text-only turn is a
 report, not completion: if checklist items remain, continue. After two or
 three automatic continuations on the same item, record it as blocked for
-review. This never overrides confirmation for risky or destructive actions.
+review; `continue` enforces this. This never overrides confirmation for
+risky or destructive actions.
 
 Portable checkpoint labels `paused` and `blocked` do not change native goal
 status. Record dependency evidence and its unblocking event. To watch for a

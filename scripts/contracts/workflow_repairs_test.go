@@ -21,6 +21,8 @@ var requiredSkillFacts = map[string][]string{
 		"native goal",
 		"announces the next step",
 		"two or three",
+		"`continue`",
+		"`coverage`",
 		"blocks nothing",
 		"references/pr-babysit.md",
 	},

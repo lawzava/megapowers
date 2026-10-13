@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -18,10 +19,14 @@ import (
 const (
 	exitOK       = 0
 	exitMismatch = 3
+	exitBlocked  = 4
 	exitError    = 125
 	maxTextRunes = 2000
 	tailLines    = 5
 	excludeEntry = ".megapowers/"
+	// defaultCap is the upper end of the skill's "two or three automatic
+	// continuations" rule.
+	defaultCap = 3
 )
 
 const usage = `run-state: deterministic state for megapowers autonomous runs
@@ -34,12 +39,19 @@ Commands:
   checkpoint  --id ID --milestone TEXT --next TEXT [--blocker TEXT ...] [--evidence TEXT ...]
   journal     --id ID --event KIND --evidence TEXT [--decision TEXT --why TEXT]
   resume      --id ID
+  continue    --id ID --item TEXT [--max N]
+  coverage    --id ID --brief FILE
 
 State lives in <worktree>/.megapowers/run/<id>/: charter.md, checkpoint.md,
 journal.jsonl (append-only), handoff.md. IDs match [a-z0-9][a-z0-9-]{0,62}.
 
+continue records one automatic continuation on an item and refuses past the
+cap (default 3). coverage checks that a saved brief or handoff names every
+done-criterion ID (C1, C2, ...) in the charter.
+
 Exit codes: 0 ok, 3 resume found a workspace, branch, worktree, or HEAD
-mismatch, 125 tool or usage error.
+mismatch, or coverage found a missing criterion ID, 4 continue reached the
+cap and recorded the item as blocked, 125 tool or usage error.
 `
 
 var (
@@ -59,6 +71,9 @@ type options struct {
 	blockers  []string
 	decision  string
 	why       string
+	item      string
+	max       int
+	brief     string
 	seen      map[string]bool
 }
 
@@ -77,6 +92,7 @@ type journalRecord struct {
 	Evidence  string `json:"evidence"`
 	Decision  string `json:"decision,omitempty"`
 	Why       string `json:"why,omitempty"`
+	Item      string `json:"item,omitempty"`
 	Head      string `json:"head"`
 	Branch    string `json:"branch,omitempty"`
 	Worktree  string `json:"worktree,omitempty"`
@@ -119,9 +135,16 @@ func run(args []string) int {
 		err = cmdCheckpoint(opt)
 	case "journal":
 		err = cmdJournal(opt)
-	case "resume":
+	case "resume", "continue", "coverage":
 		var code int
-		code, err = cmdResume(opt)
+		switch command {
+		case "resume":
+			code, err = cmdResume(opt)
+		case "continue":
+			code, err = cmdContinue(opt)
+		default:
+			code, err = cmdCoverage(opt)
+		}
 		if err == nil {
 			return code
 		}
@@ -142,10 +165,12 @@ var allowedFlags = map[string][]string{
 	"checkpoint": {"--repo", "--id", "--milestone", "--next", "--blocker", "--evidence"},
 	"journal":    {"--repo", "--id", "--event", "--evidence", "--decision", "--why"},
 	"resume":     {"--repo", "--id"},
+	"continue":   {"--repo", "--id", "--item", "--max"},
+	"coverage":   {"--repo", "--id", "--brief"},
 }
 
 func parseOptions(command string, args []string) (options, error) {
-	opt := options{repo: ".", seen: map[string]bool{}}
+	opt := options{repo: ".", max: defaultCap, seen: map[string]bool{}}
 	flags, ok := allowedFlags[command]
 	if !ok {
 		return opt, fail("unknown command: %s (see --help)", command)
@@ -190,6 +215,16 @@ func parseOptions(command string, args []string) (options, error) {
 			opt.decision = clean(value)
 		case "--why":
 			opt.why = clean(value)
+		case "--item":
+			opt.item = clean(value)
+		case "--max":
+			n, err := strconv.Atoi(value)
+			if err != nil || n < 1 {
+				return opt, fail("--max must be a positive integer")
+			}
+			opt.max = n
+		case "--brief":
+			opt.brief = value
 		}
 	}
 	if !idPattern.MatchString(opt.id) {
@@ -220,6 +255,10 @@ func parseOptions(command string, args []string) (options, error) {
 		if (opt.decision == "") != (opt.why == "") {
 			return opt, fail("--decision and --why must be given together")
 		}
+	case "continue":
+		required["--item"] = opt.item
+	case "coverage":
+		required["--brief"] = opt.brief
 	}
 	for flag, value := range required {
 		if value == "" {
@@ -509,7 +548,7 @@ func cmdInit(opt options) error {
 		return fail("cannot chmod %s", dir)
 	}
 	ts := now()
-	charter := fmt.Sprintf("# Charter: %s\n\nCreated: %s\n\n## Objective\n\n%s\n\n## Done criteria\n\n- (fill in: each criterion with its oracle)\n\n## Scope\n\n- (fill in)\n\n## Authority\n\n- (fill in: approved effects and their targets)\n\n## Cap\n\n- (fill in: time, cost, or attempt limit)\n", opt.id, ts, opt.objective)
+	charter := fmt.Sprintf("# Charter: %s\n\nCreated: %s\n\n## Objective\n\n%s\n\n## Done criteria\n\n- C1: (fill in: criterion) | oracle: (fill in: command or check)\n\n## Scope\n\n- (fill in)\n\n## Authority\n\n- (fill in: approved effects and their targets)\n\n## Cap\n\n- (fill in: time, cost, or attempt limit)\n", opt.id, ts, opt.objective)
 	if err := writeExclusive(filepath.Join(dir, "charter.md"), charter); err != nil {
 		return err
 	}
@@ -708,5 +747,144 @@ func cmdResume(opt options) (int, error) {
 		return exitMismatch, nil
 	}
 	fmt.Printf("result: match (exit %d)\n", exitOK)
+	return exitOK, nil
+}
+
+func readJournal(path string) ([]journalRecord, error) {
+	if err := refuseSymlink(path); err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fail("cannot read %s", path)
+	}
+	var records []journalRecord
+	for i, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec journalRecord
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			return nil, fail("%s line %d is not JSON", path, i+1)
+		}
+		records = append(records, rec)
+	}
+	return records, nil
+}
+
+// cmdContinue enforces the continuation cap from the journal, so the count
+// survives compaction and does not depend on the agent remembering it.
+func cmdContinue(opt options) (int, error) {
+	st, err := inspect(opt.repo)
+	if err != nil {
+		return exitError, err
+	}
+	dir, err := existingRun(st, opt.id)
+	if err != nil {
+		return exitError, err
+	}
+	records, err := readJournal(filepath.Join(dir, "journal.jsonl"))
+	if err != nil {
+		return exitError, err
+	}
+	count, blocked := 0, false
+	for _, rec := range records {
+		if rec.Item != opt.item {
+			continue
+		}
+		switch rec.Event {
+		case "continuation":
+			count++
+		case "blocked":
+			blocked = true
+		}
+	}
+	if count >= opt.max {
+		if !blocked {
+			rec := journalRecord{TS: now(), Event: "blocked", Item: opt.item, Head: st.head,
+				Evidence: clean(fmt.Sprintf("continuation cap %d reached for item: %s", opt.max, opt.item))}
+			if err := appendJournal(dir, rec); err != nil {
+				return exitError, err
+			}
+		}
+		fmt.Printf("run-state: item %q used %d of %d automatic continuations; recorded it as blocked for review\n", opt.item, count, opt.max)
+		fmt.Printf("result: blocked (exit %d); stop work on this item and report it\n", exitBlocked)
+		return exitBlocked, nil
+	}
+	rec := journalRecord{TS: now(), Event: "continuation", Item: opt.item, Head: st.head,
+		Evidence: clean(fmt.Sprintf("continuation %d of %d for item: %s", count+1, opt.max, opt.item))}
+	if err := appendJournal(dir, rec); err != nil {
+		return exitError, err
+	}
+	fmt.Printf("run-state: continuation %d of %d for item %q\n", count+1, opt.max, opt.item)
+	fmt.Printf("result: ok (exit %d)\n", exitOK)
+	return exitOK, nil
+}
+
+var (
+	criterionLine = regexp.MustCompile(`^- (C[0-9]+):`)
+	sectionLine   = regexp.MustCompile(`^## `)
+)
+
+// cmdCoverage reports done-criterion IDs that a brief or handoff omits. A
+// cited ID does not prove the brief preserves the criterion's meaning; it
+// only catches the criterion that fell out of the handoff entirely.
+func cmdCoverage(opt options) (int, error) {
+	st, err := inspect(opt.repo)
+	if err != nil {
+		return exitError, err
+	}
+	dir, err := existingRun(st, opt.id)
+	if err != nil {
+		return exitError, err
+	}
+	charterPath := filepath.Join(dir, "charter.md")
+	if err := refuseSymlink(charterPath); err != nil {
+		return exitError, err
+	}
+	charter, err := os.ReadFile(charterPath)
+	if err != nil {
+		return exitError, fail("cannot read %s", charterPath)
+	}
+	var ids []string
+	inDone := false
+	for _, line := range strings.Split(string(charter), "\n") {
+		if sectionLine.MatchString(line) {
+			inDone = strings.TrimSpace(line) == "## Done criteria"
+			continue
+		}
+		if !inDone {
+			continue
+		}
+		if strings.Contains(line, "(fill in") {
+			return exitError, fail("%s: done criteria still say (fill in); write each as \"- C1: criterion | oracle: command\"", charterPath)
+		}
+		if m := criterionLine.FindStringSubmatch(line); m != nil {
+			ids = append(ids, m[1])
+		}
+	}
+	if len(ids) == 0 {
+		return exitError, fail("%s: no done-criterion IDs; write each as \"- C1: criterion | oracle: command\"", charterPath)
+	}
+	brief, err := os.ReadFile(opt.brief)
+	if err != nil {
+		return exitError, fail("cannot read brief %s", opt.brief)
+	}
+	var missing []string
+	for _, id := range ids {
+		if !regexp.MustCompile(`\b` + id + `\b`).Match(brief) {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		fmt.Printf("run-state: brief %s missing: %s\n", opt.brief, strings.Join(missing, ", "))
+		fmt.Printf("result: mismatch (exit %d); add the missing criteria to the brief or record why the lane does not own them\n", exitMismatch)
+		return exitMismatch, nil
+	}
+	fmt.Printf("run-state: brief %s names %s\n", opt.brief, strings.Join(ids, ", "))
+	fmt.Printf("result: ok (exit %d)\n", exitOK)
 	return exitOK, nil
 }
