@@ -23,7 +23,7 @@ It also imposed a dispatch requirement on output-only cases that allowed direct
 work. The judge now preserves the runner's workflow result and applicable
 dispatch requirements. The October result bundles were not available locally
 to recheck, so the historical totals below have not been recomputed with this
-correction.
+correction. For the same reason, this slice reports no per-arm duration.
 
 ### Setup
 

@@ -102,6 +102,9 @@ credentials, or absolute paths. Inspect the publish bundle before sharing it.
 5. Pin source and environment identities.
 6. Treat infrastructure failures as failures, never missing data.
 7. Report null and negative results.
+8. Report each arm's paired mean `duration_ms` from the scorecard beside its
+   outcomes. When outcomes tie, that cost is the evidence for or against the
+   plugin on the case.
 
 Detailed release sequencing is in
 [docs/advanced/evals.md](../docs/advanced/evals.md). Historical measurements and
