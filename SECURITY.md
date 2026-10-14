@@ -21,9 +21,10 @@ scheduler.
 The memory-audit tool checks provenance, dates, retention decisions, and
 common credential patterns. It rejects symlink inputs and never edits provider
 memory. Pattern checks cannot tell whether a claim is true or current, so the
-`memory-hygiene` skill requires inspecting the source and one exact approval.
-After approval, the active agent applies that patch through the harness memory
-boundary and reads every target back to verify it.
+memory-hygiene reference in `writing-agent-instructions` requires inspecting
+the source and one exact approval. After approval, the active agent applies
+that patch through the harness memory boundary and reads every target back to
+verify it.
 
 ## Destructive-command guard
 
@@ -136,19 +137,20 @@ It rejects:
 
 The `independent-review` skill treats a reviewer bound in the operator's
 capability registry, or named in user or repository instructions, as standing
-approval: the agent inspects, checks the disclosure, and passes the token
-itself. With no configured reviewer, it asks before sending. Delete the binding
-to require approval for every review.
+approval: the agent dispatches with `--approve-external configured` or inspects
+and passes the token itself. With no configured reviewer, it asks before
+sending. Delete the binding to require approval for every review.
 
 Pattern matching cannot identify every secret. Inspect the disclosure and the
 source itself before dispatch. Raw transcripts are not retained by default.
 Receipts are advisory records, not signatures or tamper-proof attestations.
 
-After token validation, the tool runs a private read-only copy of the reviewer
-binary whose bytes match the approved hash, not the mutable provider pathname.
-An explicit receipt output directory must already exist at an absolute
-canonical path that neither overlaps nor contains the repository. Writes are
-rooted at an opened directory handle; the default stays under Git metadata.
+After approval validation, the tool runs a private read-only copy of a native
+reviewer binary whose bytes match the approved hash, or verifies the SHA-256 of
+a script launcher outside the repository before and after execution. An
+explicit receipt output directory must already exist at an absolute canonical
+path that neither overlaps nor contains the repository. Writes are rooted at an
+opened directory handle; the default stays under Git metadata.
 
 See [docs/advanced/independent-review.md](./docs/advanced/independent-review.md)
 for the exact workflow.

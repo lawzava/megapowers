@@ -1840,7 +1840,7 @@ func runSelftest() error {
 	check("absent length gates stay report-only", len(absentAssessment.Violations) == 0 && absentAssessment.MedianPrecisionFinalWords != nil && *absentAssessment.MedianPrecisionFinalWords == 165 && absentAssessment.EmDashRate != nil && *absentAssessment.EmDashRate == 0.2)
 	check("final_words strips fenced code and counts em dashes", finalWords("one two\n```sh\nignored words here\n```\nthree") == 3 && finalWords("open ```never closed words") == 1 && finalEmDashes("a — b — c") == 2 && finalEmDashes("a - b -- c") == 0)
 
-	unselectable := map[string]bool{"memory-hygiene": true}
+	unselectable := map[string]bool{"grill-me": true}
 	exemptCorpus := casesFile{SchemaVersion: "1", Cases: []probeCase{}}
 	for name := range catalog {
 		if unselectable[name] {
@@ -1857,9 +1857,9 @@ func runSelftest() error {
 	exemptErr := validateConfiguration(exemptCorpus, exemptGates, catalog, unselectable)
 	strictErr := validateConfiguration(exemptCorpus, exemptGates, catalog, map[string]bool{})
 	probeUnselectable := exemptCorpus
-	probeUnselectable.Cases = append(append([]probeCase(nil), exemptCorpus.Cases...), probeCase{ID: "memory-hygiene-verbatim", Kind: "verbatim", Expected: "memory-hygiene", Prompt: "p", Provenance: "selftest"})
+	probeUnselectable.Cases = append(append([]probeCase(nil), exemptCorpus.Cases...), probeCase{ID: "grill-me-verbatim", Kind: "verbatim", Expected: "grill-me", Prompt: "p", Provenance: "selftest"})
 	probeErr := validateConfiguration(probeUnselectable, exemptGates, catalog, unselectable)
-	check("unselectable skills are exempt from recall probe minimums", exemptErr == nil && strictErr != nil && strings.Contains(strictErr.Error(), `"memory-hygiene" has 0 recall probes`) && probeErr != nil && strings.Contains(probeErr.Error(), "disables implicit invocation"))
+	check("unselectable skills are exempt from recall probe minimums", exemptErr == nil && strictErr != nil && strings.Contains(strictErr.Error(), `"grill-me" has 0 recall probes`) && probeErr != nil && strings.Contains(probeErr.Error(), "disables implicit invocation"))
 	check("frontmatter flag detection reads only the frontmatter", disableModelInvocationPattern.MatchString(frontmatterOf("---\nname: x\ndisable-model-invocation: true\n---\n# body\n")) && !disableModelInvocationPattern.MatchString(frontmatterOf("---\nname: x\n---\n# body\ndisable-model-invocation: true\n")))
 	scopedGates := enforceGates
 	scopedGates.EnforceHarnesses = []string{"claude"}

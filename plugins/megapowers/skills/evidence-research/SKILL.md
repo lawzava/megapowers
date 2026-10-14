@@ -22,7 +22,8 @@ cannot establish the decision.
 For each load-bearing claim, classify the support as `direct-statement`,
 `direct-observation`, `source-backed`, or `history-entry-only`, and mark the
 rest `inferred`, `speculative`, `unknown`, or `contested`. Only the first four
-classes support a decision; the same vocabulary governs `memory-hygiene`. Keep API contracts,
+classes support a decision; the same vocabulary governs memory hygiene in
+`writing-agent-instructions`. Keep API contracts,
 observed runtime behavior, and commercial promises distinct. Record sources
 consulted, dates or revisions where material, and material gaps. Report an
 absence with what was searched. State what would resolve an unknown or

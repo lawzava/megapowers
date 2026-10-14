@@ -14,48 +14,47 @@ remediation and reruns the oracle.
 
 ## Trusted review path
 
-Take the reviewer family and exact command from the capability registry or
-user instruction; never guess. Inspect a file or immutable commit range before
-any external call. Set `review_tool` to the installed
+Take the reviewer family and exact command from the capability registry or user
+instruction; never guess. Set `review_tool` to the installed
 `scripts/megapowers-review.go` beside this `SKILL.md`, not a project copy.
+
+For a pre-approved reviewer bound to `independent-review` in the capability
+registry or named in user or repository instructions, dispatch in one step with
+`--approve-external configured` or inspect first and pass the emitted
+`approval_token`:
 
 ```bash
 reviewer_cmd='<reviewer CLI and arguments>'   # {prompt_file} and {scratch_dir} expand
 intent='<intended behavior and acceptance boundary>'
-go run "$review_tool" inspect --file path/to/file --intent "$intent" \
-  --provider <reviewer-family> --provider-command "$reviewer_cmd"
-go run "$review_tool" inspect --base <base-revision> --head <head-revision> \
-  --intent "$intent" --provider <reviewer-family> --provider-command "$reviewer_cmd"
-```
-
-The inspection prints the intent, binary hash, command, chunk package hashes,
-and one `approval_token`. Check that disclosure, then pass the token for that
-exact package, intent, binary, and command:
-
-```bash
 go run "$review_tool" review --file path/to/file --intent "$intent" \
   --provider <reviewer-family> --provider-command "$reviewer_cmd" \
-  --author <author-family> --approve-external "$approval_token"
+  --author <author-family> --approve-external configured
 ```
 
-Author and provider labels must differ and name real vendor families.
-`--file` also accepts a `.diff` or `.patch` file under `$TMPDIR`. Credentials
-pass only through `--provider-env NAME`. A preflight probe fails fast on login,
-usage-limit, or stall before any artifact bytes leave the machine. Any file,
-intent, binary, or command change requires a new inspection and token.
+When an instruction requires human inspection before dispatch or no configured
+reviewer exists, run `inspect` first (`--file path/to/file` or
+`--base <base-revision> --head <head-revision>`), check the disclosed intent,
+binary hash, command, and chunk package hashes, and pass the emitted token to
+`review --approve-external "$approval_token"`. Any file, intent, binary, or
+command change requires a new inspection and token.
+
+Author and provider labels must differ and name real vendor families (such as
+`anthropic`, `openai`, or `google`). `--file` also accepts a `.diff` or
+`.patch` file under `$TMPDIR`. Credentials pass only through
+`--provider-env NAME`. Pass `--preflight` when you want a liveness probe before
+artifact bytes leave the machine.
 
 ## Dispatch authority
 
 External dispatch sends artifact bytes to another vendor. A reviewer bound to
 `independent-review` in the capability registry, or named by a user or
 repository instruction, is pre-approved: decide when to review and dispatch
-without asking, passing each new token yourself. Ask first only when no
-configured reviewer exists, the disclosure exceeds the intended scope or holds
-content an instruction keeps local, or an instruction requires approval. Never
-silently substitute a same-provider review. If the harness's own reviewer
-denies the send, report its reason and stop; do not retry with a different
-payload. Surface a permission prompt or provider stall instead of waiting
-silently.
+without asking. Ask first only when no configured reviewer exists, the
+disclosure exceeds the intended scope or holds content an instruction keeps
+local, or an instruction requires approval. Never silently substitute a
+same-provider review. If the harness's own reviewer denies the send, report its
+reason and stop. Surface a permission prompt or provider stall instead of
+waiting silently.
 
 Receipts are advisory, not an approval gate; `--out`, when given, must name an
 existing absolute directory outside the repository. If the tool fails, report

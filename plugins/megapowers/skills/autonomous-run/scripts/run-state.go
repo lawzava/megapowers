@@ -57,7 +57,7 @@ cap and recorded the item as blocked, 125 tool or usage error.
 var (
 	idPattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 	eventPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
-	headerLine   = regexp.MustCompile(`^- (Workspace|Branch|Worktree|HEAD): (.*)$`)
+	headerLine   = regexp.MustCompile(`^(?:- )?(Workspace|Branch|Worktree|HEAD): (.*)$`)
 )
 
 type options struct {
@@ -653,7 +653,9 @@ func parseCheckpoint(path string) (recorded, error) {
 		switch section {
 		case "":
 			if m := headerLine.FindStringSubmatch(line); m != nil {
-				rec.fields[m[1]] = m[2]
+				rec.fields[m[1]] = strings.TrimSuffix(strings.TrimSpace(m[2]), ".")
+			} else if next, ok := strings.CutPrefix(strings.TrimPrefix(line, "- "), "Next safe action: "); ok && rec.next == "" {
+				rec.next = strings.TrimSpace(next)
 			}
 		case "Blockers":
 			if item := strings.TrimPrefix(line, "- "); item != line && item != "none" {
@@ -670,7 +672,7 @@ func parseCheckpoint(path string) (recorded, error) {
 	}
 	for _, key := range []string{"Workspace", "Branch", "Worktree", "HEAD"} {
 		if _, ok := rec.fields[key]; !ok {
-			return rec, fail("checkpoint %s lacks %s; write a fresh checkpoint", path, key)
+			rec.fields[key] = "<missing>"
 		}
 	}
 	return rec, nil

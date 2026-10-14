@@ -1,17 +1,8 @@
----
-name: memory-hygiene
-description: Use when auditing, pruning, correcting, refreshing, or automatically applying approved evidence-based cleanup to native harness memory.
-when_to_use: "Trigger phrases: audit memory, prune stale memories, fix a wrong memory, refresh memory facts, clean up what you remember."
-disable-model-invocation: true
-metadata:
-  short-description: Evidence-based audit and cleanup of harness memory
----
+# Memory hygiene
 
-# Memory Hygiene
-
-Keep native memory factual, dated, and traceable. This workflow audits and
-applies approved cleanup. It cannot prove a remembered current-state claim is
-still true.
+Use this reference when auditing, pruning, correcting, refreshing, or applying
+approved evidence-based cleanup to native harness memory. It cannot prove a
+remembered current-state claim is still true.
 
 ## Audit read-only
 
@@ -34,14 +25,54 @@ Conflicts must remain preserved and surfaced. Never resolve silently or
 overwrite one source with another. Do not put secrets or credentials in the
 manifest or memory.
 
-## Validate the decision
+## Audit manifest and validator
 
-Create a temporary audit manifest using
-[references/audit-manifest.md](references/audit-manifest.md). Resolve
-`scripts/memory-audit.go` beside this `SKILL.md`, then run:
+Write one temporary UTF-8 JSON object in process-owned temporary storage unless
+the user approves a durable path. `schema_version` must be `"1"`. `records` is
+an array of decisions about existing or candidate memory entries:
+
+- `id`: stable audit identifier using lowercase letters, digits, `.`, `_`, or
+  `-`.
+- `claim`: the exact claim under review.
+- `origin`: provider memory location or candidate identifier.
+- `evidence`: `direct-statement`, `direct-observation`, `source-backed`,
+  `history-entry-only`, `inferred`, `speculative`, `unknown`, or `contested`.
+- `decision`: `retain`, `quarantine`, `revalidate`, or `remove`.
+- `source`, `observed_at`, and `scope`: required for `retain` and `revalidate`.
+- `verified_at`: required for retained `source-backed` or volatile claims.
+- `volatile`: true when the claim can change after observation.
+- `max_age_days`: required integer from 1 through 36500 for a volatile claim.
+
+Dates use `YYYY-MM-DD`. Retained volatile evidence expires when its
+verification age exceeds `max_age_days` at the explicit `--as-of` audit date.
+
+Example:
+
+```json
+{
+  "schema_version": "1",
+  "records": [
+    {
+      "id": "service-limit",
+      "claim": "The official source showed the recorded service limit.",
+      "origin": "memory/current-facts.md#service-limit",
+      "evidence": "source-backed",
+      "decision": "revalidate",
+      "source": "https://example.invalid/official-limit",
+      "observed_at": "2026-07-01",
+      "verified_at": "2026-07-01",
+      "scope": "service plan",
+      "volatile": true,
+      "max_age_days": 30
+    }
+  ]
+}
+```
+
+Resolve `scripts/memory-audit.go` in this skill's directory, then run:
 
 ```bash
-go run "$memory_audit_tool" --input "$audit_manifest" --as-of YYYY-MM-DD
+go run "$SKILL_DIR/scripts/memory-audit.go" --input "$audit_manifest" --as-of YYYY-MM-DD
 ```
 
 The validator rejects unsupported evidence, expired facts, missing provenance,

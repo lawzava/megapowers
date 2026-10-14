@@ -37,6 +37,7 @@ var requiredSkillFacts = map[string][]string{
 		"expand",
 		"one fact",
 		"hard to reverse, surprising",
+		"unnamed",
 	},
 	"grill-me": {
 		"\"yes\" accepts the recommendation",
@@ -126,6 +127,8 @@ var requiredSkillFacts = map[string][]string{
 		"references/skills.md",
 		"references/repository-instructions.md",
 		"references/retrospective.md",
+		"references/memory-hygiene.md",
+		"references/session-mining.md",
 	},
 }
 

@@ -153,6 +153,9 @@ func assertMarkdownLinks(t *testing.T, root string) {
 	}
 	links := regexp.MustCompile(`\]\(([^ )]+[.]md)(?:#[^)]*)?\)`)
 	for _, rel := range strings.Fields(tracked) {
+		if _, err := os.Stat(filepath.Join(root, rel)); errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
 		body := read(t, root, rel)
 		for _, match := range links.FindAllStringSubmatch(body, -1) {
 			target := match[1]
@@ -509,7 +512,7 @@ func TestValidationContract(t *testing.T) {
 func TestMemoryHygieneContract(t *testing.T) {
 	root := repoRoot(t)
 	tmp := t.TempDir()
-	tool := "./plugins/megapowers/skills/memory-hygiene/scripts/memory-audit.go"
+	tool := "./plugins/megapowers/skills/writing-agent-instructions/scripts/memory-audit.go"
 	write := func(name, records string) string {
 		t.Helper()
 		path := filepath.Join(tmp, name)

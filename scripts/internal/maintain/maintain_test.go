@@ -132,11 +132,11 @@ func TestInstalledHookSmokeRunsColdWarmAndDenies(t *testing.T) {
 
 func TestMemorySkillPolicySelectsInstalledExplicitOnlyEntry(t *testing.T) {
 	installed := filepath.Join(t.TempDir(), "plugin")
-	inside := filepath.Join(installed, "skills", "memory-hygiene", "SKILL.md")
-	outside := filepath.Join(t.TempDir(), "skills", "memory-hygiene", "SKILL.md")
+	inside := filepath.Join(installed, "skills", "grill-me", "SKILL.md")
+	outside := filepath.Join(t.TempDir(), "skills", "grill-me", "SKILL.md")
 	data := []any{map[string]any{"skills": []any{
-		map[string]any{"name": "memory-hygiene", "path": outside, "enabled": true, "policy": map[string]any{"allowImplicitInvocation": true}},
-		map[string]any{"name": "megapowers:memory-hygiene", "path": inside, "enabled": true, "policy": map[string]any{"allowImplicitInvocation": false}, "explicitlyAvailable": true},
+		map[string]any{"name": "grill-me", "path": outside, "enabled": true, "policy": map[string]any{"allowImplicitInvocation": true}},
+		map[string]any{"name": "megapowers:grill-me", "path": inside, "enabled": true, "policy": map[string]any{"allowImplicitInvocation": false}, "explicitlyAvailable": true},
 		map[string]any{"name": "megapowers:writing-agent-instructions", "path": filepath.Join(installed, "skills", "writing-agent-instructions", "SKILL.md"), "enabled": true},
 	}}}
 	policyExposed, err := verifyMemorySkillEntries(data, installed)
@@ -145,10 +145,10 @@ func TestMemorySkillPolicySelectsInstalledExplicitOnlyEntry(t *testing.T) {
 	}
 
 	badFields := []map[string]any{
-		{"name": "memory-hygiene", "path": inside, "enabled": true, "policy": nil},
-		{"name": "memory-hygiene", "path": inside, "enabled": true, "policy": map[string]any{"allowImplicitInvocation": true}},
-		{"name": "memory-hygiene", "path": inside, "enabled": false, "policy": map[string]any{"allowImplicitInvocation": false}},
-		{"name": "memory-hygiene", "path": inside, "enabled": true, "policy": map[string]any{"allowImplicitInvocation": false}, "availableForExplicitInvocation": false},
+		{"name": "grill-me", "path": inside, "enabled": true, "policy": nil},
+		{"name": "grill-me", "path": inside, "enabled": true, "policy": map[string]any{"allowImplicitInvocation": true}},
+		{"name": "grill-me", "path": inside, "enabled": false, "policy": map[string]any{"allowImplicitInvocation": false}},
+		{"name": "grill-me", "path": inside, "enabled": true, "policy": map[string]any{"allowImplicitInvocation": false}, "availableForExplicitInvocation": false},
 	}
 	for _, skill := range badFields {
 		body, _ := json.Marshal(skill)
@@ -160,7 +160,7 @@ func TestMemorySkillPolicySelectsInstalledExplicitOnlyEntry(t *testing.T) {
 		})
 	}
 	policyExposed, err = verifyMemorySkillEntries([]any{map[string]any{"skills": []any{
-		map[string]any{"name": "memory-hygiene", "path": inside, "enabled": true},
+		map[string]any{"name": "grill-me", "path": inside, "enabled": true},
 		map[string]any{"name": "writing-agent-instructions", "path": filepath.Join(installed, "skills", "writing-agent-instructions", "SKILL.md"), "enabled": true},
 	}}}, installed)
 	if err != nil || policyExposed {
@@ -171,7 +171,7 @@ func TestMemorySkillPolicySelectsInstalledExplicitOnlyEntry(t *testing.T) {
 func TestCodexSkillEntriesRequireInstalledWritingSkill(t *testing.T) {
 	installed := filepath.Join(t.TempDir(), "plugin")
 	data := []any{map[string]any{"skills": []any{
-		map[string]any{"name": "memory-hygiene", "path": filepath.Join(installed, "skills", "memory-hygiene", "SKILL.md"), "enabled": true},
+		map[string]any{"name": "grill-me", "path": filepath.Join(installed, "skills", "grill-me", "SKILL.md"), "enabled": true},
 	}}}
 	if _, err := verifyMemorySkillEntries(data, installed); err == nil {
 		t.Fatal("missing writing-agent-instructions skill was accepted")

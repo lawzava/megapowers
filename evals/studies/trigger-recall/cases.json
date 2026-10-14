@@ -32,26 +32,11 @@
       "provenance": "authored 2026-09-05; counting an instruction file is not authoring it"
     },
     {
-      "id": "memory-hygiene-explicit",
-      "kind": "explicit",
-      "expected": "memory-hygiene",
-      "prompt": "Use $megapowers:memory-hygiene to inspect memory/MEMORY.md against the repository. Report stale facts only; change no memory.",
-      "files": { "memory/MEMORY.md": "The module uses Go 1.20.\n", "go.mod": "module example.com/fixture\n\ngo 1.24\n" },
-      "provenance": "authored 2026-09-05; explicit invocation remains available on both harnesses"
-    },
-    {
-      "id": "recall-explicit",
-      "kind": "explicit",
-      "expected": "recall",
-      "prompt": "Use $megapowers:recall to find what we decided earlier about the export schedule. Change nothing.",
-      "provenance": "authored 2026-10-11; explicit-only skill keeps its single explicit probe"
-    },
-    {
       "id": "memory-hygiene-implicit",
       "kind": "near-miss",
-      "prompt": "Check memory/MEMORY.md for stale facts against go.mod. Report them without making edits.",
+      "prompt": "Summarize memory/MEMORY.md in one sentence without making edits.",
       "files": { "memory/MEMORY.md": "The module uses Go 1.20.\n", "go.mod": "module example.com/fixture\n\ngo 1.24\n" },
-      "provenance": "authored 2026-09-05; an implicit request must not select the explicit-only memory skill"
+      "provenance": "authored 2026-09-05; reading a memory file is not authoring or auditing instructions"
     },
     {
       "id": "autonomous-run-verbatim",
@@ -149,26 +134,17 @@
       "provenance": "authored 2026-08-30; repository-answerable questions need no external evidence"
     },
     {
-      "id": "grill-me-verbatim",
-      "kind": "verbatim",
+      "id": "grill-me-explicit",
+      "kind": "explicit",
       "expected": "grill-me",
-      "prompt": "Grill me on this rollout plan before I take it to the team: enable the flag for 5% of tenants Monday, watch error rates for two days, then 50%, then everyone Friday. Ask me your first question and wait.",
-      "provenance": "session scan 2026-08-26: grill-me untested in real sessions"
+      "prompt": "Use $megapowers:grill-me on this rollout plan before I take it to the team: enable the flag for 5% of tenants Monday, watch error rates for two days, then 50%, then everyone Friday. Ask the open decision frontier in one round and wait.",
+      "provenance": "authored 2026-10-13; explicit-only interview skill keeps its single explicit probe"
     },
     {
-      "id": "grill-me-paraphrase",
-      "kind": "paraphrase",
-      "expected": "grill-me",
-      "prompt": "Here is my idea: shard user data by region code. Stress-test it by interviewing me — one hard question at a time until the idea breaks or holds. Start now and wait for my answer.",
-      "provenance": "session scan 2026-08-26: grill-me untested in real sessions"
-    },
-    {
-      "id": "grill-me-buried",
-      "kind": "buried",
-      "expected": "grill-me",
-      "prompt": "Context: we migrate the billing DB next month; draft plan is in NOTES.md. I do not want a review document — I want you to put me through a structured interrogation about it before anything moves. Fire the first question and wait.",
-      "files": { "NOTES.md": "Plan: dual-write for a week, backfill, cut reads over, drop old tables.\n" },
-      "provenance": "session scan 2026-08-26: grill-me untested in real sessions"
+      "id": "grill-me-implicit",
+      "kind": "near-miss",
+      "prompt": "Here is my idea: shard user data by region code. Stress-test it by interviewing me on the open decisions before we start, and wait for my answers.",
+      "provenance": "authored 2026-10-13; an implicit request must not select the explicit-only grill-me skill"
     },
     {
       "id": "grill-me-near-miss",

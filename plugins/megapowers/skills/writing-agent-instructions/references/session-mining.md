@@ -38,7 +38,14 @@ A class that appears only once is listed as a one-off. A class counts after
 two occurrences.
 
 `recall` lists the sessions where one message contains every topic word, most
-recent first, with the first prompt and the last reply.
+recent first, with the first prompt and the last reply. When rebuilding context
+for a topic from past sessions, default to the last 14 days and this workspace;
+widen only when the user asks, and state which scope you used. Open the
+relevant transcripts to read their decisions, open questions, and last state,
+then check live repository and forge state (recent commits, branches, and any
+named pull request or issue) before reporting. Report a short brief: what the
+work was; each thread with a status tag such as `[merged #12]`, `[open PR #14]`,
+`[abandoned]`, or `[unknown]`; at most five open problems; and the next move.
 
 ## Reading the results
 

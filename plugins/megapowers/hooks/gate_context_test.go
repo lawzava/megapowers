@@ -324,3 +324,46 @@ func TestGateDeniesOnBothHarnesses(t *testing.T) {
 		}
 	}
 }
+
+func TestGateCachesSkillLoadMarkerAcrossCallsAndDirectShellReads(t *testing.T) {
+	t.Parallel()
+
+	skillDir := filepath.Join(t.TempDir(), "skills", "verify-and-finish")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	skillFile := filepath.Join(skillDir, "SKILL.md")
+	body := "---\nname: verify-and-finish\ndescription: Verify\n---\n\n# Verify and Finish\n\nRun checks.\n"
+	if err := os.WriteFile(skillFile, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. A standalone PreToolUse shell read of an existing valid SKILL.md records
+	// the session load marker even before the harness flushes its transcript.
+	env := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
+	unflushed := writeTranscript(t, `{"type":"user","message":{"content":"commit it"}}`)
+	if stdout, stderr, rc := runGateWithTranscript(t, env, "session-direct-read", unflushed, "cat "+skillFile); rc != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("direct skill read: rc=%d stdout=%q stderr=%q", rc, stdout, stderr)
+	}
+	if stdout, stderr, rc := runGateWithTranscript(t, env, "session-direct-read", unflushed, "git commit -m 'feat: done'"); rc != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("commit after direct skill read with unflushed transcript: rc=%d stdout=%q stderr=%q, want silent pass", rc, stdout, stderr)
+	}
+
+	// 2. A batched read + commit in the same command still denies because the
+	// read has not completed before the gated command runs.
+	batchedEnv := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
+	if stdout, _, _ := runGateWithTranscript(t, batchedEnv, "session-batched", unflushed, "cat "+skillFile+" && git commit -m 'feat: batched'"); !strings.Contains(stdout, `"permissionDecision":"deny"`) {
+		t.Fatalf("batched read and commit must still deny: %q", stdout)
+	}
+
+	// 3. Once a transcript load is observed, the session marker caches it for
+	// subsequent calls even if the transcript is no longer passed.
+	cacheEnv := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
+	flushed := writeTranscript(t, skillReadTrace(t, "Skill", `{"skill":"megapowers:safe-effects"}`, "Launching skill: megapowers:safe-effects", false)...)
+	if stdout, _, _ := runGateWithTranscript(t, cacheEnv, "session-cached", flushed, "gh pr comment 1 --body ok"); stdout != "" {
+		t.Fatalf("first call with loaded transcript must pass: %q", stdout)
+	}
+	if !skillMarkedLoaded(gateMarkerRoot(func(k string) string { return cacheEnv[k] }), "session-cached", "safe-effects") {
+		t.Fatal("expected safe-effects to be marked loaded in session cache")
+	}
+}

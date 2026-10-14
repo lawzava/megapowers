@@ -29,8 +29,7 @@ environments.
 ## Shared contract
 
 Skills use `name`, `description`, `when_to_use`, and `metadata.short-description`
-frontmatter; `memory-hygiene` and `recall` set `disable-model-invocation` for
-Claude Code.
+frontmatter; `grill-me` sets `disable-model-invocation` for Claude Code.
 Claude Code concatenates `description` and `when_to_use` in its skill listing.
 Codex matches implicit invocation on `description`.
 

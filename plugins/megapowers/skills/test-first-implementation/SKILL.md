@@ -15,17 +15,14 @@ Use `systematic-debugging` for unknown causes.
 
 ## Red, green, refactor
 
-1. Test real behavior at a stable observable boundary, not through mock
-   assertions or a side-channel query. Take expected values from the
-   specification or a worked example, never from a recomputation of the code.
-2. Verify red: confirm failure for the missing behavior, excluding setup errors
-   and typos. When you force red by mutating code, diff against the pristine
-   file to prove the mutation landed.
-3. Implement only what satisfies that test. Avoid speculative options,
-   abstractions, and adjacent cleanup.
-4. Verify green: run the focused test, read its full result, and fix production
-   code on failure.
-5. Refactor changed code while green. Repeat for the next behavior.
+Test real behavior at a stable observable boundary, not through mock assertions
+or a side-channel query. Take expected values from the specification or a worked
+example, never from a recomputation of the code. Confirm the test fails for the
+missing behavior before writing production code; when you force red by mutating
+code, diff against the pristine file to prove the mutation landed. Implement
+only what satisfies that test without speculative options, abstractions, or
+adjacent cleanup, run the focused test to confirm green, and refactor while
+green before moving to the next behavior.
 
 Understand dependencies before mocking. Do not add production APIs only for
 tests. Run the broader suite at task or milestone completion, before claiming success.

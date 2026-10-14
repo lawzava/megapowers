@@ -44,7 +44,7 @@ case "overflow": for i:=0;i<64;i++ { if _,err:=fmt.Print(strings.Repeat("x",1<<2
  case "echo": os.Stderr.Write(input)
  case "echo-fail": if strings.Contains(string(input),"review-package") { os.Stderr.Write(input); fmt.Fprintln(os.Stderr,"error: unexpected provider failure"); os.Exit(1) }
  case "overflow-review": if strings.Contains(string(input),"review-package") { fmt.Println("oauth token refresh is unsafe"); for i:=0;i<4;i++ { if _,err:=fmt.Print(strings.Repeat("x",1<<20));err!=nil{return} }; return }
- case "later": data,_:=os.ReadFile(filepath.Join(record,"count")); n,_:=strconv.Atoi(string(data)); n++; write("count",strconv.Itoa(n)); if n>=3 { fmt.Fprintln(os.Stderr,"rate limit exceeded"); os.Exit(1) }
+ case "later": data,_:=os.ReadFile(filepath.Join(record,"count")); n,_:=strconv.Atoi(string(data)); n++; write("count",strconv.Itoa(n)); if n>=2 { fmt.Fprintln(os.Stderr,"rate limit exceeded"); os.Exit(1) }
  }
  fmt.Printf("reviewed by fake provider via %s\n",delivery)
 }
@@ -486,7 +486,7 @@ func TestReviewFailuresRemainPrivateAndBounded(t *testing.T) {
 			if err := os.Mkdir(out, 0700); err != nil {
 				t.Fatal(err)
 			}
-			args := f.review(token, command, "--file", "app.go", "--out", out, "--preflight-timeout", "1s")
+			args := f.review(token, command, "--file", "app.go", "--out", out, "--preflight", "--preflight-timeout", "1s")
 			started := time.Now()
 			result := f.call(tc.needle, args...)
 			if time.Since(started) > 15*time.Second {
@@ -578,7 +578,7 @@ func TestReviewRangesAndChunking(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := f.call("", f.review(token, f.command, "--base", base, "--head", head, "--out", out)...)
-	if strings.Count(result, "reviewed by fake provider") != 2 || strings.Count(f.recordText("calls"), "call") != 3 {
+	if strings.Count(result, "reviewed by fake provider") != 2 || strings.Count(f.recordText("calls"), "call") != 2 {
 		t.Fatal("chunk dispatch count failed")
 	}
 	if len(reviewFiles(t, out)) != 3 {
@@ -640,7 +640,7 @@ func TestReviewPreflightAcceptsSuccessfulReplyWithUsageMetadata(t *testing.T) {
 	if err := os.Mkdir(out, 0700); err != nil {
 		t.Fatal(err)
 	}
-	f.call("", f.review(token, command, "--file", "app.go", "--out", out, "--preflight-timeout", "5s")...)
+	f.call("", f.review(token, command, "--file", "app.go", "--out", out, "--preflight", "--preflight-timeout", "5s")...)
 	if len(reviewFiles(t, out)) == 0 {
 		t.Fatal("a successful reply carrying usage metadata must pass preflight and write a receipt")
 	}
@@ -653,13 +653,27 @@ func TestReviewRejectsFilesUnderSubmodulePathWithSpaces(t *testing.T) {
 	f.call("submodule", "inspect", "--file", "deps/private module/notes.txt", "--provider", "vendor-a", "--provider-command", f.command)
 }
 
-func TestReviewRejectsScriptLauncherProvider(t *testing.T) {
+func TestReviewAllowsScriptLauncherAndConfiguredApproval(t *testing.T) {
 	f := newReviewFixture(t)
 	launcher := filepath.Join(filepath.Dir(f.binary), "script-reviewer")
 	if err := os.WriteFile(launcher, []byte("#!/bin/sh\nexec \"$(dirname \"$0\")/fake-reviewer\" \"$@\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f.call("self-contained", "inspect", "--file", "app.go", "--provider", "vendor-a", "--provider-command", "script-reviewer --mode ok")
+	out := filepath.Join(f.root, "script-out")
+	if err := os.Mkdir(out, 0700); err != nil {
+		t.Fatal(err)
+	}
+	f.clearCalls()
+	result := f.call("", f.review("configured", "script-reviewer --mode ok", "--file", "app.go", "--out", out)...)
+	if !strings.Contains(result, "reviewed by fake provider") {
+		t.Fatalf("script launcher review failed:\n%s", result)
+	}
+	if strings.Count(f.recordText("calls"), "call") != 1 {
+		t.Fatalf("default review must skip preflight and invoke provider once, got:\n%s", f.recordText("calls"))
+	}
+	if len(reviewFiles(t, out)) != 2 {
+		t.Fatalf("script launcher review did not write receipts")
+	}
 }
 
 func TestReviewApprovalBindsProviderEnvironment(t *testing.T) {

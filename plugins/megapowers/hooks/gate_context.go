@@ -95,7 +95,11 @@ func isDryRun(words []string) bool {
 // that only get a reminder: the skill gates, then the git discard check.
 func gateDecision(command, sessionID, transcriptPath, cwd string, getenv getenvFunc) (deny, remind []string) {
 	root := gateMarkerRoot(getenv)
-	deny, remind = skillGates(gateSkills(command), sessionID, transcriptPath, getenv)
+	skills := gateSkills(command)
+	if len(skills) == 0 {
+		recordDirectSkillLoads(command, cwd, root, sessionID)
+	}
+	deny, remind = skillGates(skills, sessionID, transcriptPath, getenv)
 	if key := gitDiscardKey(command, cwd); key != "" {
 		digest := sha256.Sum256([]byte(key))
 		switch markGate(root, sessionID, discardGate+"-"+hex.EncodeToString(digest[:8])) {
@@ -110,15 +114,22 @@ func gateDecision(command, sessionID, transcriptPath, cwd string, getenv getenvF
 
 // skillGates returns the skills whose first gated call this session must stop
 // on, and the skills that only get a reminder because the once-marker could
-// not be recorded. A skill the transcript shows as already loaded needs
-// neither. A same-kind call inside gateRetryWindow of the first denial also
-// stops, but only when the transcript is readable, so a missing transcript
-// keeps the plain once-per-session behavior.
+// not be recorded. A skill the session marker or transcript shows as already
+// loaded needs neither. A same-kind call inside gateRetryWindow of the first
+// denial also stops, but only when the transcript is readable, so a missing
+// transcript keeps the plain once-per-session behavior.
 func skillGates(skills []string, sessionID, transcriptPath string, getenv getenvFunc) (deny, remind []string) {
 	root := gateMarkerRoot(getenv)
 	for _, skill := range skills {
 		state := markGate(root, sessionID, skill)
-		loaded, readable := skillLoaded(transcriptPath, skill)
+		loaded := skillMarkedLoaded(root, sessionID, skill)
+		readable := false
+		if !loaded {
+			loaded, readable = skillLoaded(transcriptPath, skill)
+			if loaded {
+				markSkillLoaded(root, sessionID, skill)
+			}
+		}
 		switch {
 		case loaded:
 		case state == markerNew:
@@ -970,6 +981,72 @@ func pruneGateMarkers(dir string, before time.Time) {
 func gateMarkerPath(root, sessionID, skill string) string {
 	digest := sha256.Sum256([]byte(sessionID))
 	return filepath.Join(root, gateMarkerDir, hex.EncodeToString(digest[:8])+"-"+skill)
+}
+
+func markSkillLoaded(root, sessionID, skill string) {
+	if root == "" || sessionID == "" || skill == "" {
+		return
+	}
+	dir := filepath.Join(root, gateMarkerDir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return
+	}
+	file, err := os.OpenFile(gateMarkerPath(root, sessionID, skill+".loaded"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err == nil {
+		file.Close()
+	}
+}
+
+func skillMarkedLoaded(root, sessionID, skill string) bool {
+	if root == "" || sessionID == "" || skill == "" {
+		return false
+	}
+	info, err := os.Stat(gateMarkerPath(root, sessionID, skill+".loaded"))
+	return err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) < gateMarkerTTL
+}
+
+// recordDirectSkillLoads records a session load marker when an unbatched shell
+// command reads an existing valid SKILL.md for a gated skill on disk, so a
+// subsequent gated command in the same session recognizes the load even before
+// the harness flushes its transcript.
+func recordDirectSkillLoads(command, cwd, root, sessionID string) {
+	if root == "" || sessionID == "" || len(command) > maxCommandBytes {
+		return
+	}
+	stripped, _ := shellHeredocs(command)
+	for _, segment := range splitSegments(stripped) {
+		name, tail, ok := resolveCommand(segment)
+		if !ok {
+			continue
+		}
+		switch name {
+		case "cat", "sed", "head", "bat":
+		default:
+			continue
+		}
+		words, ok := shellWords(tail)
+		if !ok {
+			words = strings.Fields(tail)
+		}
+		for _, word := range nonempty(words) {
+			if strings.HasPrefix(word, "-") {
+				continue
+			}
+			for _, skill := range []string{completionSkill, effectSkill} {
+				if !strings.HasSuffix(filepath.ToSlash(word), "skills/"+skill+"/SKILL.md") {
+					continue
+				}
+				target := word
+				if !filepath.IsAbs(target) && cwd != "" {
+					target = filepath.Join(cwd, target)
+				}
+				data, err := os.ReadFile(target)
+				if err == nil && containsSkillBody(string(data), skill) {
+					markSkillLoaded(root, sessionID, skill)
+				}
+			}
+		}
+	}
 }
 
 // Both harnesses name MCP tools mcp__<server>__<tool>; Claude Code plugin

@@ -29,9 +29,9 @@ review_tool=/absolute/path/to/installed/independent-review/scripts/megapowers-re
 
 ## Name the reviewer
 
-`--provider` is an opaque family label such as `anthropic`, `openai`, or
-`zai`. `--provider-command` is the reviewer command as one quoted string; it is
-split into arguments without a shell. `{prompt_file}` expands to a private
+`--provider` is an opaque family label such as `anthropic`, `openai`, `google`,
+or `zai`. `--provider-command` is the reviewer command as one quoted string; it
+is split into arguments without a shell. `{prompt_file}` expands to a private
 prompt file and `{scratch_dir}` to the private scratch directory; without
 `{prompt_file}` the prompt arrives on stdin. Credentials pass only through
 `--provider-env NAME`. Example shapes, to be replaced by whatever the operator
@@ -40,6 +40,7 @@ runs:
 ```bash
 reviewer_cmd='claude -p --safe-mode --no-session-persistence --permission-mode plan --tools ""'
 reviewer_cmd='codex exec --ephemeral --ignore-user-config --skip-git-repo-check -C {scratch_dir} --sandbox read-only -'
+reviewer_cmd='gemini -p "Review the stdin package against its intent." --approval-mode plan'
 reviewer_cmd='<reviewer-cli> --model <model-id> --prompt-file {prompt_file}'
 ```
 
@@ -84,6 +85,11 @@ go run "$review_tool" review --file path/to/file --intent "$intent" \
   --author <author-family> --approve-external "$approval_token"
 ```
 
+For a pre-approved reviewer bound to `independent-review` in the capability
+registry or named in user or repository instructions, `--approve-external
+configured` runs the disclosure check and dispatches in one step while still
+enforcing the secret scan, path checks, and binary verification.
+
 The tool refuses matching author and reviewer labels. It also refuses
 project-selected binaries, shell metacharacters in the command, symlinks,
 submodules, binary data, oversized packages, secret-like paths, and common
@@ -93,12 +99,13 @@ worktree changes. Reviewer processes receive a small environment allowlist plus
 the named `--provider-env` variables.
 
 Review recaptures the source and resolves the reviewer again before dispatch.
-Any change to the package, intent, binary, or command invalidates the token
-and requires a new inspection. Proxy variables bind only their scheme, host, and
-port, so a sandbox that rotates proxy credentials per shell call does not
-invalidate the token. The approved binary bytes are copied into a
-private read-only execution path, so a later swap at the original pathname
-cannot change what runs.
+Any change to the package, intent, binary, or command invalidates an
+`inspect` token and requires a new inspection. Proxy variables bind only their
+scheme, host, and port, so a sandbox that rotates proxy credentials per shell
+call does not invalidate the token. Native binaries are copied into a private
+read-only execution path; script launchers outside the repository (such as
+Node/npm CLI shims) run from their installed path so relative runtime imports
+resolve, and their SHA-256 is verified before and after execution.
 
 ## Receipts and transcripts
 
@@ -106,10 +113,10 @@ Receipts are private advisory records. They bind the source identity, package
 hash, provider label, command, author, and command outcome. A range above one
 package splits into up to 16 directory-grouped chunks under one approval
 token; an index `receipt.json` lists one `chunk-NN/receipt.json` per dispatched
-package. A preflight probe fails fast, before any artifact bytes leave the
-machine, when the reviewer reports a login or usage limit or stalls past
-`--preflight-timeout`. Receipts are not tamper-proof attestations and do not
-gate a release by themselves.
+package. When `--preflight` is passed, a liveness probe fails fast before any
+artifact bytes leave the machine if the reviewer reports a login or usage limit
+or stalls past `--preflight-timeout`. Receipts are not tamper-proof attestations
+and do not gate a release by themselves.
 
 Raw prompts and reviewer output are not retained by default. Use
 `--retain-transcript` only after deciding that storing the disclosed content and

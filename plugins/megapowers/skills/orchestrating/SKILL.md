@@ -13,55 +13,37 @@ bounded task, or sequential dependency path inline. Scan dependencies,
 boundaries, ownership, and oracle before dispatch.
 
 Native agents are the default for matching lanes. Use one to three direct
-children with fresh, bounded context.
-
-For independent lanes whose results cannot reshape one another, issue native
-spawn calls consecutively without intervening inspection or waits. Continue
-independent lead work, then join every returned identity until completion,
-failure, or confirmed cancellation.
+children with fresh, bounded context. For independent lanes whose results
+cannot reshape one another, issue spawn calls consecutively without intervening
+waits, continue independent lead work, and join every returned identity until
+completion, failure, or confirmed cancellation.
 
 Before dispatch, read
 [native dispatch and lane lifecycle](references/native-dispatch.md) and use
 only the active harness's call shape. One bounded output-only lane may use one
 fresh-context child returning `verdict`, `evidence`, `uncertainty`, and `next`.
-Keep bulky raw payloads in an artifact.
-
-Run verbose checks through the
-[run receipt tool](../verify-and-finish/references/run-receipt.md), which keeps
-full output and exit status. Report command, exit status, result counts, and
-log path; disclose filtering.
-
-Route unknown causes through `systematic-debugging`, unresolved contracts
-through `design-and-plan`, external evidence through `evidence-research`,
-cross-provider risk through `independent-review`, and effects through
-`safe-effects`.
+Keep bulky raw payloads in an artifact. Run verbose checks through the
+[run receipt tool](../verify-and-finish/references/run-receipt.md) and report
+command, exit status, result counts, and log path.
 
 Preflight tools, authentication, permissions, and write authority. Brief the
-outcome, bounded and disjoint ownership, constraints, oracle, prohibited scope,
-return condition, nested-delegation limit, and an advisory time budget; keep
-a hard timeout where one is needed. Shared guidance has one writer;
-shared writes and Git stay lead-owned.
+outcome, disjoint ownership, constraints, oracle, prohibited scope, return
+condition, nested-delegation limit, and an advisory time budget; keep a hard
+timeout where needed. Shared guidance has one writer; shared writes and Git
+stay lead-owned.
 
-For non-trivial routing, honor an operator-selected access workflow, including
-an approved external route, before native ranking. Otherwise, when
+Honor an operator-selected route before native ranking. Otherwise, when
 `~/.config/megapowers/agent-capabilities.md`
-([template](assets/agent-capabilities.md)) exists, read it once per session
-for eligible bindings; without it, use native defaults. Apart from a bound
+([template](assets/agent-capabilities.md)) exists, read it once per session for
+eligible bindings; without it, use native defaults. Apart from a bound
 independent reviewer, the registry cannot authorize access, disclosure,
 permissions, writes, or effects.
 
-Before review dispatch, set its scope and correction-round budget. Track each
-review until terminal or cancellation is confirmed. Target follow-ups at fixes
-and affected boundaries. A spent budget leaves unresolved findings open; it
-never converts them into approval.
-
-Give related failures to one lane so it sees their shared cause. When lanes
-race on one question, fix the selection rule before spawning. Join all
-identities before synthesis. A missing or silent result is a gap, never a
-pass. Treat each report as a claim and check its evidence before using it: re-run
-load-bearing claims yourself and sample the rest. When two lanes repeat one shortcut, fix the brief or add a
-check. After a scope change, scan again with delta-only follow-ups.
-
-Ordinary handoffs use inline inspection plus `verify-and-finish`; only a
-currently approved goal surviving interruption uses `autonomous-run`. Stop at
-the oracle.
+Before review dispatch, set its scope and correction-round budget. A spent
+budget leaves unresolved findings open; it never converts them into approval.
+Give related failures to one lane so it sees their shared cause. Join all
+identities before synthesis; a missing or silent result is a gap, never a pass.
+Treat each report as a claim and check its evidence before using it: re-run
+load-bearing claims yourself and sample the rest. Ordinary handoffs use inline
+inspection plus `verify-and-finish`; only an approved goal surviving
+interruption uses `autonomous-run`.

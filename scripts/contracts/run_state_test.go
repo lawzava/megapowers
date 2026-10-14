@@ -347,6 +347,111 @@ func TestRunStateContinuationCapAndCoverage(t *testing.T) {
 	}
 }
 
+func TestRunStateParsesInstalledABCheckpointFixturesAndPartialCheckpoints(t *testing.T) {
+	root := repoRoot(t)
+	tmp := t.TempDir()
+	tool := filepath.Join(tmp, "run-state")
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/autonomous-run/scripts/run-state.go"); code != 0 {
+		t.Fatalf("build run-state (%d): %s", code, output)
+	}
+	gitEnv := []string{
+		"GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_CONFIG_NOSYSTEM=1",
+		"GIT_AUTHOR_NAME=Run State Test",
+		"GIT_AUTHOR_EMAIL=run-state@example.invalid",
+		"GIT_COMMITTER_NAME=Run State Test",
+		"GIT_COMMITTER_EMAIL=run-state@example.invalid",
+	}
+
+	var catalog struct {
+		Cases []struct {
+			ID    string            `json:"id"`
+			Files map[string]string `json:"files"`
+		} `json:"cases"`
+	}
+	rawCases := readFile(t, filepath.Join(root, "evals", "studies", "installed-ab", "cases.json"))
+	if err := json.Unmarshal([]byte(rawCases), &catalog); err != nil {
+		t.Fatalf("unmarshal cases.json: %v", err)
+	}
+
+	checkpointCount := 0
+	for _, c := range catalog.Cases {
+		for relPath, content := range c.Files {
+			if !strings.HasPrefix(relPath, ".megapowers/run/") || !strings.HasSuffix(relPath, "/checkpoint.md") {
+				continue
+			}
+			checkpointCount++
+			parts := strings.Split(relPath, "/")
+			if len(parts) != 4 {
+				t.Fatalf("%s: unexpected checkpoint path %q", c.ID, relPath)
+			}
+			runID := parts[2]
+			for _, field := range []string{"- Workspace:", "- Branch:", "- Worktree:", "- HEAD:", "## Blockers", "## Next safe action"} {
+				if !strings.Contains(content, field) {
+					t.Errorf("%s (%s): checkpoint fixture missing canonical %q", c.ID, relPath, field)
+				}
+			}
+			repo := filepath.Join(tmp, c.ID+"-"+runID)
+			if err := os.MkdirAll(repo, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if output, code := run(t, repo, gitEnv, "git", "init", "-q", "-b", "main"); code != 0 {
+				t.Fatalf("git init (%d): %s", code, output)
+			}
+			if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("seed\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if output, code := run(t, repo, gitEnv, "git", "add", "seed.txt"); code != 0 {
+				t.Fatalf("git add (%d): %s", code, output)
+			}
+			if output, code := run(t, repo, gitEnv, "git", "commit", "-q", "-m", "seed"); code != 0 {
+				t.Fatalf("git commit (%d): %s", code, output)
+			}
+			for fPath, fBody := range c.Files {
+				full := filepath.Join(repo, filepath.FromSlash(fPath))
+				if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(full, []byte(fBody), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			output, code := run(t, repo, gitEnv, tool, "resume", "--id", runID)
+			if code != 3 || !strings.Contains(output, "result: mismatch (exit 3)") {
+				t.Errorf("%s (%s): want resume exit 3 mismatch, got %d: %s", c.ID, relPath, code, output)
+			}
+		}
+	}
+	if checkpointCount < 3 {
+		t.Fatalf("expected at least 3 checkpoint fixtures in cases.json, found %d", checkpointCount)
+	}
+
+	partialRepo := filepath.Join(tmp, "partial")
+	if err := os.MkdirAll(filepath.Join(partialRepo, ".megapowers", "run", "handwritten"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := run(t, partialRepo, gitEnv, "git", "init", "-q", "-b", "main"); code != 0 {
+		t.Fatalf("git init (%d): %s", code, output)
+	}
+	if err := os.WriteFile(filepath.Join(partialRepo, "seed.txt"), []byte("seed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := run(t, partialRepo, gitEnv, "git", "add", "seed.txt"); code != 0 {
+		t.Fatalf("git add (%d): %s", code, output)
+	}
+	if output, code := run(t, partialRepo, gitEnv, "git", "commit", "-q", "-m", "seed"); code != 0 {
+		t.Fatalf("git commit (%d): %s", code, output)
+	}
+	partialBody := "State: blocked.\nWorkspace: fixture.\nHEAD: fixture-head.\nNext safe action: run tests/focused.sh.\n"
+	if err := os.WriteFile(filepath.Join(partialRepo, ".megapowers", "run", "handwritten", "checkpoint.md"), []byte(partialBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output, code := run(t, partialRepo, gitEnv, tool, "resume", "--id", "handwritten")
+	if code != 3 || !strings.Contains(output, "branch: mismatch: recorded <missing>") || !strings.Contains(output, "next safe action: run tests/focused.sh.") {
+		t.Errorf("partial checkpoint: want exit 3 reporting <missing> branch and next safe action, got %d: %s", code, output)
+	}
+}
+
 func readFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)

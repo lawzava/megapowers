@@ -1,6 +1,6 @@
 # megapowers plugin
 
-One workflow plugin for current Claude Code and Codex: 17 task skills, one
+One workflow plugin for current Claude Code and Codex: 15 task skills, one
 short output style, a hook that blocks a few catastrophic shell commands, and a
 doctor. It uses the planning, agents, goals, permissions, memory, worktrees,
 and browser tools each harness already has. It ships no model router,
@@ -11,11 +11,11 @@ orchestration daemon, or vendor choice.
 - `skills/`: one skill per task type: orchestration, structured interviews,
   research, design, implementation with language-specific code judgment,
   debugging, verification, actions with real-world side effects, long
-  unattended runs, independent review, memory hygiene, MCP setup, prose, safe
-  upgrades, writing agent instructions, and self-diagnosis
-  (`megapowers-doctor`). `skills/catalog.json` records whether each skill is
-  stable or experimental, since portable skill frontmatter has no field for
-  that.
+  unattended runs, independent review, MCP setup, prose, safe upgrades,
+  writing agent instructions (including retrospectives, session recall, and
+  memory hygiene), and self-diagnosis (`megapowers-doctor`).
+  `skills/catalog.json` records whether each skill is stable or experimental,
+  since portable skill frontmatter has no field for that.
 - `output-styles/`: the shared source for direct, concise technical replies.
 - `hooks/`: Go hooks with one entrypoint, `run-hook.cmd`. `SessionStart` adds
   a skill-loading reminder and, on Codex, the style. `SubagentStart` adds the

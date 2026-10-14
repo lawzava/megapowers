@@ -386,9 +386,9 @@ func smokeCodex(ctx context.Context, opts smokeOptions, version string, recorder
 		return
 	}
 	if policyExposed {
-		recorder.note("codex", "PASS", "skills/list exposes installed enabled memory-hygiene and writing-agent-instructions with explicit-only memory policy")
+		recorder.note("codex", "PASS", "skills/list exposes installed enabled grill-me and writing-agent-instructions with explicit-only policy")
 	} else {
-		recorder.note("codex", "PASS", "skills/list exposes installed enabled memory-hygiene and writing-agent-instructions; installed memory policy is explicit-only; API omits effective invocation policy")
+		recorder.note("codex", "PASS", "skills/list exposes installed enabled grill-me and writing-agent-instructions; installed grill-me policy is explicit-only; API omits effective invocation policy")
 	}
 }
 
@@ -634,7 +634,7 @@ func hookCommandsUseWrapper(path string) bool {
 }
 
 func verifyCodexSkillPolicy(parent context.Context, home, installedRoot string) (bool, error) {
-	if err := verifyDeclaredExplicitOnly(filepath.Join(installedRoot, "skills", "memory-hygiene", "agents", "openai.yaml")); err != nil {
+	if err := verifyDeclaredExplicitOnly(filepath.Join(installedRoot, "skills", "grill-me", "agents", "openai.yaml")); err != nil {
 		return false, err
 	}
 	project, err := os.MkdirTemp(home, "skills-list-project-")
@@ -719,7 +719,7 @@ func verifyCodexSkillPolicy(parent context.Context, home, installedRoot string) 
 }
 
 func verifyMemorySkillEntries(data []any, installedRoot string) (bool, error) {
-	memory, err := installedSkillEntry(data, installedRoot, "memory-hygiene")
+	memory, err := installedSkillEntry(data, installedRoot, "grill-me")
 	if err != nil {
 		return false, err
 	}
@@ -732,11 +732,11 @@ func verifyMemorySkillEntries(data []any, installedRoot string) (bool, error) {
 	}
 	policy, ok := policyValue.(map[string]any)
 	if !ok {
-		return false, errors.New("memory-hygiene policy reported by skills/list is malformed")
+		return false, errors.New("grill-me policy reported by skills/list is malformed")
 	}
 	implicit, ok := policy["allowImplicitInvocation"].(bool)
 	if !ok || implicit {
-		return false, errors.New("memory-hygiene policy does not explicitly deny implicit invocation")
+		return false, errors.New("grill-me policy does not explicitly deny implicit invocation")
 	}
 	return true, nil
 }
@@ -787,11 +787,11 @@ func installedSkillEntry(data []any, installedRoot, skillName string) (map[strin
 func verifyDeclaredExplicitOnly(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return errors.New("installed memory-hygiene openai.yaml is missing")
+		return errors.New("installed grill-me openai.yaml is missing")
 	}
 	const canonical = "policy:\n  allow_implicit_invocation: false\n"
 	if string(data) != canonical {
-		return errors.New("installed memory-hygiene openai.yaml does not declare allow_implicit_invocation: false")
+		return errors.New("installed grill-me openai.yaml does not declare allow_implicit_invocation: false")
 	}
 	return nil
 }

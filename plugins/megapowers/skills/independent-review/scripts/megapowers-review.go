@@ -59,6 +59,7 @@ type options struct {
 	approveExternal  string
 	retainTranscript bool
 	maxFilesPerChunk int
+	preflight        bool
 	preflightTimeout time.Duration
 }
 
@@ -172,6 +173,7 @@ type providerExecutable struct {
 	Args     []string
 	Path     string
 	SHA256   string
+	Script   bool
 }
 
 func (p providerExecutable) identity() reviewerIdentity {
@@ -355,9 +357,9 @@ func run(args []string) error {
 			chunk.Index, disc.ChunkCount, chunk.FileCount, chunk.ByteCount, chunk.PackageSHA256, pathsJSON)
 	}
 	if opt.approveExternal == "" {
-		return errors.New("external disclosure not approved; run inspect, then pass its token as --approve-external TOKEN")
+		return errors.New("external disclosure not approved; pass --approve-external configured for a pre-approved reviewer, or run inspect and pass its token as --approve-external TOKEN")
 	}
-	if !approvalTokenMatches(opt.approveExternal, binary, chunkHashes(cap), envDigests, opt.intent) {
+	if opt.approveExternal != "configured" && !approvalTokenMatches(opt.approveExternal, binary, chunkHashes(cap), envDigests, opt.intent) {
 		return errors.New("approval token does not match the current package, intent, provider label, command, binary, and forwarded environment; run inspect again")
 	}
 	// Allocate the receipt run before dispatch so an unwritable destination
@@ -378,8 +380,10 @@ func run(args []string) error {
 		return err
 	}
 	defer session.close()
-	if err := preflight(session, opt.preflightTimeout); err != nil {
-		return err
+	if opt.preflight {
+		if err := preflight(session, opt.preflightTimeout); err != nil {
+			return err
+		}
 	}
 
 	total := len(cap.Chunks)
@@ -462,9 +466,10 @@ func parseOptions(command string, args []string) (options, error) {
 	fs.StringVar(&opt.intent, "intent", "", "artifact intent and acceptance boundary sent to the reviewer")
 	fs.StringVar(&opt.author, "author", "", "artifact author label; must differ from --provider")
 	fs.StringVar(&opt.out, "out", "", "private receipt directory")
-	fs.StringVar(&opt.approveExternal, "approve-external", "", "token emitted by inspect")
+	fs.StringVar(&opt.approveExternal, "approve-external", "", "configured or token emitted by inspect")
 	fs.BoolVar(&opt.retainTranscript, "retain-transcript", false, "retain prompt and provider output")
 	fs.IntVar(&opt.maxFilesPerChunk, "max-files-per-chunk", defaultMaxFilesPerChunk, "maximum files per provider package")
+	fs.BoolVar(&opt.preflight, "preflight", false, "run a liveness probe before review dispatch")
 	fs.DurationVar(&opt.preflightTimeout, "preflight-timeout", defaultPreflightTimeout, "provider liveness probe timeout")
 	if err := fs.Parse(args); err != nil {
 		return opt, fmt.Errorf("parse options: %w", err)
@@ -475,7 +480,7 @@ func parseOptions(command string, args []string) (options, error) {
 	// Labels are recorded in receipts; trim them so spacing cannot fake a
 	// second vendor.
 	opt.provider, opt.author = strings.TrimSpace(opt.provider), strings.TrimSpace(opt.author)
-	if command == "inspect" && (opt.author != "" || opt.out != "" || opt.approveExternal != "" || opt.retainTranscript) {
+	if command == "inspect" && (opt.author != "" || opt.out != "" || opt.approveExternal != "" || opt.retainTranscript || opt.preflight) {
 		return opt, errors.New("inspect accepts --provider, --provider-command, --provider-env, --intent, and one input mode only")
 	}
 	if opt.maxFilesPerChunk < 1 {
@@ -1108,18 +1113,15 @@ func providerBinary(provider, template, root string) (providerExecutable, error)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
 		return providerExecutable{}, fmt.Errorf("provider command is not an executable regular file: %s", resolved)
 	}
-	// The review runs a verified copy of the provider outside its install
-	// directory. A script launcher (for example an npm shim) resolves its
-	// runtime relative to its own path and breaks after the copy, so reject it
-	// here instead of after disclosure approval.
-	if script, err := hasShebang(resolved); err != nil || script {
-		return providerExecutable{}, fmt.Errorf("provider command %s is a script launcher; the review needs a self-contained executable, such as the provider's native binary", resolved)
+	script, err := hasShebang(resolved)
+	if err != nil {
+		return providerExecutable{}, err
 	}
 	hash, err := hashProviderBinary(resolved, info)
 	if err != nil {
 		return providerExecutable{}, err
 	}
-	return providerExecutable{Provider: provider, Command: template, Args: argv[1:], Path: resolved, SHA256: hash}, nil
+	return providerExecutable{Provider: provider, Command: template, Args: argv[1:], Path: resolved, SHA256: hash, Script: script}, nil
 }
 
 func hasShebang(path string) (bool, error) {
@@ -1302,10 +1304,10 @@ func stageVerifiedExecutable(parent string, binary providerExecutable) (string, 
 	return destination, nil
 }
 
-// providerSession holds one private scratch directory and one verified,
-// read-only copy of the approved provider executable. The preflight probe and
-// every chunk dispatch execute that same copy with the same template
-// arguments and the same environment.
+// providerSession holds one private scratch directory and the approved
+// provider executable (copied into a private read-only path for native
+// binaries, or hash-verified in place for script shims that resolve relative
+// runtime paths).
 type providerSession struct {
 	binary  providerExecutable
 	scratch string
@@ -1332,10 +1334,14 @@ func openProviderSession(binary providerExecutable, extraEnv []string, root stri
 		session.close()
 		return nil, fmt.Errorf("make provider scratch directory private: %w", err)
 	}
-	session.staged, err = stageVerifiedExecutable(scratch, binary)
-	if err != nil {
-		session.close()
-		return nil, err
+	if binary.Script {
+		session.staged = binary.Path
+	} else {
+		session.staged, err = stageVerifiedExecutable(scratch, binary)
+		if err != nil {
+			session.close()
+			return nil, err
+		}
 	}
 	session.env, err = providerEnvironment(extraEnv, root)
 	if err != nil {
@@ -1350,12 +1356,29 @@ func (s *providerSession) close() {
 	_ = os.RemoveAll(s.scratch)
 }
 
-// invoke runs the verified provider copy once with the operator's template
+func verifyBinaryUnchanged(binary providerExecutable) error {
+	info, err := os.Stat(binary.Path)
+	if err != nil || !info.Mode().IsRegular() {
+		return errors.New("provider CLI changed before or during execution")
+	}
+	hash, err := hashProviderBinary(binary.Path, info)
+	if err != nil || hash != binary.SHA256 {
+		return errors.New("provider CLI changed before or during execution")
+	}
+	return nil
+}
+
+// invoke runs the verified provider once with the operator's template
 // arguments. When the template names {prompt_file}, the prompt is written to
 // a private 0600 file inside the scratch directory and stdin is empty;
 // otherwise the prompt is delivered on stdin. {scratch_dir} expands to the
 // scratch directory. It reports a deadline separately from other failures.
 func (s *providerSession) invoke(prompt []byte, timeout time.Duration) (stdout, stderr []byte, timedOut bool, err error) {
+	if s.binary.Script {
+		if err := verifyBinaryUnchanged(s.binary); err != nil {
+			return nil, nil, false, err
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	stdin := io.Reader(bytes.NewReader(prompt))
@@ -1393,6 +1416,11 @@ func (s *providerSession) invoke(prompt []byte, timeout time.Duration) (stdout, 
 	cmd.Stdout = out
 	cmd.Stderr = errBuf
 	err = cmd.Run()
+	if s.binary.Script && err == nil {
+		if verifyErr := verifyBinaryUnchanged(s.binary); verifyErr != nil {
+			return out.Bytes(), errBuf.Bytes(), false, verifyErr
+		}
+	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return out.Bytes(), errBuf.Bytes(), true, err
 	}

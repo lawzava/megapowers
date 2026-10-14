@@ -6,7 +6,7 @@
 
 <p align="center">
   Plan, test, debug, and ship with more care in Claude Code and Codex.<br>
-  One plugin, 17 skills, and safety hooks. About 1.5k tokens per session.
+  One plugin, 15 skills, and safety hooks. About 1.4k tokens per session.
 </p>
 
 <p align="center">
@@ -101,7 +101,7 @@ uninstall are in [docs/install.md](./docs/install.md).
 - **Cross-provider review.** `independent-review` sends one artifact to a
   different model vendor. It sends without asking only to a reviewer you
   configured, and asks first for any other destination.
-- **Light by default.** About 1.5k tokens load per session. A skill's full
+- **Light by default.** About 1.4k tokens load per session. A skill's full
   text loads only when you need it.
 
 ### How it compares
@@ -113,7 +113,7 @@ that site.
 |---|---|---|---|
 | Works with | Claude Code and Codex, one plugin, shared hook code | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
 | Get it from | This repository's marketplace | The official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
-| What you get | 17 skills, one style, three hooks, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
+| What you get | 15 skills, one style, three hooks, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
 | Published measurements | The A/B study below, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
 
 Which one fits:
@@ -140,7 +140,7 @@ only when your request matches. The *experimental* labels come from
 | Skill | Use it when |
 |---|---|
 | `design-and-plan` | A feature or interface needs a spec, a tradeoff decision, or a step-by-step plan |
-| `grill-me` *(experimental)* | You want a plan or idea stress-tested through an interview before any action |
+| `grill-me` *(experimental)* | You invoke it by name to stress-test a plan or idea through a structured interview before any action |
 | `test-first-implementation` | Adding or changing behavior, fixing a confirmed bug, or refactoring: red, green, refactor, with each run observed |
 | `systematic-debugging` | A bug, flaky test, incident, or regression has an unknown cause |
 | `orchestrating` | Independent tasks can run in parallel on the tool's own subagents, each owning different files |
@@ -160,7 +160,7 @@ only when your request matches. The *experimental* labels come from
 | `evidence-research` *(experimental)* | A decision needs evidence from outside the repository |
 | `autonomous-run` *(experimental)* | An approved goal must keep going unattended across context resets or sessions |
 | `humanizing-prose` | You want human-facing text drafted or edited without filler, and without dropping or inventing facts |
-| `writing-agent-instructions` *(experimental)* | You are writing or revising a skill, `AGENTS.md`, or `CLAUDE.md` |
+| `writing-agent-instructions` *(experimental)* | You are writing or revising a skill, `AGENTS.md`, or `CLAUDE.md`, running a session retrospective or recall, or auditing saved memory |
 
 **Setup and upkeep**
 
@@ -169,8 +169,6 @@ only when your request matches. The *experimental* labels come from
 | `megapowers-doctor` *(experimental)* | A skill did not fire, the style looks off, or a hook errored |
 | `upgrading-megapowers` | You want to update, reinstall, or repair the plugin |
 | `mcp-setup` *(experimental)* | An MCP server needs installing or fixing, or its tools are missing |
-| `memory-hygiene` *(experimental)* | You ask to audit or prune the agent's saved memory (only when you invoke it by name) |
-| `recall` *(experimental)* | You ask what was decided or built in earlier sessions (only when you invoke it by name) |
 
 [docs/orchestration.md](./docs/orchestration.md) explains which kinds of task
 go to which skill.
@@ -265,15 +263,14 @@ agent quality. Protocols are in [docs/advanced/evals.md](./docs/advanced/evals.m
 
 ## Cost
 
-About 1,470 tokens per session on Claude Code and about 1,510 on Codex, for
-the style, startup hook text, and skill list (word-count estimate from
-installed session text, 2026-09-25, outside this repository). Each skill body
-is 201 to 417 words and loads only when that skill is used.
+About 1,350 tokens per session on Claude Code and about 1,390 on Codex, for
+the style, startup hook text, and skill list. Each skill body is 200 to 415
+words and loads only when that skill is used.
 
 <details>
 <summary>Exactly what installs</summary>
 
-- 17 skills under `skills/`, listed in `skills/catalog.json`.
+- 15 skills under `skills/`, listed in `skills/catalog.json`.
 - One output style, `output-styles/megapowers.md`, shared by both tools.
 - Go hooks on three events, compiled once into a local cache:
   - `SessionStart`: a reminder that skill guidance applies once its file is
@@ -289,17 +286,17 @@ is 201 to 417 words and loads only when that skill is used.
     posts stops once and names `safe-effects`. The retry runs. Calls of the
     same kind made within the next minute also stop until the skill loads, so
     parallel calls cannot slip past. A skill already loaded in the transcript
-    skips the stop, and without a session ID the hook only adds a reminder. A
-    git command that discards uncommitted, stashed, or unmerged work
-    (`reset --hard`, a forced `clean`, a forced or whole-tree `checkout`, a
-    whole-tree `restore`, `branch -D` of an unmerged branch, `stash drop` or
-    `clear`) stops once per command and directory with a reminder to check
-    `git status` first.
-- Five Go standard-library tools that load only with their skill: the
-  memory-audit validator for `memory-hygiene`, the review packager for
-  `independent-review`, a run receipt for `verify-and-finish` that keeps full
-  output and the exit status, run state for `autonomous-run`, and a session
-  miner for retrospectives and `recall`.
+    or session marker skips the stop, and without a session ID the hook only
+    adds a reminder. A git command that discards uncommitted, stashed, or
+    unmerged work (`reset --hard`, a forced `clean`, a forced or whole-tree
+    `checkout`, a whole-tree `restore`, `branch -D` of an unmerged branch,
+    `stash drop` or `clear`) stops once per command and directory with a
+    reminder to check `git status` first.
+- Five Go standard-library tools that load only with their skill: the review
+  packager for `independent-review`, a run receipt for `verify-and-finish`
+  that keeps full output and the exit status, run state for `autonomous-run`,
+  and the session miner and memory-audit validator for
+  `writing-agent-instructions`.
 - A `doctor` command behind `megapowers-doctor`. It also reports whether the
   hooks ran on each harness, recent skill loads in the workspace, and a newer
   local marketplace copy.

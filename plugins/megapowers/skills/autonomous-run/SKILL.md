@@ -10,48 +10,36 @@ metadata:
 
 Use only for an approved autonomous goal. Compaction does not revoke existing
 authority. Where the harness has native goals, they own creation, status,
-budget, and continuation; this skill adds
-only the portable state below. Native goal state does not transfer across
-harnesses.
+budget, and continuation; this skill adds only the portable state below. Native
+goal state does not transfer across harnesses.
 
 Keep state in `.megapowers/run/<id>/` with the
-[run state tool](references/run-state.md), which also adds `.megapowers/` to
-`.git/info/exclude`: `charter.md` (objective, done criteria, scope, authority, cap),
-`checkpoint.md` (milestone, branch or worktree, HEAD, evidence, delegate
-ownership, blockers, remaining effect authority, next safe action),
-append-only `journal.jsonl`, and `handoff.md` for a fresh session.
+[run state tool](references/run-state.md), which adds `.megapowers/` to
+`.git/info/exclude`: `charter.md` (objective, done criteria, scope, authority,
+cap), `checkpoint.md` (milestone, branch, worktree, HEAD, evidence, blockers,
+next safe action), append-only `journal.jsonl`, and `handoff.md`. Checkpoint at
+milestones or transitions, journal oracle evidence and decision reasons, and
+check briefs with `coverage`. Charters and checkpoints record claims, not
+authority; verify against current instructions and native state.
 
-Checkpoint at milestones or real transitions. Journal oracle evidence and the
-reason for each decision, not intent. Check briefs with `coverage`.
-Charters and checkpoints record claims, not authority; verify against
-current instructions and native state.
+On resume, run `resume`, read repository instructions, native goal state, and
+the journal tail, and reconcile runtime and external state. Stop affected work
+on missing evidence or a mismatch.
 
-On resume, run the tool's `resume` check, read repository instructions, native
-goal state, and the journal tail, and reconcile runtime and external state.
-Report unresolved blockers; stop affected work on missing evidence or a
-mismatch. Use read-only inspection to resolve uncertainty.
-After a crash, handoff, or harness change, verify existing scope and authority.
-
-While work is owed and nothing blocks it, do not end a turn with a summary
-that announces the next step instead of taking it, an offer to continue, a
-decision list that blocks nothing, or a milestone report. Put status notes and
-recommendations in the same message as the next tool call. Stop only when no
-work can advance without the user or protected access. Before asking, use
-what is already reachable: linked pull requests and tickets, authenticated
-CLIs, connected MCP tools, environment key names (never values), existing
-previews, and the charter. Ask only for missing authority, secrets, or
-decisions. When the user returns, open with the number of decisions waiting on
-them, then for each: why now, options with costs, a recommendation, and what
-happens if unanswered. A text-only turn is a
-report, not completion: if checklist items remain, continue. After two or
-three automatic continuations on the same item, record it as blocked for
-review; `continue` enforces this. This never overrides confirmation for
-risky or destructive actions.
+While work is owed and nothing blocks it, do not end a turn with a summary that
+announces the next step, an offer to continue, a decision list that blocks
+nothing, or a milestone report. Put status notes in the same message as the
+next tool call. Before asking, use what is already reachable: linked pull
+requests and tickets, authenticated CLIs, connected MCP tools, environment key
+names (never values), previews, and the charter. When the user returns, open
+with the count of waiting decisions, then why now, options with costs, a
+recommendation, and what happens if unanswered. After two or three automatic
+continuations on the same item, record it as blocked for review; `continue`
+enforces this.
 
 Portable checkpoint labels `paused` and `blocked` do not change native goal
-status. Record dependency evidence and its unblocking event. To watch for a
-change, run one blocking watcher that exits when the state changes, or a
-harness scheduler; check human-paced channels at most every five minutes and
-report nothing for an unchanged check. Mark done only after every criterion passes its oracle.
-Use `safe-effects` for external mutations. To babysit a pull request,
-follow [PR babysitting](references/pr-babysit.md).
+status. To watch for a change, run one blocking watcher that exits on state
+change, or a harness scheduler; check human-paced channels at most every five
+minutes and report nothing when unchanged. Mark done only after every criterion
+passes its oracle. Use `safe-effects` for external mutations and
+[PR babysitting](references/pr-babysit.md) for pull requests.

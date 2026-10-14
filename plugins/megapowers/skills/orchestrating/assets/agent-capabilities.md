@@ -46,7 +46,7 @@ bindings:
       provider: <other-harness>
       model: <model-id>
       effort: high
-      family: <different-vendor-family>
+      family: <different-vendor-family>  # e.g. anthropic, openai, or google
       access: manual
       status: operator-selected
       rankable: false

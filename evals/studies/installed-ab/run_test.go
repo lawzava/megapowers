@@ -1085,7 +1085,9 @@ func TestEvaluateCaseEnforcesRequiredEventOrder(t *testing.T) {
 		}{
 			{"ordered", []actorEvent{skill, {Kind: "test", RC: 1}, {Kind: "write"}, {Kind: "test"}, {Kind: "git_commit"}, complete}, 1},
 			{"reversed", []actorEvent{skill, {Kind: "git_commit"}, {Kind: "test"}, complete}, 0},
-			{"commit before first test", []actorEvent{skill, {Kind: "git_commit", RC: 1}, {Kind: "test"}, {Kind: "git_commit"}, complete}, 0},
+			{"declined commit before first test then commit after test", []actorEvent{skill, {Kind: "git_commit", RC: 1}, {Kind: "test"}, {Kind: "git_commit"}, complete}, 1},
+			{"successful commit before first test", []actorEvent{skill, {Kind: "git_commit"}, {Kind: "test"}, {Kind: "git_commit"}, complete}, 0},
+			{"declined commit before test without later commit", []actorEvent{skill, {Kind: "git_commit", RC: 1}, {Kind: "test"}, complete}, 0},
 			{"missing commit", []actorEvent{skill, {Kind: "test"}, complete}, 0},
 		} {
 			project := t.TempDir()

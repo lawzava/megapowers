@@ -1,9 +1,9 @@
 ---
 name: writing-agent-instructions
-description: Use when creating, revising, or auditing an agent skill, AGENTS.md, CLAUDE.md, or nested project instructions, including trigger design, progressive disclosure, harness-aware scope, behavioral validation, and session retrospectives that turn agent mistakes into instruction or tooling changes.
-when_to_use: "Trigger phrases: write a skill, create a skill instruction, improve AGENTS.md, audit CLAUDE.md, project instructions, subfolder instructions, skill trigger, run a retro on this session, what should we change so the agent avoids this next time."
+description: Use when creating, revising, or auditing an agent skill, AGENTS.md, CLAUDE.md, nested project instructions, or native harness memory, including trigger design, progressive disclosure, harness-aware scope, behavioral validation, past-session recall, and session retrospectives that turn agent mistakes into instruction or tooling changes.
+when_to_use: "Trigger phrases: write a skill, create a skill instruction, improve AGENTS.md, audit CLAUDE.md, project instructions, subfolder instructions, skill trigger, run a retro on this session, what should we change so the agent avoids this next time, audit memory, prune stale memories, recall earlier sessions."
 metadata:
-  short-description: Write focused skills and repository instructions
+  short-description: Write focused skills, instructions, and memory audits
 ---
 
 # Writing Agent Instructions
@@ -35,9 +35,13 @@ subfolder guidance, read
 [repository instructions](references/repository-instructions.md). For
 user-level instructions that apply to every repository, read
 [global instructions](references/global-instructions.md), which links the
-maintained templates. Read more than one only when the task changes more than
-one surface. For a retrospective over one session or many, read
-[retrospective](references/retrospective.md).
+maintained templates. For a retrospective over one session or many, read
+[retrospective](references/retrospective.md). To recall decisions from past
+local sessions or mine corrections across transcripts, read
+[session mining](references/session-mining.md). To audit or prune native
+harness memory with `scripts/memory-audit.go`, read
+[memory hygiene](references/memory-hygiene.md). Read more than one reference
+only when the task spans more than one surface.
 
 Validate a new skill or material behavior change at two boundaries. First,
 confirm the target harness discovers the file and accepts its format. Then

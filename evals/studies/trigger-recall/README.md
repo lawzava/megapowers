@@ -91,7 +91,7 @@ and at least ten no-skill probes. Skills with
 `disable-model-invocation: true` in Claude Code, or
 `policy.allow_implicit_invocation: false` in Codex's `agents/openai.yaml`,
 are exempt from implicit recall. The runner reads each harness's native policy.
-`memory-hygiene` has separate explicit-invocation and implicit non-selection
+`grill-me` has separate explicit-invocation and implicit non-selection
 probes. Every probe records provenance.
 
 `gates.json` enforces for the harnesses in `enforce_harnesses` (currently

@@ -38,8 +38,9 @@ implementation-independent requirements before the plan. Give each requirement
 concrete scenarios and an acceptance oracle.
 
 Map each requirement ID to scenarios, implementation tasks, and evidence,
-including failure and boundary cases. Separate proposed, implemented, and
-verified behavior; plans prove only planning.
+including failure, boundary, and implied edge cases for unnamed inputs.
+Separate proposed, implemented, and verified behavior; plans prove only
+planning.
 
 Describe behavior as Added, Modified, or Removed deltas. Reconcile existing
 specifications with code and tests; a stale specification is not evidence.
@@ -54,13 +55,14 @@ change with clear scope, risks, and oracle.
 
 ## Produce an executable handoff
 
-Name the outcome, owned files, interfaces, error behavior, acceptance criteria,
-dependencies, and exact verification commands. Map each criterion to an
-implementation target and local or external oracle. Start behavior tasks with a
-failing test. Slice tasks vertically, each verifiable alone. Stage a
-wide interface change as expand, migrate callers in batches, then contract.
-Keep tasks sequential unless ownership is disjoint and neither result can reshape
-the other.
+Name the outcome, owned files, exact signatures, error behavior, spec values,
+acceptance criteria, dependencies, and exact verification commands. Record
+decisions and test assertions rather than full code transcripts so planning does
+not turn into unverified implementation. Map each criterion to an implementation
+target and local or external oracle. Start behavior tasks with a failing test.
+Slice tasks vertically, each verifiable alone. Stage a wide interface change as
+expand, migrate callers in batches, then contract. Keep tasks sequential unless
+ownership is disjoint and neither result can reshape the other.
 
 Exclude speculative options, placeholders, unrelated cleanup, and unauthorized
 commit steps. Before execution, check for missing criteria, inconsistent names,

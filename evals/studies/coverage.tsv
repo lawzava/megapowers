@@ -24,7 +24,6 @@ trigger-recall	humanizing-prose	activation
 trigger-recall	independent-review	activation
 trigger-recall	mcp-setup	activation
 trigger-recall	megapowers-doctor	activation
-trigger-recall	memory-hygiene	activation
 trigger-recall	orchestrating	activation
 trigger-recall	safe-effects	activation
 trigger-recall	systematic-debugging	activation
@@ -32,4 +31,3 @@ trigger-recall	test-first-implementation	activation
 trigger-recall	upgrading-megapowers	activation
 trigger-recall	verify-and-finish	activation
 trigger-recall	writing-agent-instructions	activation
-trigger-recall	recall	activation

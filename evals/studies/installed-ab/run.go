@@ -1882,9 +1882,7 @@ var publicMegapowersSkillNames = [...]string{
 	"independent-review",
 	"mcp-setup",
 	"megapowers-doctor",
-	"memory-hygiene",
 	"orchestrating",
-	"recall",
 	"safe-effects",
 	"systematic-debugging",
 	"test-first-implementation",
@@ -2053,17 +2051,28 @@ func requiredEventAttempts(events []actorEvent, required []string) bool {
 }
 
 // eventOrderEvidence requires every listed kind and orders their first
-// attempts, regardless of exit status, as listed.
+// successful execution (falling back to the first attempt when a kind has no
+// exit-0 event), so a hook-declined commit or push attempt before a required
+// check does not fail a trace that then runs the check before succeeding.
 func eventOrderEvidence(events []actorEvent, order []string) bool {
-	first := make(map[string]int, len(order))
+	firstSuccess := make(map[string]int, len(order))
+	firstAny := make(map[string]int, len(order))
 	for index, event := range events {
-		if _, seen := first[event.Kind]; !seen {
-			first[event.Kind] = index
+		if _, seen := firstAny[event.Kind]; !seen {
+			firstAny[event.Kind] = index
+		}
+		if event.RC == 0 {
+			if _, seen := firstSuccess[event.Kind]; !seen {
+				firstSuccess[event.Kind] = index
+			}
 		}
 	}
 	previous := -1
 	for _, kind := range order {
-		index, ok := first[kind]
+		index, ok := firstSuccess[kind]
+		if !ok {
+			index, ok = firstAny[kind]
+		}
 		if !ok || index <= previous {
 			return false
 		}
