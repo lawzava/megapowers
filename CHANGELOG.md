@@ -5,6 +5,39 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.39.0 - 2026-10-14
+
+### Added
+
+- The `PreToolUse` completion and effect gates cache loaded skill markers per
+  session under `$TMPDIR/megapowers-skill-state/<session-hash>/<skill>.loaded`
+  and record direct `cat`/`head`/`sed` reads of `skills/<name>/SKILL.md` so
+  subsequent gated commands skip full-transcript rescans.
+- `independent-review` and `orchestrating` document Google `gemini` CLI
+  reviewer configurations alongside `claude` and `codex`.
+
+### Changed
+
+- Fold `recall` and `memory-hygiene` into `writing-agent-instructions`
+  (`references/memory-hygiene.md` and `scripts/memory-audit.go`), reducing the
+  skill catalog from 17 to 15 skills.
+- Make `grill-me` explicit-only (`disable-model-invocation: true` and
+  `allow_implicit_invocation: false`) so open-ended architecture prompts route
+  to `design-and-plan` unless the user asks to be grilled.
+- Make `megapowers-review --preflight` opt-in, allow `#!` script launchers
+  outside the repository by verifying their SHA-256 before and after execution,
+  and accept `--approve-external configured` alongside `token:<id>`.
+- Trim procedural ceremony in `design-and-plan` and `test-first-implementation`
+  for fast-path planning and legacy seam discovery.
+
+### Fixed
+
+- `run-state.go` accepts both bare (`run-id:`) and bulleted (`- run-id:`)
+  checkpoint header fields and reports missing fields as `<missing>` mismatches
+  (exit 3) instead of usage errors (exit 125).
+- `installed-ab` event-order grading ignores hook-declined commit or push
+  attempts (`rc != 0`) when verifying that tests ran before a commit.
+
 ## 0.38.2 - 2026-10-13
 
 ### Fixed
