@@ -1,10 +1,16 @@
 # Megapowers evaluation evidence
 
-Source of record for current models: the 2026-10-09 installed-plugin A/B on
-Claude Opus 5.5 and GPT-6.1 Sol, with the 2026-10-11 slice below for the cases
-0.36.0 added or changed. The 2026-09-05 study below measured earlier
-models with graders that are now known to fail correct answers. Reproduction
-commands, case filters, resume rules, and metric definitions are in
+The October totals below are historical and have not been revalidated with
+the corrected grader. The 2026-10-12 correction changed how fact regrading
+preserves required workflow events and delegation obligations. The original
+result bundles are unavailable locally, so these totals do not establish
+current efficacy. No current effort-level or end-to-end cost comparison is
+available.
+
+The 2026-10-09 study used Claude Opus 5.5 and GPT-6.1 Sol; the 2026-10-11
+slice covered cases 0.36.0 added or changed. The 2026-09-05 study measured
+earlier models with graders now known to fail correct answers. Reproduction
+commands, maintenance coverage, effort comparisons, and metric definitions are in
 [Installed-plugin A/B](./studies/installed-ab/README.md). Earlier measurements
 are in [RESULTS-archive.md](./RESULTS-archive.md); they used different graders
 and cannot serve as a direct before/after comparison.
@@ -34,12 +40,13 @@ correction. For the same reason, this slice reports no per-arm duration.
   or changed later ran at three pairs (plugin `0d05000`); cases whose grader
   was fixed were rerun on the fixed grader (plugin `c7124a9` to `8d2c3b0`), and
   those reruns replace the earlier rows.
-- Fact checks re-graded by the [fact judge](./tools/fact-judge/main.go) with
-  `claude-opus-5-5`. Every result set passes `evals/score.go --strict` and
-  `fact-judge --check` with 0 mismatches. `orchestration-output-only-evidence`
-  stays report-only (0 of 3 in both arms on both harnesses).
+- Fact checks were re-graded by the [fact judge](./tools/fact-judge/main.go) with
+  `claude-opus-5-5`. The result sets passed the then-current
+  `evals/score.go --strict` and `fact-judge --check` with 0 mismatches, before
+  the October 12 correction. `orchestration-output-only-evidence` was
+  report-only (0 of 3 in both arms on both harnesses).
 
-### Results (treatment vs control)
+### Historical results (treatment vs control, not revalidated)
 
 | Case | Pairs | Opus 5.5 | Sol 6.1 |
 |---|---:|---|---|
@@ -95,8 +102,8 @@ including the new chat-message probe (3 of 3 selected) and both near-misses
 
 ## 2026-10-09 installed-plugin A/B on Opus 5.5 and Sol 6.1
 
-On these models both arms finish the coding tasks equally. The plugin's
-measured value is in judgment cases: not posting under the user's name,
+This study reported equal coding-task outcomes in both arms. Its reported
+gains were in judgment cases: not posting under the user's name,
 reporting what a check does not cover or authorize, summarizing review
 findings without repeating them, and resolving an ambiguous contract.
 
@@ -109,13 +116,14 @@ findings without repeating them, and resolving an ambiguous contract.
 - Claude Code 2.1.295 with `claude-opus-5-5`; Codex 0.162.0 with
   `gpt-6.1-sol`; high effort; both through Subswapper; plugin at `c4c8941`
   skill text with the hook and review changes that followed it.
-- Fact checks re-graded by the [fact judge](./tools/fact-judge/main.go) with
+- Fact checks were re-graded by the [fact judge](./tools/fact-judge/main.go) with
   `claude-opus-5-5` as a blind judge; other cases use the runner's outcome.
-  The judge's outcome rule matched the runner on every row whose literal facts
-  pass (`--check`, 0 mismatches). All result files pass `evals/score.go
-  --strict`. `orchestration-output-only-evidence` is report-only and excluded.
+  The then-current judge matched the runner on rows whose literal facts
+  passed (`--check`, 0 mismatches), and the files passed `evals/score.go
+  --strict`. Those checks preceded the October 12 correction.
+  `orchestration-output-only-evidence` was report-only and excluded.
 
-### Results
+### Historical results (not revalidated)
 
 | Harness | Treatment | Control |
 |---|---:|---:|

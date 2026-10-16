@@ -332,6 +332,30 @@ func TestOpenSpecReferenceLoadsOnlyWhenDirectoryExists(t *testing.T) {
 	}
 }
 
+func TestPlanningReconcilesCodeDiscoveriesWithoutMandatoryScaffolding(t *testing.T) {
+	entry := normalized(read(t, repoRoot(t), "plugins/megapowers/skills/design-and-plan/SKILL.md"))
+	for _, fact := range []string{"when code or tests disprove", "update the affected", "preserve acceptance criteria", "only when the repository uses them"} {
+		if !strings.Contains(entry, fact) {
+			t.Errorf("planning guidance is missing %q", fact)
+		}
+	}
+}
+
+func TestOrchestrationDocsPreserveDiscretionAndExplicitRequests(t *testing.T) {
+	root := repoRoot(t)
+	for _, path := range []string{"docs/orchestration.md", "plugins/megapowers/skills/orchestrating/SKILL.md"} {
+		body := normalized(read(t, root, path))
+		for _, fact := range []string{"coordination value exceeds", "explicit delegation requests"} {
+			if !strings.Contains(body, fact) {
+				t.Errorf("%s is missing %q", path, fact)
+			}
+		}
+		if strings.Contains(body, "inline is a workflow failure") {
+			t.Errorf("%s makes discretionary delegation mandatory", path)
+		}
+	}
+}
+
 func harnessExample(t *testing.T, document, harness string) string {
 	t.Helper()
 	pattern := regexp.MustCompile(`(?ms)^` + regexp.QuoteMeta(harness) + `:\s*\n` + "```" + `[^\n]*\n(.*?)\n` + "```" + `$`)

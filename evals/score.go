@@ -865,7 +865,9 @@ func printScorecard(rows []resultRow) {
 			}
 			cell.metrics[row.Arm][name].add(value)
 		}
-		cell.durations[row.Arm].add(float64(row.DurationMS))
+		if row.DurationMS > 0 {
+			cell.durations[row.Arm].add(float64(row.DurationMS))
+		}
 	}
 
 	if len(regressions) > 0 {
@@ -897,12 +899,12 @@ func printScorecard(rows []resultRow) {
 		fmt.Println()
 		fmt.Println("Single-arm trigger recall/precision with the plugin installed. Never compared against a control arm.")
 		fmt.Println()
-		fmt.Println("| study | case | harness | pass | rate |")
-		fmt.Println("|---|---|---|---:|---:|")
+		fmt.Println("| study | case | harness | effort | pass | rate |")
+		fmt.Println("|---|---|---|---|---:|---:|")
 		for _, key := range keys {
 			cell := activation[key]
-			fmt.Printf("| %s | %s | %s/%s | %d/%d | %s |\n",
-				cell.study, cell.caseID, cell.harness.Name, cell.harness.Model,
+			fmt.Printf("| %s | %s | %s/%s | %s | %d/%d | %s |\n",
+				cell.study, cell.caseID, cell.harness.Name, cell.harness.Model, cell.harness.Effort,
 				cell.results.pass, cell.results.pass+cell.results.fail, formatRate(cell.results.rate()))
 		}
 		fmt.Println()
@@ -918,8 +920,10 @@ func printScorecard(rows []resultRow) {
 		fmt.Println()
 		fmt.Println("Installed-plugin comparisons use outcome_success; treatment activation remains visible in task_success and the row verdict.")
 		fmt.Println()
-		fmt.Println("| study | case | harness | treatment | control | delta | mcnemar_p | treatment pass^3 | control pass^3 |")
-		fmt.Println("|---|---|---|---:|---:|---:|---:|---:|---:|")
+		fmt.Println("Duration means include every paired run, including task failures. If either arm has missing duration, both means are n/a. These are actor times, not total workflow cost.")
+		fmt.Println()
+		fmt.Println("| study | case | harness | effort | treatment | control | treatment mean ms | control mean ms | delta | mcnemar_p | treatment pass^3 | control pass^3 |")
+		fmt.Println("|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|")
 		for _, key := range keys {
 			cell := behavioral[key]
 			treatment := cell.arms["treatment"]
@@ -929,15 +933,19 @@ func printScorecard(rows []resultRow) {
 			treatmentRate := treatment.rate()
 			controlRate := control.rate()
 			treatmentOnly, controlOnly := discordantOutcomes(cell.pairs)
-			fmt.Printf("| %s | %s | %s/%s | %d/%d | %d/%d | %+.0f%% | %.3g | %s | %s |\n",
+			treatmentDuration, controlDuration := pairedDurationMeans(cell.durations["treatment"], cell.durations["control"], len(cell.pairs))
+			fmt.Printf("| %s | %s | %s/%s | %s | %d/%d | %d/%d | %s | %s | %+.0f%% | %.3g | %s | %s |\n",
 				cell.study,
 				cell.caseID,
 				cell.harness.Name,
 				cell.harness.Model,
+				cell.harness.Effort,
 				treatment.pass,
 				treatmentN,
 				control.pass,
 				controlN,
+				formatMean(treatmentDuration),
+				formatMean(controlDuration),
 				(treatmentRate-controlRate)*100,
 				mcnemarExactTwoSided(treatmentOnly, controlOnly),
 				formatRate(passHatK(treatment.pass, treatmentN, 3)),
@@ -947,8 +955,8 @@ func printScorecard(rows []resultRow) {
 		fmt.Println()
 		fmt.Println("### Named metric means")
 		fmt.Println()
-		fmt.Println("| study | case | harness | metric | treatment | control | delta |")
-		fmt.Println("|---|---|---|---|---:|---:|---:|")
+		fmt.Println("| study | case | harness | effort | metric | treatment | control | delta |")
+		fmt.Println("|---|---|---|---|---|---:|---:|---:|")
 		for _, key := range keys {
 			cell := behavioral[key]
 			names := make([]string, 0, len(cell.metrics["treatment"]))
@@ -963,18 +971,36 @@ func printScorecard(rows []resultRow) {
 			for _, name := range names {
 				var treatmentMean, controlMean float64
 				if name == "duration_ms" {
-					treatmentMean = cell.durations["treatment"].mean()
-					controlMean = cell.durations["control"].mean()
+					treatmentMean, controlMean = pairedDurationMeans(cell.durations["treatment"], cell.durations["control"], len(cell.pairs))
 				} else {
 					treatmentMean = cell.metrics["treatment"][name].mean()
 					controlMean = cell.metrics["control"][name].mean()
 				}
-				fmt.Printf("| %s | %s | %s/%s | %s | %.4g | %.4g | %+.4g |\n",
-					cell.study, cell.caseID, cell.harness.Name, cell.harness.Model, name,
-					treatmentMean, controlMean, treatmentMean-controlMean)
+				delta := "n/a"
+				if !math.IsNaN(treatmentMean) && !math.IsNaN(controlMean) {
+					delta = fmt.Sprintf("%+.4g", treatmentMean-controlMean)
+				}
+				fmt.Printf("| %s | %s | %s/%s | %s | %s | %s | %s | %s |\n",
+					cell.study, cell.caseID, cell.harness.Name, cell.harness.Model, cell.harness.Effort, name,
+					formatMean(treatmentMean), formatMean(controlMean), delta)
 			}
 		}
 	}
+}
+
+func pairedDurationMeans(treatment, control *metricAggregate, pairs int) (float64, float64) {
+	// Comparing different subsets would make missing timing look like a speedup.
+	if pairs == 0 || treatment.count != pairs || control.count != pairs {
+		return math.NaN(), math.NaN()
+	}
+	return treatment.mean(), control.mean()
+}
+
+func formatMean(value float64) string {
+	if math.IsNaN(value) {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.4g", value)
 }
 
 func formatRate(value float64) string {

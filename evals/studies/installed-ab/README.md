@@ -39,7 +39,7 @@ harnesses through Subswapper, use the broker's
 
 ### Catalogs and sharding
 
-The current `cases.json` catalog has 30 cases and runs 60 executions per
+The current `cases.json` catalog has 31 cases and runs 62 executions per
 harness at `--paired-runs 1` (each case executes once as treatment and once as
 control). A separate `holdout.json` catalog holds 6 cases frozen for
 out-of-sample checks. `--cases` selects one committed catalog or the other,
@@ -53,6 +53,36 @@ into the schedule and resume identity.
 A case may declare `followup_tasks`. The broker runs them in the original
 conversation and project under the original total timeout. The primary task
 and all follow-ups share one treatment/control prompt hash.
+
+`maintenance-record-catalog` uses three turns to repair malformed-record
+handling, add category filtering, then add sorted pagination. Its protected
+acceptance tests check the final implementation against all three requests,
+including old APIs and file order. The fixture starts with passing baseline
+tests. Mutation tests verify that compiling regressions in earlier behavior
+fail the final oracle. This is a synthetic maintenance case, not evidence of
+long-term production quality. The final oracle does not prove each intermediate
+turn passed; the acceptance file is visible throughout the conversation.
+
+### Compare effort levels
+
+Run the same selected cases with the same model, plugin, broker, paired-run
+count, and timeout in separate output directories. Change only `--effort`.
+Use at least three pairs per effort for a diagnostic comparison; the ten-pair
+study acceptance threshold still applies. For example, repeat the real-run
+command above with `--case maintenance-record-catalog --paired-runs 3`, once
+with `--effort medium --out "$TMPDIR/installed-ab-medium"` and once with
+`--effort high --out "$TMPDIR/installed-ab-high"`. Add a supported low-effort
+arm only when it addresses the decision being tested. Do not change source
+or dependencies between arms.
+
+Score each output with `go run evals/score.go --strict OUTPUT/publish/results.jsonl`.
+The scorecard labels effort in outcome, activation, and metric tables, and
+places each arm's mean `duration_ms` beside outcomes. Durations include failed
+tasks; if any paired duration is missing, both means are `n/a`. Actor time
+excludes judge, reviewer, setup, and human correction time. Keep total-workflow
+cost claims separate. Inspect scoped token diagnostics as described below;
+they are not a complete token bill. Report ties and regressions, and keep
+the current setting unless the measured tradeoff supports a change.
 
 The `tdd-add-multiply` case keeps its protected acceptance test behind the
 `acceptance` build tag: the untouched fixture passes a plain `go test ./...`,

@@ -95,8 +95,9 @@ uninstall are in [docs/install.md](./docs/install.md).
 - **Checks before you ship.** A hook pauses the first commit, push, PR, or
   deploy in a session once and tells the agent to load the verification or
   side-effect skill. The retry runs as normal.
-- **Measured with and without the plugin.** An installed-plugin A/B study
-  compared the same tasks with and without megapowers.
+- **Tested with and without the plugin.** Installed-plugin A/B studies
+  compare the same tasks with and without megapowers. Historical totals
+  need revalidation after a grader correction.
   [Results below](#results).
 - **Cross-provider review.** `independent-review` sends one artifact to a
   different model vendor. It sends without asking only to a reviewer you
@@ -194,22 +195,19 @@ without the style. These numbers are not a token-saving or cost claim.
 
 ## Results
 
-In a 2026-10-09 A/B on Claude Opus 5.5 and GPT-6.1 Sol (30 cases, five pairs
-each), runs with the plugin passed 143/145 and 136/145 checks against 131/145
-and 121/145 without it. Both arms finish the coding tasks equally; the gains
-are in judgment cases. Without the plugin, both models posted comments under
-the user's name after a broad go-ahead (Opus 5 of 5, Sol 4 of 5); with it,
-none did. The plugin also stated what checks and prepared changes leave
-unverified or unauthorized, summarized review findings without repeating
-them, and resolved an ambiguous contract. Details:
+The October 2026 A/B studies reported gains in judgment cases and ties on
+their coding tasks. Their totals have not been revalidated after an October 12
+grader correction, and the original result bundles are unavailable locally.
+They do not establish current efficacy or a speed or token-cost benefit.
+Historical results and limitations are retained in
 [evals/RESULTS.md](./evals/RESULTS.md).
 
-A 2026-10-11 slice reran the cases 0.36.0 adds or changes. The new doctor check
-scored 3 of 3 against 0 of 3 on both models. The frozen holdout tied on Sol
-(18 of 18 each); Opus scored 15 of 18 against 16 of 18. A delegation fix then
-scored 3 against 0 on the affected case in an in-sample rerun. A later grader
-correction has not been applied to these historical totals; see the results
-page for that limitation.
+The evaluation suite includes a three-turn maintenance case that checks
+whether later changes preserve earlier behavior. The scorer labels effort
+levels and reports paired actor durations beside outcomes. The
+[study protocol](./evals/studies/installed-ab/README.md) explains how to run
+matched effort comparisons. Having these checks is not evidence that the
+current plugin improves their results.
 
 The study below measured earlier models with graders since found to fail
 correct answers.

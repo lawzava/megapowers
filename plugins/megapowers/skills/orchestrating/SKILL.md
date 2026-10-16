@@ -8,9 +8,10 @@ metadata:
 
 # Orchestrating
 
-Delegate only when coordination value exceeds its overhead. Keep a no-op, one
-bounded task, or sequential dependency path inline. Scan dependencies,
-boundaries, ownership, and oracle before dispatch.
+Honor explicit delegation requests. Otherwise, delegate only when coordination
+value exceeds its overhead. Keep a no-op, one bounded task, or sequential
+dependency path inline. Scan dependencies, boundaries, ownership, and oracle
+before dispatch.
 
 Native agents are the default for matching lanes. Use one to three direct
 children with fresh, bounded context. For independent lanes whose results

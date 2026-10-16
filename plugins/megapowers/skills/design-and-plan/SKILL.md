@@ -37,13 +37,12 @@ For a non-trivial behavior change, state intent, scope, non-goals, and
 implementation-independent requirements before the plan. Give each requirement
 concrete scenarios and an acceptance oracle.
 
-Map each requirement ID to scenarios, implementation tasks, and evidence,
-including failure, boundary, and implied edge cases for unnamed inputs.
-Separate proposed, implemented, and verified behavior; plans prove only
-planning.
-
-Describe behavior as Added, Modified, or Removed deltas. Reconcile existing
-specifications with code and tests; a stale specification is not evidence.
+Use requirement IDs and Added, Modified, or Removed deltas only when the
+repository uses them.
+Map requirements to scenarios, tasks, and evidence, including failures,
+boundaries, and unnamed inputs. Separate proposed, implemented, and verified
+behavior. Reconcile specifications with code and tests; a stale specification
+is not evidence.
 
 Use an existing specification system when the repository has one; preserve its
 requirement IDs and format. When an `openspec/` directory exists, read
@@ -55,14 +54,16 @@ change with clear scope, risks, and oracle.
 
 ## Produce an executable handoff
 
-Name the outcome, owned files, exact signatures, error behavior, spec values,
-acceptance criteria, dependencies, and exact verification commands. Record
-decisions and test assertions rather than full code transcripts so planning does
-not turn into unverified implementation. Map each criterion to an implementation
-target and local or external oracle. Start behavior tasks with a failing test.
-Slice tasks vertically, each verifiable alone. Stage a wide interface change as
-expand, migrate callers in batches, then contract. Keep tasks sequential unless
-ownership is disjoint and neither result can reshape the other.
+Name the outcome, owned files, public contracts, acceptance criteria,
+dependencies, and verification commands. Set exact signatures only when the
+contract requires them. Keep implementation choices open. Start behavior tasks
+with a failing test. Slice tasks vertically, each verifiable alone. Stage wide
+interface changes as expand, migrate callers, then contract. Keep tasks
+sequential unless ownership is disjoint and neither result can reshape the other.
+
+When code or tests disprove an assumption, update the affected tasks and evidence
+map before continuing. Preserve acceptance criteria and existing authority.
+Ask only when the discovery materially changes requested behavior or scope.
 
 Exclude speculative options, placeholders, unrelated cleanup, and unauthorized
 commit steps. Before execution, check for missing criteria, inconsistent names,

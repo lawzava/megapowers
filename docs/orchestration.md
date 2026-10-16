@@ -10,9 +10,9 @@ A lane is one independent piece of work that a single agent can own.
 | Task shape | Route |
 |---|---|
 | One clear, bounded change | Work inline. Load the task skill that supplies the missing discipline. |
-| One bounded output-only investigation | Use one fresh-context agent. Return one JSON object with `verdict`, `evidence`, `uncertainty`, and `next`, not the raw payload. |
+| One bounded output-only investigation | Consider one fresh-context agent when it saves lead context. Return `verdict`, `evidence`, `uncertainty`, and `next`, not the raw payload. |
 | Unclear behavior, interface, risk, or acceptance check | Use `design-and-plan`. |
-| Several disjoint deliverables | Use native agents with explicit, non-overlapping ownership. |
+| Several disjoint deliverables | Consider native agents with explicit, non-overlapping ownership. |
 | Four or more durable lanes, dependencies, or repeated follow-ups | Use native team or task coordination when the harness provides it. Otherwise use staged waves. |
 | Ordinary handoff, takeover, or harness switch | Inspect current state inline and use `verify-and-finish`; earlier approvals do not transfer. |
 | An approved goal that must survive interruption | Use a native goal plus `autonomous-run` checkpoints. |
@@ -20,12 +20,13 @@ A lane is one independent piece of work that a single agent can own.
 | Residual high-stakes uncertainty after executable checks | Use `independent-review`. |
 | Deploy, message, migration, charge, destructive query, or external write | Use `safe-effects` before execution. |
 
-`orchestrating` starts work that matches the table with a short lane scan. It
-dispatches independent read-heavy lanes before the lead reads them and sends
-bounded output-only work to one fresh-context agent. Keeping a qualifying lane
-inline is a workflow failure unless native agents are unavailable. Keep one
-bounded or sequential dependency path inline. Repeat the scan after scope or
-context changes.
+`orchestrating` starts with a short lane scan. Honor explicit delegation requests.
+Otherwise, delegate only when coordination value exceeds its overhead, such as
+independent searches that shorten elapsed time or keep bulky evidence out of
+the lead's context. An available parallel lane does not require dispatch.
+Keep a no-op, one bounded task, or a sequential dependency path inline. When
+delegating, dispatch independent lanes before duplicating their work, and join
+every returned identity. Repeat the scan after scope or context changes.
 
 ## Choose from one personal registry
 

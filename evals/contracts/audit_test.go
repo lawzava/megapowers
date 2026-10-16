@@ -5,6 +5,42 @@ import (
 	"testing"
 )
 
+func TestScorecardShowsEffortAndDurationBesideOutcomes(t *testing.T) {
+	var rows []map[string]any
+	for _, effort := range []string{"low", "high"} {
+		for _, arm := range []string{"treatment", "control"} {
+			row := baseBehavioralRow(effort+"-"+arm, effort+"-block", arm)
+			row["harness"].(map[string]any)["effort"] = effort
+			row["duration_ms"] = 100
+			if arm == "control" {
+				row["duration_ms"] = 200
+			}
+			rows = append(rows, row)
+		}
+	}
+	output, code := score(t, writeRows(t, rows...))
+	if code != 0 {
+		t.Fatalf("score failed: %s", output)
+	}
+	for _, want := range []string{"| effort |", "| treatment mean ms | control mean ms |", "| low | 1/1 | 1/1 | 100 | 200 |", "| high | 1/1 | 1/1 | 100 | 200 |"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("scorecard is missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestScorecardDoesNotTreatUnknownDurationAsZero(t *testing.T) {
+	rows := []map[string]any{baseBehavioralRow("treatment-1", "block-1", "treatment"), baseBehavioralRow("control-1", "block-1", "control")}
+	rows[0]["duration_ms"] = 0
+	output, code := score(t, writeRows(t, rows...))
+	if code != 0 {
+		t.Fatalf("score failed: %s", output)
+	}
+	if !strings.Contains(output, "| 1/1 | 1/1 | n/a | n/a |") || !strings.Contains(output, "| duration_ms | n/a | n/a | n/a |") {
+		t.Fatalf("unpaired duration was reported as a measured mean:\n%s", output)
+	}
+}
+
 func TestOptionalUsageDiagnosticsPreserveStrictOutcomeComparison(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
