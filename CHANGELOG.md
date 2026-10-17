@@ -5,6 +5,30 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.39.1 - 2026-10-17
+
+### Changed
+
+- Keep planning detail proportional to repository conventions, and revise
+  plans when implementation evidence changes the approach.
+- Align delegation guidance with explicit user requests and coordination cost.
+- Show effort levels and paired actor durations beside evaluation outcomes.
+
+### Added
+
+- A three-turn maintenance evaluation with protected regression checks for
+  malformed records, filtering, ordering, and pagination.
+
+### Fixed
+
+- Allow successful supporting-skill reads in activation checks while retaining
+  required, forbidden, failed, and unknown-skill checks.
+- Grade the planning case through typed facts and handoff structure, accept
+  additional planning fields, and preserve its non-fact gates during regrading.
+- Distinguish historical evaluation claims from current verified evidence.
+  The fresh 80-execution Codex comparison found no statistically supported
+  quality improvement; results and limitations are recorded in `evals/RESULTS.md`.
+
 ## 0.39.0 - 2026-10-14
 
 ### Added

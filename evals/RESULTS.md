@@ -1,11 +1,11 @@
 # Megapowers evaluation evidence
 
-The October totals below are historical and have not been revalidated with
+The October 9–11 totals below are historical and have not been revalidated with
 the corrected grader. The 2026-10-12 correction changed how fact regrading
 preserves required workflow events and delegation obligations. The original
 result bundles are unavailable locally, so these totals do not establish
-current efficacy. No current effort-level or end-to-end cost comparison is
-available.
+current efficacy. The bounded 2026-10-17 effort comparison below is current;
+it does not measure end-to-end cost.
 
 The 2026-10-09 study used Claude Opus 5.5 and GPT-6.1 Sol; the 2026-10-11
 slice covered cases 0.36.0 added or changed. The 2026-09-05 study measured
@@ -14,6 +14,43 @@ commands, maintenance coverage, effort comparisons, and metric definitions are i
 [Installed-plugin A/B](./studies/installed-ab/README.md). Earlier measurements
 are in [RESULTS-archive.md](./RESULTS-archive.md); they used different graders
 and cannot serve as a direct before/after comparison.
+
+## 2026-10-17 planning and maintenance comparison
+
+The candidate at `e4236b867f8b2aaa481750bdc0e61650df9ec3e3` completed 80
+executions on `gpt-6.1-sol` with Codex CLI `0.163.0`: ten plugin/control pairs
+for each of two development cases at medium and high effort. Both efforts
+used the same source, fixtures, plugin, broker, gates, and paired schedule.
+The broker SHA-256 was
+`7a2b4a32428f6c7818c4794eb3c0a1e25e7acbda39ea0043e469cc18f9788b0f`.
+Sanitized manifests and result rows are attached to the
+[0.39.1 release](https://github.com/lawzava/megapowers/releases/tag/v0.39.1).
+
+| Case | Effort | Plugin outcomes | Control outcomes | Plugin mean seconds | Control mean seconds |
+|---|---|---:|---:|---:|---:|
+| Planning | Medium | 10/10 | 10/10 | 21.4 | 27.4 |
+| Planning | High | 10/10 | 10/10 | 30.9 | 43.9 |
+| Maintenance | Medium | 10/10 | 10/10 | 110.1 | 99.3 |
+| Maintenance | High | 10/10 | 9/10 | 147.0 | 144.6 |
+
+No comparison showed a statistically supported quality gain. Every exact
+paired McNemar p-value was 1, before the predeclared Holm correction across
+four comparisons. Reported input and output tokens were higher with the
+plugin in every case/effort group. Actor durations exclude setup, review,
+human correction, and final-oracle time.
+
+The lone failed control outcome came from the final isolated oracle after
+the actor's own test and its execution receipt passed. Actor time was
+293.537 seconds against a shared 300-second deadline. Deadline exhaustion is
+plausible, but the missing oracle exit code and output prevent confirmation.
+The failed row remains unchanged and is not evidence of worse control code.
+
+Required planning activation passed 0/10 medium and 2/10 high; maintenance
+activation passed 10/10 at both efforts. Both study manifests therefore report
+`accepted: false`, separately from task outcomes. The earlier pilot was stopped
+after an extra-field parser defect was found and is excluded from these rows.
+These two development cases do not establish general skill quality, Claude
+or AntiGravity behavior, production reliability, or cost savings.
 
 ## 2026-10-11 slice for 0.36.0 on Opus 5.5 and Sol 6.1
 
