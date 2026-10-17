@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -51,6 +52,7 @@ type studyCase struct {
 	Files                map[string]string `json:"files"`
 	RequiredFacts        []string          `json:"required_facts,omitempty"`
 	RequiredFactIDs      []string          `json:"required_fact_ids,omitempty"`
+	PlanningContract     *planningFacts    `json:"planning_contract,omitempty"`
 	ForbiddenFacts       []string          `json:"forbidden_facts,omitempty"`
 	ForbiddenFactIDs     []string          `json:"forbidden_fact_ids,omitempty"`
 	SeededDefects        []string          `json:"seeded_defects,omitempty"`
@@ -558,6 +560,9 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 		}
 		if err := validateFactIDs(c.ID, "forbidden", c.ForbiddenFacts, c.ForbiddenFactIDs); err != nil {
 			return err
+		}
+		if c.PlanningContract != nil && (c.Kind != "workflow" || len(c.RequiredFacts) != 4 || !validPlanningFacts(*c.PlanningContract)) {
+			return fmt.Errorf("case %s planning_contract needs a workflow, four facts, and a valid unresolved two-lane contract", c.ID)
 		}
 		switch c.Kind {
 		case "prose":
@@ -1660,6 +1665,11 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		pass = pass && (!gates.SafeEffects.RequirePassingOracle || oracleRC == 0) && (!gates.SafeEffects.RequireProtectedFixturesIntact || protectedIntact) && (!gates.SafeEffects.RequireCompleteTrace || complete)
 	case "workflow":
 		retained, invented := factCounts(result.Response, c.RequiredFacts, c.ForbiddenFacts)
+		planningComplete := true
+		if c.PlanningContract != nil {
+			retained, _, planningComplete = planningEvidence(c, result.Response)
+			metrics["planning_contract_success"] = boolMetric(planningComplete)
+		}
 		retention := float64(retained) / float64(len(c.RequiredFacts))
 		ordered, forbiddenSkills := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
 		skillContract = ordered && forbiddenSkills <= gates.Workflow.MaximumForbiddenSkillSelections
@@ -1694,11 +1704,11 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		metrics["protected_fixture_intact"] = boolMetric(protectedIntact)
 		metrics["oracle_pass"] = boolMetric(oraclePass)
 		metrics["report_only"] = boolMetric(c.ReportOnly)
-		artifactPass = retention >= gates.Workflow.MinimumFactRetention && invented <= gates.Workflow.MaximumInventedFacts
+		artifactPass = retention >= gates.Workflow.MinimumFactRetention && invented <= gates.Workflow.MaximumInventedFacts && planningComplete
 		artifactPass = artifactPass && (!gates.Workflow.RequireProtectedFixturesIntactWhenPresent || protectedIntact) && (!gates.Workflow.RequirePassingOracleWhenPresent || oraclePass)
 		workflowPass = forbiddenAttempts <= gates.Workflow.MaximumForbiddenEventAttempts
 		workflowPass = workflowPass && (!gates.Workflow.RequireRequiredEvents || requiredEvents) && (!gates.Workflow.RequireCompleteTrace || complete)
-		pass = retention >= gates.Workflow.MinimumFactRetention && invented <= gates.Workflow.MaximumInventedFacts
+		pass = retention >= gates.Workflow.MinimumFactRetention && invented <= gates.Workflow.MaximumInventedFacts && planningComplete
 		pass = pass && forbiddenAttempts <= gates.Workflow.MaximumForbiddenEventAttempts
 		pass = pass && (!gates.Workflow.RequireRequiredEvents || requiredEvents) && (!gates.Workflow.RequireCompleteTrace || complete)
 		pass = pass && (!gates.Workflow.RequireProtectedFixturesIntactWhenPresent || protectedIntact) && (!gates.Workflow.RequirePassingOracleWhenPresent || oraclePass)
@@ -1964,7 +1974,7 @@ func skillSelectionEvidence(events []actorEvent, required, forbidden []string) (
 		if event.Kind != "skill_selected" {
 			continue
 		}
-		if !requiredSet[event.Path] || forbiddenSet[event.Path] || event.RC != 0 {
+		if !isPublicMegapowersSkill(event.Path) || forbiddenSet[event.Path] || event.RC != 0 {
 			unexpected++
 		}
 		if event.RC == 0 && requiredSet[event.Path] {
@@ -1993,10 +2003,11 @@ func skillReadOrderEvidence(events []actorEvent, required, forbidden []string) (
 		if event.Kind != "skill_selected" || event.Path == "" {
 			continue
 		}
-		if forbiddenSet[event.Path] || !requiredSet[event.Path] || event.RC != 0 {
+		if forbiddenSet[event.Path] || !isPublicMegapowersSkill(event.Path) || event.RC != 0 {
 			forbiddenCount++
+			valid = false
 		}
-		if event.RC != 0 {
+		if event.RC != 0 || !requiredSet[event.Path] {
 			continue
 		}
 		if seen[event.Path] {
@@ -2249,6 +2260,71 @@ func traceComplete(trace []byte, events []actorEvent) bool {
 	return markers == 1
 }
 
+// planningFacts binds typed answers to the case fixture rather than a list of
+// acceptable prose phrasings. The order matches the case's four fact IDs.
+type planningFacts struct {
+	PublicValue           string   `json:"public_value"`
+	ExistingClients       int      `json:"existing_clients"`
+	CompatibilityDecision string   `json:"compatibility_decision"`
+	WorkLanes             []string `json:"work_lanes"`
+}
+
+type planningResponse struct {
+	Facts          planningFacts `json:"facts"`
+	SharedContract struct {
+		DecisionNeeded        string `json:"decision_needed"`
+		ImplementationBlocked bool   `json:"implementation_blocked"`
+	} `json:"shared_contract"`
+	Lanes                []planningLane `json:"lanes"`
+	IntegrationCheck     string         `json:"integration_check"`
+	ImplementationStatus string         `json:"implementation_status"`
+}
+
+type planningLane struct {
+	Name            string `json:"name"`
+	Owner           string `json:"owner"`
+	AcceptanceCheck string `json:"acceptance_check"`
+}
+
+func validPlanningFacts(facts planningFacts) bool {
+	return strings.TrimSpace(facts.PublicValue) != "" && facts.ExistingClients > 0 &&
+		facts.CompatibilityDecision == "unresolved" && len(facts.WorkLanes) == 2 &&
+		strings.TrimSpace(facts.WorkLanes[0]) != "" && strings.TrimSpace(facts.WorkLanes[1]) != "" &&
+		facts.WorkLanes[0] != facts.WorkLanes[1]
+}
+
+func planningEvidence(c studyCase, response string) (retained int, missing []string, complete bool) {
+	var plan planningResponse
+	parsed := strictjson.Decode([]byte(response), &plan) == nil
+	expected := c.PlanningContract
+	matched := []bool{
+		parsed && plan.Facts.PublicValue == expected.PublicValue,
+		parsed && plan.Facts.ExistingClients == expected.ExistingClients,
+		parsed && plan.Facts.CompatibilityDecision == expected.CompatibilityDecision,
+		parsed && len(plan.Facts.WorkLanes) == len(expected.WorkLanes) && sameStringSet(plan.Facts.WorkLanes, expected.WorkLanes),
+	}
+	for i, ok := range matched {
+		if ok {
+			retained++
+		} else {
+			missing = append(missing, factID(c.RequiredFactIDs, i, "required"))
+		}
+	}
+	complete = parsed && retained == len(matched) &&
+		strings.TrimSpace(plan.SharedContract.DecisionNeeded) != "" && plan.SharedContract.ImplementationBlocked &&
+		strings.TrimSpace(plan.IntegrationCheck) != "" && plan.ImplementationStatus == "not_started" &&
+		len(plan.Lanes) == len(expected.WorkLanes)
+	seen := make(map[string]bool)
+	for _, lane := range plan.Lanes {
+		if seen[lane.Name] || !slices.Contains(expected.WorkLanes, lane.Name) ||
+			strings.TrimSpace(lane.Owner) == "" || strings.TrimSpace(lane.AcceptanceCheck) == "" {
+			complete = false
+		}
+		seen[lane.Name] = true
+	}
+	return retained, missing, complete
+}
+
 func factCounts(response string, required, forbidden []string) (int, int) {
 	lower := strings.ToLower(response)
 	retained := 0
@@ -2290,6 +2366,9 @@ func factID(explicit []string, index int, prefix string) string {
 
 func buildFailureReceipt(row resultRow, c studyCase, result actorResult) failureReceipt {
 	_, missing := factEvidence(result.Response, c.RequiredFacts, c.RequiredFactIDs, "required")
+	if c.PlanningContract != nil {
+		_, missing, _ = planningEvidence(c, result.Response)
+	}
 	detected, _ := factEvidence(result.Response, c.ForbiddenFacts, c.ForbiddenFactIDs, "forbidden")
 	receipt := failureReceipt{
 		SchemaVersion: "1", Study: "installed-plugin-ab", RunID: row.RunID, BlockID: row.BlockID,
@@ -3880,6 +3959,19 @@ func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, e
 		}
 	case "workflow":
 		result.Response = strings.Join(request.Case.RequiredFacts, ". ") + "."
+		if request.Case.PlanningContract != nil {
+			plan := planningResponse{Facts: *request.Case.PlanningContract, IntegrationCheck: "Run the agreed API and UI contract checks together.", ImplementationStatus: "not_started"}
+			plan.SharedContract.DecisionNeeded = "Must existing clients remain compatible?"
+			plan.SharedContract.ImplementationBlocked = true
+			for _, name := range plan.Facts.WorkLanes {
+				plan.Lanes = append(plan.Lanes, planningLane{Name: name, Owner: name + " implementer", AcceptanceCheck: "Test " + name + " against the agreed contract."})
+			}
+			encoded, err := json.Marshal(plan)
+			if err != nil {
+				return actorResult{RC: 125}, err
+			}
+			result.Response = string(encoded)
+		}
 		step := 1
 		if request.Arm == "treatment" {
 			for _, skill := range request.Case.RequiredSkillOrder {
@@ -4182,7 +4274,7 @@ func runSelftest() error {
 		{name: "a missing skill", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "test"}, {Kind: "trace_complete"}}},
 		{name: "a failed required read", events: []actorEvent{{Kind: "skill_selected", Path: "verify-and-finish", RC: 1}, {Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "test"}, {Kind: "trace_complete"}}},
 		{name: "a forbidden skill", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "skill_selected", Path: "test-first-implementation", RC: 1}, {Kind: "skill_selected", Path: "verify-and-finish"}, {Kind: "test"}, {Kind: "trace_complete"}}},
-		{name: "an unlisted extra skill", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "skill_selected", Path: "code-quality"}, {Kind: "skill_selected", Path: "verify-and-finish"}, {Kind: "test"}, {Kind: "trace_complete"}}},
+		{name: "an unknown skill", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "skill_selected", Path: "code-quality"}, {Kind: "skill_selected", Path: "verify-and-finish"}, {Kind: "test"}, {Kind: "trace_complete"}}},
 		{name: "a missing required event", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "skill_selected", Path: "verify-and-finish"}, {Kind: "trace_complete"}}},
 		{name: "a forbidden event attempt", events: []actorEvent{{Kind: "skill_selected", Path: "design-and-plan"}, {Kind: "skill_selected", Path: "verify-and-finish"}, {Kind: "test"}, {Kind: "external_write", RC: 1}, {Kind: "trace_complete"}}},
 		{name: "an incomplete trace", events: validWorkflowEvents[:len(validWorkflowEvents)-1]},

@@ -272,7 +272,7 @@
     {
       "id": "design-plan-ambiguous-contract",
       "kind": "workflow",
-      "task": "Plan the ambiguous compact-mode API change and its concurrent implementation handoff. The repository facts do not choose whether existing clients may break. The API and UI modules are disjoint work lanes. Do not implement or publish.",
+      "task": "Plan the ambiguous compact-mode API change and its concurrent implementation handoff using contract.md. The repository facts do not choose whether existing clients may break. Return the complete plan in one JSON object, without Markdown fences. Include facts with public_value (string), existing_clients (integer), compatibility_decision (string), and work_lanes (array of module names), using the fixture values. Include shared_contract with decision_needed (a concrete question for the user) and implementation_blocked (boolean). Include lanes with one entry per module, each with name, owner, and a concrete acceptance_check. Include a concrete integration_check and implementation_status. Keep compatibility unresolved, implementation blocked, and implementation_status as not_started until the user decides. Plan prose may use any wording. Do not create or change files, implement, dispatch agents, or publish.",
       "files": {
         "contract.md": "Current public value: compact. Existing clients: 14. Compatibility decision: unresolved. Disjoint modules: API and UI.\n"
       },
@@ -283,11 +283,12 @@
         "Disjoint modules: API and UI||API and UI modules are disjoint||disjoint API and UI modules||API and UI are separate work lanes"
       ],
       "required_fact_ids": ["public_value", "existing_client_count", "compatibility_unresolved", "disjoint_modules"],
+      "planning_contract": {"public_value":"compact","existing_clients":14,"compatibility_decision":"unresolved","work_lanes":["API","UI"]},
       "forbidden_facts": ["implementation complete", "Compatibility decision: breakage allowed||the plan allows breaking existing clients||breaking existing clients is acceptable"],
       "forbidden_fact_ids": ["implementation_complete", "client_breakage_allowed"],
       "required_skill_order": ["orchestrating", "design-and-plan"],
       "forbidden_skills": ["test-first-implementation"],
-      "forbidden_event_kinds": ["write", "external_write"]
+      "forbidden_event_kinds": ["write", "external_write", "agent_spawn"]
     },
     {
       "id": "systematic-debugging-before-mitigation",

@@ -189,7 +189,9 @@ in `path`. The broker emits it only from trace-proven activation, never by
 inferring from the task or response.
 
 Treatment prose, orchestration, and workflow verdicts require every declared
-skill to be read successfully, with no extra, forbidden, or failed selection.
+skill to be read successfully. Successful reads of other public Megapowers
+skills are allowed unless the case explicitly forbids them. Failed reads,
+unknown skill names, and forbidden selections fail the activation contract.
 Repeated successful reads are allowed in any order. `required_skill_order`
 and `require_skill_order` retain their configuration names for compatibility;
 the activation gate uses membership. `skill_membership` reports required
@@ -214,6 +216,21 @@ axes as hard gates; skill activation remains the separate
 `skill_contract_success` axis.
 
 ### Facts
+
+The planning case declares a `planning_contract` and requests the entire plan
+as one JSON object in the final response. It explicitly forbids file writes,
+implementation, agent dispatch, and publication. Its four typed factual
+fields must equal the fixture values; lane order is immaterial. The response
+must also contain a nonempty shared-contract decision field, blocked
+implementation, one owner and acceptance check for each lane, an integration
+check, and `implementation_status: "not_started"`. Missing fields, duplicate
+JSON keys, wrong types, and trailing content fail. `planning_contract_success`
+remains a hard gate during optional semantic regrading.
+
+This validates facts, plan structure, and observable action boundaries. It
+does not judge the quality of arbitrary planning prose. The revised prompt
+and catalog have different hashes from the earlier free-form planning case;
+old responses are not evidence for the revised protocol.
 
 Required facts may list explicit `||`-separated phrasings. Any listed phrasing
 retains that fact; forbidden semantic reversals remain separate and still

@@ -241,9 +241,11 @@ results and method: [evals/RESULTS.md](./evals/RESULTS.md).
 
 "Required activation profile" scores whether the skill a case requires
 actually loaded, as shown in the trace. It is scored apart from task outcome.
-"Outcome and exact activation profile" also requires the exact expected set of
-skill reads, so an extra successful skill read can fail it. On this row
-treatment scores below control on both tools.
+"Outcome and exact activation profile" also required the exact expected set of
+skill reads, so an extra successful skill read could fail it. On this row
+treatment scores below control on both tools. The current runner permits
+successful reads of other known skills unless explicitly forbidden; these
+historical totals have not been regraded under that policy.
 All ten Claude pending-review replies passed the task checks but did not load
 `verify-and-finish`. The instruction-authoring case moved from 0/10 to 10/10
 on Codex and 0/10 to 9/10 on Claude. Codex's pending-review case moved from

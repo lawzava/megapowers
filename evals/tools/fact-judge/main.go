@@ -400,7 +400,7 @@ func judgedOutcome(r row, c studyCase, v verdict) bool {
 }
 
 func nonFactOutcome(r row, c studyCase) bool {
-	for _, key := range []string{"workflow_success", "complete_trace", "required_events", "required_event_attempts", "protected_fixture_intact", "oracle_pass", "within_max_words", "required_event_order", "noop_preservation"} {
+	for _, key := range []string{"workflow_success", "complete_trace", "required_events", "required_event_attempts", "protected_fixture_intact", "oracle_pass", "within_max_words", "required_event_order", "noop_preservation", "planning_contract_success"} {
 		if value, ok := r.Metrics[key]; ok && value != 1 {
 			return false
 		}

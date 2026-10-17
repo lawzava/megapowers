@@ -225,7 +225,9 @@ identities below remain the evaluation source of record.
 
 Outcome requires both artifact and workflow checks. Activation (whether the
 expected skill was read) is scored separately; an exact activation profile
-can reject an extra successful skill read.
+could reject an extra successful skill read under this historical policy.
+The current runner permits successful reads of other known skills unless the
+case explicitly forbids them. These historical totals have not been regraded.
 
 Each harness passes every full-verdict repetition for five of 18 development
 cases and four of six held-out cases. Across acceptance cases, Codex has 42

@@ -21,7 +21,10 @@ func TestActivationRequiresMembershipNotReadOrder(t *testing.T) {
 		{"reversed reads", []actorEvent{read(required[1], 0), read(required[0], 0)}, true},
 		{"nonadjacent repeated reads", []actorEvent{read(required[0], 0), read(required[1], 0), read(required[0], 0)}, true},
 		{"missing", []actorEvent{read(required[0], 0)}, false},
-		{"extra", []actorEvent{read(required[0], 0), read(required[1], 0), read("humanizing-prose", 0)}, false},
+		{"supporting skill", []actorEvent{read(required[0], 0), read(required[1], 0), read("humanizing-prose", 0)}, true},
+		{"unknown skill", []actorEvent{read(required[0], 0), read(required[1], 0), read("unknown", 0)}, false},
+		{"failed supporting skill", []actorEvent{read(required[0], 0), read(required[1], 0), read("humanizing-prose", 1)}, false},
+		{"empty successful selection", []actorEvent{read(required[0], 0), read(required[1], 0), read("", 0)}, false},
 		{"forbidden", []actorEvent{read(required[0], 0), read(required[1], 0), read("safe-effects", 0)}, false},
 		{"failed then successful", []actorEvent{read(required[0], 1), read(required[0], 0), read(required[1], 0)}, false},
 		{"empty failed selection", []actorEvent{read(required[0], 0), read(required[1], 0), read("", 1)}, false},
@@ -30,6 +33,23 @@ func TestActivationRequiresMembershipNotReadOrder(t *testing.T) {
 			present, unexpected := skillSelectionEvidence(tc.events, required, []string{"safe-effects"})
 			if got := present && unexpected == 0; got != tc.want {
 				t.Fatalf("activation = %t (present %t, unexpected %d), want %t", got, present, unexpected, tc.want)
+			}
+		})
+	}
+}
+
+func TestSupportingSkillsPreserveActivationAcrossCaseKinds(t *testing.T) {
+	for _, kind := range []string{"prose", "workflow", "orchestration"} {
+		t.Run(kind, func(t *testing.T) {
+			c := studyCase{Kind: kind, RequiredFacts: []string{"kept"}, RequiredSkillOrder: []string{"design-and-plan"}}
+			result := actorResult{Response: "kept", Events: []actorEvent{
+				{Kind: "skill_selected", Path: "systematic-debugging"},
+				{Kind: "skill_selected", Path: "design-and-plan"},
+				{Kind: "skill_selected", Path: "verify-and-finish"},
+			}}
+			metrics, verdict, err := evaluateCase(context.Background(), c, gatesFile{}, "treatment", t.TempDir(), 0, result, true)
+			if err != nil || verdict != "pass" || metrics["skill_contract_success"] != 1 || metrics["forbidden_skill_selections"] != 0 || metrics["skill_order"] != 1 {
+				t.Fatalf("supporting skills rejected for %s: verdict %s, metrics %v, error %v", kind, verdict, metrics, err)
 			}
 		})
 	}

@@ -46,6 +46,7 @@ func TestJudgedOutcomeKeepsNonFactFailures(t *testing.T) {
 	}{
 		{"facts were the only failure", map[string]float64{"outcome_success": 0, "artifact_success": 0, "workflow_success": 1, "oracle_pass": 1}, true},
 		{"oracle failed", map[string]float64{"outcome_success": 0, "oracle_pass": 0, "workflow_success": 1}, false},
+		{"planning contract failed", map[string]float64{"outcome_success": 0, "planning_contract_success": 0, "workflow_success": 1}, false},
 		{"forbidden event", map[string]float64{"outcome_success": 0, "workflow_success": 1, "forbidden_event_attempts": 1}, false},
 		{"too long", map[string]float64{"outcome_success": 0, "workflow_success": 1, "within_max_words": 0}, false},
 		{"required attempt missing", map[string]float64{"outcome_success": 0, "workflow_success": 0, "required_event_attempts": 0}, false},

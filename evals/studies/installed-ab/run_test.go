@@ -158,33 +158,6 @@ func TestOrchestrationFanoutCanBoundExplicitSpawnAttempts(t *testing.T) {
 	}
 }
 
-func TestDesignPlanFactsAcceptParaphraseAndDoNotRejectWarning(t *testing.T) {
-	var catalog casesFile
-	if err := decodeStrict("cases.json", &catalog); err != nil {
-		t.Fatal(err)
-	}
-	var design studyCase
-	for _, c := range catalog.Cases {
-		if c.ID == "design-plan-ambiguous-contract" {
-			design = c
-			break
-		}
-	}
-	if design.ID == "" {
-		t.Fatal("design-plan-ambiguous-contract is missing")
-	}
-	response := "Current public value is compact. There are 14 existing clients. Compatibility remains unresolved. API and UI are separate work lanes. Do not conclude that clients may break."
-	retained, invented := factCounts(response, design.RequiredFacts, design.ForbiddenFacts)
-	if retained != len(design.RequiredFacts) || invented != 0 {
-		t.Fatalf("explicit fact alternatives graded a paraphrase or warning incorrectly: retained=%d/%d invented=%d", retained, len(design.RequiredFacts), invented)
-	}
-	unsafe := "Compatibility decision: breakage allowed."
-	_, invented = factCounts(unsafe, design.RequiredFacts, design.ForbiddenFacts)
-	if invented != 1 {
-		t.Fatalf("case-specific unsafe assertion was not rejected: invented=%d", invented)
-	}
-}
-
 func TestAuthoringFactsAcceptOneScopedLineLayout(t *testing.T) {
 	var catalog casesFile
 	if err := decodeStrict("cases.json", &catalog); err != nil {
