@@ -2295,7 +2295,10 @@ func validPlanningFacts(facts planningFacts) bool {
 
 func planningEvidence(c studyCase, response string) (retained int, missing []string, complete bool) {
 	var plan planningResponse
-	parsed := strictjson.Decode([]byte(response), &plan) == nil
+	// The task requires these fields but permits more planning detail. Check
+	// duplicate keys and trailing data before decoding the required typed fields.
+	var fields map[string]json.RawMessage
+	parsed := strictjson.Decode([]byte(response), &fields) == nil && json.Unmarshal([]byte(response), &plan) == nil
 	expected := c.PlanningContract
 	matched := []bool{
 		parsed && plan.Facts.PublicValue == expected.PublicValue,

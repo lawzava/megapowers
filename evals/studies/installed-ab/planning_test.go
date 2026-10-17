@@ -61,6 +61,24 @@ func TestPlanningContractAcceptsDifferentPlanWording(t *testing.T) {
 	}
 }
 
+func TestPlanningContractAllowsAdditionalHandoffFields(t *testing.T) {
+	c := planningTestCase(t)
+	response := strings.NewReplacer(
+		`"facts": {`, `"concurrent_handoff":{"start_gate":"Wait for the compatibility decision."},"facts": {`,
+		`"decision_needed":`, `"handoff_gate":"Agree on the shared contract before dispatch.","decision_needed":`,
+		`"owner":"API implementer"`, `"owned_scope":"API module","owner":"API implementer"`,
+	).Replace(validPlanningResponse)
+	metrics, verdict, err := evaluateCase(context.Background(), c, gatesFile{}, "control", t.TempDir(), 0, actorResult{Response: response}, true)
+	if err != nil || verdict != "pass" || metrics["planning_contract_success"] != 1 || metrics["fact_retention"] != 1 {
+		t.Fatalf("additional handoff fields rejected: verdict=%s metrics=%v err=%v", verdict, metrics, err)
+	}
+	duplicate := strings.Replace(response, `"owned_scope":"API module"`, `"owned_scope":"UI module","owned_scope":"API module"`, 1)
+	_, _, complete := planningEvidence(c, duplicate)
+	if complete {
+		t.Fatal("duplicate additional field was accepted")
+	}
+}
+
 func TestPlanningContractRejectsInvalidOrUnsafePlans(t *testing.T) {
 	c := planningTestCase(t)
 	for _, tc := range []struct{ name, response string }{

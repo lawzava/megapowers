@@ -225,7 +225,9 @@ must also contain a nonempty shared-contract decision field, blocked
 implementation, one owner and acceptance check for each lane, an integration
 check, and `implementation_status: "not_started"`. Missing fields, duplicate
 JSON keys, wrong types, and trailing content fail. `planning_contract_success`
-remains a hard gate during optional semantic regrading.
+remains a hard gate during optional semantic regrading. Additional planning
+fields are allowed; they cannot replace required fields or contain duplicate
+keys.
 
 This validates facts, plan structure, and observable action boundaries. It
 does not judge the quality of arbitrary planning prose. The revised prompt
