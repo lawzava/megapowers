@@ -39,7 +39,7 @@ harnesses through Subswapper, use the broker's
 
 ### Catalogs and sharding
 
-The current `cases.json` catalog has 31 cases and runs 62 executions per
+The current `cases.json` catalog has 38 cases and runs 76 executions per
 harness at `--paired-runs 1` (each case executes once as treatment and once as
 control). A separate `holdout.json` catalog holds 6 cases frozen for
 out-of-sample checks. `--cases` selects one committed catalog or the other,
@@ -233,6 +233,15 @@ This validates facts, plan structure, and observable action boundaries. It
 does not judge the quality of arbitrary planning prose. The revised prompt
 and catalog have different hashes from the earlier free-form planning case;
 old responses are not evidence for the revised protocol.
+
+The dependency case declares a `dependency_contract`: each task ID with its
+direct prerequisites, acyclic, with one required fact per task. The response
+is one JSON object whose `tasks` entries carry `id`, `owns`, `prerequisites`,
+`consumes`, and `produces`. A task's fact is retained only when its
+prerequisite set matches exactly. `dependency_contract_success` also requires
+one entry per task, nonempty disjoint ownership, consumed contracts on every
+dependent task, and produced contracts on every prerequisite. It is a hard
+gate during optional semantic regrading.
 
 Required facts may list explicit `||`-separated phrasings. Any listed phrasing
 retains that fact; forbidden semantic reversals remain separate and still

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -37,7 +38,8 @@ Usage:
 Commands:
   init        --id ID --objective TEXT
   checkpoint  --id ID --milestone TEXT --next TEXT [--blocker TEXT ...] [--evidence TEXT ...]
-  journal     --id ID --event KIND --evidence TEXT [--decision TEXT --why TEXT]
+  journal     --id ID --event KIND --evidence TEXT [--decision TEXT --why TEXT [--risk low|medium|high --if-wrong TEXT]]
+  decisions   --id ID
   resume      --id ID
   continue    --id ID --item TEXT [--max N]
   coverage    --id ID --brief FILE
@@ -47,7 +49,8 @@ journal.jsonl (append-only), handoff.md. IDs match [a-z0-9][a-z0-9-]{0,62}.
 
 continue records one automatic continuation on an item and refuses past the
 cap (default 3). coverage checks that a saved brief or handoff names every
-done-criterion ID (C1, C2, ...) in the charter.
+done-criterion ID (C1, C2, ...) in the charter. decisions lists journaled
+decisions, highest risk first, so the user reviews the riskiest ones first.
 
 Exit codes: 0 ok, 3 resume found a workspace, branch, worktree, or HEAD
 mismatch, or coverage found a missing criterion ID, 4 continue reached the
@@ -71,6 +74,8 @@ type options struct {
 	blockers  []string
 	decision  string
 	why       string
+	risk      string
+	ifWrong   string
 	item      string
 	max       int
 	brief     string
@@ -92,6 +97,8 @@ type journalRecord struct {
 	Evidence  string `json:"evidence"`
 	Decision  string `json:"decision,omitempty"`
 	Why       string `json:"why,omitempty"`
+	Risk      string `json:"risk,omitempty"`
+	IfWrong   string `json:"if_wrong,omitempty"`
 	Item      string `json:"item,omitempty"`
 	Head      string `json:"head"`
 	Branch    string `json:"branch,omitempty"`
@@ -135,6 +142,8 @@ func run(args []string) int {
 		err = cmdCheckpoint(opt)
 	case "journal":
 		err = cmdJournal(opt)
+	case "decisions":
+		err = cmdDecisions(opt)
 	case "resume", "continue", "coverage":
 		var code int
 		switch command {
@@ -163,7 +172,8 @@ func report(err error) int {
 var allowedFlags = map[string][]string{
 	"init":       {"--repo", "--id", "--objective"},
 	"checkpoint": {"--repo", "--id", "--milestone", "--next", "--blocker", "--evidence"},
-	"journal":    {"--repo", "--id", "--event", "--evidence", "--decision", "--why"},
+	"journal":    {"--repo", "--id", "--event", "--evidence", "--decision", "--why", "--risk", "--if-wrong"},
+	"decisions":  {"--repo", "--id"},
 	"resume":     {"--repo", "--id"},
 	"continue":   {"--repo", "--id", "--item", "--max"},
 	"coverage":   {"--repo", "--id", "--brief"},
@@ -215,6 +225,10 @@ func parseOptions(command string, args []string) (options, error) {
 			opt.decision = clean(value)
 		case "--why":
 			opt.why = clean(value)
+		case "--risk":
+			opt.risk = value
+		case "--if-wrong":
+			opt.ifWrong = clean(value)
 		case "--item":
 			opt.item = clean(value)
 		case "--max":
@@ -254,6 +268,15 @@ func parseOptions(command string, args []string) (options, error) {
 		}
 		if (opt.decision == "") != (opt.why == "") {
 			return opt, fail("--decision and --why must be given together")
+		}
+		if (opt.risk == "") != (opt.ifWrong == "") {
+			return opt, fail("--risk and --if-wrong must be given together")
+		}
+		if opt.risk != "" && opt.decision == "" {
+			return opt, fail("--risk and --if-wrong require --decision")
+		}
+		if opt.risk != "" && riskRank(opt.risk) < 0 {
+			return opt, fail("--risk must be low, medium, or high")
 		}
 	case "continue":
 		required["--item"] = opt.item
@@ -618,7 +641,7 @@ func cmdJournal(opt options) error {
 	if err != nil {
 		return err
 	}
-	rec := journalRecord{TS: now(), Event: opt.event, Evidence: opt.evidence[0], Decision: opt.decision, Why: opt.why, Head: st.head}
+	rec := journalRecord{TS: now(), Event: opt.event, Evidence: opt.evidence[0], Decision: opt.decision, Why: opt.why, Risk: opt.risk, IfWrong: opt.ifWrong, Head: st.head}
 	if err := appendJournal(dir, rec); err != nil {
 		return err
 	}
@@ -824,6 +847,63 @@ func cmdContinue(opt options) (int, error) {
 	fmt.Printf("run-state: continuation %d of %d for item %q\n", count+1, opt.max, opt.item)
 	fmt.Printf("result: ok (exit %d)\n", exitOK)
 	return exitOK, nil
+}
+
+// riskLevels orders review: the user sees the decision most costly to get
+// wrong first. Unrated decisions sort after every level.
+var riskLevels = []string{"high", "medium", "low"}
+
+func riskRank(risk string) int {
+	for i, level := range riskLevels {
+		if risk == level {
+			return i
+		}
+	}
+	return -1
+}
+
+// cmdDecisions lists journaled decisions riskiest first, keeping journal order
+// within a level, so a returning user knows which ones to second-guess first.
+func cmdDecisions(opt options) error {
+	st, err := inspect(opt.repo)
+	if err != nil {
+		return err
+	}
+	dir, err := existingRun(st, opt.id)
+	if err != nil {
+		return err
+	}
+	records, err := readJournal(filepath.Join(dir, "journal.jsonl"))
+	if err != nil {
+		return err
+	}
+	var decisions []journalRecord
+	for _, rec := range records {
+		if rec.Decision != "" {
+			decisions = append(decisions, rec)
+		}
+	}
+	rank := func(rec journalRecord) int {
+		if r := riskRank(rec.Risk); r >= 0 {
+			return r
+		}
+		return len(riskLevels)
+	}
+	sort.SliceStable(decisions, func(i, j int) bool { return rank(decisions[i]) < rank(decisions[j]) })
+	fmt.Printf("decisions: %d\n", len(decisions))
+	for _, rec := range decisions {
+		risk := rec.Risk
+		if risk == "" {
+			risk = "unrated"
+		}
+		line := fmt.Sprintf("- [%s] %s %s | why: %s", risk, rec.TS, rec.Decision, rec.Why)
+		if rec.IfWrong != "" {
+			line += " | if wrong: " + rec.IfWrong
+		}
+		fmt.Println(line)
+	}
+	fmt.Printf("result: ok (exit %d)\n", exitOK)
+	return nil
 }
 
 var (

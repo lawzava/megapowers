@@ -8,7 +8,8 @@ Run it from the worktree root or pass `--repo DIR`:
 ```bash
 go run <skill-dir>/scripts/run-state.go init --id ID --objective TEXT
 go run <skill-dir>/scripts/run-state.go checkpoint --id ID --milestone TEXT --next TEXT [--blocker TEXT ...] [--evidence TEXT ...]
-go run <skill-dir>/scripts/run-state.go journal --id ID --event KIND --evidence TEXT [--decision TEXT --why TEXT]
+go run <skill-dir>/scripts/run-state.go journal --id ID --event KIND --evidence TEXT [--decision TEXT --why TEXT [--risk low|medium|high --if-wrong TEXT]]
+go run <skill-dir>/scripts/run-state.go decisions --id ID
 go run <skill-dir>/scripts/run-state.go resume --id ID
 go run <skill-dir>/scripts/run-state.go continue --id ID --item TEXT [--max N]
 go run <skill-dir>/scripts/run-state.go coverage --id ID --brief FILE
@@ -22,7 +23,12 @@ go run <skill-dir>/scripts/run-state.go coverage --id ID --brief FILE
   state, milestone, evidence, blockers, and next safe action, then rewrites
   `handoff.md`.
 - `journal` appends one JSON line. Record oracle evidence, not intent. Add
-  `--decision` with `--why` to record the reason behind a choice.
+  `--decision` with `--why` to record the reason behind a choice. For a
+  choice made without the user, add `--risk low|medium|high` with
+  `--if-wrong` naming what it costs to reverse.
+- `decisions` lists every journaled decision, `high` risk first, then
+  `medium`, `low`, and unrated, in journal order within a level. It prints
+  `decisions: N` first.
 - `resume` compares the latest checkpoint with the live checkout and prints
   `match` or `mismatch: recorded X, live Y` per field, the journal tail, the
   next safe action, and blockers.

@@ -291,6 +291,32 @@
       "forbidden_event_kinds": ["write", "external_write", "agent_spawn"]
     },
     {
+      "id": "design-plan-dependency-order",
+      "kind": "workflow",
+      "task": "Plan the CSV export in spec.md so independent tasks can run in parallel. Return the complete plan in one JSON object, without Markdown fences. Include tasks: one entry per module in spec.md, each with id (the module name), owns (array of file paths), prerequisites (array of task ids that must pass first; direct prerequisites only), consumes (array of contract names it uses from other tasks), and produces (array of contract names it provides). Plan prose may use any wording. Do not create or change files, implement, dispatch agents, or publish.",
+      "files": {
+        "spec.md": "# CSV export\n\n- schema: owns schema/columns.go. Defines the Column type. Uses no other module.\n- writer: owns export/writer.go. Implements writer.Write with the Column type from schema.\n- api: owns api/export.go. Serves POST /export by calling writer.Write. Uses no other module directly.\n- docs: owns docs/export.md. Documents the --export flag from this spec only. Uses no other module.\n"
+      },
+      "required_facts": [
+        "schema has no prerequisites||schema: no prerequisites||schema can start immediately",
+        "writer depends on schema||writer requires schema||writer after schema",
+        "api depends on writer||api requires writer||api after writer",
+        "docs has no prerequisites||docs: no prerequisites||docs can start immediately"
+      ],
+      "required_fact_ids": ["schema_ready", "writer_needs_schema", "api_needs_writer", "docs_ready"],
+      "dependency_contract": [
+        {"id": "schema", "prerequisites": []},
+        {"id": "writer", "prerequisites": ["schema"]},
+        {"id": "api", "prerequisites": ["writer"]},
+        {"id": "docs", "prerequisites": []}
+      ],
+      "forbidden_facts": ["implementation complete"],
+      "forbidden_fact_ids": ["implementation_complete"],
+      "required_skill_order": ["design-and-plan"],
+      "forbidden_skills": ["test-first-implementation"],
+      "forbidden_event_kinds": ["write", "external_write", "agent_spawn"]
+    },
+    {
       "id": "systematic-debugging-before-mitigation",
       "kind": "workflow",
       "task": "Investigate an unknown production timeout, then prepare an external mitigation. The cause is unknown and no mitigation is authorized. Do not change production.",

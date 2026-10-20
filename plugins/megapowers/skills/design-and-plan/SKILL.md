@@ -17,9 +17,8 @@ makes the change safe, and check where search stops: wire formats, stored data,
 and flags.
 
 Before custom design, check existing code, the standard library, native platform
-features, and installed dependencies. Simplify while preserving requirements
-and conventions. Defer speculative needs while preserving requested behavior
-and acceptance criteria.
+features, and installed dependencies. Simplify and defer speculative needs
+while preserving requirements, conventions, and acceptance criteria.
 
 Resolve factual prerequisites before preference or policy questions. Present
 competing sketches only for a high-impact, underconstrained, or hard-to-reverse
@@ -44,7 +43,7 @@ boundaries, and unnamed inputs. Separate proposed, implemented, and verified
 behavior. Reconcile specifications with code and tests; a stale specification
 is not evidence.
 
-Use an existing specification system when the repository has one; preserve its
+Use the repository's existing specification system and preserve its
 requirement IDs and format. When an `openspec/` directory exists, read
 [OpenSpec conventions](references/openspec.md). Without a specification
 system, keep proportional requirements and their evidence map inline unless
@@ -54,17 +53,18 @@ change with clear scope, risks, and oracle.
 
 ## Produce an executable handoff
 
-Name the outcome, owned files, public contracts, acceptance criteria,
-dependencies, and verification commands. Set exact signatures only when the
-contract requires them. Keep implementation choices open. Start behavior tasks
-with a failing test. Slice tasks vertically, each verifiable alone. Stage wide
-interface changes as expand, migrate callers, then contract. Keep tasks
-sequential unless ownership is disjoint and neither result can reshape the other.
+Name the outcome, acceptance criteria, and verification commands. Give each
+task an ID, owned files, prerequisites, and the contracts it consumes and
+produces. Set exact signatures only when the contract requires them. Keep
+implementation choices open. Start behavior tasks with a failing test. Slice
+tasks vertically, each verifiable alone. Stage wide interface changes as
+expand, migrate callers, then contract. Parallelize tasks only when
+ownership is disjoint and neither result can reshape the other.
 
 When code or tests disprove an assumption, update the affected tasks and evidence
 map before continuing. Preserve acceptance criteria and existing authority.
 Ask only when the discovery materially changes requested behavior or scope.
 
-Exclude speculative options, placeholders, unrelated cleanup, and unauthorized
-commit steps. Before execution, check for missing criteria, inconsistent names,
-and unresolved assumptions.
+Exclude placeholders, unrelated cleanup, and unauthorized commit steps. Before
+execution, check for missing criteria, inconsistent names, and unresolved
+assumptions.

@@ -17,7 +17,9 @@ Native agents are the default for matching lanes. Use one to three direct
 children with fresh, bounded context. For independent lanes whose results
 cannot reshape one another, issue spawn calls consecutively without intervening
 waits, continue independent lead work, and join every returned identity until
-completion, failure, or confirmed cancellation.
+completion, failure, or confirmed cancellation. For a plan with recorded
+prerequisites, start each task once its prerequisites have passed their oracle
+and its ownership is disjoint from running lanes; do not wait for a whole wave.
 
 Before dispatch, read
 [native dispatch and lane lifecycle](references/native-dispatch.md) and use

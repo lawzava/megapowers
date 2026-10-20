@@ -23,6 +23,7 @@ var requiredSkillFacts = map[string][]string{
 		"two or three",
 		"`continue`",
 		"`coverage`",
+		"`decisions`",
 		"blocks nothing",
 		"references/pr-babysit.md",
 	},
@@ -35,6 +36,7 @@ var requiredSkillFacts = map[string][]string{
 		"references/design-red-flags.md",
 		"vertical",
 		"expand",
+		"consumes and produces",
 		"one fact",
 		"hard to reverse, surprising",
 		"unnamed",
@@ -83,6 +85,7 @@ var requiredSkillFacts = map[string][]string{
 		"references/native-dispatch.md",
 		"time budget",
 		"check its evidence before using it",
+		"prerequisites have passed",
 	},
 	"safe-effects": {
 		"under the user's name", "credential stores", "i allow", "say whether it is authorized",

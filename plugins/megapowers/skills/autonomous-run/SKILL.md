@@ -31,9 +31,11 @@ announces the next step, an offer to continue, a decision list that blocks
 nothing, or a milestone report. Put status notes in the same message as the
 next tool call. Before asking, use what is already reachable: linked pull
 requests and tickets, authenticated CLIs, connected MCP tools, environment key
-names (never values), previews, and the charter. When the user returns, open
+names (never values), previews, and the charter. Journal each choice made
+without the user with its risk and cost if wrong. When the user returns, open
 with the count of waiting decisions, then why now, options with costs, a
-recommendation, and what happens if unanswered. After two or three automatic
+recommendation, and what happens if unanswered; then list choices made with
+`decisions`, riskiest first. After two or three automatic
 continuations on the same item, record it as blocked for review; `continue`
 enforces this.
 

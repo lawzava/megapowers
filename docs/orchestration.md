@@ -76,9 +76,11 @@ credentials, account identifiers, command lines, or private source paths in it.
 
 Use direct agents for one to three independent lanes. For larger or durable
 work, prefer native team or task state that records ownership, dependencies, and
-completion. If the harness lacks it, dispatch staged waves and synthesize before
-the next wave. Use milestone checkpoints or a fresh-lead handoff before the
-lead context becomes a program log.
+completion. If the harness lacks it and the plan records each task's
+prerequisites, start a task once its prerequisites have passed their oracle,
+within the direct-agent limit. Without recorded prerequisites, dispatch staged
+waves and synthesize before the next wave. Use milestone checkpoints or a
+fresh-lead handoff before the lead context becomes a program log.
 
 Before dispatch, confirm the child has the required tools, MCP access,
 authentication, network, permissions, and write access. Read the personal

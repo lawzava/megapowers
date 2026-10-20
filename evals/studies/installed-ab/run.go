@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -53,6 +54,7 @@ type studyCase struct {
 	RequiredFacts        []string          `json:"required_facts,omitempty"`
 	RequiredFactIDs      []string          `json:"required_fact_ids,omitempty"`
 	PlanningContract     *planningFacts    `json:"planning_contract,omitempty"`
+	DependencyContract   []dependencyTask  `json:"dependency_contract,omitempty"`
 	ForbiddenFacts       []string          `json:"forbidden_facts,omitempty"`
 	ForbiddenFactIDs     []string          `json:"forbidden_fact_ids,omitempty"`
 	SeededDefects        []string          `json:"seeded_defects,omitempty"`
@@ -563,6 +565,9 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 		}
 		if c.PlanningContract != nil && (c.Kind != "workflow" || len(c.RequiredFacts) != 4 || !validPlanningFacts(*c.PlanningContract)) {
 			return fmt.Errorf("case %s planning_contract needs a workflow, four facts, and a valid unresolved two-lane contract", c.ID)
+		}
+		if c.DependencyContract != nil && (c.Kind != "workflow" || c.PlanningContract != nil || len(c.RequiredFacts) != len(c.DependencyContract) || !validDependencyContract(c.DependencyContract)) {
+			return fmt.Errorf("case %s dependency_contract needs a workflow without planning_contract, one fact per task, and an acyclic graph of two or more tasks", c.ID)
 		}
 		switch c.Kind {
 		case "prose":
@@ -1670,6 +1675,10 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 			retained, _, planningComplete = planningEvidence(c, result.Response)
 			metrics["planning_contract_success"] = boolMetric(planningComplete)
 		}
+		if c.DependencyContract != nil {
+			retained, _, planningComplete = dependencyEvidence(c, result.Response)
+			metrics["dependency_contract_success"] = boolMetric(planningComplete)
+		}
 		retention := float64(retained) / float64(len(c.RequiredFacts))
 		ordered, forbiddenSkills := skillSelectionEvidence(result.Events, c.RequiredSkillOrder, c.ForbiddenSkills)
 		skillContract = ordered && forbiddenSkills <= gates.Workflow.MaximumForbiddenSkillSelections
@@ -2328,6 +2337,138 @@ func planningEvidence(c studyCase, response string) (retained int, missing []str
 	return retained, missing, complete
 }
 
+// dependencyTask is one expected plan task with its direct prerequisites. A
+// dependency case grades the graph, not prose, so wording stays free.
+type dependencyTask struct {
+	ID            string   `json:"id"`
+	Prerequisites []string `json:"prerequisites"`
+}
+
+type dependencyResponse struct {
+	Tasks []dependencyPlanTask `json:"tasks"`
+}
+
+type dependencyPlanTask struct {
+	ID            string   `json:"id"`
+	Owns          []string `json:"owns"`
+	Prerequisites []string `json:"prerequisites"`
+	Consumes      []string `json:"consumes"`
+	Produces      []string `json:"produces"`
+}
+
+func validDependencyContract(tasks []dependencyTask) bool {
+	if len(tasks) < 2 {
+		return false
+	}
+	prerequisites := make(map[string][]string, len(tasks))
+	for _, task := range tasks {
+		if _, duplicate := prerequisites[task.ID]; duplicate || strings.TrimSpace(task.ID) == "" {
+			return false
+		}
+		prerequisites[task.ID] = task.Prerequisites
+	}
+	for id, required := range prerequisites {
+		seen := make(map[string]bool, len(required))
+		for _, prerequisite := range required {
+			if _, known := prerequisites[prerequisite]; !known || prerequisite == id || seen[prerequisite] {
+				return false
+			}
+			seen[prerequisite] = true
+		}
+	}
+	return !dependencyCycle(prerequisites)
+}
+
+func dependencyCycle(prerequisites map[string][]string) bool {
+	const visiting, done = 1, 2
+	state := make(map[string]int, len(prerequisites))
+	var visit func(string) bool
+	visit = func(id string) bool {
+		switch state[id] {
+		case visiting:
+			return true
+		case done:
+			return false
+		}
+		state[id] = visiting
+		for _, prerequisite := range prerequisites[id] {
+			if visit(prerequisite) {
+				return true
+			}
+		}
+		state[id] = done
+		return false
+	}
+	for id := range prerequisites {
+		if visit(id) {
+			return true
+		}
+	}
+	return false
+}
+
+// dependencyEvidence counts one retained fact per task whose prerequisites
+// match exactly. Completion also needs one entry per task, disjoint nonempty
+// ownership, consumed contracts for every dependent task, and produced
+// contracts for every prerequisite.
+func dependencyEvidence(c studyCase, response string) (retained int, missing []string, complete bool) {
+	var plan dependencyResponse
+	var fields map[string]json.RawMessage
+	parsed := strictjson.Decode([]byte(response), &fields) == nil && json.Unmarshal([]byte(response), &plan) == nil
+	byID := make(map[string]dependencyPlanTask, len(plan.Tasks))
+	unique := true
+	for _, task := range plan.Tasks {
+		if _, duplicate := byID[task.ID]; duplicate {
+			unique = false
+		}
+		byID[task.ID] = task
+	}
+	for index, want := range c.DependencyContract {
+		got, ok := byID[want.ID]
+		if parsed && ok && len(got.Prerequisites) == len(want.Prerequisites) && sameStringSet(got.Prerequisites, want.Prerequisites) {
+			retained++
+		} else {
+			missing = append(missing, factID(c.RequiredFactIDs, index, "required"))
+		}
+	}
+	complete = parsed && unique && retained == len(c.DependencyContract) && len(plan.Tasks) == len(c.DependencyContract)
+	required := make(map[string]bool)
+	for _, task := range plan.Tasks {
+		for _, prerequisite := range task.Prerequisites {
+			required[prerequisite] = true
+		}
+	}
+	owners := make(map[string]string)
+	for _, task := range plan.Tasks {
+		if len(task.Owns) == 0 || (len(task.Prerequisites) > 0 && !namesPresent(task.Consumes)) || (required[task.ID] && !namesPresent(task.Produces)) {
+			complete = false
+		}
+		for _, owned := range task.Owns {
+			owned = strings.TrimSpace(owned)
+			// Clean so "./a/b.go" and "a/b.go" count as one owned file.
+			if owned != "" {
+				owned = path.Clean(owned)
+			}
+			if owner, taken := owners[owned]; owned == "" || (taken && owner != task.ID) {
+				complete = false
+			}
+			owners[owned] = task.ID
+		}
+	}
+	return retained, missing, complete
+}
+
+// namesPresent reports whether a contract list is nonempty and names every
+// entry.
+func namesPresent(names []string) bool {
+	for _, name := range names {
+		if strings.TrimSpace(name) == "" {
+			return false
+		}
+	}
+	return len(names) > 0
+}
+
 func factCounts(response string, required, forbidden []string) (int, int) {
 	lower := strings.ToLower(response)
 	retained := 0
@@ -2371,6 +2512,9 @@ func buildFailureReceipt(row resultRow, c studyCase, result actorResult) failure
 	_, missing := factEvidence(result.Response, c.RequiredFacts, c.RequiredFactIDs, "required")
 	if c.PlanningContract != nil {
 		_, missing, _ = planningEvidence(c, result.Response)
+	}
+	if c.DependencyContract != nil {
+		_, missing, _ = dependencyEvidence(c, result.Response)
 	}
 	detected, _ := factEvidence(result.Response, c.ForbiddenFacts, c.ForbiddenFactIDs, "forbidden")
 	receipt := failureReceipt{
@@ -3968,6 +4112,21 @@ func (f *fakeActor) Run(_ context.Context, request actorRequest) (actorResult, e
 			plan.SharedContract.ImplementationBlocked = true
 			for _, name := range plan.Facts.WorkLanes {
 				plan.Lanes = append(plan.Lanes, planningLane{Name: name, Owner: name + " implementer", AcceptanceCheck: "Test " + name + " against the agreed contract."})
+			}
+			encoded, err := json.Marshal(plan)
+			if err != nil {
+				return actorResult{RC: 125}, err
+			}
+			result.Response = string(encoded)
+		}
+		if request.Case.DependencyContract != nil {
+			var plan dependencyResponse
+			for _, task := range request.Case.DependencyContract {
+				planned := dependencyPlanTask{ID: task.ID, Owns: []string{task.ID + "/" + task.ID + ".go"}, Prerequisites: append([]string{}, task.Prerequisites...), Consumes: []string{}, Produces: []string{task.ID + " contract"}}
+				for _, prerequisite := range task.Prerequisites {
+					planned.Consumes = append(planned.Consumes, prerequisite+" contract")
+				}
+				plan.Tasks = append(plan.Tasks, planned)
 			}
 			encoded, err := json.Marshal(plan)
 			if err != nil {

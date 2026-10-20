@@ -265,6 +265,85 @@ func TestRunStateContract(t *testing.T) {
 	requireContains(t, linkedCheckpoint, "Branch: lane", "linked checkpoint branch")
 }
 
+func TestRunStateDecisionRiskOrdersReview(t *testing.T) {
+	root := repoRoot(t)
+	tmp := t.TempDir()
+	tool := filepath.Join(tmp, "run-state")
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/autonomous-run/scripts/run-state.go"); code != 0 {
+		t.Fatalf("build run-state (%d): %s", code, output)
+	}
+	gitEnv := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+	repo := filepath.Join(tmp, "repo")
+	if err := os.Mkdir(repo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := run(t, repo, gitEnv, "git", "init", "-q", "-b", "main"); code != 0 {
+		t.Fatalf("git init (%d): %s", code, output)
+	}
+	state := func(args ...string) (string, int) {
+		t.Helper()
+		return run(t, repo, gitEnv, tool, args...)
+	}
+	if output, code := state("init", "--id", "rulings", "--objective", "Build the exporter"); code != 0 {
+		t.Fatalf("init failed (%d): %s", code, output)
+	}
+	output, code := state("decisions", "--id", "rulings")
+	if code != 0 || !strings.Contains(output, "decisions: 0") {
+		t.Errorf("empty decisions: want 0 naming decisions: 0, got %d: %s", code, output)
+	}
+
+	journal := func(args ...string) {
+		t.Helper()
+		base := []string{"journal", "--id", "rulings", "--event", "decision", "--evidence", "spec section 2"}
+		if output, code := state(append(base, args...)...); code != 0 {
+			t.Fatalf("journal %v failed (%d): %s", args, code, output)
+		}
+	}
+	journal("--decision", "Use tabs", "--why", "Matches repo style", "--risk", "low", "--if-wrong", "Reformat one file")
+	journal("--decision", "Unrated choice", "--why", "Older record")
+	journal("--decision", "Drop legacy column", "--why", "Spec omits it", "--risk", "high", "--if-wrong", "Clients lose data")
+	journal("--decision", "Cache in memory", "--why", "Small dataset", "--risk", "medium", "--if-wrong", "Move cache to disk")
+	journal("--decision", "Keep UTF-8 only", "--why", "Spec says UTF-8", "--risk", "high", "--if-wrong", "Add encoding option")
+
+	records := journalRecords(t, readFile(t, filepath.Join(repo, ".megapowers", "run", "rulings", "journal.jsonl")))
+	if got := records[3]; got["risk"] != "high" || got["if_wrong"] != "Clients lose data" {
+		t.Errorf("risk record wrong: %v", got)
+	}
+	if _, ok := records[2]["risk"]; ok {
+		t.Errorf("unrated record stored a risk: %v", records[2])
+	}
+
+	output, code = state("decisions", "--id", "rulings")
+	if code != 0 || !strings.Contains(output, "decisions: 5") {
+		t.Fatalf("decisions: want 0 naming decisions: 5, got %d: %s", code, output)
+	}
+	// Riskiest first; journal order within a level; unrated last.
+	order := []string{"Drop legacy column", "Keep UTF-8 only", "Cache in memory", "Use tabs", "Unrated choice"}
+	last := -1
+	for _, want := range order {
+		at := strings.Index(output, want)
+		if at <= last {
+			t.Fatalf("decisions order: %q not after previous entry in:\n%s", want, output)
+		}
+		last = at
+	}
+	for _, want := range []string{"high", "if wrong: Clients lose data", "why: Spec omits it", "unrated"} {
+		requireContains(t, output, want, "decisions listing")
+	}
+
+	for _, bad := range [][]string{
+		{"--decision", "X", "--why", "Y", "--risk", "high"},
+		{"--decision", "X", "--why", "Y", "--if-wrong", "Z"},
+		{"--decision", "X", "--why", "Y", "--risk", "severe", "--if-wrong", "Z"},
+		{"--risk", "low", "--if-wrong", "Z"},
+	} {
+		base := []string{"journal", "--id", "rulings", "--event", "decision", "--evidence", "x"}
+		if output, code := state(append(base, bad...)...); code != 125 {
+			t.Errorf("journal %v: want 125, got %d: %s", bad, code, output)
+		}
+	}
+}
+
 func TestRunStateContinuationCapAndCoverage(t *testing.T) {
 	root := repoRoot(t)
 	tmp := t.TempDir()
