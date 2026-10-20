@@ -5,6 +5,24 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.40.0 - 2026-10-20
+
+### Added
+
+- `run-state journal` accepts `--risk low|medium|high` with `--if-wrong` for
+  choices made without the user, and `run-state decisions` lists journaled
+  decisions riskiest first so a returning user knows which to check first.
+- A `design-plan-dependency-order` evaluation case that grades a plan's task
+  prerequisites, disjoint ownership, and consumed and produced contracts.
+
+### Changed
+
+- Plans give each task an ID, owned files, prerequisites, and the contracts it
+  consumes and produces.
+- Orchestration starts a planned task once its prerequisites pass their
+  oracle instead of waiting for a whole wave. The one-to-three direct agent
+  limit is unchanged.
+
 ## 0.39.1 - 2026-10-17
 
 ### Changed
