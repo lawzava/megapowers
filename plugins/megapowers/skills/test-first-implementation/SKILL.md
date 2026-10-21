@@ -1,7 +1,7 @@
 ---
 name: test-first-implementation
-description: Use when adding or changing behavior, fixing a confirmed bug, refactoring executable code, or implementing a feature with tests.
-when_to_use: "Trigger phrases: implement, add the feature, fix the confirmed bug, refactor, change behavior in code, make the tests pass, add tests for this."
+description: Use when adding or changing behavior, fixing a bug whose cause is known, refactoring executable code, or implementing a feature, a tool, or a CLI option, even when the request never mentions tests or pastes the code inline.
+when_to_use: "Trigger phrases: implement, add the feature, fix this bug, here is the function, change this so it never, make it return, add a flag or option, build a script or tool, refactor, make the tests pass, add tests for this."
 metadata:
   short-description: Failing test first, then minimal implementation
 ---

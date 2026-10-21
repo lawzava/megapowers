@@ -43,6 +43,9 @@ needs the lead's effort.
   in the same step, within the cleanup authority the user gave.
 - Run a long cross-provider review as a background lane, not a foreground
   call that blocks the lead.
+- For a correction round, start a fresh agent with the original brief plus
+  every later directive. Resume an existing agent only when it holds state that
+  is costly to move; a resumed agent may drop directives given after its start.
 - When a review or red-team loop spends its round budget without converging,
   stop and bring the open findings to the user instead of starting more
   rounds.

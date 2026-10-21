@@ -286,8 +286,10 @@ func TestSkillContracts(t *testing.T) {
 				t.Errorf("%s missing %s", rel, field)
 			}
 		}
-		if len(fields["description"]) > 1536 {
-			t.Errorf("%s description exceeds 1536 characters", rel)
+		// Claude Code truncates each catalog entry, description plus
+		// when_to_use, at 1,536 characters combined.
+		if listed := len(fields["description"]) + len(fields["when_to_use"]); listed > 1536 {
+			t.Errorf("%s description plus when_to_use is %d characters, limit 1536", rel, listed)
 		}
 		words := len(strings.Fields(skillBody))
 		totalWords += words

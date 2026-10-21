@@ -15,6 +15,34 @@ commands, maintenance coverage, effort comparisons, and metric definitions are i
 are in [RESULTS-archive.md](./RESULTS-archive.md); they used different graders
 and cannot serve as a direct before/after comparison.
 
+## 2026-10-21 trigger check for test-first and debugging
+
+Trigger recall for the 0.41.0 description and session-start changes, three
+repetitions per probe, comparing unchanged 0.40.0 skill text (baseline) with
+the changed text (treatment). Five probes are new: three test-first requests
+that never mention tests, a hosted preview failure, and an explain-only
+near miss. Claude Code 2.1.304 with `claude-opus-5-5` and Codex with
+`gpt-6.1-sol`, both at high effort through Subswapper; broker
+`sha256:bc4c45999285…` built from this repository.
+
+| Slice | Claude baseline | Claude treatment | Codex baseline | Codex treatment |
+|---|---:|---:|---:|---:|
+| `test-first-implementation` recall (6 probes) | 18/18 | 18/18 | 18/18 selected | 18/18 selected |
+| `test-first-implementation` near misses | 6/6 | 6/6 | 6/6 | 6/6 |
+| `systematic-debugging` (5 probes) | 15/15 | 15/15 | not run | not run |
+| All near misses (18 cases) | not run | 54/54 | 39/54 | 39/54 |
+| `no-skill` pool | not run | 30/30 | not run | not run |
+
+Claude passed every probe before the change, so these single-turn probes show
+no gain and no regression; the session audit's misses happened mid-session in
+long tasks, which this study does not model. On Codex every test-first probe
+selected the expected skill, but the skill read failed inside the broker in
+both arms, so Codex activation is unmeasured. Codex falsely selected skills on
+the same five near misses in both arms (`design-and-plan`,
+`independent-review`, `orchestrating`, `safe-effects`,
+`systematic-debugging`); that over-selection predates this change and
+remains open.
+
 ## 2026-10-17 planning and maintenance comparison
 
 The candidate at `e4236b867f8b2aaa481750bdc0e61650df9ec3e3` completed 80

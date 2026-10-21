@@ -16,19 +16,20 @@ and any unread area that could change the decision. Name the one fact that
 makes the change safe, and check where search stops: wire formats, stored data,
 and flags.
 
-Before custom design, check existing code, the standard library, native platform
-features, and installed dependencies. Simplify and defer speculative needs
-while preserving requirements, conventions, and acceptance criteria.
+Before custom design, check existing code, the standard library, platform
+features, and installed dependencies. Defer speculative needs while preserving
+requirements, conventions, and acceptance criteria.
 
-Resolve factual prerequisites before preference or policy questions. Present
-competing sketches only for a high-impact, underconstrained, or hard-to-reverse
-design, and screen them against [design red flags](references/design-red-flags.md).
+Resolve factual prerequisites, with a throwaway probe instead of a question to
+the user when one can settle them, before preference or policy questions.
+Present competing sketches only for a high-impact, underconstrained, or
+hard-to-reverse design, and screen them against
+[design red flags](references/design-red-flags.md).
 Recommend one and state its tradeoff.
 
 Mark assumptions and blockers. Model a domain term when repeated state branches
 or synchronized booleans obscure one concept. Propose an ADR only for a decision
-that is hard to reverse, surprising without context, and a real tradeoff; do
-not force a glossary.
+that is hard to reverse, surprising without context, and a real tradeoff.
 
 ## Specify observable behavior
 
@@ -36,15 +37,14 @@ For a non-trivial behavior change, state intent, scope, non-goals, and
 implementation-independent requirements before the plan. Give each requirement
 concrete scenarios and an acceptance oracle.
 
-Use requirement IDs and Added, Modified, or Removed deltas only when the
-repository uses them.
 Map requirements to scenarios, tasks, and evidence, including failures,
 boundaries, and unnamed inputs. Separate proposed, implemented, and verified
 behavior. Reconcile specifications with code and tests; a stale specification
 is not evidence.
 
-Use the repository's existing specification system and preserve its
-requirement IDs and format. When an `openspec/` directory exists, read
+Use the repository's existing specification system and format; use requirement
+IDs and Added, Modified, or Removed deltas only when the repository uses them.
+When an `openspec/` directory exists, read
 [OpenSpec conventions](references/openspec.md). Without a specification
 system, keep proportional requirements and their evidence map inline unless
 repository convention or the user requires a durable artifact. Do not create
@@ -55,8 +55,8 @@ change with clear scope, risks, and oracle.
 
 Name the outcome, acceptance criteria, and verification commands. Give each
 task an ID, owned files, prerequisites, and the contracts it consumes and
-produces. Set exact signatures only when the contract requires them. Keep
-implementation choices open. Start behavior tasks with a failing test. Slice
+produces. Keep implementation choices open unless the contract fixes a
+signature. Start behavior tasks with a failing test. Slice
 tasks vertically, each verifiable alone. Stage wide interface changes as
 expand, migrate callers, then contract. Parallelize tasks only when
 ownership is disjoint and neither result can reshape the other.

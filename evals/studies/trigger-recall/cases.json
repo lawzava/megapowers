@@ -611,6 +611,46 @@
       "prompt": "How many bullet points does SESSION.md contain? Answer with the number only. Change nothing.",
       "files": { "SESSION.md": "# Session notes\n\n- 40 minutes searching for the config loader; it lives in internal/boot/load.go.\n- Pushed a change that CI rejected for an unused import that go vet would have caught.\n- Re-ran the full test suite six times to read one failing test.\n" },
       "provenance": "authored 2026-10-01; counting session notes is not a retrospective"
+    },
+    {
+      "id": "test-first-implementation-pasted-bug",
+      "kind": "paraphrase",
+      "expected": "test-first-implementation",
+      "prompt": "Here is Discount from discount.go:\n\nfunc Discount(total int) int {\n\tif total > 100 {\n\t\treturn total / 10\n\t}\n\treturn 0\n}\n\nOrders of exactly 100 should get the 10% discount too, but they get nothing. Fix it.",
+      "files": { "discount.go": "package discount\n\nfunc Discount(total int) int {\n\tif total > 100 {\n\t\treturn total / 10\n\t}\n\treturn 0\n}\n", "go.mod": "module example.com/probe\n\ngo 1.24\n" },
+      "provenance": "authored 2026-10-21 from addyosmani/agent-skills tdd-fires-on-pasted-bug: a pasted bug fix that never mentions tests"
+    },
+    {
+      "id": "test-first-implementation-change-request",
+      "kind": "paraphrase",
+      "expected": "test-first-implementation",
+      "prompt": "Change Resize in size.go so the size can never exceed 100.",
+      "files": { "go.mod": "module example.com/probe\n\ngo 1.24\n", "size.go": "package size\n\nfunc Resize(current, delta int) int {\n\treturn current + delta\n}\n" },
+      "provenance": "authored 2026-10-21: a one-line behavior change request with no mention of tests; Addy's evals found this phrasing hardest to fire"
+    },
+    {
+      "id": "test-first-implementation-cli-flag",
+      "kind": "buried",
+      "expected": "test-first-implementation",
+      "prompt": "Quick one first: which Go version does go.mod declare? Then add a --json flag to the CLI in main.go that prints the count as {\"count\": N} instead of the plain number.",
+      "files": { "go.mod": "module example.com/probe\n\ngo 1.24\n", "main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\tfmt.Println(len(os.Args) - 1)\n}\n" },
+      "provenance": "authored 2026-10-21 from session audit: tool and CLI feature requests skipped test-first in 6 of 9 implementation sessions"
+    },
+    {
+      "id": "systematic-debugging-hosted-preview",
+      "kind": "paraphrase",
+      "expected": "systematic-debugging",
+      "prompt": "The preview deploy failed again. Here is the end of the build log:\n\nBuilding...\nnpm ERR! code ECONNRESET\nnpm ERR! network aborted\nError: build step exited with 1\n\nIs this failure real or something on the platform side? Figure out what is going on.",
+      "files": { "package.json": "{\n  \"name\": \"probe\",\n  \"private\": true,\n  \"scripts\": { \"build\": \"echo build\" }\n}\n" },
+      "provenance": "authored 2026-10-21 from session audit: a hosted preview failure handed off without checking the provider status"
+    },
+    {
+      "id": "test-first-implementation-near-miss-explain",
+      "kind": "near-miss",
+      "allowed": ["systematic-debugging"],
+      "prompt": "Here is the diff from the last commit and the failing output. Explain what broke; do not change any code.\n\n- if total > 100 {\n+ if total > 1000 {\n\n--- FAIL: TestDiscount (0.00s)\n    discount_test.go:9: Discount(150) = 0, want 15",
+      "files": { "discount.go": "package discount\n\nfunc Discount(total int) int {\n\tif total > 1000 {\n\t\treturn total / 10\n\t}\n\treturn 0\n}\n", "discount_test.go": "package discount\n\nimport \"testing\"\n\nfunc TestDiscount(t *testing.T) {\n\tif got := Discount(150); got != 15 {\n\t\tt.Fatalf(\"Discount(150) = %d, want 15\", got)\n\t}\n}\n", "go.mod": "module example.com/probe\n\ngo 1.24\n" },
+      "provenance": "authored 2026-10-21 from addyosmani/agent-skills tdd-stays-quiet-on-debug: an explain-only question must not pull in test-first"
     }
   ]
 }

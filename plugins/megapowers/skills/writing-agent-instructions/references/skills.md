@@ -48,6 +48,13 @@ Do not add a README, changelog, installation guide, sample directory, UI
 metadata, or compatibility field unless the distribution format or requested
 workflow needs it.
 
+Claude Code adds a loaded skill to the conversation once and does not re-read
+it, so word a rule to hold for the whole task ("run the tests after every
+edit", not "run the tests"). After compaction it re-attaches the first 5,000
+tokens of each invoked skill, within 25,000 tokens in total, so put the rules
+that must survive first. State the behavior you want, not only what to avoid.
+Give a reference longer than about 100 lines a table of contents.
+
 ## Validate behavior
 
 Check format and discovery separately from usefulness. A valid file can still
@@ -94,6 +101,12 @@ Before trusting a difference between variants:
 On Claude Code, `/doctor prompt-audit` flags instruction text written for
 older models, such as fixed multi-step procedures and verify-twice rules.
 Treat its findings as candidates and validate each removal as above.
+
+## Sources reviewed 2026-10-21
+
+- [Anthropic, Extend Claude with skills](https://code.claude.com/docs/en/skills):
+  loaded skills are not re-read; compaction keeps 5,000 tokens per skill and
+  25,000 in total; description plus `when_to_use` is capped at 1,536 characters.
 
 ## Sources reviewed 2026-10-08
 

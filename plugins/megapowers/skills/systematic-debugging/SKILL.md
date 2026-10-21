@@ -1,28 +1,28 @@
 ---
 name: systematic-debugging
 description: Use when a bug, failing or flaky test, production incident, unexpected output, or performance regression has an unknown cause.
-when_to_use: "Trigger phrases: why is this failing, bug, broken, flaky, CI is red, error with no obvious cause, something went wrong in the setup, exit 1 with no output, performance regression, what could cause this, build or deploy failed, pasted CI or build log, platform rejects the config."
+when_to_use: "Trigger phrases: why is this failing, bug, broken, flaky, CI is red, preview or deploy failed, is this failure real, error with no obvious cause, something went wrong in the setup, exit 1 with no output, performance regression, what could cause this, build or deploy failed, pasted CI or build log, platform rejects the config."
 metadata:
   short-description: Diagnose an unknown-cause failure before editing
 ---
 
 # Systematic Debugging
 
-Find the root cause before attempting a fix. A symptom patch without a causal
-explanation creates a second unknown.
+Find the root cause before attempting a fix.
 
 Read the complete failure. When many checks fail, list them and group by
 likely shared cause before fixing the first. Reproduce it with a fast, deterministic loop that
 goes red on the reported symptom, then minimize it. Trace the bad value or
 condition backward across boundaries, compare it with a working path, and
-inspect recent changes without assuming they are causal. For flakiness,
+inspect recent changes without assuming they are causal. When a hosted
+service or CI provider fails, check its status page first. For flakiness,
 identify nondeterministic input, timing, shared state, or resource contention
 instead of retrying until green. For slowness, use
 [performance measurement](references/performance.md).
 
 If output is filtered or truncated, retrieve the relevant raw diagnostics before
 diagnosing the failure. If raw evidence remains unavailable or incomplete, treat
-the diagnosis as inconclusive. Recover missing context through bounded reads.
+the diagnosis as inconclusive.
 Redact secrets before quoting captured output.
 Do not repeat a side effect solely to recover output.
 
@@ -47,5 +47,10 @@ original failure path.
 
 When a deterministic local test is impossible, agree on a substitute oracle
 and record the environment, correlation key, pre-change failure, post-change
-result, and monitoring window. After three failed fixes on one approach, record
+result, and monitoring window. When two fixes resting on one premise
+fail, test that premise directly before a third. After three failed fixes on
+one approach, record
 evidence and uncertainty, then switch approach; end only when none remains.
+
+After a long diagnosis, propose one cheap permanent signal, such as a log line
+or doctor check, that would have exposed the cause; add it only on request.

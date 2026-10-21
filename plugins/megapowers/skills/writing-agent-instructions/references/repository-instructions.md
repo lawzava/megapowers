@@ -15,7 +15,10 @@ pattern.
 Codex builds its project instruction chain from the repository root down to the
 current working directory when a run starts. It reads at most one applicable
 instruction file in each directory, and guidance closer to the working
-directory appears later and takes precedence.
+directory appears later and takes precedence. In each directory it prefers
+`AGENTS.override.md` over `AGENTS.md`, and it stops adding files once their
+combined size reaches `project_doc_max_bytes` (32 KiB by default), so a long
+root file can silently drop nested guidance.
 
 Claude Code loads `CLAUDE.md` files above the working directory at launch and
 loads nested files when it reads within their subtrees. From v2.1.277 it also
