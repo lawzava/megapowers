@@ -37,6 +37,8 @@ A runner selftest proves mechanics only. It is not behavioral evidence.
   status line, or another harness without an explicit scope decision and fresh
   evidence.
 - Add no unsourced model, benchmark, cost, context, or performance claims.
+- Check `docs/rejected-proposals.md` before proposing an upstream idea, and
+  record a declined proposal there with its reason.
 
 ## Code and prose
 

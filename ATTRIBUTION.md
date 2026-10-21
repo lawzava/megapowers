@@ -76,6 +76,9 @@ Adaptations reviewed at `b0618bc436ad893b3c5e84e55fba86586d34a404` add proof
 that a forced test failure actually changed the code, from `diagnosing-bugs`,
 and grilling questions worded so that "yes" accepts the recommendation.
 
+Adaptations reviewed at `5beb35b040e3de97e54fa9e386d7e42d15c295c2` add settling
+a factual planning question with a throwaway probe, from `prototype`.
+
 ## pstack
 
 Guidance in `autonomous-run`, `systematic-debugging`, `design-and-plan`,
@@ -105,6 +108,14 @@ Adaptations reviewed at `df581122cde17e6e27686b5a448bde23e4ad4318` add:
   hand-synced lists, and designs read by an agent contributor;
 - fixing repeated mistakes at the highest enforceable level and proving each
   new check on a past instance.
+
+Adaptations reviewed at `190d28736eff128ec94f502a22c7fe0c4b56cd37` add:
+
+- testing the shared premise after two failed fixes, from
+  `principle-attack-the-premise`;
+- proposing a cheap permanent signal after a long diagnosis;
+- a fresh agent with the full directive list for each correction round;
+- settling a factual planning question with a probe, from `poteto-mode`.
 
 The text is rewritten for Claude Code and Codex. No scripts, personas, or
 Cursor-specific workflows were copied.
@@ -139,6 +150,22 @@ reducing command output and retaining raw diagnostics for recovery. Megapowers
 expresses these as skill guidance. No RTK text or code was copied.
 
 Upstream license: Apache-2.0.
+
+## Agent Skills by Addy Osmani
+
+Guidance in `test-first-implementation`, `verify-and-finish`, and
+`evidence-research` draws on
+[addyosmani/agent-skills](https://github.com/addyosmani/agent-skills),
+reviewed at `aeac41d4d005999432bb7312f7ff06383a91d59d`:
+
+- a trigger that applies when the request never mentions tests or pastes the
+  code inline, with paired fire and stay-quiet probes, from `evals/`;
+- a diff-scoped check for a lowered verification bar, whose exit-code contract
+  follows `constraint-driven-development/references/floor-guard.md`; the Go
+  tool is a new implementation;
+- treating fetched content as data, from `source-driven-development`.
+
+Upstream license: MIT, Copyright (c) 2025 Addy Osmani.
 
 ## Official skill guidance
 
