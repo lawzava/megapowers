@@ -855,7 +855,6 @@ func TestReviewAcceptsPatchFileUnderTMPDIR(t *testing.T) {
 		t.Fatal("patch content did not reach the reviewer")
 	}
 	for _, tc := range []struct{ path, content, needle string }{
-		{filepath.Join(scratch, "notes.txt"), "plain text\n", "inside the repository"},
 		{filepath.Join(elsewhere, "change.diff"), patch, "inside the repository"},
 		{filepath.Join(scratch, "secret.patch"), patch + "+api_key = \"a1b2c3d4e5f6g7h8i9\"\n", "likely secret content"},
 		{filepath.Join(scratch, ".ssh", "key.patch"), patch, "secret-like path"},

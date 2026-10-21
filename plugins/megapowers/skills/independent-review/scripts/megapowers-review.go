@@ -227,6 +227,13 @@ const receiptWarning = "Advisory provenance only. This local receipt is not an a
 
 var errOutputLimit = errors.New("output exceeds size limit")
 
+var errGitWorkTree = errors.New("this operation requires a Git work tree; run from the repository, or pass --file paths to inspect or review")
+
+const filePathHint = "use a regular file inside the repository (or the current directory without Git), or under $TMPDIR"
+const packagePathHint = "prepare a sanitized review package and pass --file $TMPDIR/<name>"
+const receiptPathHint = "use an existing writable absolute directory such as $TMPDIR/<name>, outside the repository (or current directory without Git) and not containing it"
+const deltaPathHint = "use a new .patch or .diff file such as $TMPDIR/<name>.patch in an existing directory"
+
 var secretContentPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----`),
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
@@ -266,12 +273,17 @@ func main() {
 }
 
 func run(args []string) error {
+	if len(args) == 0 {
+		printUsage(os.Stderr)
+		return errors.New("a command is required")
+	}
+	if args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
+		printUsage(os.Stdout)
+		return nil
+	}
 	// Provider isolation relies on POSIX permissions and process groups.
 	if runtime.GOOS == "windows" {
 		return errors.New("megapowers-review runs on Linux and macOS; on Windows, run it from WSL")
-	}
-	if len(args) == 0 {
-		return errors.New("usage: megapowers-review inspect|review|snapshot|delta [options]")
 	}
 	command := args[0]
 	switch command {
@@ -281,10 +293,13 @@ func run(args []string) error {
 		return runDelta(args[1:])
 	}
 	if command != "inspect" && command != "review" {
-		return fmt.Errorf("unknown command %q; want inspect or review", command)
+		return fmt.Errorf("unknown command %q; want inspect, review, snapshot, or delta; run megapowers-review --help", command)
 	}
 
 	opt, err := parseOptions(command, args[1:])
+	if errors.Is(err, flag.ErrHelp) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -293,10 +308,20 @@ func run(args []string) error {
 	}
 
 	root, err := repositoryRoot()
+	inGit := err == nil
+	if errors.Is(err, errGitWorkTree) && opt.file != "" {
+		root, err = os.Getwd()
+		if err == nil {
+			root, err = filepath.EvalSymlinks(root)
+		}
+		if err == nil {
+			err = rejectBroadRoot(root)
+		}
+	}
 	if err != nil {
 		return err
 	}
-	cap, err := captureInput(root, opt)
+	cap, err := captureInput(root, opt, inGit)
 	if err != nil {
 		return err
 	}
@@ -344,7 +369,7 @@ func run(args []string) error {
 		return enc.Encode(disc)
 	}
 
-	receiptDest, err := openReceiptDestination(root, opt.out)
+	receiptDest, err := openReceiptDestination(root, opt.out, inGit)
 	if err != nil {
 		return err
 	}
@@ -366,7 +391,7 @@ func run(args []string) error {
 	// fails before credentials or source reach the provider.
 	runRoot, runName, err := createReceiptRun(receiptDest)
 	if err != nil {
-		return fmt.Errorf("create receipt run directory: %w; the receipt destination must be writable before dispatch", err)
+		return fmt.Errorf("create receipt run directory: %w; the --out receipt destination must be writable before dispatch; %s", err, receiptPathHint)
 	}
 	complete := false
 	defer func() {
@@ -453,10 +478,15 @@ func chunkHashes(cap capture) []string {
 	return hashes
 }
 
-func parseOptions(command string, args []string) (options, error) {
-	var opt options
+func commandFlagSet(command string) *flag.FlagSet {
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	fs.Usage = func() { printUsage(os.Stdout) }
+	return fs
+}
+
+func reviewFlagSet(command string, opt *options) *flag.FlagSet {
+	fs := commandFlagSet(command)
 	fs.StringVar(&opt.file, "file", "", "explicit file to review")
 	fs.StringVar(&opt.base, "base", "", "base commit")
 	fs.StringVar(&opt.head, "head", "", "head commit")
@@ -464,13 +494,71 @@ func parseOptions(command string, args []string) (options, error) {
 	fs.StringVar(&opt.providerCommand, "provider-command", "", "provider command template: argv[0] plus arguments, with optional {prompt_file} and {scratch_dir}")
 	fs.Var(&opt.providerEnv, "provider-env", "environment variable name to pass through (repeatable)")
 	fs.StringVar(&opt.intent, "intent", "", "artifact intent and acceptance boundary sent to the reviewer")
-	fs.StringVar(&opt.author, "author", "", "artifact author label; must differ from --provider")
-	fs.StringVar(&opt.out, "out", "", "private receipt directory")
-	fs.StringVar(&opt.approveExternal, "approve-external", "", "configured or token emitted by inspect")
-	fs.BoolVar(&opt.retainTranscript, "retain-transcript", false, "retain prompt and provider output")
+	fs.StringVar(&opt.author, "author", "", "review only: artifact author label; must differ from --provider")
+	fs.StringVar(&opt.out, "out", "", "review only: existing absolute private receipt directory outside the review root")
+	fs.StringVar(&opt.approveExternal, "approve-external", "", "review only: configured or token emitted by inspect")
+	fs.BoolVar(&opt.retainTranscript, "retain-transcript", false, "review only: retain prompt and provider output")
 	fs.IntVar(&opt.maxFilesPerChunk, "max-files-per-chunk", defaultMaxFilesPerChunk, "maximum files per provider package")
-	fs.BoolVar(&opt.preflight, "preflight", false, "run a liveness probe before review dispatch")
+	fs.BoolVar(&opt.preflight, "preflight", false, "review only: run a liveness probe before review dispatch")
 	fs.DurationVar(&opt.preflightTimeout, "preflight-timeout", defaultPreflightTimeout, "provider liveness probe timeout")
+	return fs
+}
+
+type deltaOptions struct {
+	since string
+	out   string
+}
+
+func deltaFlagSet(opt *deltaOptions) *flag.FlagSet {
+	fs := commandFlagSet("delta")
+	fs.StringVar(&opt.since, "since", "", "tree id printed by snapshot")
+	fs.StringVar(&opt.out, "out", "", "new .patch or .diff file under $TMPDIR")
+	return fs
+}
+
+func printUsage(w io.Writer) {
+	fmt.Fprintln(w, `Usage: megapowers-review <command> [options]
+
+Commands:
+  inspect   Inspect the package and print a disclosure and approval token.
+  review    Send the package to the approved reviewer and write private receipts.
+  snapshot  Print the current Git working tree id (no flags).
+  delta     Write changes since a snapshot to a new temporary patch.
+
+Help: --help, -h, help, or <command> --help|-h.
+Inspect and review require --file PATH or --base REV --head REV.
+
+Path rules:
+  In a Git work tree, the repository is the review root. Otherwise, the
+  current directory is the review root and inspect/review require --file;
+  the home directory and filesystem root are refused as that root.
+  --file accepts a regular file inside that root or under $TMPDIR, with any
+  extension. Symlink files are rejected; resolved paths must stay within an
+  accepted root. Secret scanning, text checks, and size limits always apply.
+  review --out must already exist as an absolute directory, have no symlinks,
+  and be outside the review root. It must not contain that root.
+  Create a directory such as $TMPDIR/<name>. Without --out, receipts go in
+  Git metadata, or under $TMPDIR outside the review root when there is no Git.
+  snapshot, delta, and --base/--head require a Git work tree; run from the
+  repository, or pass --file paths to inspect or review.
+  delta --out must be a new .patch or .diff file under $TMPDIR in an existing
+  directory, such as $TMPDIR/<name>.patch.
+
+Inspect and review flags (review-only flags are marked):`)
+	var opt options
+	fs := reviewFlagSet("review", &opt)
+	fs.SetOutput(w)
+	fs.PrintDefaults()
+	fmt.Fprintln(w, "\nDelta flags:")
+	var delta deltaOptions
+	fs = deltaFlagSet(&delta)
+	fs.SetOutput(w)
+	fs.PrintDefaults()
+}
+
+func parseOptions(command string, args []string) (options, error) {
+	var opt options
+	fs := reviewFlagSet(command, &opt)
 	if err := fs.Parse(args); err != nil {
 		return opt, fmt.Errorf("parse options: %w", err)
 	}
@@ -528,7 +616,7 @@ func validateInputMode(opt options) error {
 func repositoryRoot() (string, error) {
 	out, err := runGit("", 16*1024, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return "", errors.New("current directory is not inside a Git repository")
+		return "", errGitWorkTree
 	}
 	root := strings.TrimSpace(string(out))
 	physical, err := filepath.EvalSymlinks(root)
@@ -538,52 +626,67 @@ func repositoryRoot() (string, error) {
 	return filepath.Clean(physical), nil
 }
 
-func captureInput(root string, opt options) (capture, error) {
+// rejectBroadRoot refuses a non-Git review root at the filesystem root or the
+// home directory, where any personal file would fall inside the root.
+func rejectBroadRoot(root string) error {
+	root = filepath.Clean(root)
+	if root == filepath.Dir(root) {
+		return errors.New("refusing the filesystem root as a review root outside Git; run from the document's own directory, or pass --file $TMPDIR/<name>")
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		if physical, err := filepath.EvalSymlinks(home); err == nil && filepath.Clean(physical) == root {
+			return errors.New("refusing the home directory as a review root outside Git; run from the document's own directory, or pass --file $TMPDIR/<name>")
+		}
+	}
+	return nil
+}
+
+func captureInput(root string, opt options, inGit bool) (capture, error) {
 	if opt.file != "" {
-		return captureFile(root, opt.file)
+		return captureFile(root, opt.file, inGit)
 	}
 	return captureRange(root, opt.base, opt.head, opt.maxFilesPerChunk)
 }
 
-func captureFile(root, name string) (capture, error) {
+func captureFile(root, name string, inGit bool) (capture, error) {
 	abs, err := filepath.Abs(name)
 	if err != nil {
-		return capture{}, fmt.Errorf("resolve file: %w", err)
+		return capture{}, fmt.Errorf("resolve file: %w; %s", err, filePathHint)
 	}
 	info, err := os.Lstat(abs)
 	if err != nil {
-		return capture{}, fmt.Errorf("inspect file %q: %w", name, err)
+		return capture{}, fmt.Errorf("inspect file %q: %w; %s", name, err, filePathHint)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return capture{}, fmt.Errorf("symlink input rejected: %s", name)
+		return capture{}, fmt.Errorf("symlink input rejected: %s; %s", name, filePathHint)
 	}
 	if !info.Mode().IsRegular() {
-		return capture{}, fmt.Errorf("non-regular input rejected: %s", name)
+		return capture{}, fmt.Errorf("non-regular input rejected: %s; %s", name, filePathHint)
 	}
 	if info.Size() > maxFileBytes {
 		return capture{}, fmt.Errorf("file exceeds %d-byte size limit: %s", maxFileBytes, name)
 	}
 	physical, err := filepath.EvalSymlinks(abs)
 	if err != nil {
-		return capture{}, fmt.Errorf("resolve file %q: %w", name, err)
+		return capture{}, fmt.Errorf("resolve file %q: %w; %s", name, err, filePathHint)
 	}
 	physical = filepath.Clean(physical)
 	rel, inTemp := "", false
 	if insideRoot(physical, root) {
 		rel, err = filepath.Rel(root, physical)
 		if err != nil {
-			return capture{}, fmt.Errorf("relativize file: %w", err)
+			return capture{}, fmt.Errorf("relativize file: %w; %s", err, filePathHint)
 		}
 		rel = filepath.ToSlash(rel)
-	} else if rel, inTemp = tempPatchPath(physical); !inTemp {
-		return capture{}, fmt.Errorf("file must be inside the repository, or be a .diff or .patch file under $TMPDIR: %s", name)
+	} else if rel, inTemp = tempFilePath(physical); !inTemp {
+		return capture{}, fmt.Errorf("file must be inside the repository (or the current directory without Git), or under $TMPDIR: %s; %s", name, filePathHint)
 	}
 	if secretLikePath(rel) {
-		return capture{}, fmt.Errorf("secret-like path rejected: %s", rel)
+		return capture{}, fmt.Errorf("secret-like path rejected: %s; prepare a sanitized review package at a non-secret path; %s", rel, filePathHint)
 	}
-	if !inTemp {
+	if inGit && !inTemp {
 		if err := rejectTrackedSubmodule(root, rel); err != nil {
-			return capture{}, err
+			return capture{}, fmt.Errorf("%w; prepare a sanitized review package under $TMPDIR", err)
 		}
 	}
 	data, err := os.ReadFile(physical)
@@ -607,15 +710,9 @@ func captureFile(root, name string) (capture, error) {
 	return capture{Source: source, Paths: []string{rel}, Chunks: []reviewChunk{chunk}}, nil
 }
 
-// tempPatchPath accepts a .diff or .patch file outside the repository when it
-// resolves under the physical temporary directory, so a prepared diff needs
-// no scratch repository. The returned label hides the machine-specific prefix.
-func tempPatchPath(physical string) (string, bool) {
-	switch strings.ToLower(filepath.Ext(physical)) {
-	case ".diff", ".patch":
-	default:
-		return "", false
-	}
+// tempFilePath accepts a file under the physical temporary directory. The
+// returned label hides the machine-specific prefix.
+func tempFilePath(physical string) (string, bool) {
 	temp, err := filepath.EvalSymlinks(os.TempDir())
 	if err != nil || !filepath.IsAbs(temp) {
 		return "", false
@@ -630,6 +727,15 @@ func tempPatchPath(physical string) (string, bool) {
 		return "", false
 	}
 	return "$TMPDIR/" + filepath.ToSlash(rel), true
+}
+
+func tempPatchPath(physical string) (string, bool) {
+	switch strings.ToLower(filepath.Ext(physical)) {
+	case ".diff", ".patch":
+		return tempFilePath(physical)
+	default:
+		return "", false
+	}
 }
 
 // rangeFile is one changed file with its patch and the exact number of bytes
@@ -675,16 +781,16 @@ func captureRange(root, baseRev, headRev string, maxFilesPerChunk int) (capture,
 	files := make([]rangeFile, 0, len(records))
 	for _, rec := range records {
 		if secretLikePath(rec.path) {
-			return capture{}, fmt.Errorf("secret-like path rejected: %s", rec.path)
+			return capture{}, fmt.Errorf("secret-like path rejected: %s; %s", rec.path, packagePathHint)
 		}
 		if rec.oldMode == "120000" || rec.newMode == "120000" {
-			return capture{}, fmt.Errorf("symlink input rejected in commit range: %s", rec.path)
+			return capture{}, fmt.Errorf("symlink input rejected in commit range: %s; %s", rec.path, packagePathHint)
 		}
 		if rec.oldMode == "160000" || rec.newMode == "160000" {
-			return capture{}, fmt.Errorf("submodule input rejected in commit range: %s", rec.path)
+			return capture{}, fmt.Errorf("submodule input rejected in commit range: %s; %s", rec.path, packagePathHint)
 		}
 		if !regularGitMode(rec.oldMode) || !regularGitMode(rec.newMode) {
-			return capture{}, fmt.Errorf("unsupported Git mode %s -> %s for %s", rec.oldMode, rec.newMode, rec.path)
+			return capture{}, fmt.Errorf("unsupported Git mode %s -> %s for %s; %s", rec.oldMode, rec.newMode, rec.path, packagePathHint)
 		}
 		oldData, err := readBlob(root, rec.oldOID, rec.path)
 		if err != nil {
@@ -1107,11 +1213,11 @@ func providerBinary(provider, template, root string) (providerExecutable, error)
 	}
 	resolved = filepath.Clean(resolved)
 	if insideRoot(abs, root) || insideRoot(resolved, root) {
-		return providerExecutable{}, fmt.Errorf("provider command resolves inside the repository and is rejected: %s", path)
+		return providerExecutable{}, fmt.Errorf("provider command resolves inside the repository or current directory review root and is rejected: %s; use a provider installed outside the review root", path)
 	}
 	info, err := os.Stat(resolved)
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-		return providerExecutable{}, fmt.Errorf("provider command is not an executable regular file: %s", resolved)
+		return providerExecutable{}, fmt.Errorf("provider command is not an executable regular file: %s; use an executable regular file installed outside the review root", resolved)
 	}
 	script, err := hasShebang(resolved)
 	if err != nil {
@@ -1328,7 +1434,7 @@ func openProviderSession(binary providerExecutable, extraEnv []string, root stri
 	}
 	if insideRoot(scratchPhysical, root) {
 		session.close()
-		return nil, errors.New("provider scratch directory resolved inside the repository")
+		return nil, errors.New("provider scratch directory resolved inside the repository or current directory review root; set TMPDIR to an existing directory outside the review root")
 	}
 	if err := os.Chmod(scratch, 0700); err != nil {
 		session.close()
@@ -1575,7 +1681,7 @@ func providerEnvironment(extra []string, root string) ([]string, error) {
 			if name == "PATH" {
 				value = sanitizedPath(value, root)
 				if value == "" {
-					return nil, errors.New("PATH has no absolute entry outside the repository")
+					return nil, errors.New("PATH has no absolute entry outside the repository or current directory review root; add the provider's installation directory outside the review root to PATH")
 				}
 			} else if environmentPathVariable(name) && pathValueInsideRoot(value, root) {
 				continue
@@ -1695,7 +1801,19 @@ func writeJSONPrivate(root *os.Root, name string, value any) error {
 	return writePrivate(root, name, append(encoded, '\n'))
 }
 
-func openReceiptDestination(root, requested string) (receiptDestination, error) {
+func openReceiptDestination(root, requested string, inGit bool) (destination receiptDestination, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w; %s", err, receiptPathHint)
+		}
+	}()
+	defaultTemp := requested == "" && !inGit
+	if defaultTemp {
+		requested, err = filepath.EvalSymlinks(os.TempDir())
+		if err != nil {
+			return receiptDestination{}, fmt.Errorf("resolve default --out under $TMPDIR: %w", err)
+		}
+	}
 	path := ""
 	prefix := "review-"
 	if requested != "" {
@@ -1714,8 +1832,14 @@ func openReceiptDestination(root, requested string) (receiptDestination, error) 
 		if physical != path {
 			return receiptDestination{}, errors.New("--out must be canonical and contain no symlinks")
 		}
-		if pathsOverlap(physical, root) {
-			return receiptDestination{}, errors.New("--out must be outside the repository and must not contain it")
+		overlaps := pathsOverlap(physical, root)
+		if defaultTemp {
+			// A fresh child directory cannot contain the existing review
+			// root, so the default temporary parent may contain that root.
+			overlaps = insideRoot(physical, root)
+		}
+		if overlaps {
+			return receiptDestination{}, errors.New("--out must be outside the repository or current directory review root and must not contain it")
 		}
 		path = physical
 	} else {
@@ -1732,7 +1856,7 @@ func openReceiptDestination(root, requested string) (receiptDestination, error) 
 	}
 	anchored, err := openAnchoredDirectory(path)
 	if err != nil {
-		return receiptDestination{}, err
+		return receiptDestination{}, fmt.Errorf("open --out receipt destination: %w", err)
 	}
 	return receiptDestination{Root: anchored, Path: path, Prefix: prefix}, nil
 }
@@ -1853,7 +1977,13 @@ func (b *tailBuffer) Bytes() []byte {
 // runSnapshot prints a tree id for the working tree, untracked files
 // included, so a later delta can isolate changes made after a review.
 func runSnapshot(args []string) error {
-	if len(args) != 0 {
+	fs := commandFlagSet("snapshot")
+	if err := fs.Parse(args); errors.Is(err, flag.ErrHelp) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("parse options: %w", err)
+	}
+	if fs.NArg() != 0 {
 		return errors.New("usage: megapowers-review snapshot")
 	}
 	root, err := repositoryRoot()
@@ -1873,33 +2003,33 @@ func runSnapshot(args []string) error {
 // goes through the normal inspect and review path, so a correction round
 // discloses only the fixes.
 func runDelta(args []string) error {
-	fs := flag.NewFlagSet("delta", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	since := fs.String("since", "", "tree id printed by snapshot")
-	out := fs.String("out", "", "new .patch or .diff file under $TMPDIR")
-	if err := fs.Parse(args); err != nil {
+	var opt deltaOptions
+	fs := deltaFlagSet(&opt)
+	if err := fs.Parse(args); errors.Is(err, flag.ErrHelp) {
+		return nil
+	} else if err != nil {
 		return fmt.Errorf("parse options: %w", err)
 	}
-	if fs.NArg() != 0 || *since == "" || *out == "" {
+	if fs.NArg() != 0 || opt.since == "" || opt.out == "" {
 		return errors.New("usage: megapowers-review delta --since TREE --out $TMPDIR/NAME.patch")
 	}
-	abs, err := filepath.Abs(*out)
+	abs, err := filepath.Abs(opt.out)
 	if err != nil {
-		return fmt.Errorf("resolve --out: %w", err)
+		return fmt.Errorf("resolve --out: %w; %s", err, deltaPathHint)
 	}
 	parent, err := filepath.EvalSymlinks(filepath.Dir(abs))
 	if err != nil {
-		return fmt.Errorf("resolve --out directory: %w", err)
+		return fmt.Errorf("resolve --out directory: %w; %s", err, deltaPathHint)
 	}
 	physical := filepath.Join(parent, filepath.Base(abs))
 	if _, ok := tempPatchPath(physical); !ok {
-		return fmt.Errorf("--out must be a .patch or .diff file under $TMPDIR: %s", *out)
+		return fmt.Errorf("--out must be a .patch or .diff file under $TMPDIR: %s; %s", opt.out, deltaPathHint)
 	}
 	root, err := repositoryRoot()
 	if err != nil {
 		return err
 	}
-	base, err := runGit(root, 1024, "rev-parse", "--verify", "--end-of-options", *since+"^{tree}")
+	base, err := runGit(root, 1024, "rev-parse", "--verify", "--end-of-options", opt.since+"^{tree}")
 	if err != nil {
 		return fmt.Errorf("--since is not a tree id from snapshot: %w", err)
 	}
@@ -1918,27 +2048,27 @@ func runDelta(args []string) error {
 	// cannot redirect the patch outside $TMPDIR.
 	dir, err := openAnchoredDirectory(parent)
 	if err != nil {
-		return fmt.Errorf("anchor --out directory: %w", err)
+		return fmt.Errorf("anchor --out directory: %w; %s", err, deltaPathHint)
 	}
 	defer dir.Close()
 	opened, openedErr := dir.Stat(".")
 	named, namedErr := os.Stat(parent)
 	resolved, resolvedErr := filepath.EvalSymlinks(parent)
 	if openedErr != nil || namedErr != nil || resolvedErr != nil || resolved != parent || !os.SameFile(opened, named) {
-		return errors.New("--out directory changed while it was being opened")
+		return fmt.Errorf("--out directory changed while it was being opened; %s", deltaPathHint)
 	}
 	file, err := dir.OpenFile(filepath.Base(physical), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
-		return fmt.Errorf("create --out (it must not already exist): %w", err)
+		return fmt.Errorf("create --out (it must not already exist): %w; %s", err, deltaPathHint)
 	}
 	if _, err := file.Write(patch); err != nil {
 		file.Close()
-		return fmt.Errorf("write --out: %w", err)
+		return fmt.Errorf("write --out: %w; %s", err, deltaPathHint)
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("write --out: %w", err)
+		return fmt.Errorf("write --out: %w; %s", err, deltaPathHint)
 	}
-	fmt.Fprintf(os.Stderr, "delta: wrote %d bytes to %s\n", len(patch), *out)
+	fmt.Fprintf(os.Stderr, "delta: wrote %d bytes to %s\n", len(patch), opt.out)
 	return nil
 }
 

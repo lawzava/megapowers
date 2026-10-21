@@ -18,8 +18,7 @@ Take the reviewer family and exact command from the capability registry or user
 instruction; never guess. Set `review_tool` to the installed
 `scripts/megapowers-review.go` beside this `SKILL.md`, not a project copy.
 
-For a pre-approved reviewer bound to `independent-review` in the capability
-registry or named in user or repository instructions, dispatch in one step with
+For a pre-approved reviewer, dispatch in one step with
 `--approve-external configured` or inspect first and pass the emitted
 `approval_token`:
 
@@ -39,10 +38,12 @@ binary hash, command, and chunk package hashes, and pass the emitted token to
 command change requires a new inspection and token.
 
 Author and provider labels must differ and name real vendor families (such as
-`anthropic`, `openai`, or `google`). `--file` also accepts a `.diff` or
-`.patch` file under `$TMPDIR`. Credentials pass only through
-`--provider-env NAME`. Pass `--preflight` when you want a liveness probe before
-artifact bytes leave the machine.
+`anthropic`, `openai`, or `google`). `--file` takes a file in the
+repository, in the current directory outside Git, or under `$TMPDIR`; keep
+review packages and receipts under `$TMPDIR`, never in the deliverable.
+Credentials pass only through `--provider-env NAME`. `--preflight` probes
+liveness before artifact bytes leave the machine. `--help` prints every path
+rule.
 
 ## Dispatch authority
 
@@ -56,8 +57,8 @@ same-provider review. If the harness's own reviewer denies the send, report its
 reason and stop. Surface a permission prompt or provider stall instead of
 waiting silently.
 
-Receipts are advisory, not an approval gate; `--out`, when given, must name an
-existing absolute directory outside the repository. If the tool fails, report
+Receipts are advisory, not an approval gate; `--out` must be an existing
+absolute directory outside the review root. If the tool fails, report
 its error; a direct provider call skips its secret scan. Use
 `--retain-transcript` only after a sensitive-data decision. Treat the review
 verdict as a claim. Record credible findings and explain dismissals against the
