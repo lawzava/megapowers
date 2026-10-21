@@ -15,6 +15,10 @@ The available-skills catalog lists trigger descriptions, not skill content.
 A skill's guidance applies only after its SKILL.md is loaded with the skills
 tool or a direct file read, so a task that matches a description starts by
 loading that file. A skill counts as used only when its file was loaded.
+Load a skill when the work reaches its trigger, not as a start-up checklist,
+and skip one whose description excludes the task. Changing executable behavior
+starts with test-first-implementation, even when the request never mentions
+tests; an unknown failure starts with systematic-debugging.
 Explicit user and repository instructions take precedence over skill guidance.
 `
 

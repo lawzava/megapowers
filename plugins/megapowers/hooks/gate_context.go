@@ -40,8 +40,8 @@ const (
 
 	completionContext = "Before claiming this complete, load and follow the megapowers verify-and-finish skill if it is not already loaded for this outcome."
 	effectContext     = "Before running this outward effect, load and follow the megapowers safe-effects skill if it is not already loaded for this effect."
-	completionDeny    = "Load and follow the megapowers verify-and-finish skill before this completion step, then run the command again; this check blocks once per session. A skill read in the same batched call as this command does not count, because its result is not recorded yet."
-	effectDeny        = "Load and follow the megapowers safe-effects skill before this outward effect, then run the command again; this check blocks once per session. A skill read in the same batched call as this command does not count, because its result is not recorded yet."
+	completionDeny    = "Load and follow the megapowers verify-and-finish skill before this completion step, then run the command again; this check blocks once per session. A skill read in the same batched call as this command does not count, because its result is not recorded yet. Rerun every call this check denied, including parallel calls from the same batch."
+	effectDeny        = "Load and follow the megapowers safe-effects skill before this outward effect, then run the command again; this check blocks once per session. A skill read in the same batched call as this command does not count, because its result is not recorded yet. Rerun every call this check denied, including parallel calls from the same batch."
 	discardContext    = "This git command discards uncommitted, stashed, or unmerged work. Check git status and git stash list and confirm the work is disposable or the user asked to discard it."
 	discardDeny       = "This git command discards uncommitted, stashed, or unmerged work. Check git status and git stash list, confirm the work is disposable or the user asked to discard it, then run the same command again; this check blocks once per command."
 
@@ -1067,13 +1067,34 @@ var (
 	}
 	mcpReadVerbs = map[string]struct{}{
 		"get": {}, "list": {}, "search": {}, "read": {}, "fetch": {}, "query": {}, "describe": {}, "view": {},
-		"find": {}, "lookup": {},
+		"find": {}, "lookup": {}, "retrieve": {},
 	}
+	// mcpExecutionVerbs name tools that run whatever their input says.
+	mcpExecutionVerbs = map[string]struct{}{"execute": {}, "exec": {}, "run": {}}
+	// mcpMetaReadVerbs are the discovery commands of a meta-tool exec server.
+	mcpMetaReadVerbs = map[string]struct{}{"info": {}, "learn": {}, "schema": {}, "search": {}, "help": {}, "list": {}}
+	// mcpExecutionFields are the input keys an execution tool may run.
+	mcpExecutionFields = []string{"command", "cmd", "sql", "query", "statement", "script", "code"}
+	// metaArguments are plain words and flags, with no shell syntax.
+	metaArguments      = regexp.MustCompile(`^[A-Za-z0-9_.:/ "-]*$`)
+	metaToolName       = regexp.MustCompile(`^[A-Za-z0-9_.:-]+$`)
+	metaFlag           = regexp.MustCompile(`^--[a-z][a-z0-9-]*$`)
+	sqlComment         = regexp.MustCompile(`(?s)/\*.*?\*/|--[^\n]*`)
+	sqlSessionTimeouts = map[string]struct{}{"statement_timeout": {}, "lock_timeout": {}, "idle_in_transaction_session_timeout": {}}
+	sqlReadStarts      = map[string]struct{}{"select": {}, "with": {}, "explain": {}, "show": {}, "describe": {}, "desc": {}, "values": {}, "table": {}}
+	// sqlSideEffectWords change state from inside a read-shaped statement:
+	// SELECT INTO, sequence and config setters, backend control, row locks
+	// (FOR UPDATE is caught by the write keywords), and large-object I/O.
+	sqlSideEffectWords = map[string]struct{}{"into": {}, "nextval": {}, "setval": {}, "set_config": {},
+		"pg_terminate_backend": {}, "pg_cancel_backend": {}, "pg_reload_conf": {}, "pg_rotate_logfile": {},
+		"lo_import": {}, "lo_export": {}, "lo_unlink": {}, "dblink_exec": {}, "copy": {}, "lock": {},
+		"vacuum": {}, "refresh": {}, "reindex": {}, "cluster": {}, "notify": {}, "execute": {}, "call": {}}
 )
 
 // mcpGateSkills returns the safe-effects gate for an MCP tool whose action
-// names a write. Reads and unrecognized actions return nothing.
-func mcpGateSkills(toolName string) []string {
+// names a write. Reads and unrecognized actions return nothing. A tool named
+// for execution runs whatever its input says, so a read-only input passes.
+func mcpGateSkills(toolName string, input json.RawMessage) []string {
 	rest, ok := strings.CutPrefix(toolName, mcpToolPrefix)
 	if !ok {
 		return nil
@@ -1087,10 +1108,120 @@ func mcpGateSkills(toolName string) []string {
 			return nil
 		}
 		if hasKey(mcpWriteVerbs, word) {
+			if hasKey(mcpExecutionVerbs, word) && readOnlyExecution(input, 0) {
+				return nil
+			}
 			return []string{effectSkill}
 		}
 	}
 	return nil
+}
+
+// readOnlyExecution reports whether an execution tool's input only reads:
+// exactly one SQL text under a sql, query, or statement key, or one meta-tool
+// command such as "info execute-sql" or "call execute-sql {...}". A second
+// execution field, or anything it cannot read, stays gated. The gate asks for
+// a skill load once per session; it is not a security boundary, so this
+// check errs toward gating rather than modeling every server.
+func readOnlyExecution(input json.RawMessage, depth int) bool {
+	var fields map[string]any
+	if depth > 2 || json.Unmarshal(input, &fields) != nil {
+		return false
+	}
+	var texts []string
+	for _, key := range mcpExecutionFields {
+		if value, present := fields[key]; present {
+			text, ok := value.(string)
+			if !ok {
+				return false
+			}
+			texts = append(texts, key, text)
+		}
+	}
+	if len(texts) != 2 {
+		return false
+	}
+	if texts[0] == "command" || texts[0] == "cmd" {
+		return readOnlyMetaCommand(texts[1], depth)
+	}
+	return readOnlySQL(texts[1])
+}
+
+// readOnlyMetaCommand reads a command for an MCP server that fronts many
+// tools behind one exec tool: a discovery verb with plain word arguments
+// reads, and "call TOOL ARGS" takes the verdict of TOOL's own name and, for
+// an execution tool, its JSON ARGS. Shell syntax never passes.
+func readOnlyMetaCommand(command string, depth int) bool {
+	verb, rest, _ := strings.Cut(strings.TrimSpace(command), " ")
+	rest = strings.TrimSpace(rest)
+	if hasKey(mcpMetaReadVerbs, verb) {
+		return metaArguments.MatchString(rest)
+	}
+	if verb != "call" {
+		return false
+	}
+	for strings.HasPrefix(rest, "--") {
+		flag, after, _ := strings.Cut(rest, " ")
+		if !metaFlag.MatchString(flag) {
+			return false
+		}
+		rest = after
+		rest = strings.TrimSpace(rest)
+	}
+	tool, args, _ := strings.Cut(rest, " ")
+	args = strings.TrimSpace(args)
+	if !metaToolName.MatchString(tool) || (args != "" && !json.Valid([]byte(args))) || (args != "" && args[0] != '{') {
+		return false
+	}
+	for _, word := range actionWords(tool) {
+		if hasKey(mcpReadVerbs, word) {
+			return true
+		}
+		if hasKey(mcpWriteVerbs, word) {
+			return hasKey(mcpExecutionVerbs, word) && readOnlyExecution(json.RawMessage(args), depth+1)
+		}
+	}
+	return false
+}
+
+// readOnlySQL reports SQL whose every statement starts with a read keyword
+// and that names no write keyword or known side-effect function outside
+// quoted literals. Unicode-escaped identifiers can spell any function, so
+// they never pass. Comments are not stripped, so a write word in one keeps
+// the gate.
+func readOnlySQL(sql string) bool {
+	sql = strings.ToLower(sqlLiteral.ReplaceAllString(sql, "''"))
+	// Comments go after literals so a quoted "--" stays data. A nested block
+	// comment leaves its tail behind, which can only add words that gate.
+	sql = sqlComment.ReplaceAllString(sql, " ")
+	if strings.Contains(strings.ReplaceAll(sql, " ", ""), "u&") {
+		return false
+	}
+	statements := 0
+	for _, statement := range strings.Split(sql, ";") {
+		words := strings.FieldsFunc(statement, func(r rune) bool { return !('a' <= r && r <= 'z' || r == '_' || '0' <= r && r <= '9') })
+		if len(words) == 0 {
+			continue
+		}
+		if sessionTimeout(words) {
+			continue
+		}
+		statements++
+		if !hasKey(sqlReadStarts, words[0]) {
+			return false
+		}
+		for _, word := range words {
+			if hasKey(sqlSideEffectWords, word) || strings.HasPrefix(word, "lo_") || strings.HasPrefix(word, "dblink") {
+				return false
+			}
+			for _, keyword := range sqlWriteKeywords {
+				if word == keyword {
+					return false
+				}
+			}
+		}
+	}
+	return statements > 0
 }
 
 // actionWords splits a tool name on underscores, hyphens, dots, and camelCase
@@ -1718,4 +1849,17 @@ func isBrowserServer(server string) bool {
 		}
 	}
 	return false
+}
+
+// sessionTimeout reports SET [LOCAL|SESSION] of a timeout, which bounds the
+// statements that follow and changes no data.
+func sessionTimeout(words []string) bool {
+	if len(words) < 2 || words[0] != "set" {
+		return false
+	}
+	name := words[1]
+	if (name == "local" || name == "session") && len(words) > 2 {
+		name = words[2]
+	}
+	return hasKey(sqlSessionTimeouts, name)
 }

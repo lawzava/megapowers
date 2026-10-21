@@ -421,7 +421,14 @@ func doctorSkillLoads(report *doctorReport, getenv getenvFunc, root string) {
 	if err != nil || json.Unmarshal(data, &catalog) != nil || workspace == "" {
 		return
 	}
-	files := sessionFiles(getenv, workspace, time.Now().Add(-7*24*time.Hour))
+	workspaces := []string{workspace}
+	if output, err := exec.Command("git", "-C", workspace, "rev-parse", "--show-toplevel").Output(); err == nil {
+		if top := strings.TrimSpace(string(output)); top != "" && top != workspace {
+			workspace = top
+			workspaces = append([]string{workspace}, workspaces...)
+		}
+	}
+	files := sessionFiles(getenv, workspaces, time.Now().Add(-7*24*time.Hour))
 	if len(files) == 0 {
 		report.add("skill loads, last 7 days in %s: no sessions found", workspace)
 		return
@@ -451,10 +458,10 @@ const maxDoctorSessions = 500
 
 var claudeProjectSlug = regexp.MustCompile(`[^A-Za-z0-9]`)
 
-// sessionFiles lists Claude Code transcripts in the workspace's project
-// directory and Codex rollouts whose session_meta names the workspace,
+// sessionFiles lists Claude Code transcripts in the workspaces' project
+// directories and Codex rollouts whose session_meta names a workspace,
 // modified after cutoff.
-func sessionFiles(getenv getenvFunc, workspace string, cutoff time.Time) []string {
+func sessionFiles(getenv getenvFunc, workspaces []string, cutoff time.Time) []string {
 	home := getenv("HOME")
 	claudeDir := getenv("CLAUDE_CONFIG_DIR")
 	if claudeDir == "" && home != "" {
@@ -470,12 +477,14 @@ func sessionFiles(getenv getenvFunc, workspace string, cutoff time.Time) []strin
 	}
 	var files []string
 	if claudeDir != "" {
-		project := filepath.Join(claudeDir, "projects", claudeProjectSlug.ReplaceAllString(workspace, "-"))
-		for _, pattern := range []string{"*.jsonl", "*/subagents/*.jsonl"} {
-			matches, _ := filepath.Glob(filepath.Join(project, pattern))
-			for _, match := range matches {
-				if recent(match) && len(files) < maxDoctorSessions {
-					files = append(files, match)
+		for _, workspace := range workspaces {
+			project := filepath.Join(claudeDir, "projects", claudeProjectSlug.ReplaceAllString(workspace, "-"))
+			for _, pattern := range []string{"*.jsonl", "*/subagents/*.jsonl"} {
+				matches, _ := filepath.Glob(filepath.Join(project, pattern))
+				for _, match := range matches {
+					if recent(match) && len(files) < maxDoctorSessions {
+						files = append(files, match)
+					}
 				}
 			}
 		}
@@ -499,8 +508,13 @@ func sessionFiles(getenv getenvFunc, workspace string, cutoff time.Time) []strin
 				continue
 			}
 			examined++
-			if cwd := codexSessionCwd(path); cwd != "" && filepath.Clean(cwd) == filepath.Clean(workspace) {
-				files = append(files, path)
+			if cwd := codexSessionCwd(path); cwd != "" {
+				for _, workspace := range workspaces {
+					if filepath.Clean(cwd) == filepath.Clean(workspace) {
+						files = append(files, path)
+						break
+					}
+				}
 			}
 		}
 	}

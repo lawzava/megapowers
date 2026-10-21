@@ -112,10 +112,11 @@ func runDenyDestructive(getenv getenvFunc, input io.Reader, output, errors io.Wr
 		fmt.Fprintln(errors, "megapowers destructive guard: cannot evaluate command input")
 		return 1
 	}
-	// MCP arguments differ per server, so only the tool name decides; an
-	// unrecognized name passes silently.
+	// MCP arguments differ per server, so the tool name decides, except that
+	// an execution tool's input can show it only reads; an unrecognized name
+	// passes silently.
 	if strings.HasPrefix(event.ToolName, mcpToolPrefix) {
-		deny, remind := skillGates(mcpGateSkills(event.ToolName), event.SessionID, event.TranscriptPath, getenv)
+		deny, remind := skillGates(mcpGateSkills(event.ToolName, event.ToolInput), event.SessionID, event.TranscriptPath, getenv)
 		return emitGate(deny, remind, output, errors)
 	}
 	var shell shellToolInput

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -321,6 +323,50 @@ func TestDoctorCountsSkillLoadsInTheWorkspace(t *testing.T) {
 	}
 	if strings.Contains(report, "grill-me") {
 		t.Errorf("loads from another workspace leaked into the count:\n%s", report)
+	}
+}
+
+func TestDoctorCountsSkillLoadsFromGitRootAndCwd(t *testing.T) {
+	for _, name := range []string{"repo root", "repo subdirectory", "outside git"} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("GIT_CEILING_DIRECTORIES", home)
+			workspace := filepath.Join(home, "workspace")
+			cwd := workspace
+			if name == "repo subdirectory" {
+				cwd = filepath.Join(workspace, "subdir")
+			}
+			if err := os.MkdirAll(cwd, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if name != "outside git" {
+				if output, err := exec.Command("git", "-C", workspace, "init", "-q").CombinedOutput(); err != nil {
+					t.Fatalf("git init: %v\n%s", err, output)
+				}
+			}
+			workspaces := []string{workspace}
+			if cwd != workspace {
+				workspaces = append(workspaces, cwd)
+			}
+			claudeLoad := strings.Join(skillReadTrace(t, "Skill", `{"skill":"megapowers:verify-and-finish"}`, "Launching skill: megapowers:verify-and-finish", false), "\n") + "\n"
+			codexLoad := `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<skill>\n<name>megapowers:safe-effects</name>\n<path>/p/skills/safe-effects/SKILL.md</path>\n# Safe Effects\nCheck the target."}]}}` + "\n"
+			for i, dir := range append(workspaces, filepath.Join(home, "other")) {
+				project := claudeProjectSlug.ReplaceAllString(dir, "-")
+				writeFile(t, filepath.Join(home, ".claude", "projects", project, "s1.jsonl"), claudeLoad)
+				writeFile(t, filepath.Join(home, ".codex", "sessions", filepath.FromSlash(time.Now().Format("2006/01/02")), fmt.Sprintf("rollout-%d.jsonl", i)),
+					`{"type":"session_meta","payload":{"cwd":`+strconvQuote(dir)+`}}`+"\n"+codexLoad)
+			}
+			env := map[string]string{
+				"HOME":                   home,
+				"PWD":                    cwd,
+				"MEGAPOWERS_PLUGIN_ROOT": filepath.Dir(packageDir(t)),
+			}
+			report := doctorOutput(t, env)
+			want := fmt.Sprintf("skill loads, last 7 days in %s: %d transcript(s); safe-effects %d, verify-and-finish %d", workspace, 2*len(workspaces), len(workspaces), len(workspaces))
+			if !strings.Contains(report, want) {
+				t.Errorf("doctor report lacks %q:\n%s", want, report)
+			}
+		})
 	}
 }
 

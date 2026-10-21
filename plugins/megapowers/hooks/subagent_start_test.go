@@ -82,3 +82,23 @@ func TestSubagentStartRejectsOversizedInput(t *testing.T) {
 		t.Fatalf("rc=%d stdout=%q stderr=%q", rc, stdout, stderr)
 	}
 }
+
+// Session audits found behavior changes and unknown failures handled without
+// their skills, and catalogs loaded up front as a checklist; the reminder
+// names the two skills and ties loading to the trigger.
+func TestSkillReminderNamesUnderusedSkillsAndLoadTiming(t *testing.T) {
+	t.Parallel()
+
+	input := `{"session_id":"s","hook_event_name":"SubagentStart","agent_id":"agent-1","agent_type":"general-purpose"}`
+	stdout, _, _ := runSubagentStartHook(t, map[string]string{"MEGAPOWERS_HARNESS": "claude"}, input)
+	context := decodeSubagentContext(t, stdout)
+	var session bytes.Buffer
+	runHook([]string{"session-start"}, func(string) string { return "" }, strings.NewReader(`{}`), &session, &bytes.Buffer{})
+	for name, text := range map[string]string{"subagent": context, "session": session.String()} {
+		for _, want := range []string{"test-first-implementation", "systematic-debugging", "when the work reaches its trigger"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s reminder missing %q:\n%s", name, want, text)
+			}
+		}
+	}
+}

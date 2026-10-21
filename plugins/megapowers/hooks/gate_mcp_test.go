@@ -128,3 +128,66 @@ func TestGateMCPParallelSiblingIsDenied(t *testing.T) {
 		t.Fatalf("parallel MCP sibling must be denied: %q", sibling)
 	}
 }
+
+// A tool named for execution (execute_sql, run_sql, exec) runs whatever its
+// input says, so the input decides: a read-only query passes, anything else
+// keeps the safe-effects gate.
+func TestGateMCPExecutionToolsReadTheirInput(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, tool, input string
+		deny              bool
+	}{
+		{"stats select", "mcp__db__execute_sql", `{"sql":"SELECT relname, n_live_tup FROM pg_stat_user_tables WHERE schemaname='media'; SELECT count(*) FROM characters.character"}`, false},
+		{"lowercase with cte", "mcp__db-brain__execute_sql", `{"sql":"with t as (select 1) select * from t"}`, false},
+		{"explain", "mcp__postgres__run_sql", `{"project_id":"p","sql":"EXPLAIN SELECT 1"}`, false},
+		{"literal holding a write word", "mcp__db__execute_sql", `{"sql":"SELECT * FROM audit WHERE action = 'delete'"}`, false},
+		{"posthog read call", "mcp__beef_posthog__exec", `{"command":"call execute-sql {\"query\": \"WITH k AS (SELECT user_id FROM t WHERE deleted_at IS NULL) SELECT count(*) FROM k\"}"}`, false},
+		{"posthog info", "mcp__foxy-posthog__exec", `{"command":"info execute-sql"}`, false},
+		{"posthog learn", "mcp__foxy-posthog__exec", `{"command":"learn -s querying"}`, false},
+		{"posthog read tool", "mcp__foxy-posthog__exec", `{"command":"call read-data-schema {}"}`, false},
+		{"posthog learn phrase", "mcp__beef_posthog__exec", `{"command":"learn -s \"web vitals per page\""}`, false},
+		{"posthog call with json flag", "mcp__beef_posthog__exec", `{"command":"call --json view-list {\"limit\": 200}"}`, false},
+		{"posthog retrieve", "mcp__beef_posthog__exec", `{"command":"call external-data-schemas-retrieve {\"id\":\"x\"}"}`, false},
+		{"statement timeout then select", "mcp__db__execute_sql", `{"sql":"SET statement_timeout = '5s'; SELECT 1"}`, false},
+		{"search with pipe", "mcp__beef_posthog__exec", `{"command":"search a|rm -rf x"}`, true},
+		{"set role", "mcp__db__execute_sql", `{"sql":"SET ROLE admin; SELECT 1"}`, true},
+		{"comment hides write behind timeout", "mcp__db__execute_sql", `{"sql":"/* SET statement_timeout */ DELETE FROM accounts; SELECT 1"}`, true},
+		{"line comment hides write", "mcp__db__execute_sql", `{"sql":"-- SET statement_timeout\nDELETE FROM accounts; SELECT 1"}`, true},
+		{"comment before select", "mcp__db__execute_sql", `{"sql":"-- table stats\nSELECT 1"}`, false},
+		{"shell syntax in flag", "mcp__beef_posthog__exec", `{"command":"call --flag;>gate-write;# retrieve {}"}`, true},
+		{"insert", "mcp__db__execute_sql", `{"sql":"INSERT INTO t VALUES (1)"}`, true},
+		{"select then delete", "mcp__db__execute_sql", `{"sql":"SELECT 1; DELETE FROM t"}`, true},
+		{"cte write", "mcp__db__execute_sql", `{"sql":"WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d"}`, true},
+		{"select into", "mcp__db__execute_sql", `{"sql":"SELECT * INTO backup FROM t"}`, true},
+		{"side-effect function", "mcp__db__execute_sql", `{"sql":"SELECT pg_terminate_backend(42)"}`, true},
+		{"row lock", "mcp__db__execute_sql", `{"sql":"SELECT * FROM t FOR UPDATE"}`, true},
+		{"temp view", "mcp__db__execute_sql", `{"sql":"create temp view v as select 1"}`, true},
+		{"posthog write call", "mcp__beef_posthog__exec", `{"command":"call insight-create {\"name\": \"x\"}"}`, true},
+		{"posthog write sql", "mcp__beef_posthog__exec", `{"command":"call execute-sql {\"query\": \"DROP TABLE t\"}"}`, true},
+		{"unknown exec command", "mcp__beef_posthog__exec", `{"command":"call dashboard-insights-run {}"}`, true},
+		{"no recognizable input", "mcp__supabase__execute_sql", `{"issueId":"ABC-1","body":"hi"}`, true},
+		{"non-execution write tool ignores input", "mcp__linear__save_issue", `{"sql":"SELECT 1"}`, true},
+		{"large object function", "mcp__db__execute_sql", `{"sql":"SELECT lo_create(0)"}`, true},
+		{"unicode escaped identifier", "mcp__db__execute_sql", `{"sql":"SELECT U&\"next\\0076al\"('s')"}`, true},
+		{"dblink", "mcp__db__execute_sql", `{"sql":"SELECT dblink_connect('x')"}`, true},
+		{"decoy command beside sql", "mcp__db__execute_sql", `{"command":"help","sql":"DELETE FROM accounts"}`, true},
+		{"decoy sql beside query", "mcp__db__execute_sql", `{"sql":"SELECT 1","query":"DELETE FROM accounts"}`, true},
+		{"shell chain after meta verb", "mcp__shell__exec", `{"command":"help ; touch /var/tmp/x"}`, true},
+		{"substitution after meta verb", "mcp__shell__exec", `{"command":"info $(touch x)"}`, true},
+		{"call with non-json args", "mcp__beef_posthog__exec", `{"command":"call read-data-schema ; rm -rf x"}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			env := map[string]string{"MEGAPOWERS_HOOK_CACHE_DIR": t.TempDir()}
+			stdout, stderr, rc := runMCPGate(t, env, "session-exec", "", tc.tool, tc.input)
+			if rc != 0 || stderr != "" {
+				t.Fatalf("rc=%d stderr=%q", rc, stderr)
+			}
+			if denied := stdout != "" && decodeGate(t, stdout).HookSpecificOutput.PermissionDecision == "deny"; denied != tc.deny {
+				t.Fatalf("deny=%v, want %v: %q", denied, tc.deny, stdout)
+			}
+		})
+	}
+}
