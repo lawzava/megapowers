@@ -169,6 +169,64 @@ func findClass(classes []sessionMineClass, name string) *sessionMineClass {
 	return nil
 }
 
+func TestSessionMineCodexArchiveRoots(t *testing.T) {
+	root := repoRoot(t)
+	tool := buildSessionMine(t, root)
+	for _, name := range []string{"default home", "CODEX_HOME", "archive only"} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			codexHome := filepath.Join(home, ".codex")
+			env := []string{"HOME=" + home, "CODEX_HOME="}
+			if name == "CODEX_HOME" {
+				codexHome = filepath.Join(home, "custom-codex")
+				env[1] = "CODEX_HOME=" + codexHome
+			}
+			workspace := filepath.Join(home, "workspace")
+			active := filepath.Join(codexHome, "sessions")
+			archive := filepath.Join(codexHome, "archived_sessions")
+			shared := []string{
+				codexMeta("2026-10-03T10:00:00Z", workspace, "cli"),
+				codexMessage("2026-10-03T10:01:00Z", "user", "Did you test the parser?"),
+			}
+			if name != "archive only" {
+				writeLines(t, filepath.Join(active, "2026", "10", "03", "rollout-shared.jsonl"), shared...)
+			}
+			writeLines(t, filepath.Join(archive, "rollout-shared.jsonl"), shared...)
+			writeLines(t, filepath.Join(archive, "rollout-archived.jsonl"),
+				codexMeta("2026-10-03T11:00:00Z", workspace, "cli"),
+				codexMessage("2026-10-03T11:01:00Z", "user", "Did you test the archive?"),
+			)
+			for _, scan := range []struct {
+				name, explicitRoot string
+				want               int
+			}{
+				{name: "default roots", want: 2},
+				{name: "explicit archive", explicitRoot: archive, want: 2},
+				{name: "explicit sessions", explicitRoot: active, want: 1},
+			} {
+				t.Run(scan.name, func(t *testing.T) {
+					want := scan.want
+					if name == "archive only" && scan.explicitRoot == active {
+						want = 0
+					}
+					args := []string{"corrections", "--workspace", workspace, "--harness", "codex", "--format", "json"}
+					if scan.explicitRoot != "" {
+						args = append(args, "--codex-root", scan.explicitRoot)
+					}
+					output, code := run(t, root, env, tool, args...)
+					var report sessionMineCorrections
+					if code != 0 || json.Unmarshal([]byte(output), &report) != nil {
+						t.Fatalf("corrections failed (%d): %s", code, output)
+					}
+					if report.SessionsScanned != want || report.HumanTurns != want || report.ClassifiedTurns != want {
+						t.Errorf("sessions=%d human=%d classified=%d, want %d each", report.SessionsScanned, report.HumanTurns, report.ClassifiedTurns, want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestSessionMineCorrections(t *testing.T) {
 	root := repoRoot(t)
 	tool := buildSessionMine(t, root)

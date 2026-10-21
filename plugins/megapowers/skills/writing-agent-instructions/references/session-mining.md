@@ -23,6 +23,10 @@ Shared flags: `--harness claude|codex|both` (default `both`), `--format
 text|json`, `--limit N` (examples per class, default 5; sessions for recall,
 default 10), `--all-workspaces` instead of `--workspace`, and `--claude-root`
 or `--codex-root` to override the transcript locations.
+By default, Codex scans both `sessions` and `archived_sessions` under
+`CODEX_HOME` (or `~/.codex`), counting each rollout filename once;
+`--codex-root` scans only the given directory, including archives only when
+pointed there.
 
 `corrections` puts each user turn next to the agent text that came before it
 and sorts the turn into a class by keywords:

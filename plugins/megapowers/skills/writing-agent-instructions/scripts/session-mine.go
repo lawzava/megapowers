@@ -37,7 +37,7 @@ type options struct {
 	hasSince   bool
 	harness    string
 	claudeRoot string
-	codexRoot  string
+	codexRoots []string
 	format     string
 	limit      int
 	topic      []string
@@ -256,7 +256,9 @@ func parseOptions(args []string) (options, error) {
 		case "--claude-root":
 			opt.claudeRoot = value
 		case "--codex-root":
-			opt.codexRoot = value
+			if value != "" {
+				opt.codexRoots = []string{value}
+			}
 		case "--format":
 			opt.format = value
 		case "--limit":
@@ -309,11 +311,13 @@ func parseOptions(args []string) (options, error) {
 			opt.claudeRoot = filepath.Join(home, ".claude", "projects")
 		}
 	}
-	if opt.codexRoot == "" {
-		if dir := os.Getenv("CODEX_HOME"); dir != "" {
-			opt.codexRoot = filepath.Join(dir, "sessions")
-		} else if home != "" {
-			opt.codexRoot = filepath.Join(home, ".codex", "sessions")
+	if len(opt.codexRoots) == 0 {
+		dir := os.Getenv("CODEX_HOME")
+		if dir == "" && home != "" {
+			dir = filepath.Join(home, ".codex")
+		}
+		if dir != "" {
+			opt.codexRoots = []string{filepath.Join(dir, "sessions"), filepath.Join(dir, "archived_sessions")}
 		}
 	}
 	return opt, nil
@@ -363,10 +367,21 @@ func loadSessions(opt options, stats *scanStats) []session {
 			}
 		}
 	}
-	if opt.harness != "claude" && opt.codexRoot != "" {
-		if root, err := filepath.EvalSymlinks(opt.codexRoot); err == nil {
+	if opt.harness != "claude" {
+		seen := map[string]bool{}
+		for _, dir := range opt.codexRoots {
+			root, err := filepath.EvalSymlinks(dir)
+			if err != nil {
+				continue
+			}
 			paths, _ := filepath.Glob(filepath.Join(root, "[0-9][0-9][0-9][0-9]", "[0-9][0-9]", "[0-9][0-9]", "rollout-*.jsonl"))
-			for _, path := range paths {
+			flat, _ := filepath.Glob(filepath.Join(root, "rollout-*.jsonl"))
+			for _, path := range append(paths, flat...) {
+				name := filepath.Base(path)
+				if seen[name] {
+					continue
+				}
+				seen[name] = true
 				if s, ok := readFile(path, root, "codex", opt, stats); ok {
 					sessions = append(sessions, s)
 				}
