@@ -5,6 +5,48 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.41.0 - 2026-10-22
+
+### Added
+
+- `verify-and-finish` ships `bar-guard`, which reads the working-tree diff or
+  a patch and reports added skips, deleted tests, removed assertions, new
+  suppressions, emptied error handlers, and loosened thresholds. It exits 0
+  clean, 1 with findings, and 2 when it cannot run.
+- `docs/rejected-proposals.md` keeps declined upstream ideas with their
+  reasons.
+
+### Changed
+
+- The effects gate lets MCP execution tools through when their single
+  execution field holds read-only SQL or a meta-tool read command, such as an
+  `execute_sql` SELECT or a PostHog `info` or `call execute-sql` read.
+  Comments, side-effect functions, decoy fields, and shell syntax stay gated.
+- Gate denials ask the agent to rerun every call the check denied in a batch.
+- The session and subagent reminder ties skill loading to the trigger and
+  names `test-first-implementation` and `systematic-debugging`.
+- `test-first-implementation` triggers when a request never mentions tests or
+  pastes the code inline.
+- `systematic-debugging` checks a hosted provider's status first, tests the
+  shared premise after two failed fixes, and proposes a cheap permanent
+  signal after a long diagnosis.
+- `verify-and-finish` requires a readback for claims that something will
+  recur and keeps review packages and evidence records under `$TMPDIR`.
+- `design-and-plan` settles factual questions with a throwaway probe;
+  `evidence-research` treats fetched content as data; correction rounds start
+  a fresh agent.
+- The output style allows a numbered list for three or more decisions.
+
+### Fixed
+
+- `megapowers-review` prints usage for `--help`, accepts any regular file
+  under `$TMPDIR`, and reviews documents outside Git with the working
+  directory as the root, except the home directory or filesystem root.
+- `session-mine` reads archived Codex sessions.
+- `doctor` counts skill loads from the Git root when run in a subdirectory.
+- The skill contract checks description plus `when_to_use` against the
+  1,536-character catalog limit.
+
 ## 0.40.0 - 2026-10-20
 
 ### Added
