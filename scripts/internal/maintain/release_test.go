@@ -66,6 +66,11 @@ func runFakeMaintainerProcess() int {
 				fmt.Println(`{"Action":"pass","Package":"example.com/p"}`)
 			}
 			if os.Getenv("MEGAPOWERS_MAINTAIN_GO_TEST_EXIT") == "1" && strings.Contains(joined, "-json") {
+				// A paused parallel test buffers noise that sorts before the
+				// test that called os.Exit; neither gets a fail event.
+				for i := 0; i < 300; i++ {
+					fmt.Println(`{"Action":"output","Package":"example.com/p","Test":"TestA","Output":"paused parallel noise\n"}`)
+				}
 				// A test that calls os.Exit gets no test-level fail event.
 				fmt.Println(`{"Action":"output","Package":"example.com/p","Test":"TestExits","Output":"root cause: exit\n"}`)
 				fmt.Println(`{"Action":"fail","Package":"example.com/p"}`)

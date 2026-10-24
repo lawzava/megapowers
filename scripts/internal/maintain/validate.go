@@ -271,7 +271,7 @@ func discoverGoFiles(root string) ([]string, error) {
 func runGoTests(ctx context.Context, root string, stdout, stderr io.Writer) bool {
 	checkCtx, cancel := deadline(ctx, 10*time.Minute)
 	defer cancel()
-	events := &testEvents{log: cappedBuffer{limit: 10 << 20}, output: map[string][]string{}}
+	events := &testEvents{log: cappedBuffer{limit: 10 << 20}, output: map[string][]string{}, last: map[string]int{}}
 	err := command(checkCtx, root, events, events, nil, "go", "test", "./...", "-count=1", "-json")
 	events.flush()
 	if err != nil {
@@ -306,6 +306,8 @@ type testEvents struct {
 	pending []byte
 	log     cappedBuffer
 	output  map[string][]string
+	last    map[string]int
+	seq     int
 	skipped []string
 }
 
@@ -319,6 +321,25 @@ func (e *testEvents) Write(p []byte) (int, error) {
 		e.line(e.pending[:i])
 		e.pending = e.pending[i+1:]
 	}
+}
+
+// blockLines caps one test's output in the failure report, so a noisy test
+// cannot push other diagnostics past the report's line limit.
+const blockLines = 40
+
+// writeBlock writes one test's buffered output, keeping its last lines,
+// where a failure usually ends.
+func (e *testEvents) writeBlock(key string) {
+	lines := strings.SplitAfter(strings.Join(e.output[key], ""), "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > blockLines {
+		dropped := len(lines) - blockLines
+		lines = append([]string{fmt.Sprintf("... %d earlier lines of this test omitted\n", dropped)}, lines[dropped:]...)
+	}
+	_, _ = e.log.Write([]byte(strings.Join(lines, "")))
+	delete(e.output, key)
 }
 
 func (e *testEvents) flush() {
@@ -341,6 +362,8 @@ func (e *testEvents) line(raw []byte) {
 	switch event.Action {
 	case "output":
 		e.output[key] = append(e.output[key], event.Output)
+		e.seq++
+		e.last[key] = e.seq
 	case "skip":
 		if event.Test != "" {
 			e.skipped = append(e.skipped, event.Package+" "+event.Test)
@@ -350,12 +373,13 @@ func (e *testEvents) line(raw []byte) {
 		delete(e.output, key)
 	case "fail":
 		if event.Test != "" {
-			_, _ = e.log.Write([]byte(strings.Join(e.output[key], "")))
-			delete(e.output, key)
+			e.writeBlock(key)
 			return
 		}
 		// A package failure also flushes output of tests that never got
-		// their own fail event, such as a test that called os.Exit.
+		// their own fail event, such as a test that called os.Exit. The
+		// test that wrote last is most likely the one that exited, so it
+		// goes first and survives the report's line cap.
 		prefix := event.Package + "\x00"
 		var keys []string
 		for k := range e.output {
@@ -363,10 +387,9 @@ func (e *testEvents) line(raw []byte) {
 				keys = append(keys, k)
 			}
 		}
-		sort.Strings(keys)
+		sort.Slice(keys, func(i, j int) bool { return e.last[keys[i]] > e.last[keys[j]] })
 		for _, k := range keys {
-			_, _ = e.log.Write([]byte(strings.Join(e.output[k], "")))
-			delete(e.output, k)
+			e.writeBlock(k)
 		}
 	case "build-output":
 		// Compiler and linker diagnostics arrive as build events, not as
