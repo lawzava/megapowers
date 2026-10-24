@@ -161,7 +161,7 @@ only when your request matches. The *experimental* labels come from
 | `evidence-research` *(experimental)* | A decision needs evidence from outside the repository |
 | `autonomous-run` *(experimental)* | An approved goal must keep going unattended across context resets or sessions |
 | `humanizing-prose` | You want human-facing text drafted or edited without filler, and without dropping or inventing facts |
-| `writing-agent-instructions` *(experimental)* | You are writing or revising a skill, `AGENTS.md`, or `CLAUDE.md`, running a session retrospective or recall, or auditing saved memory |
+| `writing-agent-instructions` *(experimental)* | You are writing or revising a skill, `AGENTS.md`, or `CLAUDE.md`, running a session retrospective or recall, auditing saved memory, or scoring what Megapowers does for a project and keeping its lessons |
 
 **Setup and upkeep**
 

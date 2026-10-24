@@ -17,6 +17,7 @@ Use it when:
 ```bash
 go run "$SKILL_DIR/scripts/session-mine.go" corrections --workspace "$PWD" --since 2026-10-01
 go run "$SKILL_DIR/scripts/session-mine.go" recall --topic "release script" --workspace "$PWD"
+go run "$SKILL_DIR/scripts/session-mine.go" scorecard --workspace "$PWD" --since 2026-10-01
 ```
 
 Shared flags: `--harness claude|codex|both` (default `both`), `--format
@@ -51,6 +52,15 @@ named pull request or issue) before reporting. Report a short brief: what the
 work was; each thread with a status tag such as `[merged #12]`, `[open PR #14]`,
 `[abandoned]`, or `[unknown]`; at most five open problems; and the next move.
 
+`scorecard` counts outcome signals per project: skill loads and the
+corrections that followed them, megapowers gate blocks, `VERIFIED` and `NOT
+VERIFIED` reports, foreground `sleep` calls, and autonomous-run journal
+events. A gate counts only when its denial opens an error result, so reading
+the gate's source does not count. `--all-workspaces` adds a per-workspace
+table. `--sanitize`, valid only with `scorecard`, hashes workspace paths,
+drops run IDs, and folds non-megapowers skill names into `other`. The
+[learning loop](learning-loop.md) uses the JSON form.
+
 ## Reading the results
 
 Keyword classes are candidates, not findings. "Continue" may be a plain
@@ -60,7 +70,8 @@ it toward a retrospective class.
 
 ## Privacy
 
-The tool runs locally and never writes files. Excerpts are short and redacted:
+The tool runs locally and never writes files. Only a sanitized scorecard
+may leave the machine, and only after the user has seen it. Excerpts are short and redacted:
 emails, tokens, home paths, and URL credentials are removed. Redaction can
 miss things. Never paste raw transcripts or unreviewed excerpts into
 a review package, issue, commit, or other public text.

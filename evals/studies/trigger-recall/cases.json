@@ -613,6 +613,14 @@
       "provenance": "authored 2026-10-01; counting session notes is not a retrospective"
     },
     {
+      "id": "writing-agent-instructions-learning-loop",
+      "kind": "paraphrase",
+      "expected": "writing-agent-instructions",
+      "prompt": "Which megapowers skills are actually helping in this repository, and what keeps going wrong across my recent agent sessions? Score it and propose lessons we could keep. Report only; change nothing.",
+      "files": { "AGENTS.md": "Run go test ./....\n" },
+      "provenance": "authored 2026-10-24 for the per-project learning loop trigger"
+    },
+    {
       "id": "test-first-implementation-pasted-bug",
       "kind": "paraphrase",
       "expected": "test-first-implementation",

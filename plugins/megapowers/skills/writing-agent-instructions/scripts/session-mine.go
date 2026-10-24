@@ -1,11 +1,14 @@
 // session-mine reads local Claude Code and Codex transcripts, read-only, and
-// reports where the human corrected the agent (corrections) or which earlier
-// sessions discussed a topic (recall). Every excerpt is redacted.
+// reports where the human corrected the agent (corrections), which earlier
+// sessions discussed a topic (recall), or per-project outcome signals
+// (scorecard). Every excerpt is redacted.
 package main
 
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,9 +23,10 @@ import (
 	"unicode"
 )
 
-const usageText = `usage: go run session-mine.go [corrections|recall] (--workspace DIR | --all-workspaces)
+const usageText = `usage: go run session-mine.go [corrections|recall|scorecard] (--workspace DIR | --all-workspaces)
   [--since YYYY-MM-DD] [--harness claude|codex|both] [--claude-root DIR]
-  [--codex-root DIR] [--format text|json] [--limit N] [--topic "WORDS" (recall only)]`
+  [--codex-root DIR] [--format text|json] [--limit N] [--topic "WORDS" (recall only)]
+  [--sanitize (scorecard only)]`
 
 const (
 	correctionExcerpt = 160
@@ -41,6 +45,7 @@ type options struct {
 	format     string
 	limit      int
 	topic      []string
+	sanitize   bool
 }
 
 // A message is one kept text record. Role is "human" (a person typed it),
@@ -55,7 +60,21 @@ type message struct {
 type session struct {
 	harness string
 	base    string
+	cwd     string
 	msgs    []message
+	events  []event
+}
+
+// An event is a tool action the scorecard counts: a skill load, a megapowers
+// gate block, or a foreground sleep. after is the number of kept messages
+// that precede it, so a correction can be tied to the skills loaded since
+// the previous human turn.
+type event struct {
+	kind  string
+	name  string
+	ts    time.Time
+	cwd   string
+	after int
 }
 
 type scanStats struct {
@@ -182,9 +201,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var stats scanStats
 	sessions := loadSessions(opt, &stats)
 	var report any
-	if opt.mode == "recall" {
+	switch opt.mode {
+	case "recall":
 		report = recall(opt, sessions, stats)
-	} else {
+	case "scorecard":
+		report = scorecard(opt, sessions, stats)
+	default:
 		report = corrections(opt, sessions, stats)
 	}
 	if opt.format == "json" {
@@ -202,6 +224,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		printCorrections(stdout, typed)
 	case recallReport:
 		printRecall(stdout, typed)
+	case scorecardReport:
+		printScorecard(stdout, typed)
 	}
 	return 0
 }
@@ -212,7 +236,7 @@ func parseOptions(args []string) (options, error) {
 		opt.mode = args[0]
 		args = args[1:]
 	}
-	if opt.mode != "corrections" && opt.mode != "recall" {
+	if opt.mode != "corrections" && opt.mode != "recall" && opt.mode != "scorecard" {
 		return opt, fmt.Errorf("unknown mode %q", opt.mode)
 	}
 	seen := map[string]bool{}
@@ -223,11 +247,12 @@ func parseOptions(args []string) (options, error) {
 			return opt, fmt.Errorf("%s may be provided only once", name)
 		}
 		seen[name] = true
-		if name == "--all-workspaces" {
+		if name == "--all-workspaces" || name == "--sanitize" {
 			if hasValue {
-				return opt, fmt.Errorf("--all-workspaces takes no value")
+				return opt, fmt.Errorf("%s takes no value", name)
 			}
-			opt.all = true
+			opt.all = opt.all || name == "--all-workspaces"
+			opt.sanitize = opt.sanitize || name == "--sanitize"
 			continue
 		}
 		switch name {
@@ -294,8 +319,11 @@ func parseOptions(args []string) (options, error) {
 	if opt.mode == "recall" && len(opt.topic) == 0 {
 		return opt, fmt.Errorf("recall requires --topic")
 	}
-	if opt.mode == "corrections" && topic != "" {
+	if opt.mode != "recall" && topic != "" {
 		return opt, fmt.Errorf("--topic applies only to recall")
+	}
+	if opt.sanitize && opt.mode != "scorecard" {
+		return opt, fmt.Errorf("--sanitize applies only to scorecard")
 	}
 	if opt.limit < 0 {
 		opt.limit = 5
@@ -423,10 +451,11 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 		line = bytes.TrimSpace(line)
 		if len(line) > 0 {
 			var msgs []message
+			var events []event
 			var ok bool
 			if harness == "claude" {
 				var cwd string
-				msgs, cwd, ok = parseClaude(line)
+				msgs, events, cwd, ok = parseClaude(line)
 				// Workspaces can share a slug (/work/a-b and /work/a/b), so the
 				// first recorded cwd decides which workspace owns the file.
 				if origin == "" && cwd != "" {
@@ -437,12 +466,13 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 				}
 			} else {
 				var meta *codexMeta
-				msgs, meta, ok = parseCodex(line, codexSubagent)
+				msgs, events, meta, ok = parseCodex(line, codexSubagent)
 				if meta != nil {
 					if !opt.all && filepath.Clean(meta.cwd) != opt.workspace {
 						return s, false
 					}
 					codexScoped, codexSubagent = true, meta.subagent
+					s.cwd = filepath.Clean(meta.cwd)
 				}
 			}
 			if !ok {
@@ -453,6 +483,13 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 					continue
 				}
 				s.msgs = append(s.msgs, msg)
+			}
+			for _, ev := range events {
+				if opt.hasSince && (ev.ts.IsZero() || ev.ts.Before(opt.since)) {
+					continue
+				}
+				ev.after = len(s.msgs)
+				s.events = append(s.events, ev)
 			}
 		}
 		if readErr != nil {
@@ -465,22 +502,47 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 	if harness == "codex" && !codexScoped && !opt.all {
 		return s, false
 	}
+	if origin != "" {
+		s.cwd = origin
+	} else if harness == "claude" {
+		// Without a recorded cwd, the project directory is the only scope, so
+		// files from different projects never share a scorecard workspace.
+		rel, _ := filepath.Rel(root, real)
+		s.cwd = "claude-project:" + strings.Split(filepath.ToSlash(rel), "/")[0]
+	}
 	if origin != "" && !opt.all {
 		// In a file that records cwd, a record without one cannot be scoped.
+		// prefix[i] counts kept messages among the first i, so event
+		// positions stay attached to the same neighbours.
+		prefix := make([]int, len(s.msgs)+1)
 		kept := s.msgs[:0]
-		for _, msg := range s.msgs {
+		for i, msg := range s.msgs {
+			prefix[i+1] = prefix[i]
 			if msg.cwd != "" {
 				kept = append(kept, msg)
+				prefix[i+1]++
 			}
 		}
 		s.msgs = kept
+		events := s.events[:0]
+		for _, ev := range s.events {
+			if ev.cwd != "" {
+				ev.after = prefix[ev.after]
+				events = append(events, ev)
+			}
+		}
+		s.events = events
 	}
 	return s, len(s.msgs) > 0
 }
 
 type contentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type    string          `json:"type"`
+	Text    string          `json:"text"`
+	Name    string          `json:"name"`
+	Input   json.RawMessage `json:"input"`
+	Content json.RawMessage `json:"content"`
+	IsError bool            `json:"is_error"`
 }
 
 func injected(text string) bool {
@@ -522,11 +584,12 @@ func humanText(raw string) (string, bool) {
 	return text, !injected(text)
 }
 
-// parseClaude returns the record's kept messages and its cwd, if any.
-func parseClaude(line []byte) ([]message, string, bool) {
+// parseClaude returns the record's kept messages, its scorecard events, and
+// its cwd, if any.
+func parseClaude(line []byte) ([]message, []event, string, bool) {
 	var record claudeRecord
 	if err := json.Unmarshal(line, &record); err != nil {
-		return nil, "", false
+		return nil, nil, "", false
 	}
 	cwd := ""
 	if record.Cwd != "" {
@@ -536,7 +599,102 @@ func parseClaude(line []byte) ([]message, string, bool) {
 	for i := range msgs {
 		msgs[i].cwd = cwd
 	}
-	return msgs, cwd, ok
+	events := claudeEvents(record)
+	for i := range events {
+		events[i].cwd = cwd
+	}
+	return msgs, events, cwd, ok
+}
+
+func claudeEvents(record claudeRecord) []event {
+	if (record.Type != "user" && record.Type != "assistant") || record.Message == nil {
+		return nil
+	}
+	var blocks []contentBlock
+	if json.Unmarshal(record.Message.Content, &blocks) != nil {
+		return nil
+	}
+	ts := parseTime(record.Timestamp)
+	var events []event
+	for _, block := range blocks {
+		switch {
+		case record.Type == "assistant" && block.Type == "tool_use":
+			var input struct {
+				Skill    string `json:"skill"`
+				Command  string `json:"command"`
+				FilePath string `json:"file_path"`
+			}
+			_ = json.Unmarshal(block.Input, &input)
+			switch block.Name {
+			case "Skill":
+				if input.Skill != "" {
+					events = append(events, event{kind: "skill", name: input.Skill, ts: ts})
+				}
+			case "Bash", "PowerShell":
+				events = append(events, callEvents(input.Command, ts)...)
+			case "Read":
+				events = append(events, skillReads(input.FilePath, ts)...)
+			}
+		case record.Type == "user" && block.Type == "tool_result" && block.IsError:
+			events = append(events, outputEvents(resultText(block.Content), ts)...)
+		}
+	}
+	return events
+}
+
+// resultText flattens a tool_result content, which is a string or a list of
+// text blocks.
+func resultText(raw json.RawMessage) string {
+	var plain string
+	if json.Unmarshal(raw, &plain) == nil {
+		return plain
+	}
+	var blocks []contentBlock
+	_ = json.Unmarshal(raw, &blocks)
+	var texts []string
+	for _, block := range blocks {
+		texts = append(texts, block.Text)
+	}
+	return strings.Join(texts, "\n")
+}
+
+var (
+	// A SKILL.md path names its plugin either as the directory before a
+	// version (plugin caches) or after plugins/ (a source checkout).
+	reSkillPath = regexp.MustCompile(`(?:([a-z0-9-]+)/[0-9]+\.[0-9]+\.[0-9]+[^/\s"]*|plugins/([a-z0-9-]+))?/skills/([a-z0-9-]+)/SKILL\.md`)
+	reSleep     = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])sleep\s+[0-9]`)
+	// A gate denial opens the tool result, after an optional hook prefix;
+	// the same phrase quoted from source code or a search is not a block.
+	reGate    = regexp.MustCompile(`^\s*(?:Error: )?(?:[A-Za-z]+(?::[A-Za-z]+)? hook error: )?Load and follow the megapowers ([a-z0-9-]+) skill`)
+	reVerdict = regexp.MustCompile(`(?m)^[\s*_>#-]{0,6}(NOT VERIFIED|VERIFIED)\b`)
+)
+
+func skillReads(text string, ts time.Time) []event {
+	var events []event
+	for _, m := range reSkillPath.FindAllStringSubmatch(text, -1) {
+		name := m[3]
+		if plugin := m[1] + m[2]; plugin != "" {
+			name = plugin + ":" + name
+		}
+		events = append(events, event{kind: "skill", name: name, ts: ts})
+	}
+	return events
+}
+
+// callEvents reads a shell command or a Codex tool-call body.
+func callEvents(text string, ts time.Time) []event {
+	events := skillReads(text, ts)
+	if reSleep.MatchString(text) {
+		events = append(events, event{kind: "sleep", ts: ts})
+	}
+	return events
+}
+
+func outputEvents(text string, ts time.Time) []event {
+	if m := reGate.FindStringSubmatch(text); m != nil {
+		return []event{{kind: "gate", name: m[1], ts: ts}}
+	}
+	return nil
 }
 
 func claudeMessages(record claudeRecord) ([]message, bool) {
@@ -593,14 +751,40 @@ type codexMeta struct {
 	subagent bool
 }
 
-func parseCodex(line []byte, subagent bool) ([]message, *codexMeta, bool) {
+func parseCodex(line []byte, subagent bool) ([]message, []event, *codexMeta, bool) {
 	var record struct {
 		Type      string          `json:"type"`
 		Timestamp string          `json:"timestamp"`
 		Payload   json.RawMessage `json:"payload"`
 	}
 	if err := json.Unmarshal(line, &record); err != nil {
-		return nil, nil, false
+		return nil, nil, nil, false
+	}
+	if record.Type == "response_item" {
+		var call struct {
+			Type      string          `json:"type"`
+			Name      string          `json:"name"`
+			Arguments string          `json:"arguments"`
+			Input     string          `json:"input"`
+			Output    json.RawMessage `json:"output"`
+		}
+		if json.Unmarshal(record.Payload, &call) == nil {
+			ts := parseTime(record.Timestamp)
+			switch call.Type {
+			case "function_call", "custom_tool_call", "local_shell_call":
+				// A patch that edits a SKILL.md is authoring, not a load.
+				if call.Name != "apply_patch" {
+					return nil, callEvents(call.Arguments+"\n"+call.Input, ts), nil, true
+				}
+				return nil, nil, nil, true
+			case "function_call_output", "custom_tool_call_output":
+				var text string
+				if json.Unmarshal(call.Output, &text) != nil {
+					text = string(call.Output)
+				}
+				return nil, outputEvents(text, ts), nil, true
+			}
+		}
 	}
 	switch record.Type {
 	case "session_meta":
@@ -609,12 +793,12 @@ func parseCodex(line []byte, subagent bool) ([]message, *codexMeta, bool) {
 			Source json.RawMessage `json:"source"`
 		}
 		if err := json.Unmarshal(record.Payload, &payload); err != nil {
-			return nil, nil, false
+			return nil, nil, nil, false
 		}
 		var source map[string]json.RawMessage
 		_ = json.Unmarshal(payload.Source, &source)
 		_, isSubagent := source["subagent"]
-		return nil, &codexMeta{cwd: payload.Cwd, subagent: isSubagent}, true
+		return nil, nil, &codexMeta{cwd: payload.Cwd, subagent: isSubagent}, true
 	case "response_item":
 		var payload struct {
 			Type    string         `json:"type"`
@@ -622,10 +806,10 @@ func parseCodex(line []byte, subagent bool) ([]message, *codexMeta, bool) {
 			Content []contentBlock `json:"content"`
 		}
 		if err := json.Unmarshal(record.Payload, &payload); err != nil {
-			return nil, nil, false
+			return nil, nil, nil, false
 		}
 		if payload.Type != "message" || (payload.Role != "user" && payload.Role != "assistant") {
-			return nil, nil, true
+			return nil, nil, nil, true
 		}
 		var texts []string
 		for _, block := range payload.Content {
@@ -639,7 +823,7 @@ func parseCodex(line []byte, subagent bool) ([]message, *codexMeta, bool) {
 			}
 		}
 		if len(texts) == 0 {
-			return nil, nil, true
+			return nil, nil, nil, true
 		}
 		role := payload.Role
 		if role == "user" {
@@ -648,9 +832,9 @@ func parseCodex(line []byte, subagent bool) ([]message, *codexMeta, bool) {
 				role = "prompt"
 			}
 		}
-		return []message{{role: role, text: strings.Join(texts, "\n"), ts: parseTime(record.Timestamp)}}, nil, true
+		return []message{{role: role, text: strings.Join(texts, "\n"), ts: parseTime(record.Timestamp)}}, nil, nil, true
 	}
-	return nil, nil, true
+	return nil, nil, nil, true
 }
 
 func classify(text string) string {
@@ -922,4 +1106,290 @@ func printRecall(w io.Writer, r recallReport) {
 		fmt.Fprintf(w, ", unreadable files %d", r.UnreadableFiles)
 	}
 	fmt.Fprintln(w)
+}
+
+type skillScore struct {
+	Name                 string `json:"name"`
+	Loads                int    `json:"loads"`
+	Sessions             int    `json:"sessions"`
+	FollowedByCorrection int    `json:"followed_by_correction"`
+}
+
+type runScore struct {
+	ID                   string `json:"id"`
+	Records              int    `json:"records"`
+	Oracle               int    `json:"oracle"`
+	Continuations        int    `json:"continuations"`
+	Blocked              int    `json:"blocked"`
+	HoldoutRegistrations int    `json:"holdout_registrations"`
+	Rebaselines          int    `json:"rebaselines"`
+	HighRiskDecisions    int    `json:"high_risk_decisions"`
+}
+
+type workspaceScore struct {
+	Workspace   string `json:"workspace"`
+	Sessions    int    `json:"sessions"`
+	HumanTurns  int    `json:"human_turns"`
+	Corrections int    `json:"corrections"`
+	SkillLoads  int    `json:"skill_loads"`
+	GateBlocks  int    `json:"gate_blocks"`
+	Verified    int    `json:"verified"`
+	NotVerified int    `json:"not_verified"`
+	SleepCalls  int    `json:"sleep_calls"`
+}
+
+type scorecardReport struct {
+	Note            string         `json:"note"`
+	Scope           string         `json:"scope"`
+	Since           string         `json:"since,omitempty"`
+	SessionsScanned int            `json:"sessions_scanned"`
+	HumanTurns      int            `json:"human_turns"`
+	Corrections     map[string]int `json:"corrections"`
+	Skills          []skillScore   `json:"skills"`
+	Gates           map[string]int `json:"gates"`
+	Reports         struct {
+		Verified    int `json:"verified"`
+		NotVerified int `json:"not_verified"`
+	} `json:"reports"`
+	SleepCalls      int              `json:"sleep_calls"`
+	Runs            []runScore       `json:"runs"`
+	ByWorkspace     []workspaceScore `json:"by_workspace,omitempty"`
+	SkippedLines    int              `json:"skipped_lines"`
+	SkippedFiles    int              `json:"skipped_files"`
+	UnreadableFiles int              `json:"unreadable_files"`
+}
+
+// scorecard summarizes outcome signals. Counts are candidates for a
+// retrospective, not findings: a correction after a skill load does not show
+// the skill caused it.
+func scorecard(opt options, sessions []session, stats scanStats) scorecardReport {
+	report := scorecardReport{
+		Note:            "counts are candidates; read the sessions behind a number before acting on it",
+		Scope:           opt.workspace,
+		SessionsScanned: len(sessions),
+		Corrections:     map[string]int{},
+		Skills:          []skillScore{},
+		Gates:           map[string]int{},
+		Runs:            []runScore{},
+		SkippedLines:    stats.skippedLines,
+		SkippedFiles:    stats.skippedFiles,
+		UnreadableFiles: stats.unreadableFiles,
+	}
+	if opt.hasSince {
+		report.Since = opt.since.Format("2006-01-02")
+	}
+	if opt.all {
+		report.Scope = "all workspaces"
+	}
+	if opt.sanitize {
+		report.Scope = sanitizedScope(opt)
+	}
+	skills := map[string]*skillScore{}
+	workspaces := map[string]*workspaceScore{}
+	for _, s := range sessions {
+		key := s.cwd
+		if key == "" {
+			key = "unknown"
+		}
+		if opt.sanitize {
+			key = hashKey("ws-", key)
+		}
+		ws := workspaces[key]
+		if ws == nil {
+			ws = &workspaceScore{Workspace: key}
+			workspaces[key] = ws
+		}
+		ws.Sessions++
+		inSession := map[string]bool{}
+		for _, ev := range s.events {
+			switch ev.kind {
+			case "skill":
+				name := skillName(ev.name, opt.sanitize)
+				score := skills[name]
+				if score == nil {
+					score = &skillScore{Name: name}
+					skills[name] = score
+				}
+				score.Loads++
+				ws.SkillLoads++
+				if !inSession[name] {
+					inSession[name] = true
+					score.Sessions++
+				}
+			case "gate":
+				report.Gates[ev.name]++
+				ws.GateBlocks++
+			case "sleep":
+				report.SleepCalls++
+				ws.SleepCalls++
+			}
+		}
+		previousHuman := -1
+		for i, msg := range s.msgs {
+			switch msg.role {
+			case "assistant":
+				if m := reVerdict.FindStringSubmatch(msg.text); m != nil {
+					if m[1] == "NOT VERIFIED" {
+						report.Reports.NotVerified++
+						ws.NotVerified++
+					} else {
+						report.Reports.Verified++
+						ws.Verified++
+					}
+				}
+			case "human":
+				report.HumanTurns++
+				ws.HumanTurns++
+				if class := classify(msg.text); class != "other" {
+					report.Corrections[class]++
+					ws.Corrections++
+					// Tie the correction to each skill loaded since the
+					// previous human turn, once per skill.
+					tied := map[string]bool{}
+					for _, ev := range s.events {
+						if ev.kind == "skill" && ev.after > previousHuman && ev.after <= i {
+							name := skillName(ev.name, opt.sanitize)
+							if !tied[name] {
+								tied[name] = true
+								skills[name].FollowedByCorrection++
+							}
+						}
+					}
+				}
+				previousHuman = i
+			}
+		}
+	}
+	for _, score := range skills {
+		report.Skills = append(report.Skills, *score)
+	}
+	sort.Slice(report.Skills, func(i, j int) bool {
+		if report.Skills[i].Loads != report.Skills[j].Loads {
+			return report.Skills[i].Loads > report.Skills[j].Loads
+		}
+		return report.Skills[i].Name < report.Skills[j].Name
+	})
+	if opt.all {
+		for _, ws := range workspaces {
+			report.ByWorkspace = append(report.ByWorkspace, *ws)
+		}
+		sort.Slice(report.ByWorkspace, func(i, j int) bool { return report.ByWorkspace[i].Workspace < report.ByWorkspace[j].Workspace })
+	} else {
+		report.Runs = runScores(opt.workspace, opt.sanitize)
+	}
+	return report
+}
+
+func hashKey(prefix, value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return prefix + hex.EncodeToString(sum[:4])
+}
+
+func sanitizedScope(opt options) string {
+	if opt.all {
+		return "all workspaces (sanitized)"
+	}
+	return hashKey("ws-", opt.workspace) + " (sanitized)"
+}
+
+// skillName keeps megapowers skill names, which are public, and folds every
+// other name into "other" when sanitizing, since a private plugin's skill
+// names can identify a client or project.
+func skillName(name string, sanitize bool) string {
+	if sanitize && !strings.HasPrefix(name, "megapowers:") {
+		return "other"
+	}
+	return name
+}
+
+// runScores reads autonomous-run journals in the workspace checkout.
+func runScores(workspace string, sanitize bool) []runScore {
+	paths, _ := filepath.Glob(filepath.Join(workspace, ".megapowers", "run", "*", "journal.jsonl"))
+	sort.Strings(paths)
+	runs := []runScore{}
+	for i, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		score := runScore{ID: filepath.Base(filepath.Dir(path))}
+		if sanitize {
+			score.ID = fmt.Sprintf("run-%d", i+1)
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			var rec struct {
+				Event    string `json:"event"`
+				Decision string `json:"decision"`
+				Risk     string `json:"risk"`
+			}
+			if strings.TrimSpace(line) == "" || json.Unmarshal([]byte(line), &rec) != nil {
+				continue
+			}
+			score.Records++
+			switch rec.Event {
+			case "oracle":
+				score.Oracle++
+			case "continuation":
+				score.Continuations++
+			case "blocked":
+				score.Blocked++
+			case "holdout":
+				score.HoldoutRegistrations++
+				if rec.Decision != "" {
+					score.Rebaselines++
+				}
+			}
+			if rec.Risk == "high" {
+				score.HighRiskDecisions++
+			}
+		}
+		runs = append(runs, score)
+	}
+	return runs
+}
+
+func joinCounts(counts map[string]int) string {
+	if len(counts) == 0 {
+		return "none"
+	}
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, key := range keys {
+		parts[i] = fmt.Sprintf("%s %d", key, counts[key])
+	}
+	return strings.Join(parts, ", ")
+}
+
+func printScorecard(w io.Writer, r scorecardReport) {
+	fmt.Fprintf(w, "session-mine scorecard: %s; %s\n", r.Scope, r.Note)
+	if r.Since != "" {
+		fmt.Fprintf(w, "since: %s\n", r.Since)
+	}
+	fmt.Fprintf(w, "sessions: %d, human turns: %d\n", r.SessionsScanned, r.HumanTurns)
+	fmt.Fprintf(w, "corrections: %s\n", joinCounts(r.Corrections))
+	fmt.Fprintln(w, "skills (loads / sessions / followed by correction):")
+	if len(r.Skills) == 0 {
+		fmt.Fprintln(w, "- none")
+	}
+	for _, s := range r.Skills {
+		fmt.Fprintf(w, "- %s: %d / %d / %d\n", s.Name, s.Loads, s.Sessions, s.FollowedByCorrection)
+	}
+	fmt.Fprintf(w, "gates: %s\n", joinCounts(r.Gates))
+	fmt.Fprintf(w, "reports: %d verified, %d not verified\n", r.Reports.Verified, r.Reports.NotVerified)
+	fmt.Fprintf(w, "sleep calls: %d\n", r.SleepCalls)
+	for _, run := range r.Runs {
+		fmt.Fprintf(w, "run %s: %d records, %d oracle, %d continuations, %d blocked, %d holdout registrations, %d rebaselines, %d high-risk decisions\n",
+			run.ID, run.Records, run.Oracle, run.Continuations, run.Blocked, run.HoldoutRegistrations, run.Rebaselines, run.HighRiskDecisions)
+	}
+	if len(r.ByWorkspace) > 0 {
+		fmt.Fprintln(w, "by workspace (sessions / human turns / corrections / skill loads / gate blocks / verified / not verified / sleep calls):")
+		for _, ws := range r.ByWorkspace {
+			fmt.Fprintf(w, "- %s: %d / %d / %d / %d / %d / %d / %d / %d\n", ws.Workspace, ws.Sessions, ws.HumanTurns, ws.Corrections, ws.SkillLoads, ws.GateBlocks, ws.Verified, ws.NotVerified, ws.SleepCalls)
+		}
+	}
+	fmt.Fprintf(w, "summary: skipped lines %d, skipped files %d, unreadable files %d\n", r.SkippedLines, r.SkippedFiles, r.UnreadableFiles)
 }
