@@ -319,13 +319,49 @@ func toolResultText(raw json.RawMessage) string {
 var (
 	// A shell wrapper such as /bin/bash -lc '...' hides the real command.
 	reShellWrap = regexp.MustCompile(`(?s)^\S*sh\s+-l?c\s+'(.*)'$`)
-	// A comment starts at # after whitespace or a command separator and runs
-	// to the end of the line.
-	reComment = regexp.MustCompile(`(?m)(^|[\s;&|])#.*$`)
 	// resume must be invoked at a command position, not passed as an
 	// argument to echo or another command.
 	reResumeCall = regexp.MustCompile(`(?:^|[;&|(\n]|\$\()\s*(?:go\s+run\s+\S*run-state\.go|\S*run-state)\s+resume\b`)
 )
+
+// stripComments removes shell comments: an unquoted # at the start of a word,
+// that is, after whitespace, a command separator, or the start of the text,
+// up to the end of the line. Quotes and backslash escapes are honored, so a
+// # inside 'TODO|#' stays data.
+func stripComments(command string) string {
+	var out strings.Builder
+	var quote rune
+	escaped, comment := false, false
+	prev := rune(0)
+	for _, r := range command {
+		switch {
+		case comment:
+			if r == '\n' {
+				comment = false
+				out.WriteRune(r)
+			}
+			prev = r
+			continue
+		case escaped:
+			escaped = false
+		case r == '\\' && quote != '\'':
+			escaped = true
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '\'' || r == '"':
+			quote = r
+		case r == '#' && (prev == 0 || strings.ContainsRune(" \t\n;&|()", prev)):
+			comment = true
+			prev = r
+			continue
+		}
+		out.WriteRune(r)
+		prev = r
+	}
+	return out.String()
+}
 
 // ranResume reports whether the trace invoked run-state resume and got the
 // tool's own resume output back.
@@ -335,7 +371,7 @@ func ranResume(trace []byte) bool {
 		if m := reShellWrap.FindStringSubmatch(command); m != nil {
 			command = m[1]
 		}
-		command = reComment.ReplaceAllString(command, "$1")
+		command = stripComments(command)
 		if reResumeCall.MatchString(command) && strings.Contains(run.output, "run-state: resume ") {
 			return true
 		}
@@ -489,6 +525,7 @@ type scripted struct {
 	renameTest, comment   bool
 	echo, codexFormat     bool
 	separatorComment      bool
+	quotedHash            bool
 }
 
 func (s scripted) name() string          { return "scripted:" + s.label }
@@ -559,6 +596,10 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		if s.comment {
 			trace = call("go test ./... # run-state.go resume --id ledger", "ok")
 		}
+		if s.quotedHash {
+			// A # inside quotes is data, not a comment.
+			trace = call("grep -nE 'TODO|#' .megapowers/run/ledger/charter.md; go run /p/run-state.go resume --id ledger", "run-state: resume ledger\nresult: match (exit 0)")
+		}
 		if s.separatorComment {
 			trace = call("printf 'run-state: resume ledger\\n';#; go run /p/run-state.go resume --id ledger", "run-state: resume ledger")
 		}
@@ -594,6 +635,7 @@ func runSelftest() int {
 		{scripted{label: "claims-resume", claim: true}, "fresh", "fail"},
 		{scripted{label: "resume-in-comment", comment: true}, "fresh", "fail"},
 		{scripted{label: "resume-after-separator-comment", separatorComment: true}, "fresh", "fail"},
+		{scripted{label: "quoted-hash-then-resume", quotedHash: true}, "fresh", "pass"},
 		{scripted{label: "echoes-resume", echo: true}, "fresh", "fail"},
 		{scripted{label: "codex-format", codexFormat: true}, "fresh", "pass"},
 		{scripted{label: "renames-test-in-session-1", renameTest: true}, "fresh", "indeterminate"},
