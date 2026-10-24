@@ -5,6 +5,57 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.42.0 - 2026-10-24
+
+### Added
+
+- `session-mine scorecard` reports per-project outcome signals. Per skill:
+  loads, and corrections that followed a load before the next human turn.
+  Overall: megapowers gate blocks, `VERIFIED` and `NOT VERIFIED` reports,
+  foreground `sleep` calls, and autonomous-run journal counts. `--sanitize`
+  hashes workspace paths, drops run IDs, and folds non-megapowers skill names
+  into `other`.
+- `writing-agent-instructions` ships `lessons.go` and a learning-loop
+  reference. A lesson is added with evidence-backed sources. A check lesson
+  is proven by failing at the commit where the mistake happened and passing
+  now. Promotion reads the change back from its target. Review against a
+  scorecard reports `recurring`, `stale`, `holding`, or `unknown`. `retire`
+  and a sanitized `export` with an installed-ab case draft close the loop.
+  `export` omits the free-text lesson unless `--include-text` is given. The
+  ledger lives outside the repository. The proof overlay copies only check
+  material that is new since the old commit, and never writes through a
+  symlink.
+- `run-state holdout` registers acceptance scenarios outside the worktree and
+  journals their hash. `resume` reports drift, `coverage` refuses an
+  implementer brief that names the holdout path, and `--rebaseline` journals
+  a high-risk decision.
+- `orchestrating` ships `lanes.go` for parallel writing lanes when native
+  worktree isolation is missing. Each lane is a detached worktree under
+  `$TMPDIR`. `check` exits 3 on a conflict or when two lanes touch one file.
+  `apply` writes a lane's patch into the lead worktree without committing.
+  `remove` refuses unapplied work and ignored files unless `--discard` is
+  given.
+- The `resume-proof` eval study drives `autonomous-run` recovery from a fresh
+  session or after `/compact`, and grades it deterministically from executed
+  commands and the fixture's original tests. On 2026-10-24, Claude Code
+  passed 4 of 4 runs and Codex passed 2 of 2.
+- Every installed-ab case with an oracle must prove three things: the
+  untouched fixture fails, a reference passes, and plausible wrong solutions
+  fail.
+
+### Changed
+
+- Five installed-ab fixtures now reject answers they used to accept: a
+  constant result, `return true`, an appended stale URL, and a hard-coded
+  name. Their earlier results are not comparable.
+- `verify-and-finish` trusts an empty search or scan only after it finds a
+  known positive.
+- `humanizing-prose` states that it replaces the output style's length and
+  sentence defaults. It models a requested voice on the user's human-facing
+  writing and lists machine-prose patterns to remove.
+- The global Claude and Codex templates gain a Waiting section: block on the
+  event, and treat timeouts and yields as ceilings.
+
 ## 0.41.0 - 2026-10-22
 
 ### Added
