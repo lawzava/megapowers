@@ -71,10 +71,12 @@ go run "$SKILL_DIR/scripts/lessons.go" prove --id ID --fail-ref <commit-with-the
 ```
 
 `prove` runs the check in a temporary detached worktree at the failing
-commit, then in the current tree. It first copies the current version of
-every relative file named on the command, and of each `--check-file PATH`,
-into the old tree, so a check added after the mistake judges the old code
-instead of failing because it is missing. It exits 3 when the check passes at the
+commit, then in the current tree. It first copies check material into the old
+tree: each `--check-file PATH`, and each relative file or directory named on
+the command that did not exist at the old commit. A check added after the
+mistake then judges the old code instead of failing because it is missing.
+A path that existed at the old commit is the code under test and is never
+replaced automatically. The overlay refuses to write through a symlink. It exits 3 when the check passes at the
 failing commit (it cannot catch the mistake) or fails now. For an
 `instructions`, `memory`, or `upstream` lesson, compare the same cases with and
 without the change as the parent skill describes, then cite the result:
@@ -129,8 +131,8 @@ go run "$SKILL_DIR/scripts/lessons.go" export --id ID
 
 `--sanitize` hashes workspace paths, drops run IDs, and folds every skill name
 outside `megapowers:` into `other`. `export` drops the project path, sources,
-and commit IDs, replaces absolute paths in the lesson and check with
-`<path>`, and adds an installed-ab case draft. Sanitizing keeps only
+and commit IDs, replaces every token that contains `/` or `\`
+in the lesson and check with `<path>`, and adds an installed-ab case draft. Sanitizing keeps only
 well-formed `megapowers:<skill>` names. Show both to the user
 before sharing; sharing is an outward effect under `safe-effects`. A
 maintainer who accepts a draft adds the case to

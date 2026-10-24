@@ -55,9 +55,9 @@ repository. Evidence is direct-statement, direct-observation, source-backed, or
 history-entry-only. CLASS is a session-mine correction class, "sleep", or
 "gate:<skill>", so review can count recurrences.
 
-prove copies the current version of every relative file named on the command,
-and of each --check-file, into the old tree, so the check judges old code
-rather than its own absence.
+prove copies each --check-file, and each relative file or directory named on
+the command that is absent at the old commit, into the old tree, so the check
+judges old code rather than its own absence. It never writes through a symlink.
 
 Exit codes: 0 ok, 3 action needed (proof failed, read-back missing, lesson
 recurring or stale), 125 tool or usage error.
@@ -576,53 +576,123 @@ func cmdProve(opt options) (int, error) {
 	return exitOK, nil
 }
 
-// overlayChecks copies the current version of the check's own files into the
-// old tree: every relative argument that names a regular file in the project,
-// plus each --check-file. Without it, a check script added after the mistake
-// is simply missing at the old commit, and its failure proves nothing.
-func overlayChecks(top, tree string, argv, extra []string) ([]string, error) {
+// overlayChecks copies check material into the old tree so the check judges
+// old code instead of failing because it is missing. It copies each
+// --check-file, and each relative argument that names a file or directory
+// in the project but is absent at the old commit. A path that existed then
+// is the code under test and is never replaced automatically.
+func overlayChecks(top, tree string, argv, explicit []string) ([]string, error) {
 	var copied []string
 	seen := map[string]bool{}
-	for i, name := range append(append([]string{}, argv...), extra...) {
-		explicit := i >= len(argv)
-		if name == "" || strings.HasPrefix(name, "-") || filepath.IsAbs(name) {
-			if explicit {
-				return nil, fail("--check-file %q must be a relative path inside the project", name)
+	add := func(rel string, force bool) error {
+		if seen[rel] {
+			return nil
+		}
+		info, err := os.Lstat(filepath.Join(top, rel))
+		if err != nil || !(info.Mode().IsRegular() || info.IsDir()) {
+			if force {
+				return fail("--check-file %q is not a regular file or directory in the project", rel)
 			}
-			continue
+			return nil
 		}
-		clean := filepath.Clean(name)
-		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			if explicit {
-				return nil, fail("--check-file %q must stay inside the project", name)
+		if !force {
+			if _, err := os.Lstat(filepath.Join(tree, rel)); err == nil {
+				return nil
 			}
-			continue
 		}
-		info, err := os.Lstat(filepath.Join(top, clean))
-		if err != nil || !info.Mode().IsRegular() {
-			if explicit {
-				return nil, fail("--check-file %q is not a regular file in the project", name)
+		seen[rel] = true
+		if err := copyInto(top, tree, rel, info); err != nil {
+			return err
+		}
+		copied = append(copied, filepath.ToSlash(rel))
+		return nil
+	}
+	for _, arg := range argv {
+		// Go package patterns name directories: ./checks/x/... means checks/x.
+		rel, ok := projectPath(strings.TrimSuffix(arg, "/..."))
+		if ok {
+			if err := add(rel, false); err != nil {
+				return nil, err
 			}
-			continue
 		}
-		if seen[clean] {
-			continue
+	}
+	for _, name := range explicit {
+		rel, ok := projectPath(name)
+		if !ok {
+			return nil, fail("--check-file %q must be a relative path inside the project", name)
 		}
-		seen[clean] = true
-		data, err := os.ReadFile(filepath.Join(top, clean))
-		if err != nil {
-			return nil, fail("cannot read %s", clean)
+		if err := add(rel, true); err != nil {
+			return nil, err
 		}
-		dest := filepath.Join(tree, clean)
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return nil, fail("cannot prepare %s", dest)
-		}
-		if err := os.WriteFile(dest, data, info.Mode().Perm()); err != nil {
-			return nil, fail("cannot write %s", dest)
-		}
-		copied = append(copied, filepath.ToSlash(clean))
 	}
 	return copied, nil
+}
+
+// projectPath cleans a relative path that stays inside the project and is
+// not the project root itself.
+func projectPath(name string) (string, bool) {
+	if name == "" || strings.HasPrefix(name, "-") || filepath.IsAbs(name) {
+		return "", false
+	}
+	clean := filepath.Clean(name)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return clean, true
+}
+
+// safeDest refuses a destination whose path in the old tree passes through
+// a symlink, so the overlay can never write outside the temporary worktree.
+func safeDest(tree, rel string) (string, error) {
+	path := tree
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		path = filepath.Join(path, part)
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		if err != nil {
+			return "", fail("cannot inspect %s", path)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", fail("the old tree has a symlink at %s; refusing to write through it", filepath.ToSlash(rel))
+		}
+	}
+	return filepath.Join(tree, rel), nil
+}
+
+func copyInto(top, tree, rel string, info os.FileInfo) error {
+	if info.IsDir() {
+		return filepath.WalkDir(filepath.Join(top, rel), func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return fail("cannot read %s", path)
+			}
+			if !entry.Type().IsRegular() {
+				return nil
+			}
+			sub, _ := filepath.Rel(top, path)
+			fileInfo, err := entry.Info()
+			if err != nil {
+				return fail("cannot read %s", path)
+			}
+			return copyInto(top, tree, sub, fileInfo)
+		})
+	}
+	dest, err := safeDest(tree, rel)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(filepath.Join(top, rel))
+	if err != nil {
+		return fail("cannot read %s", rel)
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return fail("cannot prepare %s", dest)
+	}
+	if err := os.WriteFile(dest, data, info.Mode().Perm()); err != nil {
+		return fail("cannot write %s", dest)
+	}
+	return nil
 }
 
 func cmdPromote(opt options) (int, error) {
@@ -798,12 +868,14 @@ func cmdRetire(opt options) (int, error) {
 	return exitOK, nil
 }
 
-// reAbsPath matches absolute filesystem paths of two or more segments.
-var reAbsPath = regexp.MustCompile(`/[A-Za-z0-9._~@%+-]+(?:/[A-Za-z0-9._~@%+-]+)+`)
+// rePathToken matches any whitespace-delimited token that contains a path
+// separator. It over-scrubs words such as and/or, which is the safe side:
+// a path can name a client, a user, or a machine, and a path with a space
+// in it splits into tokens that each still contain a separator.
+var rePathToken = regexp.MustCompile(`\S*[/\\]\S*`)
 
-// scrub replaces absolute paths, which can name a client, a user, or a
-// machine, before text leaves the machine.
-func scrub(text string) string { return reAbsPath.ReplaceAllString(text, "<path>") }
+// scrub replaces path-like tokens before text leaves the machine.
+func scrub(text string) string { return rePathToken.ReplaceAllString(text, "<path>") }
 
 // cmdExport prints what may leave the machine for the upstream loop: the
 // lesson, its class and surface, the check command, and an installed-ab case

@@ -43,10 +43,25 @@ func TestLessonsContract(t *testing.T) {
 	}
 	git("init", "-q", "-b", "main")
 	write(filepath.Join(repo, "wait.sh"), "sleep 30\nmake check\n")
-	git("add", "wait.sh")
+	// run-dir.sh exists at the old commit; the directory it runs may not.
+	write(filepath.Join(repo, "run-dir.sh"), "sh \"$1/check.sh\"\n")
+	important := filepath.Join(tmp, "important.txt")
+	write(important, "keep\n")
+	if err := os.Symlink(important, filepath.Join(repo, "linked-check.sh")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(tmp, filepath.Join(repo, "linked-dir")); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "wait.sh", "run-dir.sh", "linked-check.sh", "linked-dir")
 	git("commit", "-q", "-m", "poll with sleep")
 	failRef := git("rev-parse", "HEAD")
 	write(filepath.Join(repo, "wait.sh"), "make check\n")
+	// The current tree replaces both links with real check files.
+	git("rm", "-q", "linked-check.sh", "linked-dir")
+	write(filepath.Join(repo, "linked-check.sh"), "! grep -q 'sleep 30' wait.sh\n")
+	write(filepath.Join(repo, "linked-dir", "check.sh"), "! grep -q 'sleep 30' wait.sh\n")
+	git("add", "linked-check.sh", "linked-dir/check.sh")
 	git("commit", "-q", "-am", "block on the check")
 	repo = git("rev-parse", "--show-toplevel")
 
@@ -115,6 +130,27 @@ func TestLessonsContract(t *testing.T) {
 	if output, code := lessons("prove", "--id", "script-check", "--fail-ref", failRef, "--check-file", "lint-indirect.sh", "--", "sh", "-c", "sh lint-indirect.sh"); code != 0 {
 		t.Errorf("--check-file overlay: want 0, got %d: %s", code, output)
 	}
+	// A check directory absent at the old commit is new check material too.
+	write(filepath.Join(repo, "checks", "noop", "check.sh"), "exit 0\n")
+	if output, code := lessons("prove", "--id", "script-check", "--fail-ref", failRef, "--", "sh", "run-dir.sh", "checks/noop"); code != 3 || !strings.Contains(output, "passes at") {
+		t.Errorf("no-op check directory absent at the old commit: want 3, got %d: %s", code, output)
+	}
+	// A file that existed at the old commit is the code under test: it must
+	// not be replaced by its fixed version.
+	if output, code := lessons("prove", "--id", "script-check", "--fail-ref", failRef, "--", "sh", "-c", "! grep -q 'sleep 30' \"$0\"", "wait.sh"); code != 0 {
+		t.Errorf("command naming the code under test: want 0, got %d: %s", code, output)
+	}
+	// Overlay never writes through a link in the old tree.
+	lessons("prove", "--id", "script-check", "--fail-ref", failRef, "--check-file", "linked-check.sh", "--", "sh", "linked-check.sh")
+	if got := readFile(t, important); got != "keep\n" {
+		t.Errorf("overlay wrote through a symlink: important.txt = %q", got)
+	}
+	if output, code := lessons("prove", "--id", "script-check", "--fail-ref", failRef, "--check-file", "linked-dir/check.sh", "--", "sh", "linked-dir/check.sh"); code != 125 || !strings.Contains(output, "symlink") {
+		t.Errorf("overlay under a symlinked directory: want 125 naming symlink, got %d: %s", code, output)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "check.sh")); err == nil {
+		t.Error("overlay wrote through a symlinked directory")
+	}
 	if output, code := lessons("promote", "--id", "no-sleep-poll"); code != 0 || !strings.Contains(output, "promoted") {
 		t.Fatalf("promote proven check: want 0, got %d: %s", code, output)
 	}
@@ -177,7 +213,7 @@ func TestLessonsContract(t *testing.T) {
 	}
 
 	// Absolute paths in lesson text or the check command are scrubbed.
-	leaky := []string{"add", "--id", "leaky", "--class", "verification", "--lesson", "Read /srv/private-client/notes.txt before " + repo + "/wait.sh.",
+	leaky := []string{"add", "--id", "leaky", "--class", "verification", "--lesson", "Read /srv/private-client/notes.txt, /Acme Client/notes.txt, and /solo before " + repo + "/wait.sh.",
 		"--surface", "check", "--target", "wait.sh", "--evidence", "direct-observation", "--source", "s5.jsonl 2026-10-10T09:02:00Z"}
 	if output, code := lessons(leaky...); code != 0 {
 		t.Fatalf("add leaky: %d %s", code, output)
@@ -186,7 +222,7 @@ func TestLessonsContract(t *testing.T) {
 		t.Fatalf("prove leaky: %d %s", code, output)
 	}
 	output, code = lessons("export", "--id", "leaky")
-	if code != 0 || strings.Contains(output, "/srv/private-client") || strings.Contains(output, repo) || !strings.Contains(output, "<path>") {
+	if code != 0 || strings.Contains(output, "/srv/private-client") || strings.Contains(output, repo) || strings.Contains(output, "Acme") || strings.Contains(output, "Client/") || strings.Contains(output, "/solo") || !strings.Contains(output, "<path>") {
 		t.Errorf("export must scrub absolute paths, got %d: %s", code, output)
 	}
 
