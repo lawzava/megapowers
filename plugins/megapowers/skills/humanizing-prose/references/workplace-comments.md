@@ -20,9 +20,10 @@ agreed.
 > I'd link the migration guide and make clear that offline mode is
 > experimental. I could review the wording if that works for you.
 
-The opening acknowledges the existing plan and raises an exception that needs
-a decision. Related details share a paragraph. All four recommendations remain.
-Rina speaks for herself, but the proposed assignment remains conditional.
+The opening states Rina's stance on the proposed scope and raises an exception
+that needs a decision. Related details share a paragraph. All four
+recommendations remain. Rina speaks for herself, and the proposed assignment
+remains conditional.
 
 ## Review finding
 
@@ -31,9 +32,24 @@ saving it. If the save fails, the message is lost. No test has run.
 
 > In `worker.go:73`, the message is acknowledged before it is saved. If the
 > save fails, we lose the message. Please acknowledge it only after the save
-> succeeds and add a test for a failed save. This finding comes from source
-> inspection; I haven't run a test.
+> succeeds and add a test for a failed save. I haven't run a test for this.
 
-One paragraph connects the trigger, consequence, requested correction, and
-evidence limit. There is no unresolved product decision to open with. A review
-thread discussing alternatives could need a different structure.
+One paragraph connects the location, consequence, requested fix, and
+verification limit. Citing `worker.go:73` already shows direct observation, so
+the note states what went untested without calling the comment a "finding" or
+repeating that it came from reading the code.
+
+## Review summary
+
+Two inline comments on a PR flag a missing migration lock in `migrate.go:41`
+and an unused config field in `config.go:19`. Unit tests pass locally, but
+migration integration tests were not run.
+
+> This shouldn't merge until the migration lock in `migrate.go:41` is fixed;
+> concurrent startups can run the schema change twice and corrupt the version
+> table. The other inline note is minor. Unit tests pass locally, though I
+> didn't run the Postgres integration suite.
+
+Plain paragraphs state the verdict, the material risk, and the verification
+boundary without `**Verdict:**` or `**Evidence:**` labels and without
+re-listing every inline comment.

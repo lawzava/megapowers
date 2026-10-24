@@ -8,48 +8,50 @@ metadata:
 
 # Humanizing Prose
 
-Use the available context to identify the speaker, recipient, purpose, and
-what the conversation has settled. Write a message that belongs in that
-exchange. Ask for missing context only when it materially changes the message.
-Follow explicit user requirements for voice and format. When the user asks
-for their own voice, model it on their messages and writing samples available
-in context: sentence length, vocabulary, punctuation, and formatting habits.
-Remove padding, sales language, generic optimism, and irrelevant session history.
+This skill replaces the length, sentence, and opening defaults of the
+operator [output style](../../output-styles/megapowers.md). Its attribution
+and specific-evaluation rules still apply.
+
+Identify the speaker, recipient, purpose, and what is already settled. Ask for
+missing context only when it changes the substance. Write from an established
+speaker's perspective, never the assistant's. When the user asks for their own
+voice, copy the sentence length, vocabulary, punctuation, capitalization, and
+formatting of their human-facing writing, not their prompts to the agent. When
+editing, keep sentences that work and change only defects.
 
 Preserve the requested substance, including every recommendation the user
-asked to share. Keep facts, reasons, caveats, and uncertainty needed to assess
-it. Summarize only within the requested scope; do not omit required detail to
-fit a preferred length or structure. Preserve identifiers, numbers, commands,
-and decisions accurately. Do not rewrite quotations, code, or command names. Never invent
-facts, agreement, ownership, commitments, or experience.
+asked to share, with the facts, reasons, caveats, and open questions needed to
+judge it. Do not drop required detail to fit a length. Keep quotations, code,
+commands, identifiers, numbers, and decisions exact. State a verification
+limit inside the sentence, not as an appended disclaimer. Never invent facts,
+test runs, agreement, ownership, commitments, or experience.
 
-Keep proposals, questions, decisions, and commitments distinct. Use the author's
-perspective when established, without turning a proposed assignment into a
-promise. Choose paragraphs, lists, and headings for the reader's task; do not
-copy the assistant's analysis structure by default. Leave already-effective
-prose alone.
-
-For examples of discussion and review structure, see
-[workplace comments](references/workplace-comments.md).
+Keep proposals, questions, decisions, and commitments distinct. Do not turn an
+offer into a promise. Lead with the point in reader order, not the order of
+investigation. Choose paragraphs, lists, and headings for the reader's task.
 
 ## Machine-prose markers
 
-Apply the plugin [output style](../../output-styles/megapowers.md) rules for
-attribution and specific evaluation; load it if it is not active. Do not use
-em dashes or spaced hyphens as em dashes, even when the surrounding archive
-uses them. Remove triads of adjectives, "not X but Y" framing, rhetorical
-questions, "it's worth noting", "in today's landscape", summary headers that
-restate the body, and generic closing offers or recaps. Vary sentence length
-instead of stacking parallel clauses. Keep one register across the piece.
-Replace unmeasured intensifiers with a number, bounded scope, or source.
-Collapse stacked hedges to one confidence level while preserving material
-uncertainty.
+The quoted phrases are examples. Cut the move, not only the phrase.
 
-For a status update or review summary, give the current verdict, material
-impact, and minimum evidence in plain paragraphs without bold labels; do not
-repeat findings already posted inline. For a discussion reply, include the requested
-recommendations, useful reasons, and unresolved questions. Check that the
-recipient can understand what the message adds and any response needed.
-Do not publish routine progress narration, session handoffs, repeated findings,
-or test transcripts as tracker, issue, or PR comments. When publication is
-authorized, reply in the existing thread when possible.
+- No em dashes or spaced hyphens as dashes, even if the source uses them.
+- No `**Label:**` lead-ins unless a template requires them, no headings on
+  short messages, or summary headers that restate the body.
+- No "not X but Y" framing, rhetorical questions, or announcements of
+  importance ("it's worth noting", "crucially").
+- No padding, sales language, generic optimism, session history, opening
+  praise, or closing offers and recaps.
+- Vary sentence length instead of stacking parallel clauses or adjective
+  triads. Keep one register. Use the same noun for the same referent.
+- Collapse stacked hedges to one confidence level while preserving material
+  uncertainty.
+
+## Workplace threads and reviews
+
+For a status update or review summary, give the verdict, material impact, and
+minimum evidence in plain paragraphs without bold labels. Do not repeat
+findings already posted inline. In a discussion reply, open with your answer,
+stance, or question, not a restatement of the other message. Do not post
+progress narration, session handoffs, repeated findings, or test transcripts
+as comments. When publication is authorized, reply in the existing thread.
+Examples: [workplace comments](references/workplace-comments.md).
