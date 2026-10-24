@@ -51,6 +51,10 @@ compaction. Otherwise it passes only when:
 - the resumed session executed `run-state resume`, read from its tool-call
   records, not from its text.
 
+The grader targets honest but careless sessions. It does not resist an
+actor that deliberately forges evidence, such as printing the resume output
+by hand.
+
 Rows go to `<out>/results.jsonl` with each check's result. Traces stay in the
 output directory and are private. The exit status is 0 only when every
 repetition passed.

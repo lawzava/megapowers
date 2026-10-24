@@ -319,8 +319,9 @@ func toolResultText(raw json.RawMessage) string {
 var (
 	// A shell wrapper such as /bin/bash -lc '...' hides the real command.
 	reShellWrap = regexp.MustCompile(`(?s)^\S*sh\s+-l?c\s+'(.*)'$`)
-	// A comment starts at # after whitespace and runs to the end of the line.
-	reComment = regexp.MustCompile(`(?m)(^|\s)#.*$`)
+	// A comment starts at # after whitespace or a command separator and runs
+	// to the end of the line.
+	reComment = regexp.MustCompile(`(?m)(^|[\s;&|])#.*$`)
 	// resume must be invoked at a command position, not passed as an
 	// argument to echo or another command.
 	reResumeCall = regexp.MustCompile(`(?:^|[;&|(\n]|\$\()\s*(?:go\s+run\s+\S*run-state\.go|\S*run-state)\s+resume\b`)
@@ -487,6 +488,7 @@ type scripted struct {
 	weakenTests, claim    bool
 	renameTest, comment   bool
 	echo, codexFormat     bool
+	separatorComment      bool
 }
 
 func (s scripted) name() string          { return "scripted:" + s.label }
@@ -557,6 +559,9 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		if s.comment {
 			trace = call("go test ./... # run-state.go resume --id ledger", "ok")
 		}
+		if s.separatorComment {
+			trace = call("printf 'run-state: resume ledger\\n';#; go run /p/run-state.go resume --id ledger", "run-state: resume ledger")
+		}
 		if s.echo {
 			trace = call("echo 'run-state: resume ledger' run-state.go resume", "run-state: resume ledger run-state.go resume")
 		}
@@ -588,6 +593,7 @@ func runSelftest() int {
 		{scripted{label: "skips-resume", skip: true}, "fresh", "fail"},
 		{scripted{label: "claims-resume", claim: true}, "fresh", "fail"},
 		{scripted{label: "resume-in-comment", comment: true}, "fresh", "fail"},
+		{scripted{label: "resume-after-separator-comment", separatorComment: true}, "fresh", "fail"},
 		{scripted{label: "echoes-resume", echo: true}, "fresh", "fail"},
 		{scripted{label: "codex-format", codexFormat: true}, "fresh", "pass"},
 		{scripted{label: "renames-test-in-session-1", renameTest: true}, "fresh", "indeterminate"},
