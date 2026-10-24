@@ -128,7 +128,11 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 	// It stays enforced in the scheduled freshness workflow
 	// (.github/workflows/freshness.yml) and in the release gate (runRelease's
 	// gates list, scripts/check-freshness.sh).
-	run(validation{"Go tests", 10 * time.Minute, []string{"go", "test", "./...", "-count=1"}})
+	if runGoTests(ctx, root, stdout, stderr) {
+		pass++
+	} else {
+		fail++
+	}
 	if executable("claude") {
 		run(validation{"Claude marketplace strict validation", 90 * time.Second, []string{"claude", "plugin", "validate", "--strict", ".claude-plugin/marketplace.json"}})
 		run(validation{"Claude plugin strict validation", 90 * time.Second, []string{"claude", "plugin", "validate", "--strict", "plugins/megapowers"}})
@@ -259,4 +263,93 @@ func discoverGoFiles(root string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+// runGoTests runs go test with -json so a skipped test is named instead of
+// counted as passed. Inside the Claude sandbox, TestRunAllReporting skipped
+// on a socket denial and hid a stale assertion behind "PASS Go tests".
+func runGoTests(ctx context.Context, root string, stdout, stderr io.Writer) bool {
+	checkCtx, cancel := deadline(ctx, 10*time.Minute)
+	defer cancel()
+	events := &testEvents{log: cappedBuffer{limit: 10 << 20}, output: map[string][]string{}}
+	err := command(checkCtx, root, events, events, nil, "go", "test", "./...", "-count=1", "-json")
+	events.flush()
+	if err != nil {
+		if checkCtx.Err() != nil {
+			fmt.Fprintf(stderr, "  FAIL Go tests (timed out after %s)\n", 10*time.Minute)
+		} else {
+			fmt.Fprintf(stderr, "  FAIL Go tests (exit %d)\n", exitCode(err))
+		}
+		lines := strings.Split(events.log.String(), "\n")
+		if len(lines) > 200 {
+			lines = lines[:200]
+		}
+		fmt.Fprintln(stderr, strings.Join(lines, "\n"))
+		return false
+	}
+	if len(events.skipped) == 0 {
+		fmt.Fprintln(stdout, "  PASS Go tests")
+		return true
+	}
+	fmt.Fprintf(stdout, "  PASS Go tests (%d skipped)\n", len(events.skipped))
+	for _, name := range events.skipped {
+		fmt.Fprintf(stdout, "    skipped: %s\n", name)
+	}
+	return true
+}
+
+// testEvents reads go test -json output line by line. exec.Cmd serializes
+// writes when stdout and stderr share this writer. log keeps only output of
+// tests and packages that failed, plus non-JSON text such as build errors,
+// so a failure report is not filled with passing output.
+type testEvents struct {
+	pending []byte
+	log     cappedBuffer
+	output  map[string][]string
+	skipped []string
+}
+
+func (e *testEvents) Write(p []byte) (int, error) {
+	e.pending = append(e.pending, p...)
+	for {
+		i := bytes.IndexByte(e.pending, '\n')
+		if i < 0 {
+			return len(p), nil
+		}
+		e.line(e.pending[:i])
+		e.pending = e.pending[i+1:]
+	}
+}
+
+func (e *testEvents) flush() {
+	if len(e.pending) > 0 {
+		e.line(e.pending)
+		e.pending = nil
+	}
+}
+
+func (e *testEvents) line(raw []byte) {
+	var event struct {
+		Action, Package, Test, Output string
+	}
+	if json.Unmarshal(raw, &event) != nil || event.Action == "" {
+		// Build failures and other stderr text are not JSON events.
+		_, _ = e.log.Write(append(append([]byte{}, raw...), '\n'))
+		return
+	}
+	key := event.Package + "\x00" + event.Test
+	switch event.Action {
+	case "output":
+		e.output[key] = append(e.output[key], event.Output)
+	case "skip":
+		if event.Test != "" {
+			e.skipped = append(e.skipped, event.Package+" "+event.Test)
+		}
+		delete(e.output, key)
+	case "pass":
+		delete(e.output, key)
+	case "fail":
+		_, _ = e.log.Write([]byte(strings.Join(e.output[key], "")))
+		delete(e.output, key)
+	}
 }

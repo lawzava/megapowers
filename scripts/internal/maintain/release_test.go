@@ -3,6 +3,7 @@ package maintain
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,8 +57,24 @@ func runFakeMaintainerProcess() int {
 			appendLog("security-lint")
 		} else if strings.Contains(joined, "vet ./...") {
 			appendLog("vet")
-		} else if strings.Contains(joined, "test ./...") {
+		} else if strings.HasPrefix(joined, "test ") && strings.Contains(joined, "./...") {
 			appendLog("gotest")
+			if os.Getenv("MEGAPOWERS_MAINTAIN_GO_TEST_SKIP") == "1" && strings.Contains(joined, "-json") {
+				fmt.Println(`{"Action":"run","Package":"example.com/p","Test":"TestSocket"}`)
+				fmt.Println(`{"Action":"output","Package":"example.com/p","Test":"TestSocket","Output":"--- SKIP: TestSocket\n"}`)
+				fmt.Println(`{"Action":"skip","Package":"example.com/p","Test":"TestSocket"}`)
+				fmt.Println(`{"Action":"pass","Package":"example.com/p"}`)
+			}
+			if os.Getenv("MEGAPOWERS_MAINTAIN_GO_TEST_FAIL") == "1" && strings.Contains(joined, "-json") {
+				for i := 0; i < 300; i++ {
+					fmt.Println(`{"Action":"output","Package":"example.com/p","Test":"TestNoisy","Output":"noisy passing line\n"}`)
+				}
+				fmt.Println(`{"Action":"pass","Package":"example.com/p","Test":"TestNoisy"}`)
+				fmt.Println(`{"Action":"output","Package":"example.com/p","Test":"TestBroken","Output":"broken_test.go:9: boom\n"}`)
+				fmt.Println(`{"Action":"fail","Package":"example.com/p","Test":"TestBroken"}`)
+				fmt.Println(`{"Action":"fail","Package":"example.com/p"}`)
+				return 1
+			}
 		}
 	case "claude":
 		appendLog("claude")

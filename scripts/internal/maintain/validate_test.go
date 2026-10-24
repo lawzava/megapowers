@@ -31,6 +31,34 @@ func TestValidateNeverRunsFreshnessGate(t *testing.T) {
 	}
 }
 
+// A skipped test is not a passed test. Inside the Claude sandbox,
+// TestRunAllReporting skipped on a socket denial and hid a stale selftest
+// count behind "PASS Go tests", so validate names every skipped test.
+func TestValidateReportsSkippedGoTests(t *testing.T) {
+	repo, _ := newValidateFixture(t)
+	t.Setenv("MEGAPOWERS_MAINTAIN_GO_TEST_SKIP", "1")
+	var stdout, stderr bytes.Buffer
+	runValidate(context.Background(), repo, nil, &stdout, &stderr)
+	combined := stdout.String() + stderr.String()
+	if !strings.Contains(combined, "PASS Go tests (1 skipped)") || !strings.Contains(combined, "example.com/p TestSocket") {
+		t.Fatalf("validate must name skipped tests\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+}
+
+// A failure report shows the failing test's output, not the first lines of
+// everything that passed.
+func TestValidateShowsOnlyFailingGoTestOutput(t *testing.T) {
+	repo, _ := newValidateFixture(t)
+	t.Setenv("MEGAPOWERS_MAINTAIN_GO_TEST_FAIL", "1")
+	var stdout, stderr bytes.Buffer
+	if code := runValidate(context.Background(), repo, nil, &stdout, &stderr); code == 0 {
+		t.Fatal("validate passed a failing go test run")
+	}
+	if !strings.Contains(stderr.String(), "broken_test.go:9: boom") || strings.Contains(stderr.String(), "noisy passing line") {
+		t.Fatalf("failure report must hold only failing output\nstderr:\n%s", stderr.String())
+	}
+}
+
 func newValidateFixture(t *testing.T) (string, string) {
 	t.Helper()
 	repo := t.TempDir()
