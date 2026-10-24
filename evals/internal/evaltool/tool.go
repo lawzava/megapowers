@@ -286,6 +286,7 @@ func runAll(parent context.Context, root string, args []string, stdout, stderr i
 		{"install-smoke-runner-selftest", "evals/studies/install-smoke/run-smoke.sh", []string{"go", "run", "./scripts/cmd/maintainer", "install-smoke", "--selftest"}},
 		{"installed-ab-runner-selftest", "evals/studies/installed-ab/run.go", []string{"go", "run", "./evals/studies/installed-ab", "--selftest"}},
 		{"trigger-recall-runner-selftest", "evals/studies/trigger-recall/run.go", []string{"go", "run", "./evals/studies/trigger-recall", "--selftest"}},
+		{"resume-proof-runner-selftest", "evals/studies/resume-proof/run.go", []string{"go", "run", "./evals/studies/resume-proof", "--selftest"}},
 	}
 	var rows []resultRow
 	pass, fail, indeterminate, harnessErrors := 0, 0, 0, 0

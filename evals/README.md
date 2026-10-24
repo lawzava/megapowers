@@ -13,6 +13,11 @@ A fourth check, [exact-tag install smoke](./studies/install-smoke/README.md),
 runs after publication and proves the public ref installs. It is a delivery
 check, not behavioral evidence.
 
+[Resume proof](./studies/resume-proof/README.md) drives `autonomous-run`
+recovery with a real harness and grades it deterministically. It has one arm
+and no control, so it is report-only evidence that recovery works, not an
+efficacy comparison.
+
 ## Deterministic regressions
 
 Run the bounded suite:

@@ -5,6 +5,7 @@ installed-plugin-ab	test-first-implementation	behavioral
 installed-plugin-ab	orchestrating	behavioral
 installed-plugin-ab	safe-effects	behavioral
 installed-plugin-ab	autonomous-run	report-only
+resume-proof	autonomous-run	report-only
 installed-plugin-ab	design-and-plan	behavioral
 installed-plugin-ab	evidence-research	behavioral
 installed-plugin-ab	independent-review	behavioral

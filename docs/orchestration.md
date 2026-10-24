@@ -127,7 +127,13 @@ findings open; an approval does not settle another pending review.
 
 Prefer the harness's native goal and wait mechanisms and follow their current
 tool contracts for status changes, budgets, and continuation. `autonomous-run`
-is experimental until resume and compaction are proven in executed runs. Add
+stays experimental. On 2026-10-24 the
+[resume proof](../evals/studies/resume-proof/README.md) passed every
+repetition on its three-criterion fixture: Claude Code (Opus 5.5) 2 of 2
+fresh-session and 2 of 2 post-`/compact` runs, and Codex (gpt-6.1-sol) 2 of 2
+fresh-session runs. Each resumed session ran `resume` and finished from run
+state without committing. Codex has no headless compaction to test, and runs
+longer than one small fixture remain unproven. Add
 ignored `.megapowers/run/<id>/` files only when work must resume after context
 or process loss under a currently approved autonomous goal:
 
