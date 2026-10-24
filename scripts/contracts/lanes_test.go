@@ -42,7 +42,10 @@ func TestLanesContract(t *testing.T) {
 	git(repo, "init", "-q", "-b", "main")
 	write(filepath.Join(repo, "a.txt"), "a\n")
 	write(filepath.Join(repo, "b.txt"), "b\n")
-	git(repo, "add", "a.txt", "b.txt")
+	// Git quotes non-ASCII names in patch headers by default.
+	write(filepath.Join(repo, "café.txt"), "1\n2\n3\n4\n5\n6\n7\n8\n")
+	write(filepath.Join(repo, ".gitignore"), "*.secret\n")
+	git(repo, "add", "a.txt", "b.txt", "café.txt", ".gitignore")
 	git(repo, "commit", "-q", "-m", "base")
 	base := git(repo, "rev-parse", "HEAD")
 	lanesRoot := filepath.Join(tmp, "lane-root")
@@ -105,6 +108,15 @@ func TestLanesContract(t *testing.T) {
 	}
 	write(filepath.Join(laneY, "a.txt"), "a\n")
 
+	// Separate hunks of one quoted-name file still break disjoint ownership.
+	write(filepath.Join(laneX, "café.txt"), "1 from x\n2\n3\n4\n5\n6\n7\n8\n")
+	write(filepath.Join(laneY, "café.txt"), "1\n2\n3\n4\n5\n6\n7\n8 from y\n")
+	if output, code := lanes("check"); code != 3 || !strings.Contains(output, "overlap: café.txt") {
+		t.Errorf("quoted-name overlap: want 3 naming café.txt, got %d: %s", code, output)
+	}
+	write(filepath.Join(laneX, "café.txt"), "1\n2\n3\n4\n5\n6\n7\n8\n")
+	write(filepath.Join(laneY, "café.txt"), "1\n2\n3\n4\n5\n6\n7\n8\n")
+
 	// A lead change that conflicts with the lane makes its patch unappliable.
 	write(filepath.Join(repo, "b.txt"), "b from lead\n")
 	if output, code := lanes("check"); code != 3 || !strings.Contains(output, "y: conflicts") {
@@ -129,6 +141,15 @@ func TestLanesContract(t *testing.T) {
 
 	if output, code := lanes("remove", "--name", "y"); code != 3 || !strings.Contains(output, "unapplied") {
 		t.Errorf("remove lane with unapplied work: want 3, got %d: %s", code, output)
+	}
+	// Ignored files are not in the patch, so removing the worktree would
+	// delete their only copy.
+	write(filepath.Join(laneX, "keep.secret"), "only copy\n")
+	if output, code := lanes("remove", "--name", "x"); code != 3 || !strings.Contains(output, "keep.secret") {
+		t.Errorf("remove lane holding ignored files: want 3 naming keep.secret, got %d: %s", code, output)
+	}
+	if err := os.Remove(filepath.Join(laneX, "keep.secret")); err != nil {
+		t.Fatal(err)
 	}
 	if output, code := lanes("remove", "--name", "x"); code != 0 {
 		t.Errorf("remove applied lane: want 0, got %d: %s", code, output)

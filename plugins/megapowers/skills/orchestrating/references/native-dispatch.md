@@ -55,7 +55,8 @@ needs the lead's effort.
   or when two unapplied lanes touch one file, which breaks disjoint ownership.
   `apply` writes one lane's patch, including its commits and untracked files,
   into the lead worktree without committing; the lead then reruns the real
-  check. `remove` refuses unapplied work unless `--discard` is given.
+  check. `remove` refuses unapplied work and ignored files, which the patch
+  never carries, unless `--discard` is given.
   `diff --name NAME` prints the patch, and `list` shows every lane. A lane
   starts from a commit, so lead changes that are not yet committed are absent.
 - Worktree lanes multiply build output. Share build caches across worktrees

@@ -34,6 +34,7 @@ Commands:
                                      touched by more than one lane
   apply   --name NAME                apply the lane patch to the lead worktree
   remove  --name NAME [--discard]    remove the worktree; refuses unapplied work
+                                     and ignored files unless --discard
 
 Lanes never touch the lead branch. Integration is a patch the lead applies,
 so the lead stays the single writer and lanes need no commit signing. Lane
@@ -305,22 +306,38 @@ func patch(l lane) ([]byte, error) {
 	return []byte(out), err
 }
 
-func touched(diff []byte) []string {
-	set := map[string]bool{}
-	for _, line := range strings.Split(string(diff), "\n") {
-		if rest, ok := strings.CutPrefix(line, "diff --git a/"); ok {
-			if i := strings.Index(rest, " b/"); i >= 0 {
-				set[rest[:i]] = true
-				set[rest[i+3:]] = true
-			}
-		}
+// touched lists every path the lane changes against its base. It asks Git
+// with -z instead of parsing patch headers, which Git quotes for names such
+// as café.txt; --no-renames reports both sides of a rename.
+func touched(l lane) []string {
+	out, err := git(l.path, nil, "diff", "--no-renames", "--name-only", "-z", l.base)
+	if err != nil {
+		return nil
 	}
-	files := make([]string, 0, len(set))
-	for file := range set {
-		files = append(files, file)
+	var files []string
+	for _, name := range strings.Split(out, "\x00") {
+		if name != "" {
+			files = append(files, name)
+		}
 	}
 	sort.Strings(files)
 	return files
+}
+
+// ignored lists files Git ignores in the lane. They are not in the patch, so
+// removing the worktree would delete their only copy.
+func ignored(l lane) ([]string, error) {
+	out, err := git(l.path, nil, "status", "--porcelain", "--ignored", "-z")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, entry := range strings.Split(out, "\x00") {
+		if name, ok := strings.CutPrefix(entry, "!! "); ok {
+			files = append(files, name)
+		}
+	}
+	return files, nil
 }
 
 // state reports whether a lane patch applies to the lead worktree, is already
@@ -349,11 +366,12 @@ func cmdList(opt options) (int, error) {
 	}
 	fmt.Printf("lanes: %d under %s\n", len(all), st.root)
 	for _, l := range all {
-		diff, err := patch(l)
+		// patch also marks untracked files intent-to-add, so touched sees them.
+		_, err := patch(l)
 		if err != nil {
 			return exitError, err
 		}
-		fmt.Printf("- %s: base %s, %d files changed, %s\n", l.name, l.base, len(touched(diff)), l.path)
+		fmt.Printf("- %s: base %s, %d files changed, %s\n", l.name, l.base, len(touched(l)), l.path)
 	}
 	fmt.Printf("result: ok (exit %d)\n", exitOK)
 	return exitOK, nil
@@ -392,7 +410,7 @@ func cmdCheck(opt options) (int, error) {
 		if err != nil {
 			return exitError, err
 		}
-		files := touched(diff)
+		files := touched(l)
 		s := state(st, diff)
 		if s == "conflicts" {
 			code = exitMismatch
@@ -446,14 +464,14 @@ func cmdApply(opt options) (int, error) {
 		fmt.Printf("result: ok (exit %d)\n", exitOK)
 		return exitOK, nil
 	case "conflicts":
-		fmt.Printf("lane %s: conflicts with the lead worktree (%s)\n", l.name, strings.Join(touched(diff), ", "))
+		fmt.Printf("lane %s: conflicts with the lead worktree (%s)\n", l.name, strings.Join(touched(l), ", "))
 		fmt.Printf("result: mismatch (exit %d); resolve in the lane or apply by hand\n", exitMismatch)
 		return exitMismatch, nil
 	}
 	if _, err := git(st.lead, diff, "apply", "--binary", "-"); err != nil {
 		return exitError, err
 	}
-	fmt.Printf("lane %s: applied to %s (%s); nothing was committed\n", l.name, st.lead, strings.Join(touched(diff), ", "))
+	fmt.Printf("lane %s: applied to %s (%s); nothing was committed\n", l.name, st.lead, strings.Join(touched(l), ", "))
 	fmt.Printf("result: ok (exit %d)\n", exitOK)
 	return exitOK, nil
 }
@@ -472,9 +490,20 @@ func cmdRemove(opt options) (int, error) {
 		return exitError, err
 	}
 	if s := state(st, diff); !opt.discard && s != "empty" && s != "applied" {
-		fmt.Printf("lane %s: unapplied changes (%s)\n", l.name, strings.Join(touched(diff), ", "))
+		fmt.Printf("lane %s: unapplied changes (%s)\n", l.name, strings.Join(touched(l), ", "))
 		fmt.Printf("result: mismatch (exit %d); apply the lane, or pass --discard to drop its work\n", exitMismatch)
 		return exitMismatch, nil
+	}
+	if !opt.discard {
+		kept, err := ignored(l)
+		if err != nil {
+			return exitError, err
+		}
+		if len(kept) > 0 {
+			fmt.Printf("lane %s: ignored files would be deleted (%s)\n", l.name, strings.Join(kept, ", "))
+			fmt.Printf("result: mismatch (exit %d); copy what you need, or pass --discard to drop them\n", exitMismatch)
+			return exitMismatch, nil
+		}
 	}
 	if _, err := git(st.lead, nil, "worktree", "remove", "--force", l.path); err != nil {
 		return exitError, err
