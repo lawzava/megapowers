@@ -298,6 +298,12 @@ uncommitted. Both arms receive the same commit ID, and the fixture hash binds
 both fields. `post_init_files` requires `git_init` and must not overwrite a
 protected file.
 
+Every case with `oracle_command` needs an entry in `oracleProofs`
+(`oracle_validity_test.go`). The entry must show that the untouched fixture
+fails, or state why it starts green. It must also show that a reference
+solution passes and that each listed plausible wrong solution builds and
+fails. A new oracle case without that entry fails the deterministic suite.
+
 Prose and workflow cases may set `max_words`, a positive integer. The final
 response must contain at most that many whitespace-separated words, counting
 code blocks; otherwise `artifact_success` fails. Rows record
