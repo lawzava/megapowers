@@ -131,8 +131,11 @@ go run "$SKILL_DIR/scripts/lessons.go" export --id ID
 
 `--sanitize` hashes workspace paths, drops run IDs, and folds every skill name
 outside `megapowers:` into `other`. `export` drops the project path, sources,
-and commit IDs, replaces every token that contains `/` or `\`
-in the lesson and check with `<path>`, and adds an installed-ab case draft. Sanitizing keeps only
+and commit IDs, and replaces every check argument that contains `/` or `\`
+with `<path>`. It omits the free-text lesson unless `--include-text` is
+given, because free text can name a client in words no pattern catches; with
+it, path tokens become `<path>` and the user reads the text before sharing.
+It and adds an installed-ab case draft. Sanitizing keeps only
 well-formed `megapowers:<skill>` names. Show both to the user
 before sharing; sharing is an outward effect under `safe-effects`. A
 maintainer who accepts a draft adds the case to

@@ -151,6 +151,17 @@ func TestLessonsContract(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(tmp, "check.sh")); err == nil {
 		t.Error("overlay wrote through a symlinked directory")
 	}
+	// A link inside a new check directory cannot be copied, so the proof must
+	// fail closed instead of running a check with a missing file.
+	if err := os.MkdirAll(filepath.Join(repo, "checks", "linky"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../../noop.sh", filepath.Join(repo, "checks", "linky", "check.sh")); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := lessons("prove", "--id", "script-check", "--fail-ref", failRef, "--", "sh", "run-dir.sh", "checks/linky"); code != 125 || !strings.Contains(output, "symlink") {
+		t.Errorf("symlink inside a new check directory: want 125 naming symlink, got %d: %s", code, output)
+	}
 	if output, code := lessons("promote", "--id", "no-sleep-poll"); code != 0 || !strings.Contains(output, "promoted") {
 		t.Fatalf("promote proven check: want 0, got %d: %s", code, output)
 	}
@@ -213,7 +224,7 @@ func TestLessonsContract(t *testing.T) {
 	}
 
 	// Absolute paths in lesson text or the check command are scrubbed.
-	leaky := []string{"add", "--id", "leaky", "--class", "verification", "--lesson", "Read /srv/private-client/notes.txt, /Acme Client/notes.txt, and /solo before " + repo + "/wait.sh.",
+	leaky := []string{"add", "--id", "leaky", "--class", "verification", "--lesson", "Read /srv/work AcmeCorp notes/check.sh and /solo before " + repo + "/wait.sh.",
 		"--surface", "check", "--target", "wait.sh", "--evidence", "direct-observation", "--source", "s5.jsonl 2026-10-10T09:02:00Z"}
 	if output, code := lessons(leaky...); code != 0 {
 		t.Fatalf("add leaky: %d %s", code, output)
@@ -221,13 +232,21 @@ func TestLessonsContract(t *testing.T) {
 	if output, code := lessons("prove", "--id", "leaky", "--fail-ref", failRef, "--", "sh", "-c", "! grep -q 'sleep 30' wait.sh # /srv/private-client/check.sh"); code != 0 {
 		t.Fatalf("prove leaky: %d %s", code, output)
 	}
+	// Free text cannot be scrubbed reliably, so the default export omits it,
+	// and a check argument that holds a path is replaced whole.
 	output, code = lessons("export", "--id", "leaky")
-	if code != 0 || strings.Contains(output, "/srv/private-client") || strings.Contains(output, repo) || strings.Contains(output, "Acme") || strings.Contains(output, "Client/") || strings.Contains(output, "/solo") || !strings.Contains(output, "<path>") {
-		t.Errorf("export must scrub absolute paths, got %d: %s", code, output)
+	for _, leak := range []string{"AcmeCorp", "/srv", "/solo", repo, "Read "} {
+		if code != 0 || strings.Contains(output, leak) || !strings.Contains(output, "<path>") {
+			t.Errorf("default export leaks %q, got %d: %s", leak, code, output)
+		}
+	}
+	output, code = lessons("export", "--id", "leaky", "--include-text")
+	if code != 0 || !strings.Contains(output, "Read <path>") || strings.Contains(output, "/srv") {
+		t.Errorf("--include-text must add scrubbed text, got %d: %s", code, output)
 	}
 
 	// Export is what may leave the machine: no project path, no sources.
-	output, code = lessons("export", "--id", "no-sleep-poll")
+	output, code = lessons("export", "--id", "no-sleep-poll", "--include-text")
 	if code != 0 || !strings.Contains(output, "Block on the check") {
 		t.Fatalf("export: %d %s", code, output)
 	}

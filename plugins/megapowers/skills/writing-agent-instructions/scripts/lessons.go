@@ -47,7 +47,7 @@ Commands:
   promote  --id ID [--anchor TEXT] [--today YYYY-MM-DD]
   review   --scorecard FILE [--today YYYY-MM-DD]
   retire   --id ID --why TEXT
-  export   --id ID                                 sanitized upstream draft with a case
+  export   --id ID [--include-text]                sanitized upstream draft with a case
 
 The store defaults to $MEGAPOWERS_LESSONS_DIR, else
 ${XDG_STATE_HOME:-~/.local/state}/megapowers/lessons, and must be outside the
@@ -114,6 +114,7 @@ type options struct {
 	maxAge                                                           int
 	status, failRef, ab, anchor, today, scorecard, why               string
 	argv                                                             []string
+	includeText                                                      bool
 }
 
 type toolError struct{ msg string }
@@ -160,7 +161,7 @@ var allowed = map[string][]string{
 	"promote": {"--id", "--anchor", "--today"},
 	"review":  {"--scorecard", "--today"},
 	"retire":  {"--id", "--why"},
-	"export":  {"--id"},
+	"export":  {"--id", "--include-text"},
 }
 
 func parse(args []string) (options, error) {
@@ -184,6 +185,10 @@ func parse(args []string) (options, error) {
 			return opt, fail("%s may be provided only once", arg)
 		}
 		seen[arg] = true
+		if arg == "--include-text" {
+			opt.includeText = true
+			continue
+		}
 		if i+1 >= len(args) {
 			return opt, fail("%s requires a value", arg)
 		}
@@ -667,8 +672,14 @@ func copyInto(top, tree, rel string, info os.FileInfo) error {
 			if err != nil {
 				return fail("cannot read %s", path)
 			}
-			if !entry.Type().IsRegular() {
+			if entry.IsDir() {
 				return nil
+			}
+			// A link or special file cannot be copied safely; skipping it
+			// would run the check with a missing file and prove nothing.
+			if !entry.Type().IsRegular() {
+				sub, _ := filepath.Rel(top, path)
+				return fail("check directory %s holds a symlink or special file at %s; pass its target with --check-file", filepath.ToSlash(rel), filepath.ToSlash(sub))
 			}
 			sub, _ := filepath.Rel(top, path)
 			fileInfo, err := entry.Info()
@@ -893,7 +904,6 @@ func cmdExport(opt options) (int, error) {
 		"schema_version": schemaV1,
 		"id":             l.ID,
 		"class":          scrub(l.Class),
-		"lesson":         scrub(l.Lesson),
 		"surface":        l.Surface,
 		"status":         l.Status,
 		"evidence":       l.Evidence,
@@ -909,12 +919,23 @@ func cmdExport(opt options) (int, error) {
 		},
 	}
 	if l.Proof != nil && len(l.Proof.Command) > 0 {
+		// A path with spaces splits into words that scrub cannot all catch,
+		// so any argument holding a separator is replaced whole.
 		command := make([]string, len(l.Proof.Command))
 		for i, arg := range l.Proof.Command {
-			command[i] = scrub(arg)
+			command[i] = arg
+			if strings.ContainsAny(arg, "/\\") {
+				command[i] = "<path>"
+			}
 		}
 		draft["check"] = command
 		draft["case"].(map[string]any)["oracle_command"] = command
+	}
+	// Free text can name a client in words no pattern recognizes, so it is
+	// exported only on request, scrubbed, for the user to read first.
+	if opt.includeText {
+		draft["lesson"] = scrub(l.Lesson)
+		draft["lesson_note"] = "read the lesson text before sharing; free text can name a client or project"
 	}
 	// Keep <path> readable; the draft is for people, not an HTML page.
 	encoder := json.NewEncoder(os.Stdout)
