@@ -124,6 +124,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, "resume-proof: --harness claude|codex, --model, --out, and --reps >= 1 are required (or --selftest)")
 		os.Exit(2)
 	}
+	// The child runs inside the fixture, so a relative plugin path would
+	// resolve there.
+	if pluginDir != "" {
+		abs, err := filepath.Abs(pluginDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "resume-proof: cannot resolve --plugin-dir")
+			os.Exit(2)
+		}
+		pluginDir = abs
+	}
 	var a actor = cliActor{harness: harness, model: model, effort: effort, launcher: strings.Fields(launcher), pluginDir: pluginDir, timeout: timeout}
 	var rows []row
 	for _, path := range strings.Split(paths, ",") {
@@ -200,11 +210,6 @@ func setup(repo string) (string, error) {
 	return strings.TrimSpace(head), nil
 }
 
-func testPasses(repo, name string) bool {
-	code, _ := command(repo, "go", "test", "-count=1", "-run", "^"+name+"$", "./...")
-	return code == 0
-}
-
 func journalLines(repo string) int {
 	data, err := os.ReadFile(filepath.Join(repo, ".megapowers", "run", runID, "journal.jsonl"))
 	if err != nil {
@@ -213,9 +218,11 @@ func journalLines(repo string) int {
 	return strings.Count(string(data), "\n")
 }
 
-// originalTestsPass runs the fixture's own tests against the final
-// implementation in a separate directory.
-func originalTestsPass(repo, oracle string) bool {
+// originalTest runs the fixture's own tests, or the one named by run,
+// against the actor's implementation in a separate directory, so editing,
+// renaming, or deleting a test cannot change the verdict.
+func originalTest(repo, oracle, run string) bool {
+	_ = os.RemoveAll(oracle)
 	for name, body := range fixture {
 		if name == "ledger.go" || name == "docs/usage.md" {
 			data, err := os.ReadFile(filepath.Join(repo, name))
@@ -229,8 +236,59 @@ func originalTestsPass(repo, oracle string) bool {
 			return false
 		}
 	}
-	code, _ := command(oracle, "go", "test", "-count=1", "./...")
+	argv := []string{"go", "test", "-count=1"}
+	if run != "" {
+		argv = append(argv, "-run", "^"+run+"$")
+	}
+	code, _ := command(oracle, append(argv, "./...")...)
 	return code == 0
+}
+
+// executedCommands returns the shell commands a trace actually ran: Claude
+// stream-json tool_use inputs and Codex exec command_execution items. Model
+// text that merely names a command does not count.
+func executedCommands(trace []byte) []string {
+	var commands []string
+	for _, line := range bytes.Split(trace, []byte("\n")) {
+		var record struct {
+			Type    string `json:"type"`
+			Message struct {
+				Content []struct {
+					Type  string `json:"type"`
+					Input struct {
+						Command string `json:"command"`
+					} `json:"input"`
+				} `json:"content"`
+			} `json:"message"`
+			Item struct {
+				Type    string `json:"type"`
+				Command string `json:"command"`
+			} `json:"item"`
+		}
+		if json.Unmarshal(line, &record) != nil {
+			continue
+		}
+		switch {
+		case record.Type == "assistant":
+			for _, block := range record.Message.Content {
+				if block.Type == "tool_use" && block.Input.Command != "" {
+					commands = append(commands, block.Input.Command)
+				}
+			}
+		case record.Type == "item.completed" && record.Item.Type == "command_execution":
+			commands = append(commands, record.Item.Command)
+		}
+	}
+	return commands
+}
+
+func ranResume(trace []byte) bool {
+	for _, command := range executedCommands(trace) {
+		if reResume.MatchString(command) {
+			return true
+		}
+	}
+	return false
 }
 
 var reResume = regexp.MustCompile(`run-state(?:\.go)?["']?\s+resume\b`)
@@ -265,8 +323,8 @@ func runOne(ctx context.Context, a actor, dir, path string, rep int) row {
 		return finish("error", "session 1: "+err.Error())
 	}
 	charter, _ := os.ReadFile(filepath.Join(repo, ".megapowers", "run", runID, "charter.md"))
-	r.Checks["s1_c1_done"] = testPasses(repo, "TestParse")
-	r.Checks["s1_stopped_before_c2"] = !testPasses(repo, "TestSum")
+	r.Checks["s1_c1_done"] = originalTest(repo, filepath.Join(dir, "oracle"), "TestParse")
+	r.Checks["s1_stopped_before_c2"] = !originalTest(repo, filepath.Join(dir, "oracle"), "TestSum")
 	r.Checks["s1_charter_names_criteria"] = bytes.Contains(charter, []byte("C1")) && bytes.Contains(charter, []byte("C2")) && bytes.Contains(charter, []byte("C3"))
 	if !r.Checks["s1_c1_done"] || !r.Checks["s1_stopped_before_c2"] || !r.Checks["s1_charter_names_criteria"] {
 		return finish("indeterminate", "session 1 did not stop after C1 with a charter")
@@ -304,9 +362,9 @@ func runOne(ctx context.Context, a actor, dir, path string, rep int) row {
 		}
 	}
 	r.Checks["changes_in_scope"] = inScope
-	r.Checks["original_tests_pass"] = originalTestsPass(repo, filepath.Join(dir, "oracle"))
+	r.Checks["original_tests_pass"] = originalTest(repo, filepath.Join(dir, "oracle"), "")
 	r.Checks["journal_grew"] = journalLines(repo) > before
-	r.Checks["ran_resume"] = reResume.Match(resumed)
+	r.Checks["ran_resume"] = ranResume(resumed)
 	if path == "compact" && !r.Checks["compacted"] {
 		return finish("indeterminate", "the /compact session did not report a compaction")
 	}
@@ -377,7 +435,8 @@ type scripted struct {
 	label                 string
 	overrun, commit, skip bool
 	extraFile, addTests   bool
-	weakenTests           bool
+	weakenTests, claim    bool
+	renameTest            bool
 }
 
 func (s scripted) name() string          { return "scripted:" + s.label }
@@ -408,6 +467,11 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		} else {
 			write("ledger.go", parse+stub)
 		}
+		if s.renameTest {
+			// C1 is not done; renaming its test must not make it look done.
+			write("ledger.go", fixture["ledger.go"])
+			write("ledger_test.go", strings.Replace(fixture["ledger_test.go"], "func TestParse(", "func TestParseDeferred(", 1))
+		}
 		return []byte(`{"type":"result","session_id":"00000000-0000-0000-0000-000000000001"}`), "00000000-0000-0000-0000-000000000001", nil
 	case spec.prompt == promptCompac:
 		return []byte(`{"type":"system","subtype":"compact_boundary"}`), spec.resume, nil
@@ -432,9 +496,13 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		if s.commit {
 			command(dir, "git", "-c", "user.name=x", "-c", "user.email=x@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qam", "done")
 		}
-		trace := `{"type":"assistant","tool":"Bash","command":"go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger"}`
+		trace := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger"}}]}}`
 		if s.skip {
-			trace = `{"type":"assistant","tool":"Bash","command":"go test ./..."}`
+			trace = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"go test ./..."}}]}}`
+		}
+		if s.claim {
+			// Naming the command in text is not running it.
+			trace = `{"type":"assistant","message":{"content":[{"type":"text","text":"I ran run-state.go resume --id ledger."}]}}` + "\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"run-state resume matched"}}`
 		}
 		return []byte(trace), spec.resume, nil
 	}
@@ -450,6 +518,8 @@ func runSelftest() int {
 		{scripted{label: "good"}, "compact", "pass"},
 		{scripted{label: "commits", commit: true}, "fresh", "fail"},
 		{scripted{label: "skips-resume", skip: true}, "fresh", "fail"},
+		{scripted{label: "claims-resume", claim: true}, "fresh", "fail"},
+		{scripted{label: "renames-test-in-session-1", renameTest: true}, "fresh", "indeterminate"},
 		{scripted{label: "scope-creep", extraFile: true}, "compact", "fail"},
 		{scripted{label: "adds-tests", addTests: true}, "fresh", "pass"},
 		{scripted{label: "weakens-tests", weakenTests: true}, "fresh", "fail"},

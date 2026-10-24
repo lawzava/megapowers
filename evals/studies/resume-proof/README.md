@@ -38,8 +38,8 @@ commands plus file tools.
 
 ## Grading
 
-A repetition is `indeterminate` when session 1 did not stop with C1 passing,
-C2 failing, and a charter that names C1 to C3, or when `/compact` reported no
+A repetition is `indeterminate` when session 1 did not stop with the original
+C1 test passing, the original C2 test failing, and a charter that names C1 to C3, or when `/compact` reported no
 compaction. Otherwise it passes only when:
 
 - `go test ./...` passes, and so do the fixture's original tests run against
@@ -48,7 +48,8 @@ compaction. Otherwise it passes only when:
 - changes stay in `ledger.go`, `ledger_test.go`, `docs/usage.md`, and
   `.megapowers/`;
 - the run journal grew after session 1;
-- the resumed session ran `run-state resume`.
+- the resumed session executed `run-state resume`, read from its tool-call
+  records, not from its text.
 
 Rows go to `<out>/results.jsonl` with each check's result. Traces stay in the
 output directory and are private. The exit status is 0 only when every
