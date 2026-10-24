@@ -15,6 +15,26 @@ commands, maintenance coverage, effort comparisons, and metric definitions are i
 are in [RESULTS-archive.md](./RESULTS-archive.md); they used different graders
 and cannot serve as a direct before/after comparison.
 
+## 2026-10-25 trigger check for the learning loop
+
+Trigger recall for the case 0.42.0 added, `writing-agent-instructions-learning-loop`.
+The prompt asks which skills help in a repository and what keeps going wrong,
+without naming a skill. Each arm ran three repetitions at source `0396a67`
+(v0.42.0). The baseline arm restores the 0.41.0 `writing-agent-instructions`
+text in a scratch commit. Claude Code 2.1.310 ran `claude-opus-5-5` and Codex ran
+`gpt-6.1-sol`, both at high effort through Subswapper, with broker
+`sha256:7b6252dedf2c…` built from this repository.
+
+| Probe | Claude baseline (0.41.0 text) | Claude treatment | Codex treatment |
+|---|---:|---:|---:|
+| learning-loop paraphrase | 3/3 | 3/3 | 3/3 selected |
+
+The 0.41.0 text already activated the skill on this probe. The new trigger
+phrases therefore show no measured gain here, and no regression. On Codex,
+every run selected the expected skill and also made one unexpected selection.
+The skill read failed inside the broker, as it did on 2026-10-21, so Codex
+activation remains unmeasured. Near misses were not run.
+
 ## 2026-10-21 trigger check for test-first and debugging
 
 Trigger recall for the 0.41.0 description and session-start changes, three
