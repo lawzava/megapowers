@@ -31,12 +31,17 @@ func Main(ctx context.Context, root string, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: evaltool <run-all|coverage-inventory|check-portability-boundary> [args]")
+		fmt.Fprintln(stderr, "usage: evaltool <run-all|selftests|coverage-inventory|check-portability-boundary> [args]")
 		return 2
 	}
 	switch args[0] {
 	case "run-all":
 		return runAll(ctx, root, args[1:], stdout, stderr)
+	case "selftests":
+		for _, test := range selftests() {
+			fmt.Fprintf(stdout, "%s %s\n", test.id, test.target)
+		}
+		return 0
 	case "coverage-inventory":
 		if len(args) != 1 {
 			fmt.Fprintln(stderr, "usage: coverage-inventory.sh")
@@ -281,13 +286,7 @@ func runAll(parent context.Context, root string, args []string, stdout, stderr i
 	}
 	pluginHash := hashPluginTree(root)
 	revision := gitRevision(root)
-	tests := []selftest{
-		{"score-go-selftest", "evals/score.go", []string{"go", "run", "./evals/score.go", "--selftest"}},
-		{"install-smoke-runner-selftest", "evals/studies/install-smoke/run-smoke.sh", []string{"go", "run", "./scripts/cmd/maintainer", "install-smoke", "--selftest"}},
-		{"installed-ab-runner-selftest", "evals/studies/installed-ab/run.go", []string{"go", "run", "./evals/studies/installed-ab", "--selftest"}},
-		{"trigger-recall-runner-selftest", "evals/studies/trigger-recall/run.go", []string{"go", "run", "./evals/studies/trigger-recall", "--selftest"}},
-		{"resume-proof-runner-selftest", "evals/studies/resume-proof/run.go", []string{"go", "run", "./evals/studies/resume-proof", "--selftest"}},
-	}
+	tests := selftests()
 	var rows []resultRow
 	pass, fail, indeterminate, harnessErrors := 0, 0, 0, 0
 	var failed []string
@@ -486,4 +485,16 @@ func defaultString(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+// selftests is the run-all registry. The evaltool selftests command prints
+// it, so tests derive the expected count instead of hard-coding it.
+func selftests() []selftest {
+	return []selftest{
+		{"score-go-selftest", "evals/score.go", []string{"go", "run", "./evals/score.go", "--selftest"}},
+		{"install-smoke-runner-selftest", "evals/studies/install-smoke/run-smoke.sh", []string{"go", "run", "./scripts/cmd/maintainer", "install-smoke", "--selftest"}},
+		{"installed-ab-runner-selftest", "evals/studies/installed-ab/run.go", []string{"go", "run", "./evals/studies/installed-ab", "--selftest"}},
+		{"trigger-recall-runner-selftest", "evals/studies/trigger-recall/run.go", []string{"go", "run", "./evals/studies/trigger-recall", "--selftest"}},
+		{"resume-proof-runner-selftest", "evals/studies/resume-proof/run.go", []string{"go", "run", "./evals/studies/resume-proof", "--selftest"}},
+	}
 }

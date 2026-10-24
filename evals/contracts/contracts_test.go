@@ -206,14 +206,55 @@ func TestRunAllReporting(t *testing.T) {
 		}
 		ids[row["case_id"].(string)] = true
 	}
-	if len(decoded) != 5 || len(ids) != 5 {
-		t.Errorf("run-all emitted %d rows and %d unique ids, want 5", len(decoded), len(ids))
+	want := len(selftestRegistry(t, repo))
+	if len(decoded) != want || len(ids) != want {
+		t.Errorf("run-all emitted %d rows and %d unique ids, want %d", len(decoded), len(ids), want)
 	}
-	if !regexp.MustCompile(`== evals: 5 passed, 0 failed, 0 indeterminate, 0 harness errors ==`).MatchString(output) {
+	if !regexp.MustCompile(fmt.Sprintf(`== evals: %d passed, 0 failed, 0 indeterminate, 0 harness errors ==`, want)).MatchString(output) {
 		t.Errorf("unexpected summary:\n%s", output)
 	}
 	if score, code := command(t, repo, nil, "go", "run", "./evals/score.go", "--strict", rows); code != 0 || !strings.Contains(score, "## Deterministic regressions") {
 		t.Errorf("strict scorer rejected run-all rows (%d): %s", code, score)
+	}
+}
+
+// selftestRegistry lists the run-all selftests as "id target" pairs from
+// evaltool itself, so no test hard-codes their number.
+func selftestRegistry(t *testing.T, repo string) map[string]string {
+	t.Helper()
+	output, code := command(t, repo, nil, "go", "run", "./evals/cmd/evaltool", "selftests")
+	if code != 0 {
+		t.Fatalf("evaltool selftests (%d): %s", code, output)
+	}
+	registry := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		id, target, ok := strings.Cut(line, " ")
+		if !ok {
+			t.Fatalf("malformed selftest line %q", line)
+		}
+		registry[id] = target
+	}
+	return registry
+}
+
+// Every study runner with a --selftest flag must be in run-all. This needs no
+// Unix socket, so the sandbox cannot skip it, unlike TestRunAllReporting.
+func TestSelftestRegistryCoversStudies(t *testing.T) {
+	repo := root(t)
+	targets := map[string]bool{}
+	for _, target := range selftestRegistry(t, repo) {
+		targets[target] = true
+	}
+	runners, _ := filepath.Glob(filepath.Join(repo, "evals", "studies", "*", "run.go"))
+	if len(runners) == 0 {
+		t.Fatal("no study runners found")
+	}
+	for _, path := range runners {
+		rel, _ := filepath.Rel(repo, path)
+		rel = filepath.ToSlash(rel)
+		if strings.Contains(read(t, repo, rel), `"selftest"`) && !targets[rel] {
+			t.Errorf("%s has a selftest flag but is not registered in evaltool run-all", rel)
+		}
 	}
 }
 
