@@ -244,18 +244,26 @@ func originalTest(repo, oracle, run string) bool {
 	return code == 0
 }
 
-// executedCommands returns the shell commands a trace actually ran: Claude
-// stream-json tool_use inputs and Codex exec command_execution items. Model
-// text that merely names a command does not count.
-func executedCommands(trace []byte) []string {
-	var commands []string
+// execution is one command a trace ran and the output it produced.
+type execution struct{ command, output string }
+
+// executions pairs each executed shell command with its output: Claude
+// stream-json tool_use inputs with their tool_result, and Codex exec
+// command_execution items with their aggregated output. Model text that
+// merely names a command does not count.
+func executions(trace []byte) []execution {
+	var runs []execution
+	pending := map[string]int{}
 	for _, line := range bytes.Split(trace, []byte("\n")) {
 		var record struct {
 			Type    string `json:"type"`
 			Message struct {
 				Content []struct {
-					Type  string `json:"type"`
-					Input struct {
+					Type      string          `json:"type"`
+					ID        string          `json:"id"`
+					ToolUseID string          `json:"tool_use_id"`
+					Content   json.RawMessage `json:"content"`
+					Input     struct {
 						Command string `json:"command"`
 					} `json:"input"`
 				} `json:"content"`
@@ -263,35 +271,76 @@ func executedCommands(trace []byte) []string {
 			Item struct {
 				Type    string `json:"type"`
 				Command string `json:"command"`
+				Output  string `json:"aggregated_output"`
 			} `json:"item"`
 		}
 		if json.Unmarshal(line, &record) != nil {
 			continue
 		}
-		switch {
-		case record.Type == "assistant":
+		switch record.Type {
+		case "assistant":
 			for _, block := range record.Message.Content {
 				if block.Type == "tool_use" && block.Input.Command != "" {
-					commands = append(commands, block.Input.Command)
+					pending[block.ID] = len(runs)
+					runs = append(runs, execution{command: block.Input.Command})
 				}
 			}
-		case record.Type == "item.completed" && record.Item.Type == "command_execution":
-			commands = append(commands, record.Item.Command)
+		case "user":
+			for _, block := range record.Message.Content {
+				if i, ok := pending[block.ToolUseID]; ok && block.Type == "tool_result" {
+					runs[i].output = toolResultText(block.Content)
+				}
+			}
+		case "item.completed":
+			if record.Item.Type == "command_execution" {
+				runs = append(runs, execution{command: record.Item.Command, output: record.Item.Output})
+			}
 		}
 	}
-	return commands
+	return runs
 }
 
+func toolResultText(raw json.RawMessage) string {
+	var plain string
+	if json.Unmarshal(raw, &plain) == nil {
+		return plain
+	}
+	var blocks []struct {
+		Text string `json:"text"`
+	}
+	_ = json.Unmarshal(raw, &blocks)
+	var texts []string
+	for _, block := range blocks {
+		texts = append(texts, block.Text)
+	}
+	return strings.Join(texts, "\n")
+}
+
+var (
+	// A shell wrapper such as /bin/bash -lc '...' hides the real command.
+	reShellWrap = regexp.MustCompile(`(?s)^\S*sh\s+-l?c\s+'(.*)'$`)
+	// A comment starts at # after whitespace and runs to the end of the line.
+	reComment = regexp.MustCompile(`(?m)(^|\s)#.*$`)
+	// resume must be invoked at a command position, not passed as an
+	// argument to echo or another command.
+	reResumeCall = regexp.MustCompile(`(?:^|[;&|(\n]|\$\()\s*(?:go\s+run\s+\S*run-state\.go|\S*run-state)\s+resume\b`)
+)
+
+// ranResume reports whether the trace invoked run-state resume and got the
+// tool's own resume output back.
 func ranResume(trace []byte) bool {
-	for _, command := range executedCommands(trace) {
-		if reResume.MatchString(command) {
+	for _, run := range executions(trace) {
+		command := run.command
+		if m := reShellWrap.FindStringSubmatch(command); m != nil {
+			command = m[1]
+		}
+		command = reComment.ReplaceAllString(command, "$1")
+		if reResumeCall.MatchString(command) && strings.Contains(run.output, "run-state: resume ") {
 			return true
 		}
 	}
 	return false
 }
-
-var reResume = regexp.MustCompile(`run-state(?:\.go)?["']?\s+resume\b`)
 
 // runOne grades one recovery: setup, session 1, the path's sessions, then
 // fixed checks. A session 1 that does not stop in the intended state makes
@@ -436,7 +485,8 @@ type scripted struct {
 	overrun, commit, skip bool
 	extraFile, addTests   bool
 	weakenTests, claim    bool
-	renameTest            bool
+	renameTest, comment   bool
+	echo, codexFormat     bool
 }
 
 func (s scripted) name() string          { return "scripted:" + s.label }
@@ -496,9 +546,22 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		if s.commit {
 			command(dir, "git", "-c", "user.name=x", "-c", "user.email=x@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qam", "done")
 		}
-		trace := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger"}}]}}`
+		call := func(command, output string) string {
+			return `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":` + quote(command) + `}}]}}` + "\n" +
+				`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":` + quote(output) + `}]}}`
+		}
+		trace := call("cd /p && go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger", "run-state: resume ledger\nresult: match (exit 0)")
 		if s.skip {
-			trace = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"go test ./..."}}]}}`
+			trace = call("go test ./...", "ok")
+		}
+		if s.comment {
+			trace = call("go test ./... # run-state.go resume --id ledger", "ok")
+		}
+		if s.echo {
+			trace = call("echo 'run-state: resume ledger' run-state.go resume", "run-state: resume ledger run-state.go resume")
+		}
+		if s.codexFormat {
+			trace = `{"type":"item.completed","item":{"type":"command_execution","command":"/bin/bash -lc 'go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger'","aggregated_output":"run-state: resume ledger\n","exit_code":0}}`
 		}
 		if s.claim {
 			// Naming the command in text is not running it.
@@ -506,6 +569,11 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		}
 		return []byte(trace), spec.resume, nil
 	}
+}
+
+func quote(text string) string {
+	body, _ := json.Marshal(text)
+	return string(body)
 }
 
 func runSelftest() int {
@@ -519,6 +587,9 @@ func runSelftest() int {
 		{scripted{label: "commits", commit: true}, "fresh", "fail"},
 		{scripted{label: "skips-resume", skip: true}, "fresh", "fail"},
 		{scripted{label: "claims-resume", claim: true}, "fresh", "fail"},
+		{scripted{label: "resume-in-comment", comment: true}, "fresh", "fail"},
+		{scripted{label: "echoes-resume", echo: true}, "fresh", "fail"},
+		{scripted{label: "codex-format", codexFormat: true}, "fresh", "pass"},
 		{scripted{label: "renames-test-in-session-1", renameTest: true}, "fresh", "indeterminate"},
 		{scripted{label: "scope-creep", extraFile: true}, "compact", "fail"},
 		{scripted{label: "adds-tests", addTests: true}, "fresh", "pass"},
