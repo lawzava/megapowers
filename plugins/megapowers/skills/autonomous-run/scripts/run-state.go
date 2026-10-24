@@ -3,9 +3,12 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,7 +45,8 @@ Commands:
   decisions   --id ID
   resume      --id ID
   continue    --id ID --item TEXT [--max N]
-  coverage    --id ID --brief FILE
+  coverage    --id ID --brief FILE [--lane implementer|verifier]
+  holdout     --id ID --dir DIR [--rebaseline REASON]
 
 State lives in <worktree>/.megapowers/run/<id>/: charter.md, checkpoint.md,
 journal.jsonl (append-only), handoff.md. IDs match [a-z0-9][a-z0-9-]{0,62}.
@@ -51,9 +55,13 @@ continue records one automatic continuation on an item and refuses past the
 cap (default 3). coverage checks that a saved brief or handoff names every
 done-criterion ID (C1, C2, ...) in the charter. decisions lists journaled
 decisions, highest risk first, so the user reviews the riskiest ones first.
+holdout registers acceptance scenarios kept outside the worktree and verifies
+their hash on every later call and on resume; coverage refuses an implementer
+brief that names the holdout directory.
 
 Exit codes: 0 ok, 3 resume found a workspace, branch, worktree, or HEAD
-mismatch, or coverage found a missing criterion ID, 4 continue reached the
+mismatch, coverage found a missing criterion ID or a leaked holdout path, or
+holdout scenarios changed since registration, 4 continue reached the
 cap and recorded the item as blocked, 125 tool or usage error.
 `
 
@@ -64,22 +72,25 @@ var (
 )
 
 type options struct {
-	repo      string
-	id        string
-	objective string
-	milestone string
-	next      string
-	event     string
-	evidence  []string
-	blockers  []string
-	decision  string
-	why       string
-	risk      string
-	ifWrong   string
-	item      string
-	max       int
-	brief     string
-	seen      map[string]bool
+	repo       string
+	id         string
+	objective  string
+	milestone  string
+	next       string
+	event      string
+	evidence   []string
+	blockers   []string
+	decision   string
+	why        string
+	risk       string
+	ifWrong    string
+	item       string
+	max        int
+	brief      string
+	dir        string
+	rebaseline string
+	lane       string
+	seen       map[string]bool
 }
 
 type gitState struct {
@@ -105,6 +116,10 @@ type journalRecord struct {
 	Worktree  string `json:"worktree,omitempty"`
 	Workspace string `json:"workspace,omitempty"`
 	Next      string `json:"next,omitempty"`
+	// HoldoutDir and HoldoutSHA256 appear only on records the holdout command
+	// writes; journal refuses the holdout event so they cannot be forged.
+	HoldoutDir    string `json:"holdout_dir,omitempty"`
+	HoldoutSHA256 string `json:"holdout_sha256,omitempty"`
 }
 
 type toolError struct{ msg string }
@@ -144,13 +159,15 @@ func run(args []string) int {
 		err = cmdJournal(opt)
 	case "decisions":
 		err = cmdDecisions(opt)
-	case "resume", "continue", "coverage":
+	case "resume", "continue", "coverage", "holdout":
 		var code int
 		switch command {
 		case "resume":
 			code, err = cmdResume(opt)
 		case "continue":
 			code, err = cmdContinue(opt)
+		case "holdout":
+			code, err = cmdHoldout(opt)
 		default:
 			code, err = cmdCoverage(opt)
 		}
@@ -176,7 +193,8 @@ var allowedFlags = map[string][]string{
 	"decisions":  {"--repo", "--id"},
 	"resume":     {"--repo", "--id"},
 	"continue":   {"--repo", "--id", "--item", "--max"},
-	"coverage":   {"--repo", "--id", "--brief"},
+	"coverage":   {"--repo", "--id", "--brief", "--lane"},
+	"holdout":    {"--repo", "--id", "--dir", "--rebaseline"},
 }
 
 func parseOptions(command string, args []string) (options, error) {
@@ -239,6 +257,12 @@ func parseOptions(command string, args []string) (options, error) {
 			opt.max = n
 		case "--brief":
 			opt.brief = value
+		case "--dir":
+			opt.dir = value
+		case "--rebaseline":
+			opt.rebaseline = clean(value)
+		case "--lane":
+			opt.lane = value
 		}
 	}
 	if !idPattern.MatchString(opt.id) {
@@ -263,6 +287,9 @@ func parseOptions(command string, args []string) (options, error) {
 		if !eventPattern.MatchString(opt.event) {
 			return opt, fail("--event must match [a-z0-9][a-z0-9_-]{0,31}")
 		}
+		if opt.event == holdoutEvent {
+			return opt, fail("holdout records come only from the holdout command")
+		}
 		if len(opt.evidence) == 0 || opt.evidence[0] == "" {
 			return opt, fail("--evidence is required")
 		}
@@ -282,6 +309,14 @@ func parseOptions(command string, args []string) (options, error) {
 		required["--item"] = opt.item
 	case "coverage":
 		required["--brief"] = opt.brief
+		if opt.lane != "" && opt.lane != "implementer" && opt.lane != "verifier" {
+			return opt, fail("--lane must be implementer or verifier")
+		}
+	case "holdout":
+		required["--dir"] = opt.dir
+		if opt.seen["--rebaseline"] && opt.rebaseline == "" {
+			return opt, fail("--rebaseline needs a reason")
+		}
 	}
 	for flag, value := range required {
 		if value == "" {
@@ -754,6 +789,21 @@ func cmdResume(opt options) (int, error) {
 			fmt.Printf("%s: mismatch: recorded %s, live %s\n", check.label, want, check.live)
 		}
 	}
+	records, err := readJournal(filepath.Join(dir, "journal.jsonl"))
+	if err != nil {
+		return exitError, err
+	}
+	if reg := latestHoldout(records); reg != nil {
+		if _, sum, _, err := hashHoldout(reg.HoldoutDir); err != nil {
+			mismatch = true
+			fmt.Printf("holdout: mismatch: %v\n", err)
+		} else if sum != reg.HoldoutSHA256 {
+			mismatch = true
+			fmt.Printf("holdout: mismatch: recorded %s, live %s\n", reg.HoldoutSHA256, sum)
+		} else {
+			fmt.Println("holdout: match")
+		}
+	}
 	fmt.Printf("journal tail (last %d):\n", len(tail))
 	for _, line := range tail {
 		fmt.Println("  " + line)
@@ -966,7 +1016,134 @@ func cmdCoverage(opt options) (int, error) {
 		fmt.Printf("result: mismatch (exit %d); add the missing criteria to the brief or record why the lane does not own them\n", exitMismatch)
 		return exitMismatch, nil
 	}
+	if opt.lane != "verifier" {
+		records, err := readJournal(filepath.Join(dir, "journal.jsonl"))
+		if err != nil {
+			return exitError, err
+		}
+		if reg := latestHoldout(records); reg != nil && bytes.Contains(brief, []byte(reg.HoldoutDir)) {
+			fmt.Printf("run-state: brief %s names the holdout directory\n", opt.brief)
+			fmt.Printf("result: mismatch (exit %d); remove it, or pass --lane verifier for the lane that runs the scenarios\n", exitMismatch)
+			return exitMismatch, nil
+		}
+	}
 	fmt.Printf("run-state: brief %s names %s\n", opt.brief, strings.Join(ids, ", "))
+	fmt.Printf("result: ok (exit %d)\n", exitOK)
+	return exitOK, nil
+}
+
+const holdoutEvent = "holdout"
+
+func latestHoldout(records []journalRecord) *journalRecord {
+	for i := len(records) - 1; i >= 0; i-- {
+		if records[i].Event == holdoutEvent && records[i].HoldoutSHA256 != "" {
+			return &records[i]
+		}
+	}
+	return nil
+}
+
+// hashHoldout returns the canonical directory, a digest over every relative
+// path and file body, and the file count. Symlinks are refused so the digest
+// cannot follow a link back into files an implementer can edit.
+func hashHoldout(dir string) (string, string, int, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", "", 0, fail("cannot resolve %s", dir)
+	}
+	canonical, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", "", 0, fail("cannot read holdout directory %s", abs)
+	}
+	if info, err := os.Stat(canonical); err != nil || !info.IsDir() {
+		return "", "", 0, fail("holdout %s is not a directory", abs)
+	}
+	digest := sha256.New()
+	files := 0
+	err = filepath.WalkDir(canonical, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return fail("cannot read %s", path)
+		}
+		rel, _ := filepath.Rel(canonical, path)
+		switch {
+		case entry.Type()&fs.ModeSymlink != 0:
+			return fail("holdout %s contains a symlink: %s", canonical, rel)
+		case entry.IsDir():
+			return nil
+		case !entry.Type().IsRegular():
+			return fail("holdout %s contains a non-regular file: %s", canonical, rel)
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return fail("cannot read %s", path)
+		}
+		fmt.Fprintf(digest, "%s\x00%d\x00", filepath.ToSlash(rel), len(body))
+		digest.Write(body)
+		files++
+		return nil
+	})
+	if err != nil {
+		return "", "", 0, err
+	}
+	if files == 0 {
+		return "", "", 0, fail("holdout %s has no scenario files", canonical)
+	}
+	return canonical, "sha256:" + hex.EncodeToString(digest.Sum(nil)), files, nil
+}
+
+func within(parent, path string) bool {
+	rel, err := filepath.Rel(parent, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// cmdHoldout registers or verifies acceptance scenarios that implementing
+// lanes never see. A changed set is a mismatch: re-registering it needs a
+// stated reason, recorded as a high-risk decision the user reviews first.
+func cmdHoldout(opt options) (int, error) {
+	st, err := inspect(opt.repo)
+	if err != nil {
+		return exitError, err
+	}
+	dir, err := existingRun(st, opt.id)
+	if err != nil {
+		return exitError, err
+	}
+	canonical, sum, files, err := hashHoldout(opt.dir)
+	if err != nil {
+		return exitError, err
+	}
+	for _, root := range []string{st.worktree, st.workspace} {
+		if resolved, err := filepath.EvalSymlinks(root); err == nil && within(resolved, canonical) {
+			return exitError, fail("holdout %s must be outside the worktree and repository (%s)", canonical, resolved)
+		}
+	}
+	records, err := readJournal(filepath.Join(dir, "journal.jsonl"))
+	if err != nil {
+		return exitError, err
+	}
+	reg := latestHoldout(records)
+	if reg != nil && reg.HoldoutDir == canonical && reg.HoldoutSHA256 == sum {
+		fmt.Printf("holdout: match %s files=%d %s\n", canonical, files, sum)
+		fmt.Printf("result: match (exit %d)\n", exitOK)
+		return exitOK, nil
+	}
+	if reg != nil && opt.rebaseline == "" {
+		fmt.Printf("holdout: mismatch: recorded %s %s, live %s %s\n", reg.HoldoutDir, reg.HoldoutSHA256, canonical, sum)
+		fmt.Printf("result: mismatch (exit %d); restore the scenarios, or ask the user and pass --rebaseline REASON\n", exitMismatch)
+		return exitMismatch, nil
+	}
+	rec := journalRecord{TS: now(), Event: holdoutEvent, Head: st.head, HoldoutDir: canonical, HoldoutSHA256: sum,
+		Evidence: clean(fmt.Sprintf("holdout %s files=%d %s", canonical, files, sum))}
+	if reg != nil {
+		rec.Decision = "rebaseline holdout scenarios"
+		rec.Why = opt.rebaseline
+		rec.Risk = "high"
+		rec.IfWrong = clean(fmt.Sprintf("the run is judged against changed acceptance scenarios; previous set %s", reg.HoldoutSHA256))
+	}
+	if err := appendJournal(dir, rec); err != nil {
+		return exitError, err
+	}
+	fmt.Printf("holdout: registered %s files=%d %s\n", canonical, files, sum)
 	fmt.Printf("result: ok (exit %d)\n", exitOK)
 	return exitOK, nil
 }

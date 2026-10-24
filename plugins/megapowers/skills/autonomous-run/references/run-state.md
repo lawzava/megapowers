@@ -12,7 +12,8 @@ go run <skill-dir>/scripts/run-state.go journal --id ID --event KIND --evidence 
 go run <skill-dir>/scripts/run-state.go decisions --id ID
 go run <skill-dir>/scripts/run-state.go resume --id ID
 go run <skill-dir>/scripts/run-state.go continue --id ID --item TEXT [--max N]
-go run <skill-dir>/scripts/run-state.go coverage --id ID --brief FILE
+go run <skill-dir>/scripts/run-state.go coverage --id ID --brief FILE [--lane implementer|verifier]
+go run <skill-dir>/scripts/run-state.go holdout --id ID --dir DIR [--rebaseline REASON]
 ```
 
 - `init` creates the run directory and a `charter.md` skeleton with the
@@ -31,7 +32,8 @@ go run <skill-dir>/scripts/run-state.go coverage --id ID --brief FILE
   `decisions: N` first.
 - `resume` compares the latest checkpoint with the live checkout and prints
   `match` or `mismatch: recorded X, live Y` per field, the journal tail, the
-  next safe action, and blockers.
+  next safe action, and blockers. With a registered holdout it also prints
+  `holdout: match` or `holdout: mismatch` and exits 3 on drift.
 - `continue` journals one automatic continuation on an item and prints
   `continuation N of M`. Once the item has used its cap (default 3), it
   journals one `blocked` record and exits 4 on every later call. Pass the
@@ -41,10 +43,24 @@ go run <skill-dir>/scripts/run-state.go coverage --id ID --brief FILE
   charter and lists any the saved brief or handoff does not name. It refuses
   a charter whose criteria still say `(fill in`. A named ID does not show
   that the brief kept the criterion's meaning; it catches a criterion that
-  dropped out entirely.
+  dropped out entirely. Once a holdout is registered, `coverage` also exits
+  3 when the brief names the holdout directory, unless `--lane verifier`
+  marks the lane that runs the scenarios. It checks the path, not
+  paraphrased scenario content.
+- `holdout` registers acceptance scenarios kept outside the worktree and
+  repository, like a holdout set in model training. It refuses a
+  directory inside either, an empty one, and any symlink or non-regular
+  file, then journals the canonical path and a SHA-256 over every relative
+  path and body. A later call prints `match`, or exits 3 when the
+  directory or any byte changed. `--rebaseline REASON` re-registers a
+  changed set as a `high` risk decision, so `decisions` lists it first;
+  use it only with the user's approval. `journal` refuses the `holdout`
+  event, so a registration cannot be forged. The tool cannot stop an
+  agent from reading the directory; keeping the path out of implementer
+  briefs and context is the control.
 
-Exit codes: 0 success, 3 resume mismatch or coverage gap (stop affected work
-and reconcile), 4 continuation cap reached (stop that item and report it as
+Exit codes: 0 success, 3 resume mismatch, coverage gap, leaked holdout path, or
+changed holdout (stop affected work and reconcile), 4 continuation cap reached (stop that item and report it as
 blocked), 125 tool or usage error, including a symlinked `info/exclude`. Through
 `go run`, any failure exits 1; the final `result:` line carries the real code,
 for example `result: mismatch (exit 3)`.

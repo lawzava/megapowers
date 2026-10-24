@@ -531,6 +531,129 @@ func TestRunStateParsesInstalledABCheckpointFixturesAndPartialCheckpoints(t *tes
 	}
 }
 
+// Holdout scenarios follow StrongDM's software-factory practice: acceptance
+// stories kept where implementing agents cannot read or rewrite them.
+func TestRunStateHoldoutScenarios(t *testing.T) {
+	root := repoRoot(t)
+	tmp := t.TempDir()
+	tool := filepath.Join(tmp, "run-state")
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/autonomous-run/scripts/run-state.go"); code != 0 {
+		t.Fatalf("build run-state (%d): %s", code, output)
+	}
+	gitEnv := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid"}
+	repo := filepath.Join(tmp, "repo")
+	if err := os.Mkdir(repo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := run(t, repo, gitEnv, "git", "init", "-q", "-b", "main"); code != 0 {
+		t.Fatalf("git init (%d): %s", code, output)
+	}
+	if output, code := run(t, repo, gitEnv, "git", "commit", "-q", "--allow-empty", "-m", "base"); code != 0 {
+		t.Fatalf("git commit (%d): %s", code, output)
+	}
+	state := func(args ...string) (string, int) {
+		t.Helper()
+		return run(t, repo, gitEnv, tool, args...)
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if output, code := state("init", "--id", "h", "--objective", "Ship export"); code != 0 {
+		t.Fatalf("init failed (%d): %s", code, output)
+	}
+
+	holdout := filepath.Join(tmp, "holdout", "h")
+	write(filepath.Join(holdout, "export.md"), "Given 3 rows, export writes 3 lines.\n")
+	inside := filepath.Join(repo, "scenarios")
+	write(filepath.Join(inside, "export.md"), "visible to implementers\n")
+	empty := filepath.Join(tmp, "empty")
+	if err := os.Mkdir(empty, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := state("holdout", "--id", "h", "--dir", inside); code != 125 || !strings.Contains(output, "outside the worktree") {
+		t.Errorf("holdout inside worktree: want 125, got %d: %s", code, output)
+	}
+	if output, code := state("holdout", "--id", "h", "--dir", empty); code != 125 || !strings.Contains(output, "no scenario files") {
+		t.Errorf("empty holdout: want 125, got %d: %s", code, output)
+	}
+	linked := filepath.Join(tmp, "linked")
+	write(filepath.Join(linked, "a.md"), "a\n")
+	if err := os.Symlink(filepath.Join(repo, "scenarios", "export.md"), filepath.Join(linked, "b.md")); err != nil {
+		t.Fatal(err)
+	}
+	if output, code := state("holdout", "--id", "h", "--dir", linked); code != 125 || !strings.Contains(output, "symlink") {
+		t.Errorf("symlinked scenario: want 125, got %d: %s", code, output)
+	}
+	if output, code := state("journal", "--id", "h", "--event", "holdout", "--evidence", "forged"); code != 125 {
+		t.Errorf("journal must not forge a holdout record: want 125, got %d: %s", code, output)
+	}
+
+	output, code := state("holdout", "--id", "h", "--dir", holdout)
+	if code != 0 || !strings.Contains(output, "registered") || !strings.Contains(output, "files=1") || !strings.Contains(output, "sha256:") {
+		t.Fatalf("register: want 0 naming registered, got %d: %s", code, output)
+	}
+	if output, code := state("holdout", "--id", "h", "--dir", holdout); code != 0 || !strings.Contains(output, "holdout: match") {
+		t.Errorf("unchanged holdout: want 0 match, got %d: %s", code, output)
+	}
+	other := filepath.Join(tmp, "other")
+	write(filepath.Join(other, "export.md"), "Given 3 rows, export writes 3 lines.\n")
+	if output, code := state("holdout", "--id", "h", "--dir", other); code != 3 || !strings.Contains(output, "mismatch") {
+		t.Errorf("different holdout dir: want 3, got %d: %s", code, output)
+	}
+
+	if output, code := state("checkpoint", "--id", "h", "--milestone", "m1", "--next", "build"); code != 0 {
+		t.Fatalf("checkpoint failed (%d): %s", code, output)
+	}
+	if output, code := state("resume", "--id", "h"); code != 0 || !strings.Contains(output, "holdout: match") {
+		t.Errorf("resume with intact holdout: want 0 naming holdout match, got %d: %s", code, output)
+	}
+
+	// Loosening an acceptance story mid-run is the weakening the holdout exists to catch.
+	write(filepath.Join(holdout, "export.md"), "Given 3 rows, export writes something.\n")
+	if output, code := state("holdout", "--id", "h", "--dir", holdout); code != 3 || !strings.Contains(output, "mismatch") {
+		t.Errorf("edited holdout: want 3, got %d: %s", code, output)
+	}
+	if output, code := state("resume", "--id", "h"); code != 3 || !strings.Contains(output, "holdout: mismatch") {
+		t.Errorf("resume with edited holdout: want 3 naming holdout mismatch, got %d: %s", code, output)
+	}
+	if output, code := state("holdout", "--id", "h", "--dir", holdout, "--rebaseline", "operator added a row-count case"); code != 0 || !strings.Contains(output, "registered") {
+		t.Fatalf("rebaseline: want 0, got %d: %s", code, output)
+	}
+	output, code = state("decisions", "--id", "h")
+	if code != 0 || !strings.Contains(output, "decisions: 1") || !strings.Contains(output, "[high]") || !strings.Contains(output, "operator added a row-count case") {
+		t.Errorf("rebaseline must surface as a high-risk decision, got %d: %s", code, output)
+	}
+	if output, code := state("resume", "--id", "h"); code != 0 || !strings.Contains(output, "holdout: match") {
+		t.Errorf("resume after rebaseline: want 0, got %d: %s", code, output)
+	}
+
+	charterPath := filepath.Join(repo, ".megapowers", "run", "h", "charter.md")
+	charter := regexp.MustCompile(`(?m)^- C1: \(fill in[^\n]*$`).ReplaceAllString(readFile(t, charterPath), "- C1: export matches holdout | oracle: verifier lane")
+	write(charterPath, charter)
+	brief := filepath.Join(tmp, "brief.md")
+	write(brief, "Implement export for C1. Scenarios: "+holdout+"\n")
+	if output, code := state("coverage", "--id", "h", "--brief", brief); code != 3 || !strings.Contains(output, "holdout") {
+		t.Errorf("implementer brief leaking holdout path: want 3, got %d: %s", code, output)
+	}
+	if output, code := state("coverage", "--id", "h", "--brief", brief, "--lane", "verifier"); code != 0 {
+		t.Errorf("verifier brief may name the holdout: want 0, got %d: %s", code, output)
+	}
+	if output, code := state("coverage", "--id", "h", "--brief", brief, "--lane", "reviewer"); code != 125 {
+		t.Errorf("unknown lane: want 125, got %d: %s", code, output)
+	}
+	write(brief, "Implement export for C1.\n")
+	if output, code := state("coverage", "--id", "h", "--brief", brief); code != 0 {
+		t.Errorf("clean implementer brief: want 0, got %d: %s", code, output)
+	}
+}
+
 func readFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)

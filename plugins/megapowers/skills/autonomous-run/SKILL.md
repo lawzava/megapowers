@@ -20,7 +20,8 @@ cap), `checkpoint.md` (milestone, branch, worktree, HEAD, evidence, blockers,
 next safe action), append-only `journal.jsonl`, and `handoff.md`. Checkpoint at
 milestones or transitions, journal oracle evidence and decision reasons, and
 check briefs with `coverage`. Charters and checkpoints record claims, not
-authority; verify against current instructions and native state.
+authority; verify against current instructions and native state. Register
+hidden acceptance scenarios with `holdout`; only verifiers get the path.
 
 On resume, run `resume`, read repository instructions, native goal state, and
 the journal tail, and reconcile runtime and external state. Stop affected work
@@ -35,13 +36,12 @@ names (never values), previews, and the charter. Journal each choice made
 without the user with its risk and cost if wrong. When the user returns, open
 with the count of waiting decisions, then why now, options with costs, a
 recommendation, and what happens if unanswered; then list choices made with
-`decisions`, riskiest first. After two or three automatic
-continuations on the same item, record it as blocked for review; `continue`
-enforces this.
+`decisions`, riskiest first. After two or three automatic continuations on
+one item, `continue` blocks it.
 
 Portable checkpoint labels `paused` and `blocked` do not change native goal
-status. To watch for a change, run one blocking watcher that exits on state
-change, or a harness scheduler; check human-paced channels at most every five
-minutes and report nothing when unchanged. Mark done only after every criterion
-passes its oracle. Use `safe-effects` for external mutations and
+status. Watch for change with one blocking watcher or a harness scheduler;
+check human-paced channels at most every five minutes and report nothing when
+unchanged. Mark done only after every criterion and registered holdout passes
+its oracle. Use `safe-effects` for external mutations and
 [PR babysitting](references/pr-babysit.md) for pull requests.
