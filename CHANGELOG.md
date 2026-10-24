@@ -5,6 +5,26 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.42.1 - 2026-10-25
+
+### Fixed
+
+- `validate` names every skipped Go test (`PASS Go tests (N skipped)`), so a
+  sandboxed pass no longer looks complete. Before 0.42.0, a test that skipped
+  on a sandbox socket denial had hidden a stale assertion. A failure report
+  holds only the output of failing tests, abrupt exits, and build errors.
+- The run-all selftest count comes from `evaltool selftests`. A socket-free
+  test fails when a study runner with a `--selftest` flag is not registered.
+- The `resume-proof` grader judges a resumed session by `run-state resume`'s
+  own report instead of parsing shell. An honest search before resuming no
+  longer fails, and a commented-out, quoted, or echoed call no longer passes.
+
+### Changed
+
+- `evals/RESULTS.md` records the learning-loop trigger probe. Claude Code
+  passed 3 of 3 runs with both the 0.41.0 and 0.42.0 text. Codex selected the
+  skill 3 of 3 times, but its activation stays unmeasured.
+
 ## 0.42.0 - 2026-10-24
 
 ### Added
