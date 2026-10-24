@@ -1292,11 +1292,17 @@ func sanitizedScope(opt options) string {
 	return hashKey("ws-", opt.workspace) + " (sanitized)"
 }
 
-// skillName keeps megapowers skill names, which are public, and folds every
-// other name into "other" when sanitizing, since a private plugin's skill
-// names can identify a client or project.
+// reMegapowersSkill matches a well-formed megapowers skill name. A failed or
+// malformed request can carry arguments after the name, so a prefix check is
+// not enough.
+var reMegapowersSkill = regexp.MustCompile(`^megapowers:[a-z0-9-]+$`)
+
+// skillName keeps well-formed megapowers skill names, which are public, and
+// folds every other name into "other" when sanitizing, since a private
+// plugin's skill names or a malformed request's arguments can identify a
+// client or project.
 func skillName(name string, sanitize bool) string {
-	if sanitize && !strings.HasPrefix(name, "megapowers:") {
+	if sanitize && !reMegapowersSkill.MatchString(name) {
 		return "other"
 	}
 	return name

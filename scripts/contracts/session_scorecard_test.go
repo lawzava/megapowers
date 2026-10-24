@@ -117,6 +117,9 @@ func TestSessionMineScorecard(t *testing.T) {
 	writeLines(t, filepath.Join(claudeRoot, slugFor(other), "o1.jsonl"), withCwd(other,
 		claudeUser("2026-10-10T10:00:00Z", "Run the private job."),
 		claudeAssistant("2026-10-10T10:01:00Z", toolUse("p1", "Skill", map[string]any{"skill": "private-plugin:secret-skill"})),
+		// A malformed request that starts with megapowers: must not carry its
+		// argument into a sanitized card.
+		claudeAssistant("2026-10-10T10:02:00Z", toolUse("p2", "Skill", map[string]any{"skill": "megapowers:writing-agent-instructions /srv/private-client"})),
 	)...)
 	// A file without any cwd is keyed by its project directory, so it never
 	// merges with another project.
@@ -212,7 +215,7 @@ func TestSessionMineScorecard(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("sanitized scorecard failed (%d): %s", code, output)
 	}
-	for _, leak := range []string{tmp, "private-client", "secret-skill", "private-plugin", `"r1"`, "/opt/agent", "legacy-project"} {
+	for _, leak := range []string{tmp, "private-client", "secret-skill", "private-plugin", `"r1"`, "/opt/agent", "legacy-project", "/srv/private-client"} {
 		if strings.Contains(output, leak) {
 			t.Errorf("sanitized scorecard leaks %q: %s", leak, output)
 		}

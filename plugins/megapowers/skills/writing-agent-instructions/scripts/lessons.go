@@ -41,7 +41,8 @@ Commands:
   add      --id ID --class CLASS --lesson TEXT --surface check|instructions|memory|upstream
            --target PATH --evidence KIND --source TEXT [--source TEXT ...] [--max-age-days N]
   list     [--status candidate|proven|promoted|retired]
-  prove    --id ID --fail-ref REF -- COMMAND...    check lessons: fails at REF, passes now
+  prove    --id ID --fail-ref REF [--check-file PATH ...] -- COMMAND...
+                                                  check lessons: fails at REF, passes now
   prove    --id ID --ab TEXT                       other lessons: cite the A/B result
   promote  --id ID [--anchor TEXT] [--today YYYY-MM-DD]
   review   --scorecard FILE [--today YYYY-MM-DD]
@@ -53,6 +54,10 @@ ${XDG_STATE_HOME:-~/.local/state}/megapowers/lessons, and must be outside the
 repository. Evidence is direct-statement, direct-observation, source-backed, or
 history-entry-only. CLASS is a session-mine correction class, "sleep", or
 "gate:<skill>", so review can count recurrences.
+
+prove copies the current version of every relative file named on the command,
+and of each --check-file, into the old tree, so the check judges old code
+rather than its own absence.
 
 Exit codes: 0 ok, 3 action needed (proof failed, read-back missing, lesson
 recurring or stale), 125 tool or usage error.
@@ -67,6 +72,7 @@ var (
 
 type proof struct {
 	Command  []string `json:"command,omitempty"`
+	Overlay  []string `json:"overlay,omitempty"`
 	FailRef  string   `json:"fail_ref,omitempty"`
 	AB       string   `json:"ab,omitempty"`
 	ProvedAt string   `json:"proved_at"`
@@ -104,7 +110,7 @@ type lesson struct {
 
 type options struct {
 	command, repo, store, id, class, text, surface, target, evidence string
-	sources                                                          []string
+	sources, checkFiles                                              []string
 	maxAge                                                           int
 	status, failRef, ab, anchor, today, scorecard, why               string
 	argv                                                             []string
@@ -150,7 +156,7 @@ func report(err error) int {
 var allowed = map[string][]string{
 	"add":     {"--id", "--class", "--lesson", "--surface", "--target", "--evidence", "--source", "--max-age-days"},
 	"list":    {"--status"},
-	"prove":   {"--id", "--fail-ref", "--ab"},
+	"prove":   {"--id", "--fail-ref", "--ab", "--check-file"},
 	"promote": {"--id", "--anchor", "--today"},
 	"review":  {"--scorecard", "--today"},
 	"retire":  {"--id", "--why"},
@@ -174,7 +180,7 @@ func parse(args []string) (options, error) {
 		if !contains(flags, arg) {
 			return opt, fail("%s: unknown arg: %s", opt.command, arg)
 		}
-		if seen[arg] && arg != "--source" {
+		if seen[arg] && arg != "--source" && arg != "--check-file" {
 			return opt, fail("%s may be provided only once", arg)
 		}
 		seen[arg] = true
@@ -210,6 +216,8 @@ func parse(args []string) (options, error) {
 			opt.status = value
 		case "--fail-ref":
 			opt.failRef = value
+		case "--check-file":
+			opt.checkFiles = append(opt.checkFiles, value)
 		case "--ab":
 			opt.ab = strings.TrimSpace(value)
 		case "--anchor":
@@ -528,6 +536,11 @@ func cmdProve(opt options) (int, error) {
 		if _, err := git(p.top, "worktree", "add", "--detach", "-q", tree, ref); err != nil {
 			return exitError, err
 		}
+		overlay, err := overlayChecks(p.top, tree, opt.argv, opt.checkFiles)
+		if err != nil {
+			git(p.top, "worktree", "remove", "--force", tree)
+			return exitError, err
+		}
 		past, _, runErr := runCheck(tree, opt.argv)
 		if _, err := git(p.top, "worktree", "remove", "--force", tree); err != nil {
 			return exitError, err
@@ -549,7 +562,7 @@ func cmdProve(opt options) (int, error) {
 			fmt.Printf("result: action (exit %d); fix the tree or the check before proving\n", exitAction)
 			return exitAction, nil
 		}
-		l.Proof = &proof{Command: opt.argv, FailRef: ref, ProvedAt: stamp()}
+		l.Proof = &proof{Command: opt.argv, Overlay: overlay, FailRef: ref, ProvedAt: stamp()}
 	}
 	if l.Status == "candidate" {
 		l.Status = "proven"
@@ -561,6 +574,55 @@ func cmdProve(opt options) (int, error) {
 	fmt.Printf("lesson %s: proven\n", l.ID)
 	fmt.Printf("result: ok (exit %d)\n", exitOK)
 	return exitOK, nil
+}
+
+// overlayChecks copies the current version of the check's own files into the
+// old tree: every relative argument that names a regular file in the project,
+// plus each --check-file. Without it, a check script added after the mistake
+// is simply missing at the old commit, and its failure proves nothing.
+func overlayChecks(top, tree string, argv, extra []string) ([]string, error) {
+	var copied []string
+	seen := map[string]bool{}
+	for i, name := range append(append([]string{}, argv...), extra...) {
+		explicit := i >= len(argv)
+		if name == "" || strings.HasPrefix(name, "-") || filepath.IsAbs(name) {
+			if explicit {
+				return nil, fail("--check-file %q must be a relative path inside the project", name)
+			}
+			continue
+		}
+		clean := filepath.Clean(name)
+		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			if explicit {
+				return nil, fail("--check-file %q must stay inside the project", name)
+			}
+			continue
+		}
+		info, err := os.Lstat(filepath.Join(top, clean))
+		if err != nil || !info.Mode().IsRegular() {
+			if explicit {
+				return nil, fail("--check-file %q is not a regular file in the project", name)
+			}
+			continue
+		}
+		if seen[clean] {
+			continue
+		}
+		seen[clean] = true
+		data, err := os.ReadFile(filepath.Join(top, clean))
+		if err != nil {
+			return nil, fail("cannot read %s", clean)
+		}
+		dest := filepath.Join(tree, clean)
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return nil, fail("cannot prepare %s", dest)
+		}
+		if err := os.WriteFile(dest, data, info.Mode().Perm()); err != nil {
+			return nil, fail("cannot write %s", dest)
+		}
+		copied = append(copied, filepath.ToSlash(clean))
+	}
+	return copied, nil
 }
 
 func cmdPromote(opt options) (int, error) {
@@ -736,6 +798,13 @@ func cmdRetire(opt options) (int, error) {
 	return exitOK, nil
 }
 
+// reAbsPath matches absolute filesystem paths of two or more segments.
+var reAbsPath = regexp.MustCompile(`/[A-Za-z0-9._~@%+-]+(?:/[A-Za-z0-9._~@%+-]+)+`)
+
+// scrub replaces absolute paths, which can name a client, a user, or a
+// machine, before text leaves the machine.
+func scrub(text string) string { return reAbsPath.ReplaceAllString(text, "<path>") }
+
 // cmdExport prints what may leave the machine for the upstream loop: the
 // lesson, its class and surface, the check command, and an installed-ab case
 // draft. Project paths, sources, and commit IDs stay behind.
@@ -751,8 +820,8 @@ func cmdExport(opt options) (int, error) {
 	draft := map[string]any{
 		"schema_version": schemaV1,
 		"id":             l.ID,
-		"class":          l.Class,
-		"lesson":         l.Lesson,
+		"class":          scrub(l.Class),
+		"lesson":         scrub(l.Lesson),
 		"surface":        l.Surface,
 		"status":         l.Status,
 		"evidence":       l.Evidence,
@@ -768,13 +837,19 @@ func cmdExport(opt options) (int, error) {
 		},
 	}
 	if l.Proof != nil && len(l.Proof.Command) > 0 {
-		draft["check"] = l.Proof.Command
-		draft["case"].(map[string]any)["oracle_command"] = l.Proof.Command
+		command := make([]string, len(l.Proof.Command))
+		for i, arg := range l.Proof.Command {
+			command[i] = scrub(arg)
+		}
+		draft["check"] = command
+		draft["case"].(map[string]any)["oracle_command"] = command
 	}
-	body, err := json.MarshalIndent(draft, "", "  ")
-	if err != nil {
+	// Keep <path> readable; the draft is for people, not an HTML page.
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(draft); err != nil {
 		return exitError, fail("cannot encode export")
 	}
-	fmt.Println(string(body))
 	return exitOK, nil
 }

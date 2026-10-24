@@ -95,6 +95,26 @@ func TestLessonsContract(t *testing.T) {
 	if strings.Contains(git("worktree", "list"), "lessons-prove") {
 		t.Error("prove left a worktree behind")
 	}
+	// A check script that exists only now must run against the old tree; a
+	// missing file at the old commit is not a caught mistake.
+	scriptAdd := []string{"add", "--id", "script-check", "--class", "sleep", "--lesson", "Lint waits.",
+		"--surface", "check", "--target", "lint-wait.sh", "--evidence", "direct-observation", "--source", "s4.jsonl 2026-10-10T09:02:00Z"}
+	if output, code := lessons(scriptAdd...); code != 0 {
+		t.Fatalf("add script-check: %d %s", code, output)
+	}
+	write(filepath.Join(repo, "noop.sh"), "exit 0\n")
+	if output, code := lessons("prove", "--id", "script-check", "--fail-ref", failRef, "--", "sh", "noop.sh"); code != 3 || !strings.Contains(output, "passes at") {
+		t.Errorf("no-op script absent at the old commit: want 3, got %d: %s", code, output)
+	}
+	write(filepath.Join(repo, "lint-wait.sh"), "! grep -q 'sleep 30' wait.sh\n")
+	if output, code := lessons("prove", "--id", "script-check", "--fail-ref", failRef, "--", "sh", "lint-wait.sh"); code != 0 || !strings.Contains(output, "proven") {
+		t.Errorf("new check script: want 0 naming proven, got %d: %s", code, output)
+	}
+	// --check-file carries a file the command reaches only indirectly.
+	write(filepath.Join(repo, "lint-indirect.sh"), "! grep -q 'sleep 30' wait.sh\n")
+	if output, code := lessons("prove", "--id", "script-check", "--fail-ref", failRef, "--check-file", "lint-indirect.sh", "--", "sh", "-c", "sh lint-indirect.sh"); code != 0 {
+		t.Errorf("--check-file overlay: want 0, got %d: %s", code, output)
+	}
 	if output, code := lessons("promote", "--id", "no-sleep-poll"); code != 0 || !strings.Contains(output, "promoted") {
 		t.Fatalf("promote proven check: want 0, got %d: %s", code, output)
 	}
@@ -154,6 +174,20 @@ func TestLessonsContract(t *testing.T) {
 	output, code = lessons("review", "--scorecard", card("2026-10-13", map[string]int{"verification": 2}), "--today", "2026-10-20")
 	if code != 0 || strings.Contains(output, "say-unverified: recurring") {
 		t.Errorf("review must skip retired lessons, got %d: %s", code, output)
+	}
+
+	// Absolute paths in lesson text or the check command are scrubbed.
+	leaky := []string{"add", "--id", "leaky", "--class", "verification", "--lesson", "Read /srv/private-client/notes.txt before " + repo + "/wait.sh.",
+		"--surface", "check", "--target", "wait.sh", "--evidence", "direct-observation", "--source", "s5.jsonl 2026-10-10T09:02:00Z"}
+	if output, code := lessons(leaky...); code != 0 {
+		t.Fatalf("add leaky: %d %s", code, output)
+	}
+	if output, code := lessons("prove", "--id", "leaky", "--fail-ref", failRef, "--", "sh", "-c", "! grep -q 'sleep 30' wait.sh # /srv/private-client/check.sh"); code != 0 {
+		t.Fatalf("prove leaky: %d %s", code, output)
+	}
+	output, code = lessons("export", "--id", "leaky")
+	if code != 0 || strings.Contains(output, "/srv/private-client") || strings.Contains(output, repo) || !strings.Contains(output, "<path>") {
+		t.Errorf("export must scrub absolute paths, got %d: %s", code, output)
 	}
 
 	// Export is what may leave the machine: no project path, no sources.
