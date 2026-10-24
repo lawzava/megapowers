@@ -124,6 +124,8 @@ func TestLanesContract(t *testing.T) {
 	}
 	write(filepath.Join(repo, "b.txt"), "b\n")
 
+	// User diff settings must not change the patch format.
+	git(repo, "config", "diff.noprefix", "true")
 	if output, code := lanes("apply", "--name", "x"); code != 0 {
 		t.Fatalf("apply x: want 0, got %d: %s", code, output)
 	}
@@ -148,6 +150,12 @@ func TestLanesContract(t *testing.T) {
 	if output, code := lanes("remove", "--name", "x"); code != 3 || !strings.Contains(output, "keep.secret") {
 		t.Errorf("remove lane holding ignored files: want 3 naming keep.secret, got %d: %s", code, output)
 	}
+	// The guard must not depend on status configuration that hides files.
+	git(repo, "config", "status.showUntrackedFiles", "no")
+	if output, code := lanes("remove", "--name", "x"); code != 3 || !strings.Contains(output, "keep.secret") {
+		t.Errorf("remove with showUntrackedFiles=no: want 3 naming keep.secret, got %d: %s", code, output)
+	}
+	git(repo, "config", "--unset", "status.showUntrackedFiles")
 	if err := os.Remove(filepath.Join(laneX, "keep.secret")); err != nil {
 		t.Fatal(err)
 	}

@@ -302,7 +302,9 @@ func patch(l lane) ([]byte, error) {
 	if _, err := git(l.path, nil, "add", "--all", "--intent-to-add"); err != nil {
 		return nil, err
 	}
-	out, err := git(l.path, nil, "diff", "--binary", "--no-color", "--no-ext-diff", "--no-textconv", l.base)
+	// Pin the a/ and b/ prefixes so diff.noprefix or mnemonicPrefix in user
+	// config cannot produce a patch that git apply rejects.
+	out, err := git(l.path, nil, "diff", "--binary", "--no-color", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", l.base)
 	return []byte(out), err
 }
 
@@ -327,7 +329,9 @@ func touched(l lane) []string {
 // ignored lists files Git ignores in the lane. They are not in the patch, so
 // removing the worktree would delete their only copy.
 func ignored(l lane) ([]string, error) {
-	out, err := git(l.path, nil, "status", "--porcelain", "--ignored", "-z")
+	// Explicit flags override status.showUntrackedFiles, which can hide
+	// ignored files too.
+	out, err := git(l.path, nil, "status", "--porcelain", "-z", "--ignored=matching", "--untracked-files=all")
 	if err != nil {
 		return nil, err
 	}
