@@ -206,10 +206,10 @@ func TestRunAllReporting(t *testing.T) {
 		}
 		ids[row["case_id"].(string)] = true
 	}
-	if len(decoded) != 4 || len(ids) != 4 {
-		t.Errorf("run-all emitted %d rows and %d unique ids, want 4", len(decoded), len(ids))
+	if len(decoded) != 5 || len(ids) != 5 {
+		t.Errorf("run-all emitted %d rows and %d unique ids, want 5", len(decoded), len(ids))
 	}
-	if !regexp.MustCompile(`== evals: 4 passed, 0 failed, 0 indeterminate, 0 harness errors ==`).MatchString(output) {
+	if !regexp.MustCompile(`== evals: 5 passed, 0 failed, 0 indeterminate, 0 harness errors ==`).MatchString(output) {
 		t.Errorf("unexpected summary:\n%s", output)
 	}
 	if score, code := command(t, repo, nil, "go", "run", "./evals/score.go", "--strict", rows); code != 0 || !strings.Contains(score, "## Deterministic regressions") {

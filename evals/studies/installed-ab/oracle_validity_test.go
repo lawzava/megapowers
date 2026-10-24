@@ -123,8 +123,10 @@ func TestEveryOracleCaseProvesItCanFail(t *testing.T) {
 				t.Errorf("%s has an oracle_command but no entry in oracleProofs", c.ID)
 				continue
 			}
+			// Serial on purpose: each proof spawns several go builds, and running
+			// them in parallel starved the 60 s installed-ab selftest that
+			// TestRunAllReporting runs at the same time in go test ./....
 			t.Run(c.ID, func(t *testing.T) {
-				t.Parallel()
 				checkOracleProof(t, c, proof)
 			})
 		}
