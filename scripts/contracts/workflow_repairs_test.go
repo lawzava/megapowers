@@ -23,6 +23,7 @@ var requiredSkillFacts = map[string][]string{
 		"two or three",
 		"`continue`",
 		"`coverage`",
+		"`holdout`",
 		"`decisions`",
 		"blocks nothing",
 		"references/pr-babysit.md",
@@ -125,6 +126,7 @@ var requiredSkillFacts = map[string][]string{
 		"references/verification-driver.md",
 		"rerun relevant checks after a rebase",
 		"scope creep",
+		"known positive",
 	},
 	"writing-agent-instructions": {
 		"references/skills.md",

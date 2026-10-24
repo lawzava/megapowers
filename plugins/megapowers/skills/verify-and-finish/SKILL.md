@@ -14,7 +14,8 @@ no-op before broad checks; an external no-op needs an external readback.
 
 Evidence precedes every load-bearing claim. Run each acceptance oracle fresh
 against the current artifact, read the whole result, and state only what it
-proves. Never weaken a test, baseline, threshold, or predicate to obtain a
+proves. An empty search or scan proves absence only after it finds a known
+positive. Never weaken a test, baseline, threshold, or predicate to obtain a
 pass; after a code change, run the [bar guard](references/bar-guard.md) and fix
 or report each finding. Run long or verbose checks through the
 [run receipt tool](references/run-receipt.md); block on a running check and
@@ -25,7 +26,7 @@ checks after a rebase onto a changed base. Separate declared configuration from
 effective runtime behavior. A local build cannot prove a deployment, published
 package, API effect, or user-visible result; exercise the real boundary and
 record the environment and correlation identity, or report the criterion
-unverified. A claim that something will recur ("from now on", "every workday")
+unverified. A claim that something will recur
 names its schedule, hook, or config entry and cites a readback of it.
 
 When the change can affect a user journey, run that journey through the surface
@@ -38,8 +39,8 @@ requested review before finishing.
 Before a handoff, commit, PR, merge, or release, run canonical checks and
 inspect the diff and workspace. Remove generated excess and report unrequested
 behavior as scope creep. Keep review packages, receipts, and evidence records
-under `$TMPDIR`, outside the deliverable, unless the user asks otherwise; review
-provenance belongs in the report, not in project files.
+under `$TMPDIR`, out of project files, unless the user asks otherwise; review
+provenance belongs in the report.
 Confirm a named target branch and authority before
 committing, publishing, merging, or deleting a branch or worktree. For a
 handoff, write a [handoff note](references/handoff.md); for a PR, use the
