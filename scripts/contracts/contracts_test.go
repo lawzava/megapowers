@@ -349,6 +349,13 @@ func TestGlobalInstructionTemplates(t *testing.T) {
 		for _, marker := range []string{"materially different work", "Done means", "approval is the last step", "switch approach", "not an outside effect"} {
 			requireContains(t, body, marker, rel)
 		}
+		// Session scan 2026-10-24: agents slept a guessed duration before
+		// checking (1,617 Claude calls, about 113 h in 30 days), and Codex
+		// started 11,852 commands on a 1 s yield and then had to poll them.
+		requireContains(t, body, "not a guessed duration", rel)
+		if strings.HasSuffix(rel, "global-AGENTS.md") {
+			requireContains(t, body, "`yield_time_ms` is only a ceiling", rel)
+		}
 		// Anthropic's Opus 5.5 guide (claude.dev, 2026-09-22): status notes ride
 		// with the next action, and a long run's task list survives compaction.
 		if strings.HasSuffix(rel, "global-CLAUDE.md") {

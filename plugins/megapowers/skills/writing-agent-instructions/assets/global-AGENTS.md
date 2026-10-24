@@ -1,4 +1,4 @@
-<!-- megapowers-global-baseline v4 (2026-10-11) -->
+<!-- megapowers-global-baseline v5 (2026-10-24) -->
 <!-- Copy to ~/.codex/AGENTS.md. Codex loads comments: delete this line after editing and keep the baseline line above. -->
 
 # Global instructions
@@ -50,6 +50,18 @@ guidance.
 - Diagnose an unknown failure before editing.
 - If an approach fails three times, switch approach. Stop only when no
   in-scope approach remains or the next step needs my input.
+
+## Waiting
+
+- Wait on the event, not a guessed duration: never `sleep N` and then check.
+- `exec_command` and `write_stdin` return as soon as the process exits, so
+  `yield_time_ms` is only a ceiling. Start a build, test, or install with
+  `yield_time_ms` of 30000, and poll a running session with at least 30000.
+  A 1000 ms yield costs a turn per poll and returns nothing new.
+- Poll a condition under a ceiling:
+  `timeout 590 bash -c 'until grep -q PASS run.log; do sleep 5; done'`.
+  Block on CI with `gh run watch <id> --exit-status` or
+  `gh pr checks <n> --watch --fail-fast`.
 
 ## Done
 

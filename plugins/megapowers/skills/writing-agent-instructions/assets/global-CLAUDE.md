@@ -1,4 +1,4 @@
-<!-- megapowers-global-baseline v5 (2026-10-11). Copy to ~/.claude/CLAUDE.md. -->
+<!-- megapowers-global-baseline v6 (2026-10-24). Copy to ~/.claude/CLAUDE.md. -->
 <!-- Claude Code strips HTML comments before loading, so these notes cost no context. -->
 <!-- If one line keeps being ignored, add emphasis to that line alone. Emphasis on many lines makes none stand out. -->
 
@@ -52,6 +52,17 @@ guidance.
 - Diagnose an unknown failure before editing.
 - If an approach fails three times, switch approach. Stop only when no
   in-scope approach remains or the next step needs my input.
+
+## Waiting
+
+- Wait on the event, not a guessed duration: never `sleep N` and then check.
+  A foreground command returns when it finishes, so `timeout` is only a
+  ceiling for the slow case.
+- Start work that can outlast the Bash cap with `run_in_background` and wait
+  for its completion notification. Poll a condition under a ceiling:
+  `timeout 590 bash -c 'until grep -q PASS run.log; do sleep 5; done'`.
+  Block on CI with `gh run watch <id> --exit-status` or
+  `gh pr checks <n> --watch --fail-fast`.
 
 ## Done
 
