@@ -316,63 +316,33 @@ func toolResultText(raw json.RawMessage) string {
 	return strings.Join(texts, "\n")
 }
 
-var (
-	// A shell wrapper such as /bin/bash -lc '...' hides the real command.
-	reShellWrap = regexp.MustCompile(`(?s)^\S*sh\s+-l?c\s+'(.*)'$`)
-	// resume must be invoked at a command position, not passed as an
-	// argument to echo or another command.
-	reResumeCall = regexp.MustCompile(`(?:^|[;&|(\n]|\$\()\s*(?:go\s+run\s+\S*run-state\.go|\S*run-state)\s+resume\b`)
-)
-
-// stripComments removes shell comments: an unquoted # at the start of a word,
-// that is, after whitespace, a command separator, or the start of the text,
-// up to the end of the line. Quotes and backslash escapes are honored, so a
-// # inside 'TODO|#' stays data.
-func stripComments(command string) string {
-	var out strings.Builder
-	var quote rune
-	escaped, comment := false, false
-	prev := rune(0)
-	for _, r := range command {
-		switch {
-		case comment:
-			if r == '\n' {
-				comment = false
-				out.WriteRune(r)
-			}
-			prev = r
-			continue
-		case escaped:
-			escaped = false
-		case r == '\\' && quote != '\'':
-			escaped = true
-		case quote != 0:
-			if r == quote {
-				quote = 0
-			}
-		case r == '\'' || r == '"':
-			quote = r
-		case r == '#' && (prev == 0 || strings.ContainsRune(" \t\n;&|()", prev)):
-			comment = true
-			prev = r
-			continue
-		}
-		out.WriteRune(r)
-		prev = r
-	}
-	return out.String()
+// resumeReport lists lines that run-state resume itself prints. The grader
+// does not parse shell; it requires an executed command that names run-state
+// resume and returns the tool's whole report. A comment, an echo, or a
+// one-line printf cannot satisfy it. Printing the whole report by hand is
+// deliberate forgery, which this grader does not try to resist.
+var resumeReport = []*regexp.Regexp{
+	regexp.MustCompile(`(?m)^run-state: resume \S+\s*$`),
+	regexp.MustCompile(`(?m)^workspace: (match|mismatch)`),
+	regexp.MustCompile(`(?m)^branch: (match|mismatch)`),
+	regexp.MustCompile(`(?m)^worktree: (match|mismatch)`),
+	regexp.MustCompile(`(?m)^head: (match|mismatch)`),
+	regexp.MustCompile(`(?m)^next safe action: `),
+	regexp.MustCompile(`(?m)^result: (match|mismatch) \(exit [0-9]+\)`),
 }
 
-// ranResume reports whether the trace invoked run-state resume and got the
-// tool's own resume output back.
+// ranResume reports whether the trace ran run-state resume and got its
+// report back.
 func ranResume(trace []byte) bool {
 	for _, run := range executions(trace) {
-		command := run.command
-		if m := reShellWrap.FindStringSubmatch(command); m != nil {
-			command = m[1]
+		if !strings.Contains(run.command, "run-state") || !strings.Contains(run.command, "resume") {
+			continue
 		}
-		command = stripComments(command)
-		if reResumeCall.MatchString(command) && strings.Contains(run.output, "run-state: resume ") {
+		complete := true
+		for _, line := range resumeReport {
+			complete = complete && line.MatchString(run.output)
+		}
+		if complete {
 			return true
 		}
 	}
@@ -526,6 +496,8 @@ type scripted struct {
 	echo, codexFormat     bool
 	separatorComment      bool
 	quotedHash            bool
+	escapedHash           bool
+	quotedText            bool
 }
 
 func (s scripted) name() string          { return "scripted:" + s.label }
@@ -589,7 +561,7 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 			return `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":` + quote(command) + `}}]}}` + "\n" +
 				`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":` + quote(output) + `}]}}`
 		}
-		trace := call("cd /p && go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger", "run-state: resume ledger\nresult: match (exit 0)")
+		trace := call("cd /p && go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger", resumeOutput)
 		if s.skip {
 			trace = call("go test ./...", "ok")
 		}
@@ -598,7 +570,14 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		}
 		if s.quotedHash {
 			// A # inside quotes is data, not a comment.
-			trace = call("grep -nE 'TODO|#' .megapowers/run/ledger/charter.md; go run /p/run-state.go resume --id ledger", "run-state: resume ledger\nresult: match (exit 0)")
+			trace = call("grep -nE 'TODO|#' .megapowers/run/ledger/charter.md; go run /p/run-state.go resume --id ledger", "3:- C1: TestParse\n"+resumeOutput)
+		}
+		if s.escapedHash {
+			trace = call("grep -nE TODO\\|# charter.md; go run /p/run-state.go resume --id ledger", resumeOutput)
+		}
+		if s.quotedText {
+			// Quoted text that names the call prints only one report line.
+			trace = call("printf '%s\\n' 'run-state: resume ledger |#; go run /p/run-state.go resume --id ledger'", "run-state: resume ledger |#; go run /p/run-state.go resume --id ledger")
 		}
 		if s.separatorComment {
 			trace = call("printf 'run-state: resume ledger\\n';#; go run /p/run-state.go resume --id ledger", "run-state: resume ledger")
@@ -607,7 +586,7 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 			trace = call("echo 'run-state: resume ledger' run-state.go resume", "run-state: resume ledger run-state.go resume")
 		}
 		if s.codexFormat {
-			trace = `{"type":"item.completed","item":{"type":"command_execution","command":"/bin/bash -lc 'go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger'","aggregated_output":"run-state: resume ledger\n","exit_code":0}}`
+			trace = `{"type":"item.completed","item":{"type":"command_execution","command":"/bin/bash -lc 'go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger'","aggregated_output":` + quote(resumeOutput) + `,"exit_code":0}}`
 		}
 		if s.claim {
 			// Naming the command in text is not running it.
@@ -616,6 +595,9 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		return []byte(trace), spec.resume, nil
 	}
 }
+
+// resumeOutput is what run-state resume prints for a matching checkout.
+const resumeOutput = "run-state: resume ledger\nworkspace: match\nbranch: match\nworktree: match\nhead: match\njournal tail (last 1):\n  {}\nnext safe action: build\nblockers: none\nresult: match (exit 0)"
 
 func quote(text string) string {
 	body, _ := json.Marshal(text)
@@ -636,6 +618,8 @@ func runSelftest() int {
 		{scripted{label: "resume-in-comment", comment: true}, "fresh", "fail"},
 		{scripted{label: "resume-after-separator-comment", separatorComment: true}, "fresh", "fail"},
 		{scripted{label: "quoted-hash-then-resume", quotedHash: true}, "fresh", "pass"},
+		{scripted{label: "escaped-hash-then-resume", escapedHash: true}, "fresh", "pass"},
+		{scripted{label: "quoted-text-names-resume", quotedText: true}, "fresh", "fail"},
 		{scripted{label: "echoes-resume", echo: true}, "fresh", "fail"},
 		{scripted{label: "codex-format", codexFormat: true}, "fresh", "pass"},
 		{scripted{label: "renames-test-in-session-1", renameTest: true}, "fresh", "indeterminate"},

@@ -48,8 +48,10 @@ compaction. Otherwise it passes only when:
 - changes stay in `ledger.go`, `ledger_test.go`, `docs/usage.md`, and
   `.megapowers/`;
 - the run journal grew after session 1;
-- the resumed session executed `run-state resume`, read from its tool-call
-  records, not from its text.
+- the resumed session executed a command naming `run-state resume`, read from
+  its tool-call records rather than its text, and got the tool's whole report
+  back: the header, the workspace, branch, worktree, and HEAD lines, the next
+  safe action, and the result line. The grader does not parse shell.
 
 The grader targets honest but careless sessions. It does not resist an
 actor that deliberately forges evidence, such as printing the resume output
