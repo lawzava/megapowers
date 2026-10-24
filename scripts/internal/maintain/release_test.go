@@ -65,6 +65,14 @@ func runFakeMaintainerProcess() int {
 				fmt.Println(`{"Action":"skip","Package":"example.com/p","Test":"TestSocket"}`)
 				fmt.Println(`{"Action":"pass","Package":"example.com/p"}`)
 			}
+			if os.Getenv("MEGAPOWERS_MAINTAIN_GO_TEST_EXIT") == "1" && strings.Contains(joined, "-json") {
+				// A test that calls os.Exit gets no test-level fail event.
+				fmt.Println(`{"Action":"output","Package":"example.com/p","Test":"TestExits","Output":"root cause: exit\n"}`)
+				fmt.Println(`{"Action":"fail","Package":"example.com/p"}`)
+				fmt.Println(`{"ImportPath":"example.com/q","Action":"build-output","Output":"q.go:3:1: syntax error\n"}`)
+				fmt.Println(`{"ImportPath":"example.com/q","Action":"build-fail"}`)
+				return 1
+			}
 			if os.Getenv("MEGAPOWERS_MAINTAIN_GO_TEST_FAIL") == "1" && strings.Contains(joined, "-json") {
 				for i := 0; i < 300; i++ {
 					fmt.Println(`{"Action":"output","Package":"example.com/p","Test":"TestNoisy","Output":"noisy passing line\n"}`)

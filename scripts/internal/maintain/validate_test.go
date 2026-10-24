@@ -59,6 +59,22 @@ func TestValidateShowsOnlyFailingGoTestOutput(t *testing.T) {
 	}
 }
 
+// An abrupt test exit and a build failure carry their diagnostics in events
+// that are not test-level fail events.
+func TestValidateKeepsDiagnosticsOfAbruptExitsAndBuildFailures(t *testing.T) {
+	repo, _ := newValidateFixture(t)
+	t.Setenv("MEGAPOWERS_MAINTAIN_GO_TEST_EXIT", "1")
+	var stdout, stderr bytes.Buffer
+	if code := runValidate(context.Background(), repo, nil, &stdout, &stderr); code == 0 {
+		t.Fatal("validate passed a failing go test run")
+	}
+	for _, want := range []string{"root cause: exit", "q.go:3:1: syntax error"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("failure report lost %q\nstderr:\n%s", want, stderr.String())
+		}
+	}
+}
+
 func newValidateFixture(t *testing.T) (string, string) {
 	t.Helper()
 	repo := t.TempDir()

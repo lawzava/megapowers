@@ -330,7 +330,7 @@ func (e *testEvents) flush() {
 
 func (e *testEvents) line(raw []byte) {
 	var event struct {
-		Action, Package, Test, Output string
+		Action, Package, Test, Output, ImportPath string
 	}
 	if json.Unmarshal(raw, &event) != nil || event.Action == "" {
 		// Build failures and other stderr text are not JSON events.
@@ -349,7 +349,28 @@ func (e *testEvents) line(raw []byte) {
 	case "pass":
 		delete(e.output, key)
 	case "fail":
-		_, _ = e.log.Write([]byte(strings.Join(e.output[key], "")))
-		delete(e.output, key)
+		if event.Test != "" {
+			_, _ = e.log.Write([]byte(strings.Join(e.output[key], "")))
+			delete(e.output, key)
+			return
+		}
+		// A package failure also flushes output of tests that never got
+		// their own fail event, such as a test that called os.Exit.
+		prefix := event.Package + "\x00"
+		var keys []string
+		for k := range e.output {
+			if strings.HasPrefix(k, prefix) {
+				keys = append(keys, k)
+			}
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			_, _ = e.log.Write([]byte(strings.Join(e.output[k], "")))
+			delete(e.output, k)
+		}
+	case "build-output":
+		// Compiler and linker diagnostics arrive as build events, not as
+		// test output.
+		_, _ = e.log.Write([]byte(event.Output))
 	}
 }
