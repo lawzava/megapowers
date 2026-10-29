@@ -39,6 +39,8 @@ if not errorlevel 1 (
 if defined GO_VERSION (
     set "GO_KEY=!GO_VERSION:devel =!"
     for /f "tokens=1" %%k in ("!GO_KEY!") do set "GO_KEY=%%k"
+    rem A colon, as in go1.26.8-X:nodwarf5, would start an NTFS alternate data stream.
+    set "GO_KEY=!GO_KEY::=_!"
 )
 set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-72b1345d63dffcc4-windows-%PROCESSOR_ARCHITECTURE%"
 set "RUNNER="
@@ -215,11 +217,24 @@ esac
 export GO111MODULE=off GOTOOLCHAIN=local
 go_key=""
 go_found=0
+go_version=""
 if command -v go >/dev/null 2>&1; then
   go_found=1
   go_version="$(go env GOVERSION 2>/dev/null)" || go_version=""
   go_key="${go_version#devel }"
   go_key="${go_key%% *}"
+  # Experiment-suffixed versions such as go1.26.8-X:nodwarf5 carry a ':' that
+  # is not valid in a Windows file name; keep the key portable.
+  rest="$go_key"
+  go_key=""
+  while [ -n "$rest" ]; do
+    char="${rest%"${rest#?}"}"
+    rest="${rest#?}"
+    case "$char" in
+      :) go_key="${go_key}_" ;;
+      *) go_key="$go_key$char" ;;
+    esac
+  done
   case "$go_key" in
     ''|*[!A-Za-z0-9_.+-]*) go_key="" ;;
   esac
@@ -283,6 +298,10 @@ else
     fi
   done
   if [ -z "$runner" ]; then
+    if [ -n "$go_version" ]; then
+      # The value is not echoed: fail() escapes only backslash and quote.
+      fail "cannot build hook runner: unsupported GOVERSION value from go env GOVERSION"
+    fi
     if [ "$go_found" -eq 1 ]; then
       fail "cannot build hook runner: cannot read Go version (go env GOVERSION failed)"
     fi
