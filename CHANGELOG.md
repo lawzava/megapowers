@@ -5,6 +5,29 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.42.2 - 2026-10-29
+
+### Fixed
+
+- The hook launcher accepts a `GOVERSION` with an experiment suffix, such as
+  Fedora's `go1.26.8-X:nodwarf5`. The `:` had emptied the cache key, so the
+  destructive-command guard stayed inactive and the launcher wrongly said
+  `go env GOVERSION failed`. Both launchers now map `:` to `_`. A value that
+  is still unusable reports `unsupported GOVERSION value`. (#10)
+- The Windows launcher reuses its cached runner. On Windows 11 build 26200,
+  `if exist "file\"` is true for a regular file, so every call after the first
+  build failed with `cached runner is not a file`. The `windows-hooks` CI
+  check now runs the launcher twice. CI runs on Windows Server 2025, which
+  does not show the bug, so the fix on build 26200 rests on the reporter's
+  test. (#11)
+- `doctor` falls back to `USERPROFILE` when `HOME` is unset, as it usually is
+  on Windows. It now finds `settings.json`, the agent registry, session files,
+  and installed copies there. (#12)
+
+### Changed
+
+- CI pins `actions/setup-node` v7.1.0 and `actions/upload-artifact` v7.0.2.
+
 ## 0.42.1 - 2026-10-25
 
 ### Fixed
