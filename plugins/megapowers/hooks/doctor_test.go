@@ -409,3 +409,16 @@ func TestDoctorMatchesCodexWorkspaceByValue(t *testing.T) {
 		t.Errorf("doctor report lacks %q:\n%s", want, report)
 	}
 }
+
+func TestDoctorUsesUserprofileWhenHomeIsUnset(t *testing.T) {
+	// Windows sets USERPROFILE and leaves HOME unset.
+	profile := t.TempDir()
+	writeClaudeSettings(t, profile, `{"outputStyle":"megapowers:Megapowers"}`)
+	report := doctorOutput(t, map[string]string{"USERPROFILE": profile, "MEGAPOWERS_HARNESS": "claude", "MEGAPOWERS_PLUGIN_ROOT": filepath.Dir(packageDir(t))})
+	if strings.Contains(report, "cannot locate settings.json") || !strings.Contains(report, "outputStyle: megapowers:Megapowers") {
+		t.Fatalf("doctor must read settings under USERPROFILE:\n%s", report)
+	}
+	if !strings.Contains(report, "agent registry: none") {
+		t.Fatalf("doctor must look for the agent registry under USERPROFILE:\n%s", report)
+	}
+}

@@ -174,11 +174,19 @@ func doctorRunnerCache(report *doctorReport, getenv getenvFunc) {
 	report.add("runner cache: %s (%d cached runner(s))", dir, len(runners))
 }
 
+// userHome is HOME, or USERPROFILE where HOME is unset (Windows).
+func userHome(getenv getenvFunc) string {
+	if home := getenv("HOME"); home != "" {
+		return home
+	}
+	return getenv("USERPROFILE")
+}
+
 func claudeSettingsPath(getenv getenvFunc) string {
 	if dir := getenv("CLAUDE_CONFIG_DIR"); dir != "" {
 		return filepath.Join(dir, "settings.json")
 	}
-	if home := getenv("HOME"); home != "" {
+	if home := userHome(getenv); home != "" {
 		return filepath.Join(home, ".claude", "settings.json")
 	}
 	return ""
@@ -214,7 +222,7 @@ func doctorClaudeOutputStyle(report *doctorReport, getenv getenvFunc) {
 		}
 	}
 	if user == "" {
-		report.warn("claude outputStyle: cannot locate settings.json (no HOME or CLAUDE_CONFIG_DIR)")
+		report.warn("claude outputStyle: cannot locate settings.json (no HOME, USERPROFILE, or CLAUDE_CONFIG_DIR)")
 		return
 	}
 	data, err := os.ReadFile(user)
@@ -271,7 +279,7 @@ var registryExpiry = regexp.MustCompile(`(?m)^\s*expires_at:\s*"?(\d{4}-\d{2}-\d
 // orchestrating reads. Orchestrating ignores a registry it cannot date, so an
 // expired or undated file is a silent fallback to native defaults worth a WARN.
 func doctorAgentRegistry(report *doctorReport, getenv getenvFunc) {
-	home := getenv("HOME")
+	home := userHome(getenv)
 	if home == "" {
 		return
 	}
@@ -462,7 +470,7 @@ var claudeProjectSlug = regexp.MustCompile(`[^A-Za-z0-9]`)
 // directories and Codex rollouts whose session_meta names a workspace,
 // modified after cutoff.
 func sessionFiles(getenv getenvFunc, workspaces []string, cutoff time.Time) []string {
-	home := getenv("HOME")
+	home := userHome(getenv)
 	claudeDir := getenv("CLAUDE_CONFIG_DIR")
 	if claudeDir == "" && home != "" {
 		claudeDir = filepath.Join(home, ".claude")
@@ -559,7 +567,7 @@ func doctorMarketplace(report *doctorReport, getenv getenvFunc, harness, root st
 	if err != nil {
 		return
 	}
-	home := getenv("HOME")
+	home := userHome(getenv)
 	copies := map[string]string{}
 	if harness != "codex" {
 		if dir := getenv("CLAUDE_CONFIG_DIR"); dir != "" {
