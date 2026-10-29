@@ -500,6 +500,46 @@ func TestLauncherExplainsUnreadableGoVersion(t *testing.T) {
 	expectLauncherWarning(t, cmd, "cannot build hook runner: cannot read Go version (go env GOVERSION failed)")
 }
 
+func TestLauncherAcceptsExperimentSuffixedGoVersion(t *testing.T) {
+	// Fedora reports GOVERSION as go1.26.8-X:nodwarf5; the ':' must not empty
+	// the cache key.
+	binDir := t.TempDir()
+	fakeGo := "#!/bin/sh\n" +
+		"if [ \"$1\" = env ] && [ \"$2\" = GOVERSION ]; then echo 'go1.26.8-X:nodwarf5'; exit 0; fi\n" +
+		"if [ \"$1\" = build ]; then\n" +
+		"  while [ \"$#\" -gt 0 ]; do [ \"$1\" = -o ] && out=\"$2\"; shift; done\n" +
+		"  printf '#!/bin/sh\\necho fake-runner-ran\\n' > \"$out\"; exit 0\n" +
+		"fi\n" +
+		"exit 1\n"
+	if err := os.WriteFile(filepath.Join(binDir, "go"), []byte(fakeGo), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cache := t.TempDir()
+	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	cmd.Env = append(environmentWithout("PATH", "MEGAPOWERS_HOOK_CACHE"), "PATH="+binDir+":"+os.Getenv("PATH"), "MEGAPOWERS_HOOK_CACHE="+cache)
+	output, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(output), "fake-runner-ran") {
+		t.Fatalf("launcher with experiment-suffixed GOVERSION: %v\n%s", err, output)
+	}
+	runner := filepath.Join(cache, "megapowers-hooks", cachedRunnerName(t, "go1.26.8-X_nodwarf5"))
+	if _, err := os.Stat(runner); err != nil {
+		t.Fatalf("runner keyed by sanitized GOVERSION missing: %v", err)
+	}
+}
+
+func TestLauncherExplainsUnusableGoVersion(t *testing.T) {
+	binDir := t.TempDir()
+	fakeGo := "#!/bin/sh\nif [ \"$1\" = env ] && [ \"$2\" = GOVERSION ]; then echo 'go1.26.8!bad'; exit 0; fi\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(binDir, "go"), []byte(fakeGo), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "deny-destructive")
+	cmd.Stdin = strings.NewReader(`{"tool_input":{"command":"true"}}`)
+	cmd.Env = append(environmentWithout("PATH", "MEGAPOWERS_HOOK_CACHE"), "PATH="+binDir+":"+os.Getenv("PATH"), "MEGAPOWERS_HOOK_CACHE="+t.TempDir())
+	expectLauncherWarning(t, cmd, "cannot build hook runner: unsupported GOVERSION value from go env GOVERSION")
+}
+
 func TestLauncherDoctorSubcommand(t *testing.T) {
 	home := t.TempDir()
 	cmd := exec.Command("bash", filepath.Join(packageDir(t), "run-hook.cmd"), "doctor")

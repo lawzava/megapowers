@@ -12,6 +12,8 @@
   it under a name that includes the Go version. Go older than 1.25 cannot
   build it. Fix: install Go 1.25 or newer, then start a new session. If a stale
   runner still fails, delete the cache directory the check names.
+  "unsupported GOVERSION value" means `go env GOVERSION` printed characters
+  outside letters, digits, and `_.+-`; report the value to the maintainers.
 - Hooks not registered: the plugin is installed but the harness has not loaded
   `hooks/hooks.json`. Fix: re-enable the plugin; on Codex review and trust the
   plugin hooks (trust is recorded per hook hash, so a release that changes a
