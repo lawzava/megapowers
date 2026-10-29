@@ -172,20 +172,23 @@ func checkWindowsHooksFromBangPath(ctx context.Context, hook, tempRoot string, r
 			return err
 		}
 	}
-	result, err := runner.Run(ctx, commandSpec{Name: "cmd.exe", Args: []string{"/c", filepath.Join(target, filepath.Base(hook)), "deny-destructive"},
-		Stdin: `{"tool_input":{"command":"Remove-Item -Recurse C:\\"}}`,
-		// A fresh cache under a "!" path forces a build from the copied sources.
-		Env: map[string]string{"MEGAPOWERS_HOOK_CACHE": filepath.Join(tempRoot, "cache!dir")}})
-	if err != nil {
-		return err
-	}
-	var response struct {
-		HookSpecificOutput struct {
-			PermissionDecision string `json:"permissionDecision"`
-		} `json:"hookSpecificOutput"`
-	}
-	if result.ExitCode != 0 || json.Unmarshal([]byte(result.Stdout), &response) != nil || response.HookSpecificOutput.PermissionDecision != "deny" {
-		return fmt.Errorf("launcher installed under a path containing '!' did not deny (exit %d)", result.ExitCode)
+	// The first call builds the runner; the second must reuse the cached file.
+	for _, pass := range []string{"first", "second"} {
+		result, err := runner.Run(ctx, commandSpec{Name: "cmd.exe", Args: []string{"/c", filepath.Join(target, filepath.Base(hook)), "deny-destructive"},
+			Stdin: `{"tool_input":{"command":"Remove-Item -Recurse C:\\"}}`,
+			// A fresh cache under a "!" path forces a build from the copied sources.
+			Env: map[string]string{"MEGAPOWERS_HOOK_CACHE": filepath.Join(tempRoot, "cache!dir")}})
+		if err != nil {
+			return err
+		}
+		var response struct {
+			HookSpecificOutput struct {
+				PermissionDecision string `json:"permissionDecision"`
+			} `json:"hookSpecificOutput"`
+		}
+		if result.ExitCode != 0 || json.Unmarshal([]byte(result.Stdout), &response) != nil || response.HookSpecificOutput.PermissionDecision != "deny" {
+			return fmt.Errorf("launcher installed under a path containing '!' did not deny on the %s call (exit %d)", pass, result.ExitCode)
+		}
 	}
 	return nil
 }

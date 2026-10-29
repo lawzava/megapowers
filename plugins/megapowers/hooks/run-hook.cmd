@@ -77,7 +77,7 @@ if exist "!RUNNER!" (
         goto fail
     )
 )
-if exist "!RUNNER!\" (
+if exist "!RUNNER!\*" (
     set "REASON=cached runner is not a file: !RUNNER!"
     goto fail
 )

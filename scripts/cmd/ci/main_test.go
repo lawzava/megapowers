@@ -378,11 +378,13 @@ func TestWindowsHookCheckRunsFromBangPath(t *testing.T) {
 	}
 	runner := &scriptedExecutor{results: []commandResult{
 		{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked"}}`},
+		{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked"}}`},
 	}}
 	if err := checkWindowsHooksFromBangPath(context.Background(), filepath.Join(hooks, "run-hook.cmd"), t.TempDir(), runner); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.calls) != 1 || len(runner.calls[0].Args) < 2 || !strings.Contains(runner.calls[0].Args[1], "!") {
+	// The second call reuses the runner the first call built.
+	if len(runner.calls) != 2 || len(runner.calls[0].Args) < 2 || !strings.Contains(runner.calls[0].Args[1], "!") {
 		t.Fatalf("hook did not run from a path containing '!': %#v", runner.calls)
 	}
 	copied := filepath.Join(filepath.Dir(runner.calls[0].Args[1]), "hook_runner.go")
@@ -392,5 +394,12 @@ func TestWindowsHookCheckRunsFromBangPath(t *testing.T) {
 	broken := &scriptedExecutor{results: []commandResult{{Stdout: `{"systemMessage":"guard is inactive"}`}}}
 	if err := checkWindowsHooksFromBangPath(context.Background(), filepath.Join(hooks, "run-hook.cmd"), t.TempDir(), broken); err == nil {
 		t.Fatal("a launcher that fails from a '!' path must fail the check")
+	}
+	reuse := &scriptedExecutor{results: []commandResult{
+		{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked"}}`},
+		{Stdout: `{"systemMessage":"cached runner is not a file"}`},
+	}}
+	if err := checkWindowsHooksFromBangPath(context.Background(), filepath.Join(hooks, "run-hook.cmd"), t.TempDir(), reuse); err == nil || !strings.Contains(err.Error(), "second call") {
+		t.Fatalf("a launcher that rejects its cached runner must fail the check, got %v", err)
 	}
 }
