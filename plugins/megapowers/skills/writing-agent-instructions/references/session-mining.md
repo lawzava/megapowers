@@ -42,6 +42,22 @@ and sorts the turn into a class by keywords:
 A class that appears only once is listed as a one-off. A class counts after
 two occurrences.
 
+Machine-written user turns are not the user's words. The tool leaves them out of
+`human_turns` and every class, and reports their count as `machine_turns`. It
+excludes:
+
+- Claude compaction summaries (`isCompactSummary`) and turns whose `origin` names
+  a producer, such as a `<task-notification>`;
+- Codex turns in a `codex exec` run (`source: exec`);
+- in either harness, a turn that starts with "This session is being continued
+  from a previous conversation", "This is an approved autonomous run", or
+  "Continue the approved run and finish it", or that has a line starting with
+  "Unattended run:" (a schedule prompt).
+
+Subagent prompts and meta records were already excluded. An SDK caller such as
+Paseo sends typed and scripted prompts the same way, so a scripted prompt with
+none of these anchors still counts as a human turn.
+
 `recall` lists the sessions where one message contains every topic word, most
 recent first, with the first prompt and the last reply. When rebuilding context
 for a topic from past sessions, default to the last 14 days and this workspace;
@@ -55,7 +71,13 @@ work was; each thread with a status tag such as `[merged #12]`, `[open PR #14]`,
 `scorecard` counts outcome signals per project: skill loads and the
 corrections that followed them, megapowers gate blocks, `VERIFIED` and `NOT
 VERIFIED` reports, foreground `sleep` calls, and autonomous-run journal
-events. A gate counts only when its denial opens an error result, so reading
+events. `human_turns` and `corrections` leave out machine turns, which show as
+`machine_turns`. A call counts as a foreground sleep when a shell command in it
+runs `sleep` for more than 5 seconds, outside any `until`, `while`, or `for`
+loop, and not backgrounded. A call with `run_in_background`, a sleep of 5
+seconds or less, and the word "sleep" in an argument or string do not count.
+A sleep that runs in the foreground waits on a guessed delay instead of an
+event. A gate counts only when its denial opens an error result, so reading
 the gate's source does not count. `--all-workspaces` adds a per-workspace
 table. `--sanitize`, valid only with `scorecard`, hashes workspace paths,
 drops run IDs, and folds non-megapowers skill names into `other`. The

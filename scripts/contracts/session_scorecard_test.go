@@ -182,8 +182,9 @@ func TestSessionMineScorecard(t *testing.T) {
 	if card.Reports.Verified != 2 || card.Reports.NotVerified != 1 {
 		t.Errorf("reports = %+v, want 2 verified and 1 not verified", card.Reports)
 	}
-	if card.SleepCalls != 2 {
-		t.Errorf("sleep calls = %d, want 2", card.SleepCalls)
+	// Only `sleep 30` counts; `sleep 5` is an allowed short pause.
+	if card.SleepCalls != 1 {
+		t.Errorf("sleep calls = %d, want 1", card.SleepCalls)
 	}
 	if len(card.Runs) != 1 {
 		t.Fatalf("runs = %+v, want one", card.Runs)

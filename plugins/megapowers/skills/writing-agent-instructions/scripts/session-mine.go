@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -49,7 +50,8 @@ type options struct {
 }
 
 // A message is one kept text record. Role is "human" (a person typed it),
-// "prompt" (a lead agent prompted a subagent), or "assistant".
+// "machine" (a harness or scheduler wrote the user turn), "prompt" (a lead
+// agent prompted a subagent), or "assistant".
 type message struct {
 	role string
 	text string
@@ -101,6 +103,7 @@ type correctionsReport struct {
 	Note            string        `json:"note"`
 	SessionsScanned int           `json:"sessions_scanned"`
 	HumanTurns      int           `json:"human_turns"`
+	MachineTurns    int           `json:"machine_turns"`
 	ClassifiedTurns int           `json:"classified_turns"`
 	OtherTurns      int           `json:"other_turns"`
 	SkippedLines    int           `json:"skipped_lines"`
@@ -444,7 +447,7 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 	}
 	defer file.Close()
 	reader := bufio.NewReaderSize(file, 1<<20)
-	codexScoped, codexSubagent := false, false
+	codexScoped, codexSubagent, codexExec := false, false, false
 	origin := ""
 	for {
 		line, readErr := reader.ReadBytes('\n')
@@ -466,12 +469,12 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 				}
 			} else {
 				var meta *codexMeta
-				msgs, events, meta, ok = parseCodex(line, codexSubagent)
+				msgs, events, meta, ok = parseCodex(line, codexSubagent, codexExec)
 				if meta != nil {
 					if !opt.all && filepath.Clean(meta.cwd) != opt.workspace {
 						return s, false
 					}
-					codexScoped, codexSubagent = true, meta.subagent
+					codexScoped, codexSubagent, codexExec = true, meta.subagent, meta.exec
 					s.cwd = filepath.Clean(meta.cwd)
 				}
 			}
@@ -573,9 +576,47 @@ type claudeRecord struct {
 	IsMeta       bool   `json:"isMeta"`
 	IsSidechain  bool   `json:"isSidechain"`
 	PromptSource string `json:"promptSource"`
-	Message      *struct {
+	// A compaction summary is written by the harness, not typed by the user.
+	IsCompactSummary bool `json:"isCompactSummary"`
+	// Origin names the producer of a non-human turn, such as a task
+	// notification or a coordinator. Human turns carry none.
+	Origin  json.RawMessage `json:"origin"`
+	Message *struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"message"`
+}
+
+// originIsMachine reports whether the record names a non-human producer.
+func (r claudeRecord) originIsMachine() bool {
+	var origin struct {
+		Kind string `json:"kind"`
+	}
+	return json.Unmarshal(r.Origin, &origin) == nil && origin.Kind != "" && origin.Kind != "human"
+}
+
+var (
+	// Anchored fallbacks for machine-written turns that carry no flag: a
+	// compaction summary, an autonomous-run prompt or its continuation, and
+	// a schedule prompt's unattended-run paragraph. A line start keeps a human
+	// sentence that merely quotes the phrase from matching.
+	machinePrefixes = []string{
+		"This session is being continued from a previous conversation",
+		"This is an approved autonomous run",
+		"Continue the approved run and finish it",
+	}
+	reUnattended = regexp.MustCompile(`(?mi)^unattended run:`)
+)
+
+// machineText reports whether a user turn's text was written by a harness,
+// an autonomous run, or a scheduler rather than typed by a person.
+func machineText(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	for _, prefix := range machinePrefixes {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+	return reUnattended.MatchString(trimmed)
 }
 
 // humanText strips embedded tag blocks and reports whether human text remains.
@@ -623,6 +664,8 @@ func claudeEvents(record claudeRecord) []event {
 				Skill    string `json:"skill"`
 				Command  string `json:"command"`
 				FilePath string `json:"file_path"`
+				// A backgrounded call waits on its own; only a foreground sleep counts.
+				Background bool `json:"run_in_background"`
 			}
 			_ = json.Unmarshal(block.Input, &input)
 			switch block.Name {
@@ -631,7 +674,11 @@ func claudeEvents(record claudeRecord) []event {
 					events = append(events, event{kind: "skill", name: input.Skill, ts: ts})
 				}
 			case "Bash", "PowerShell":
-				events = append(events, callEvents(input.Command, ts)...)
+				var commands []string
+				if !input.Background {
+					commands = []string{input.Command}
+				}
+				events = append(events, callEvents(input.Command, commands, ts)...)
 			case "Read":
 				events = append(events, skillReads(input.FilePath, ts)...)
 			}
@@ -662,7 +709,6 @@ var (
 	// A SKILL.md path names its plugin either as the directory before a
 	// version (plugin caches) or after plugins/ (a source checkout).
 	reSkillPath = regexp.MustCompile(`(?:([a-z0-9-]+)/[0-9]+\.[0-9]+\.[0-9]+[^/\s"]*|plugins/([a-z0-9-]+))?/skills/([a-z0-9-]+)/SKILL\.md`)
-	reSleep     = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])sleep\s+[0-9]`)
 	// A gate denial opens the tool result, after an optional hook prefix;
 	// the same phrase quoted from source code or a search is not a block.
 	reGate    = regexp.MustCompile(`^\s*(?:Error: )?(?:[A-Za-z]+(?::[A-Za-z]+)? hook error: )?Load and follow the megapowers ([a-z0-9-]+) skill`)
@@ -681,13 +727,58 @@ func skillReads(text string, ts time.Time) []event {
 	return events
 }
 
-// callEvents reads a shell command or a Codex tool-call body.
-func callEvents(text string, ts time.Time) []event {
+// callEvents reads a tool call. text is the whole call body, searched for
+// skill paths. commands are the shell commands it runs in the foreground; a
+// call counts one sleep event when any of them holds a foreground sleep.
+func callEvents(text string, commands []string, ts time.Time) []event {
 	events := skillReads(text, ts)
-	if reSleep.MatchString(text) {
-		events = append(events, event{kind: "sleep", ts: ts})
+	for _, command := range commands {
+		if foregroundSleep(command) {
+			events = append(events, event{kind: "sleep", ts: ts})
+			break
+		}
 	}
 	return events
+}
+
+// reScriptCmd finds the command string in a Codex script call such as
+// tools.exec_command({cmd:"...", yield_time_ms:1000}).
+var reScriptCmd = regexp.MustCompile(`\bcmd\s*:\s*("(?:[^"\\]|\\.)*")`)
+
+// codexCommands extracts the shell commands from a Codex tool call: JSON
+// arguments with a cmd string or a command string or argv, or a script body.
+func codexCommands(arguments, input string) []string {
+	var commands []string
+	var args struct {
+		Cmd     string          `json:"cmd"`
+		Command json.RawMessage `json:"command"`
+	}
+	if json.Unmarshal([]byte(arguments), &args) == nil {
+		if args.Cmd != "" {
+			commands = append(commands, args.Cmd)
+		}
+		var line string
+		var argv []string
+		switch {
+		case json.Unmarshal(args.Command, &line) == nil && line != "":
+			commands = append(commands, line)
+		case json.Unmarshal(args.Command, &argv) == nil && len(argv) > 0:
+			// ["bash", "-lc", "<script>"] runs the last element.
+			last := argv[len(argv)-1]
+			if len(argv) >= 3 && strings.HasPrefix(argv[len(argv)-2], "-") && strings.Contains(argv[len(argv)-2], "c") {
+				commands = append(commands, last)
+			} else {
+				commands = append(commands, strings.Join(argv, " "))
+			}
+		}
+	}
+	for _, m := range reScriptCmd.FindAllStringSubmatch(input, -1) {
+		var command string
+		if json.Unmarshal([]byte(m[1]), &command) == nil {
+			commands = append(commands, command)
+		}
+	}
+	return commands
 }
 
 func outputEvents(text string, ts time.Time) []event {
@@ -721,9 +812,11 @@ func claudeMessages(record claudeRecord) ([]message, bool) {
 		}
 		return []message{{role: "assistant", text: strings.Join(texts, "\n"), ts: ts}}, true
 	}
-	if record.IsMeta || record.PromptSource == "system" {
-		return nil, true
-	}
+	// A structural signal marks a machine turn even when the harness also
+	// flags it meta or system. Anchored text is the fallback for producers,
+	// such as an SDK caller, that leave no flag.
+	structural := record.IsCompactSummary || record.originIsMachine()
+	anchored := false
 	var texts []string
 	for _, block := range blocks {
 		if block.Type == "tool_result" {
@@ -732,16 +825,29 @@ func claudeMessages(record claudeRecord) ([]message, bool) {
 		if block.Type != "text" {
 			continue
 		}
+		raw := strings.TrimSpace(block.Text)
+		if strings.HasPrefix(raw, "<task-notification") {
+			structural = true
+			texts = append(texts, raw)
+			continue
+		}
 		if text, ok := humanText(block.Text); ok {
+			anchored = anchored || machineText(text)
 			texts = append(texts, text)
 		}
+	}
+	if (record.IsMeta || record.PromptSource == "system") && !structural {
+		return nil, true
 	}
 	if len(texts) == 0 {
 		return nil, true
 	}
 	role := "human"
-	if record.IsSidechain {
+	switch {
+	case record.IsSidechain:
 		role = "prompt"
+	case structural || anchored:
+		role = "machine"
 	}
 	return []message{{role: role, text: strings.Join(texts, "\n"), ts: ts}}, true
 }
@@ -749,9 +855,12 @@ func claudeMessages(record claudeRecord) ([]message, bool) {
 type codexMeta struct {
 	cwd      string
 	subagent bool
+	// exec marks a non-interactive "codex exec" run, whose user turns a
+	// script wrote.
+	exec bool
 }
 
-func parseCodex(line []byte, subagent bool) ([]message, []event, *codexMeta, bool) {
+func parseCodex(line []byte, subagent, exec bool) ([]message, []event, *codexMeta, bool) {
 	var record struct {
 		Type      string          `json:"type"`
 		Timestamp string          `json:"timestamp"`
@@ -774,7 +883,7 @@ func parseCodex(line []byte, subagent bool) ([]message, []event, *codexMeta, boo
 			case "function_call", "custom_tool_call", "local_shell_call":
 				// A patch that edits a SKILL.md is authoring, not a load.
 				if call.Name != "apply_patch" {
-					return nil, callEvents(call.Arguments+"\n"+call.Input, ts), nil, true
+					return nil, callEvents(call.Arguments+"\n"+call.Input, codexCommands(call.Arguments, call.Input), ts), nil, true
 				}
 				return nil, nil, nil, true
 			case "function_call_output", "custom_tool_call_output":
@@ -798,7 +907,9 @@ func parseCodex(line []byte, subagent bool) ([]message, []event, *codexMeta, boo
 		var source map[string]json.RawMessage
 		_ = json.Unmarshal(payload.Source, &source)
 		_, isSubagent := source["subagent"]
-		return nil, nil, &codexMeta{cwd: payload.Cwd, subagent: isSubagent}, true
+		var kind string
+		_ = json.Unmarshal(payload.Source, &kind)
+		return nil, nil, &codexMeta{cwd: payload.Cwd, subagent: isSubagent, exec: kind == "exec"}, true
 	case "response_item":
 		var payload struct {
 			Type    string         `json:"type"`
@@ -812,12 +923,14 @@ func parseCodex(line []byte, subagent bool) ([]message, []event, *codexMeta, boo
 			return nil, nil, nil, true
 		}
 		var texts []string
+		anchored := false
 		for _, block := range payload.Content {
 			switch {
 			case payload.Role == "assistant" && block.Type == "output_text" && strings.TrimSpace(block.Text) != "":
 				texts = append(texts, block.Text)
 			case payload.Role == "user" && block.Type == "input_text":
 				if text, ok := humanText(block.Text); ok {
+					anchored = anchored || machineText(text)
 					texts = append(texts, text)
 				}
 			}
@@ -828,8 +941,11 @@ func parseCodex(line []byte, subagent bool) ([]message, []event, *codexMeta, boo
 		role := payload.Role
 		if role == "user" {
 			role = "human"
-			if subagent {
+			switch {
+			case subagent:
 				role = "prompt"
+			case exec || anchored:
+				role = "machine"
 			}
 		}
 		return []message{{role: role, text: strings.Join(texts, "\n"), ts: parseTime(record.Timestamp)}}, nil, nil, true
@@ -966,6 +1082,8 @@ func corrections(opt options, sessions []session, stats scanStats) correctionsRe
 					ts:      msg.ts,
 				})
 				lastAgent = ""
+			case "machine":
+				report.MachineTurns++
 			}
 		}
 	}
@@ -1017,7 +1135,7 @@ func recall(opt options, sessions []session, stats scanStats) recallReport {
 		}
 		item := recallItem{Harness: s.harness, Session: s.base}
 		first, last := s.msgs[0].ts, s.msgs[0].ts
-		firstHuman, firstPrompt, lastReply := "", "", ""
+		firstHuman, firstPrompt, firstMachine, lastReply := "", "", "", ""
 		for _, msg := range s.msgs {
 			if first.IsZero() || (!msg.ts.IsZero() && msg.ts.Before(first)) {
 				first = msg.ts
@@ -1030,12 +1148,19 @@ func recall(opt options, sessions []session, stats scanStats) recallReport {
 				firstHuman = msg.text
 			case msg.role == "prompt" && firstPrompt == "":
 				firstPrompt = msg.text
+			case msg.role == "machine" && firstMachine == "":
+				firstMachine = msg.text
 			case msg.role == "assistant":
 				lastReply = msg.text
 			}
 		}
+		// A scripted run has no typed turn; its first machine prompt still
+		// says what the session was for.
 		if firstHuman == "" {
 			firstHuman = firstPrompt
+		}
+		if firstHuman == "" {
+			firstHuman = firstMachine
 		}
 		item.FirstTimestamp, item.LastTimestamp, item.last = formatTime(first), formatTime(last), last
 		item.FirstPrompt, item.LastReply = excerpt(firstHuman, recallExcerpt), excerpt(lastReply, recallExcerpt)
@@ -1083,7 +1208,7 @@ func printCorrections(w io.Writer, r correctionsReport) {
 			printClass(w, c)
 		}
 	}
-	fmt.Fprintf(w, "\nsummary: sessions scanned %d, human turns %d, classified turns %d, skipped lines %d", r.SessionsScanned, r.HumanTurns, r.ClassifiedTurns, r.SkippedLines)
+	fmt.Fprintf(w, "\nsummary: sessions scanned %d, human turns %d, classified turns %d, machine turns %d, skipped lines %d", r.SessionsScanned, r.HumanTurns, r.ClassifiedTurns, r.MachineTurns, r.SkippedLines)
 	if r.SkippedFiles > 0 {
 		fmt.Fprintf(w, ", skipped files %d", r.SkippedFiles)
 	}
@@ -1144,6 +1269,7 @@ type scorecardReport struct {
 	Since           string         `json:"since,omitempty"`
 	SessionsScanned int            `json:"sessions_scanned"`
 	HumanTurns      int            `json:"human_turns"`
+	MachineTurns    int            `json:"machine_turns"`
 	Corrections     map[string]int `json:"corrections"`
 	Skills          []skillScore   `json:"skills"`
 	Gates           map[string]int `json:"gates"`
@@ -1237,6 +1363,8 @@ func scorecard(opt options, sessions []session, stats scanStats) scorecardReport
 						ws.Verified++
 					}
 				}
+			case "machine":
+				report.MachineTurns++
 			case "human":
 				report.HumanTurns++
 				ws.HumanTurns++
@@ -1375,7 +1503,7 @@ func printScorecard(w io.Writer, r scorecardReport) {
 	if r.Since != "" {
 		fmt.Fprintf(w, "since: %s\n", r.Since)
 	}
-	fmt.Fprintf(w, "sessions: %d, human turns: %d\n", r.SessionsScanned, r.HumanTurns)
+	fmt.Fprintf(w, "sessions: %d, human turns: %d, machine turns: %d\n", r.SessionsScanned, r.HumanTurns, r.MachineTurns)
 	fmt.Fprintf(w, "corrections: %s\n", joinCounts(r.Corrections))
 	fmt.Fprintln(w, "skills (loads / sessions / followed by correction):")
 	if len(r.Skills) == 0 {
@@ -1398,4 +1526,564 @@ func printScorecard(w io.Writer, r scorecardReport) {
 		}
 	}
 	fmt.Fprintf(w, "summary: skipped lines %d, skipped files %d, unreadable files %d\n", r.SkippedLines, r.SkippedFiles, r.UnreadableFiles)
+}
+
+// ---------------------------------------------------------------------------
+// Foreground sleep detection. A small shell reader, adapted from a
+// PreToolUse hook that blocks foreground sleeps, tells a sleep that blocks the call (outside
+// every loop, not backgrounded, longer than 5 s) from the word "sleep" in a
+// string, heredoc, comment, or argument. It is not a full shell parser, and
+// anything it cannot read is not counted.
+
+const (
+	maxDepth        = 8
+	maxShortSeconds = 5.0 // a sleep this short is a pause, not a wait
+)
+
+type token struct {
+	op     string   // operator token: ; \n && || | & ( ) ;;  (empty for words)
+	text   string   // decoded word text
+	quoted bool     // any part of the word was quoted or escaped
+	subs   []string // command substitution bodies found in the word
+}
+
+type heredoc struct {
+	delim string
+	strip bool
+}
+
+func lex(s string) []token {
+	var toks []token
+	var pending []heredoc
+	n := len(s)
+	i := 0
+	for i < n {
+		c := s[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\r':
+			i++
+		case c == '\\' && i+1 < n && s[i+1] == '\n':
+			i += 2
+		case c == '\n':
+			toks = append(toks, token{op: "\n"})
+			i++
+			for _, h := range pending {
+				i = skipHeredoc(s, i, h)
+			}
+			pending = nil
+		case c == '#':
+			for i < n && s[i] != '\n' {
+				i++
+			}
+		case c == ';':
+			if i+1 < n && s[i+1] == ';' {
+				toks = append(toks, token{op: ";;"})
+				i += 2
+			} else {
+				toks = append(toks, token{op: ";"})
+				i++
+			}
+		case c == '|':
+			switch {
+			case i+1 < n && s[i+1] == '|':
+				toks = append(toks, token{op: "||"})
+				i += 2
+			case i+1 < n && s[i+1] == '&':
+				toks = append(toks, token{op: "|"})
+				i += 2
+			default:
+				toks = append(toks, token{op: "|"})
+				i++
+			}
+		case c == '&' && !(i+1 < n && s[i+1] == '>'):
+			if i+1 < n && s[i+1] == '&' {
+				toks = append(toks, token{op: "&&"})
+				i += 2
+			} else {
+				toks = append(toks, token{op: "&"})
+				i++
+			}
+		case c == '(' || c == ')':
+			toks = append(toks, token{op: string(c)})
+			i++
+		default:
+			var w token
+			i = lexWord(s, i, &w, &pending)
+			toks = append(toks, w)
+		}
+	}
+	return toks
+}
+
+// lexWord reads one word starting at i and returns the index after it.
+func lexWord(s string, i int, w *token, pending *[]heredoc) int {
+	n := len(s)
+	var b strings.Builder
+	for i < n {
+		c := s[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == ';' || c == '(' || c == ')':
+			// `<(` and `>(` are process substitutions, handled below.
+			w.text = b.String()
+			return i
+		case c == '|':
+			if i > 0 && s[i-1] == '>' { // >| clobber redirect
+				b.WriteByte(c)
+				i++
+				continue
+			}
+			w.text = b.String()
+			return i
+		case c == '&':
+			if i > 0 && (s[i-1] == '>' || s[i-1] == '<') || (i+1 < n && s[i+1] == '>' && b.Len() == 0) {
+				b.WriteByte(c)
+				i++
+				continue
+			}
+			w.text = b.String()
+			return i
+		case c == '\\':
+			w.quoted = true
+			if i+1 < n && s[i+1] != '\n' {
+				b.WriteByte(s[i+1])
+			}
+			i += 2
+		case c == '\'':
+			w.quoted = true
+			j := strings.IndexByte(s[i+1:], '\'')
+			if j < 0 {
+				b.WriteString(s[i+1:])
+				i = n
+			} else {
+				b.WriteString(s[i+1 : i+1+j])
+				i += j + 2
+			}
+		case c == '"':
+			w.quoted = true
+			i = lexDouble(s, i+1, &b, w)
+		case c == '`':
+			j := i + 1
+			for j < n && s[j] != '`' {
+				if s[j] == '\\' {
+					j++
+				}
+				j++
+			}
+			if j > n {
+				j = n
+			}
+			w.subs = append(w.subs, s[i+1:min(j, n)])
+			b.WriteByte(0)
+			i = j + 1
+		case c == '$' && i+1 < n && s[i+1] == '(':
+			i = lexSubst(s, i+2, &b, w, i+2 < n && s[i+2] == '(')
+		case c == '$' && i+1 < n && s[i+1] == '{':
+			j := i + 2
+			depth := 1
+			for j < n && depth > 0 {
+				switch s[j] {
+				case '{':
+					depth++
+				case '}':
+					depth--
+				}
+				j++
+			}
+			b.WriteString(s[i:min(j, n)])
+			i = j
+		case (c == '<' || c == '>') && i+1 < n && s[i+1] == '(':
+			i = lexSubst(s, i+2, &b, w, false)
+		case c == '<' && i+1 < n && s[i+1] == '<' && !(i+2 < n && s[i+2] == '<'):
+			b.WriteString("<<")
+			i += 2
+			strip := false
+			if i < n && s[i] == '-' {
+				strip = true
+				i++
+			}
+			for i < n && (s[i] == ' ' || s[i] == '\t') {
+				i++
+			}
+			var d token
+			i = lexWord(s, i, &d, pending)
+			*pending = append(*pending, heredoc{delim: d.text, strip: strip})
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	w.text = b.String()
+	return i
+}
+
+// lexDouble reads a double-quoted string body starting after the opening
+// quote and returns the index after the closing quote.
+func lexDouble(s string, i int, b *strings.Builder, w *token) int {
+	n := len(s)
+	for i < n {
+		c := s[i]
+		switch {
+		case c == '"':
+			return i + 1
+		case c == '\\' && i+1 < n:
+			if strings.IndexByte("\"\\$`\n", s[i+1]) >= 0 {
+				if s[i+1] != '\n' {
+					b.WriteByte(s[i+1])
+				}
+			} else {
+				b.WriteByte(c)
+				b.WriteByte(s[i+1])
+			}
+			i += 2
+		case c == '$' && i+1 < n && s[i+1] == '(':
+			i = lexSubst(s, i+2, b, w, i+2 < n && s[i+2] == '(')
+		case c == '`':
+			j := i + 1
+			for j < n && s[j] != '`' {
+				if s[j] == '\\' {
+					j++
+				}
+				j++
+			}
+			w.subs = append(w.subs, s[i+1:min(j, n)])
+			b.WriteByte(0)
+			i = j + 1
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return n
+}
+
+// lexSubst reads a $( ... ) body starting after "$(" and records it. An
+// arithmetic $(( ... )) is consumed and ignored.
+func lexSubst(s string, i int, b *strings.Builder, w *token, arith bool) int {
+	end := matchParen(s, i)
+	body := s[i:min(end, len(s))]
+	if !arith {
+		w.subs = append(w.subs, body)
+	}
+	b.WriteByte(0)
+	return end + 1
+}
+
+// matchParen returns the index of the ")" closing a "(" whose body starts at
+// i, or len(s) when unbalanced.
+func matchParen(s string, i int) int {
+	depth := 1
+	for i < len(s) {
+		switch s[i] {
+		case '\\':
+			i++
+		case '\'':
+			j := strings.IndexByte(s[i+1:], '\'')
+			if j < 0 {
+				return len(s)
+			}
+			i += j + 1
+		case '"':
+			i++
+			for i < len(s) && s[i] != '"' {
+				if s[i] == '\\' {
+					i++
+				}
+				i++
+			}
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+		i++
+	}
+	return len(s)
+}
+
+func skipHeredoc(s string, i int, h heredoc) int {
+	n := len(s)
+	for i < n {
+		end := strings.IndexByte(s[i:], '\n')
+		line := s[i:]
+		next := n
+		if end >= 0 {
+			line = s[i : i+end]
+			next = i + end + 1
+		}
+		if h.strip {
+			line = strings.TrimLeft(line, "\t")
+		}
+		i = next
+		if line == h.delim {
+			return i
+		}
+	}
+	return n
+}
+
+// ---------------------------------------------------------------------------
+
+type analyzer struct {
+	toks    []token
+	loops   int
+	base    bool // started inside a loop (recursion into a payload)
+	depth   int
+	frames  []*frame
+	flagged []float64
+}
+
+type frame struct {
+	pending   []float64 // current and-or list
+	committed []float64 // finished lists of this group
+}
+
+// analyze returns the durations (-1 = unknown) of every foreground sleep that
+// runs outside a loop and is not backgrounded.
+func analyze(command string, inLoop bool, depth int) []float64 {
+	if depth > maxDepth {
+		return nil
+	}
+	a := &analyzer{toks: lex(command), base: inLoop, depth: depth}
+	a.frames = []*frame{{}}
+	var words []token
+	for i := 0; i < len(a.toks); i++ {
+		t := a.toks[i]
+		if t.op == "" {
+			words = append(words, t)
+			continue
+		}
+		next := ""
+		if i+1 < len(a.toks) {
+			next = a.toks[i+1].op
+		}
+		switch t.op {
+		case "(":
+			a.simple(words, "")
+			words = nil
+			a.frames = append(a.frames, &frame{})
+		case ")":
+			a.simple(words, "")
+			words = nil
+			a.closeGroup(next)
+		default:
+			a.simple(words, t.op)
+			words = nil
+			switch t.op {
+			case ";", "\n", ";;":
+				a.commit()
+			case "&":
+				a.top().pending = nil
+			}
+		}
+	}
+	a.simple(words, "")
+	for len(a.frames) > 1 {
+		a.closeGroup("")
+	}
+	a.commit()
+	return a.top().committed
+}
+
+func (a *analyzer) top() *frame { return a.frames[len(a.frames)-1] }
+
+func (a *analyzer) commit() {
+	f := a.top()
+	f.committed = append(f.committed, f.pending...)
+	f.pending = nil
+}
+
+// closeGroup ends a ( ) or { } group. A group followed by "&" runs in the
+// background, so its sleeps do not block the tool call.
+func (a *analyzer) closeGroup(nextOp string) {
+	if len(a.frames) < 2 {
+		return
+	}
+	a.commit()
+	g := a.top()
+	a.frames = a.frames[:len(a.frames)-1]
+	if nextOp != "&" {
+		p := a.top()
+		p.pending = append(p.pending, g.committed...)
+	}
+}
+
+func (a *analyzer) inLoop() bool { return a.base || a.loops > 0 }
+
+var assignRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])?\+?=`)
+
+var wrapperValueOpts = map[string]map[string]bool{
+	"sudo":    {"-u": true, "-g": true, "-h": true, "-p": true, "-C": true, "-D": true, "-r": true, "-t": true, "-T": true, "-U": true},
+	"doas":    {"-u": true, "-C": true},
+	"timeout": {"-k": true, "-s": true, "--kill-after": true, "--signal": true},
+	"nice":    {"-n": true},
+	"ionice":  {"-c": true, "-n": true, "-p": true},
+	"env":     {"-u": true, "-C": true, "-S": true},
+	"stdbuf":  {"-i": true, "-o": true, "-e": true},
+}
+
+var wrappers = map[string]bool{
+	"sudo": true, "doas": true, "nohup": true, "command": true, "exec": true, "nice": true,
+	"ionice": true, "stdbuf": true, "setsid": true, "time": true, "env": true, "timeout": true,
+	"builtin": true,
+}
+
+var shells = map[string]bool{"bash": true, "sh": true, "zsh": true, "dash": true, "ksh": true}
+
+// simple analyses one simple command; nextOp is the operator that ended it.
+func (a *analyzer) simple(words []token, nextOp string) {
+	i := 0
+strip:
+	for i < len(words) {
+		w := words[i]
+		if w.quoted {
+			break
+		}
+		switch w.text {
+		case "while", "until":
+			a.loops++
+		case "for", "select":
+			a.loops++
+			a.subs(words)
+			return
+		case "case":
+			a.subs(words)
+			return
+		case "do", "then", "else", "elif", "if", "!", "fi", "esac":
+		case "done":
+			if a.loops > 0 {
+				a.loops--
+			}
+		case "{":
+			a.frames = append(a.frames, &frame{})
+		case "}":
+			a.closeGroup(nextOp)
+		default:
+			break strip
+		}
+		i++
+	}
+	a.subs(words[i:])
+	for i < len(words) && !words[i].quoted && assignRE.MatchString(words[i].text) {
+		i++
+	}
+	for i < len(words) {
+		w := words[i]
+		name := path.Base(w.text)
+		switch {
+		case wrappers[name]:
+			i = skipWrapper(words, i+1, name)
+		case name == "sleep":
+			a.sleep(words[i+1:])
+			return
+		case shells[name]:
+			a.shellPayload(words[i+1:])
+			return
+		case name == "eval":
+			var parts []string
+			for _, x := range words[i+1:] {
+				parts = append(parts, x.text)
+			}
+			a.recurse(strings.Join(parts, " "))
+			return
+		default:
+			return
+		}
+	}
+}
+
+func (a *analyzer) subs(words []token) {
+	for _, w := range words {
+		for _, s := range w.subs {
+			a.recurse(s)
+		}
+	}
+}
+
+func (a *analyzer) recurse(payload string) {
+	got := analyze(payload, a.inLoop(), a.depth+1)
+	f := a.top()
+	f.pending = append(f.pending, got...)
+}
+
+// skipWrapper returns the index of the command after a wrapper's options.
+func skipWrapper(words []token, i int, name string) int {
+	needDuration := name == "timeout"
+	for i < len(words) {
+		t := words[i].text
+		switch {
+		case !words[i].quoted && assignRE.MatchString(t) && name == "env":
+			i++
+		case strings.HasPrefix(t, "-") && t != "-" && !words[i].quoted:
+			if wrapperValueOpts[name][t] {
+				i++
+			}
+			i++
+		case needDuration:
+			needDuration = false
+			i++
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+func (a *analyzer) shellPayload(args []token) {
+	for i := 0; i < len(args); i++ {
+		t := args[i].text
+		if strings.HasPrefix(t, "--") || !strings.HasPrefix(t, "-") {
+			if !strings.HasPrefix(t, "-") {
+				return // script path: not analysable
+			}
+			continue
+		}
+		if strings.ContainsRune(t[1:], 'c') && i+1 < len(args) {
+			a.recurse(args[i+1].text)
+			return
+		}
+	}
+}
+
+var durationRE = regexp.MustCompile(`^([0-9]+(?:\.[0-9]*)?|\.[0-9]+)([smhd]?)$`)
+
+// sleep records a foreground sleep unless it is short or inside a loop.
+func (a *analyzer) sleep(args []token) {
+	if len(args) == 0 || a.inLoop() {
+		return
+	}
+	total := 0.0
+	for _, w := range args {
+		m := durationRE.FindStringSubmatch(w.text)
+		if m == nil {
+			if strings.HasPrefix(w.text, "-") || w.text == "infinity" || w.text == "inf" {
+				return // an option or an endless sleep: not a "sleep then check"
+			}
+			total = -1 // $VAR or computed: length unknown, treat as a wait
+			break
+		}
+		v, _ := strconv.ParseFloat(m[1], 64)
+		switch m[2] {
+		case "m":
+			v *= 60
+		case "h":
+			v *= 3600
+		case "d":
+			v *= 86400
+		}
+		total += v
+	}
+	if total >= 0 && total <= maxShortSeconds {
+		return
+	}
+	f := a.top()
+	f.pending = append(f.pending, total)
+}
+
+// foregroundSleep reports whether a shell command holds a sleep that blocks
+// the call: outside every loop, not backgrounded, and longer than 5 s.
+func foregroundSleep(command string) bool {
+	return len(analyze(command, false, 0)) > 0
 }
