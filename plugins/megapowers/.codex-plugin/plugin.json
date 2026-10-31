@@ -1,6 +1,6 @@
 {
   "name": "megapowers",
-  "version": "0.42.3",
+  "version": "0.42.4",
   "description": "Native-first workflow plugin for Claude Code and Codex: 15 task skills for planning, test-first implementation, debugging, verification, safe effects, cross-provider review, and orchestration, plus an optional concise output style, a destructive-command tripwire, and a self-diagnosis doctor.",
   "author": {
     "name": "lawzava"

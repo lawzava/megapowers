@@ -5,6 +5,18 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.42.4 - 2026-11-01
+
+### Changed
+
+- The plugin folder no longer ships hook tests or eval cases. Hook tests now
+  live in `tests/_hooks/` and run through
+  `go run ./scripts/cmd/maintainer test-hooks`. Native eval cases live in
+  `evals/native/`. Validation fails if a test file, `testdata/`, or `evals/`
+  path reappears under `plugins/megapowers/`.
+- No shipped runtime file changed. Hooks, skills, and tools behave as in
+  0.42.3.
+
 ## 0.42.3 - 2026-10-31
 
 ### Fixed
