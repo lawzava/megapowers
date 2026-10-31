@@ -12,8 +12,15 @@ effects, or general task quality.
 
 With Claude Code 2.1.269 or newer, use the current authenticated launch route:
 
+The evaluator reads cases from an `evals/` directory inside the plugin, and
+the shipped plugin folder holds none. Stage a throwaway copy that pairs the
+plugin with these cases, then evaluate the copy:
+
 ```bash
-claude plugin eval plugins/megapowers --trust-plugin \
+stage="$TMPDIR/megapowers-native-eval-plugin"
+rm -rf "$stage" && cp -R plugins/megapowers "$stage"
+cp -R evals/native "$stage/evals"
+claude plugin eval "$stage" --trust-plugin \
   --model MODEL --runs 1 --concurrency 1 --max-cost-usd 3 --no-publish \
   --output-dir "$TMPDIR/megapowers-native-eval"
 ```

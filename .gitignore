@@ -37,4 +37,4 @@ evals/studies/**/.mcp.json
 /results/
 
 # Native plugin eval reports contain prompts and traces; keep them local.
-plugins/megapowers/evals/results/
+evals/native/results/

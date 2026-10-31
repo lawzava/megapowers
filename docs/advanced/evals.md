@@ -35,7 +35,7 @@ Each study README is authoritative for its commands and boundaries:
   probe corpus, gates, isolation, and sanitized outputs.
 - [Installed-plugin A/B](../../evals/studies/installed-ab/README.md) defines its
   paired schedule, acceptance rules, resume contract, and broker requirements.
-- [Native Claude smoke evaluations](../../plugins/megapowers/evals/README.md)
+- [Native Claude smoke evaluations](../../evals/native/README.md)
   run five bounded cases through `claude plugin eval`.
 
 Published numbers live in [evals/RESULTS.md](../../evals/RESULTS.md).
