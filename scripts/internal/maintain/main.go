@@ -15,7 +15,7 @@ func Main(ctx context.Context, root string, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: maintainer <validate|release|install-smoke|codex-install-smoke|hook-hash> [args]")
+		fmt.Fprintln(stderr, "usage: maintainer <validate|release|install-smoke|codex-install-smoke|hook-hash|test-hooks> [args]")
 		return 2
 	}
 	switch args[0] {
@@ -29,6 +29,8 @@ func Main(ctx context.Context, root string, args []string, stdout, stderr io.Wri
 		return runCodexInstallSmoke(ctx, root, args[1:], stdout, stderr)
 	case "hook-hash":
 		return runHookHash(root, args[1:], stdout, stderr)
+	case "test-hooks":
+		return runTestHooks(ctx, root, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "maintainer: unknown command: %s\n", args[0])
 		return 2

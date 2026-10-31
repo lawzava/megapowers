@@ -55,10 +55,16 @@ func runFakeMaintainerProcess() int {
 			appendLog("freshness-check")
 		} else if strings.Contains(joined, "security-lint") {
 			appendLog("security-lint")
-		} else if strings.Contains(joined, "vet ./...") {
+		} else if strings.HasPrefix(joined, "vet ") && strings.Contains(joined, "./...") {
 			appendLog("vet")
+			if strings.Contains(joined, "-overlay") {
+				appendLog("vet overlay")
+			}
 		} else if strings.HasPrefix(joined, "test ") && strings.Contains(joined, "./...") {
 			appendLog("gotest")
+			if strings.Contains(joined, "-overlay") {
+				appendLog("gotest overlay")
+			}
 			if os.Getenv("MEGAPOWERS_MAINTAIN_GO_TEST_SKIP") == "1" && strings.Contains(joined, "-json") {
 				fmt.Println(`{"Action":"run","Package":"example.com/p","Test":"TestSocket"}`)
 				fmt.Println(`{"Action":"output","Package":"example.com/p","Test":"TestSocket","Output":"--- SKIP: TestSocket\n"}`)

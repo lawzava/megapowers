@@ -69,6 +69,12 @@ After editing a non-test Go file in `plugins/megapowers/hooks/`, run
 `go run ./scripts/cmd/maintainer hook-hash --write` to refresh the launcher
 cache key instead of editing `run-hook.cmd` by hand.
 
+Hook tests live in `tests/_hooks/`, not in the plugin folder. Run them with
+`go run ./scripts/cmd/maintainer test-hooks [go test flags]`; plain
+`go test ./...` skips them and `scripts/validate.sh` runs them. Native eval
+cases live in `evals/native/`. Never add a `*_test.go`, `testdata/`, or `evals/`
+path under `plugins/megapowers/`.
+
 Run `scripts/validate.sh` after meaningful changes. When installed, also run:
 
 ```bash

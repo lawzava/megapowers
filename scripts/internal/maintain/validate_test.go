@@ -84,6 +84,7 @@ func newValidateFixture(t *testing.T) (string, string) {
 		"plugins/megapowers/.claude-plugin",
 		"plugins/megapowers/.codex-plugin",
 		"plugins/megapowers/hooks",
+		"tests/_hooks",
 		"scripts",
 		"evals",
 		"internal",
@@ -104,6 +105,7 @@ func newValidateFixture(t *testing.T) (string, string) {
 	write("plugins/megapowers/.claude-plugin/plugin.json", manifest)
 	write("plugins/megapowers/.codex-plugin/plugin.json", manifest)
 	write("CHANGELOG.md", "# Changelog\n\n## 1.2.3 - test\n")
+	write("tests/_hooks/dummy_test.go", "package main\n")
 	write("scripts/dummy.go", "package dummy\n")
 	write("scripts/dummy.sh", "#!/bin/sh\necho ok\n")
 	if err := os.Chmod(filepath.Join(repo, "scripts/dummy.sh"), 0o755); err != nil {

@@ -199,7 +199,7 @@ authorize automatic policy adoption. Keep claims uncertain until tested.
     "reviewed": "2026-10-08",
     "cli": "codex",
     "version": "0.162.0",
-    "oracle": ["plugins/megapowers/hooks/hook_runner_test.go", "plugins/megapowers/hooks/output_style_test.go"]
+    "oracle": ["tests/_hooks/hook_runner_test.go", "tests/_hooks/output_style_test.go"]
   }
 ]
 ```

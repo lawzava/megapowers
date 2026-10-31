@@ -510,7 +510,7 @@ func TestValidationContract(t *testing.T) {
 		t.Error("validate.sh is not a thin Go launcher")
 	}
 	implementation := read(t, root, "scripts/internal/maintain/validate.go")
-	for _, marker := range []string{"deadline(ctx", "plugins/megapowers", ".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "go\", \"test\", \"./..."} {
+	for _, marker := range []string{"deadline(ctx", "plugins/megapowers", ".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "go\", \"test\", \"-overlay\", overlay, \"./...", "go\", \"vet\", \"-overlay\", overlay", "checkPluginFolderHoldsNoTests(root)"} {
 		requireContains(t, implementation, marker, "validation implementation")
 	}
 	for _, removed := range []string{"OpenCode", "models.toml", "delegates.toml", "skill-router", "copied-agent"} {

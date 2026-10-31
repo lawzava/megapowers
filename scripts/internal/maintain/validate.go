@@ -120,7 +120,28 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 			pass++
 		}
 	}
-	run(validation{"Go vet", 2 * time.Minute, []string{"go", "vet", "./..."}})
+	if err := checkPluginFolderHoldsNoTests(root); err != nil {
+		fmt.Fprintf(stderr, "  FAIL plugin folder holds only shipped files (exit 1)\n%s\n", err)
+		fail++
+	} else {
+		fmt.Fprintln(stdout, "  PASS plugin folder holds only shipped files")
+		pass++
+	}
+	// Hook tests live outside the plugin folder and join the hooks package
+	// through a build overlay, so vet and test both need it.
+	overlayDir, overlayErr := privateTempDir("megapowers-validate-overlay")
+	overlay := ""
+	if overlayErr == nil {
+		defer os.RemoveAll(overlayDir)
+		overlay, overlayErr = writeHookTestOverlay(root, overlayDir)
+	}
+	if overlayErr != nil {
+		fmt.Fprintf(stderr, "  FAIL hook test overlay (exit 1)\n%v\n", overlayErr)
+		fail++
+	}
+	if overlayErr == nil {
+		run(validation{"Go vet", 2 * time.Minute, []string{"go", "vet", "-overlay", overlay, "./..."}})
+	}
 	run(validation{"full-tree security lint", 60 * time.Second, []string{"go", "run", "./scripts/cmd/security-lint"}})
 	// Freshness (docs/harness-support.md review age) is deliberately not part
 	// of this gate: it ages on a calendar, not on content, and would turn
@@ -128,10 +149,12 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 	// It stays enforced in the scheduled freshness workflow
 	// (.github/workflows/freshness.yml) and in the release gate (runRelease's
 	// gates list, scripts/check-freshness.sh).
-	if runGoTests(ctx, root, stdout, stderr) {
-		pass++
-	} else {
-		fail++
+	if overlayErr == nil {
+		if runGoTests(ctx, root, overlay, stdout, stderr) {
+			pass++
+		} else {
+			fail++
+		}
 	}
 	if executable("claude") {
 		run(validation{"Claude marketplace strict validation", 90 * time.Second, []string{"claude", "plugin", "validate", "--strict", ".claude-plugin/marketplace.json"}})
@@ -254,7 +277,7 @@ func discoverShellFiles(root string) ([]string, error) {
 
 func discoverGoFiles(root string) ([]string, error) {
 	var files []string
-	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers"} {
+	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers", "tests"} {
 		paths, err := regularFiles(filepath.Join(root, filepath.FromSlash(rel)), ".go")
 		if err != nil {
 			return nil, err
@@ -268,11 +291,11 @@ func discoverGoFiles(root string) ([]string, error) {
 // runGoTests runs go test with -json so a skipped test is named instead of
 // counted as passed. Inside the Claude sandbox, TestRunAllReporting skipped
 // on a socket denial and hid a stale assertion behind "PASS Go tests".
-func runGoTests(ctx context.Context, root string, stdout, stderr io.Writer) bool {
+func runGoTests(ctx context.Context, root, overlay string, stdout, stderr io.Writer) bool {
 	checkCtx, cancel := deadline(ctx, 10*time.Minute)
 	defer cancel()
 	events := &testEvents{log: cappedBuffer{limit: 10 << 20}, output: map[string][]string{}, last: map[string]int{}}
-	err := command(checkCtx, root, events, events, nil, "go", "test", "./...", "-count=1", "-json")
+	err := command(checkCtx, root, events, events, nil, "go", "test", "-overlay", overlay, "./...", "-count=1", "-json")
 	events.flush()
 	if err != nil {
 		if checkCtx.Err() != nil {
