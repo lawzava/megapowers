@@ -5,6 +5,24 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.42.3 - 2026-10-31
+
+### Fixed
+
+- `session-mine` skips machine-written user turns. Claude compaction summaries
+  (`isCompactSummary`), turns with an `origin` such as a task notification,
+  Codex `exec` runs, autonomous-run prompts, and schedule prompts with an
+  `Unattended run:` line no longer count as the user's words. They leave
+  `human_turns` and every correction class, and appear as `machine_turns` in
+  `corrections` and `scorecard`. (#14)
+- `scorecard` counts a foreground sleep only when a shell command runs `sleep`
+  for more than 5 seconds, outside any `until`, `while`, or `for` loop, and not
+  in the background. Before, every `sleep N` counted, including background
+  calls and polling loops. On sessions from 2026-10-24 onward, sleep calls fall
+  from 1414 to 35 and stopped-unnecessarily from 71 to 32. (#14)
+- `recall` falls back to the first machine-written prompt when a session has no
+  typed turn, so scripted runs still show what the session was for. (#14)
+
 ## 0.42.2 - 2026-10-29
 
 ### Fixed
