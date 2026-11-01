@@ -19,6 +19,11 @@ semver.
   repository. A contract test, `TestShippedFilesAvoidCredentialWords`, fails
   on any new hit outside an explicit allowlist.
 
+### Fixed
+
+- The release-attestation selftest limit is now 4 minutes, so a cold, loaded
+  runner no longer turns the installed-ab selftest into a harness error.
+
 ## 0.42.5 - 2026-11-01
 
 ### Changed
