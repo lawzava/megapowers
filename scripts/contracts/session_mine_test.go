@@ -380,7 +380,7 @@ func TestSessionMineRedaction(t *testing.T) {
 		}
 		joined += example.User + "\n"
 	}
-	for _, want := range []string{"<redacted>", "<email>", "Bearer <redacted>", "https://git.example.com/repo", "~/project", "~/src",
+	for _, want := range []string{"<secret>", "<email>", "Bearer <secret>", "https://git.example.com/repo", "~/project", "~/src",
 		"plugins/megapowers/skills/writing-agent-instructions/scripts", "~/.aws/credentials", `~\Documents\notes`, "~/notes", "/srv/people/zedd/x", "~/x"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("redacted output missing %q:\n%s", want, joined)

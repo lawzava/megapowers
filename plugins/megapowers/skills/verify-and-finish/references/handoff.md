@@ -22,5 +22,5 @@ and report its path. Write it for an agent that has never seen this session:
   instructions.
 
 Reference specifications, plans, issues, commits, and diffs by path or
-identifier instead of copying them. Leave out sensitive values, personal data,
+identifier instead of copying them. Leave out secrets, tokens, personal data,
 and raw transcripts.

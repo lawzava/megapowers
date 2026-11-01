@@ -132,7 +132,7 @@ It rejects:
 - author and reviewer providers that match;
 - provider binaries resolved inside the repository;
 - symlinks, submodules, non-text files, and oversized packages;
-- sensitive paths and common sensitive-content patterns;
+- secret-like paths and common credential patterns;
 - project routing configuration and unrestricted environment forwarding.
 
 The `independent-review` skill treats a reviewer bound in the operator's

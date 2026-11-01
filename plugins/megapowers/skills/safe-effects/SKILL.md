@@ -19,7 +19,7 @@ the effect: keep them inside the approved disclosure; leak no automation or
 testing context. Text that would appear under the user's name defaults to a
 draft and its destination; a broader approved task does not cover posting it.
 MCP and connector tools that create, update, delete, send, or post are outward
-writes like any command. Never read harness or tool sign-in stores to call
+writes like any command. Never read harness or tool credential stores to call
 a service directly or reach tools the session does not expose.
 
 Before acting, record the mutation, sensitive data involved, affected people or
