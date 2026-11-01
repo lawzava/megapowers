@@ -257,7 +257,7 @@ type selftest struct {
 
 func runAll(parent context.Context, root string, args []string, stdout, stderr io.Writer) int {
 	jsonOut := ""
-	limit := 60 * time.Second
+	limit := defaultSelftestLimit
 	for len(args) > 0 {
 		switch args[0] {
 		case "--json":
@@ -498,3 +498,8 @@ func selftests() []selftest {
 		{"resume-proof-runner-selftest", "evals/studies/resume-proof/run.go", []string{"go", "run", "./evals/studies/resume-proof", "--selftest"}},
 	}
 }
+
+// defaultSelftestLimit bounds one selftest. Selftests build Go fixtures with a
+// cold cache, so a loaded CI runner needs several times the idle-machine time.
+// A selftest that exceeds the limit is still a harness error.
+const defaultSelftestLimit = 4 * time.Minute

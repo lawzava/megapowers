@@ -59,7 +59,7 @@ fallbacks:
 
 - An `independent-review` binding is your standing approval to send review
   packages to that reviewer through the independent-review tool. The agent
-  decides when to review and dispatches without asking; the tool's secret
+  decides when to review and dispatches without asking; the tool's sensitive-content
   scan still applies. Delete the binding to require approval again.
 - An unavailable binding is reported, not replaced. Use a `fallbacks` entry
   only when access, disclosure, and permissions for it already exist.
@@ -70,5 +70,5 @@ fallbacks:
 - Effort names do not mean the same amount of thinking across models. Set
   effort from the vendor's default for each new model and your own runs at
   several levels, not from the previous model's value.
-- Keep credentials, command lines, private paths, and routing secrets out of
+- Keep sign-in data, command lines, private paths, and routing details out of
   this file.

@@ -5,6 +5,25 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Changed
+
+- Shipped files under `plugins/megapowers/` no longer use credential-like
+  words (token, secret, password, credential) except where they name a real
+  credential file, flag, or error text. The `independent-review` JSON field
+  and flag value `approval_token` is now `approval_id`; the `mpr1_` value
+  format and its inputs are unchanged. The redaction placeholder `<secret>` is
+  now `<redacted>`. The `mcp-setup` skill no longer tells agents to provision
+  a token or header; it asks the user to provision sign-in outside the
+  repository. A contract test, `TestShippedFilesAvoidCredentialWords`, fails
+  on any new hit outside an explicit allowlist.
+
+### Fixed
+
+- The release-attestation selftest limit is now 4 minutes, so a cold, loaded
+  runner no longer turns the installed-ab selftest into a harness error.
+
 ## 0.42.5 - 2026-11-01
 
 ### Changed

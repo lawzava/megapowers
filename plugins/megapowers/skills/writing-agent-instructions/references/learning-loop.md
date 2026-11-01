@@ -134,7 +134,7 @@ outside `megapowers:` into `other`. `export` drops the project path, sources,
 and commit IDs, and replaces every check argument that contains `/` or `\`
 with `<path>`. It omits the free-text lesson unless `--include-text` is
 given, because free text can name a client in words no pattern catches; with
-it, path tokens become `<path>` and the user reads the text before sharing.
+it, path-like fields become `<path>` and the user reads the text before sharing.
 It and adds an installed-ab case draft. Sanitizing keeps only
 well-formed `megapowers:<skill>` names. Show both to the user
 before sharing; sharing is an outward effect under `safe-effects`. A
