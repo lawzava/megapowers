@@ -88,7 +88,7 @@ func TestReviewAnyFileUnderTMPDIR(t *testing.T) {
 		if string(paths) != `["$TMPDIR/`+name+`"]` {
 			t.Fatalf("unexpected disclosure paths: %s", paths)
 		}
-		f.call("", f.review(info["approval_id"].(string), f.command, "--file", path)...)
+		f.call("", f.review(info["approval_token"].(string), f.command, "--file", path)...)
 		if !strings.Contains(f.recordText("input"), "missing acceptance criteria") {
 			t.Fatal("temporary review package did not reach the reviewer")
 		}
@@ -100,8 +100,8 @@ func TestReviewAnyFileUnderTMPDIR(t *testing.T) {
 func assertReviewFileGuards(t *testing.T, f *reviewFixture, dir string) {
 	t.Helper()
 	for _, tc := range []struct{ name, content, needle string }{
-		{".env", "plain text\n", "sensitive path"},
-		{"secret.md", "-----BEGIN PRIVATE KEY-----\n", "likely sensitive content"},
+		{".env", "plain text\n", "secret-like path"},
+		{"secret.md", "-----BEGIN PRIVATE KEY-----\n", "likely secret content"},
 		{"binary.md", "text\x00binary\n", "binary"},
 		{"large.md", strings.Repeat("a", 512*1024+1), "size limit"},
 		{"package-limit.md", strings.Repeat("\t", 512*1024), "package exceeds"},
@@ -133,12 +133,12 @@ func TestReviewWithoutGit(t *testing.T) {
 	f.write(filepath.Join(scratch, "temporary.md"), "Review this temporary document.\n")
 	for _, path := range []string{"package.md", filepath.Join(scratch, "temporary.md")} {
 		info := f.inspect(f.command, "--file", path)
-		result := f.call("", f.review(info["approval_id"].(string), f.command, "--file", path)...)
+		result := f.call("", f.review(info["approval_token"].(string), f.command, "--file", path)...)
 		_, receipt, ok := strings.Cut(result, "advisory receipt: ")
 		if !ok || !strings.HasPrefix(strings.TrimSpace(receipt), scratch+string(filepath.Separator)) {
 			t.Fatalf("default receipt must be under TMPDIR: %s", result)
 		}
-		f.call("", f.review(info["approval_id"].(string), f.command, "--file", path, "--out", scratch)...)
+		f.call("", f.review(info["approval_token"].(string), f.command, "--file", path, "--out", scratch)...)
 		if !strings.Contains(f.recordText("input"), "document") {
 			t.Fatal("document did not reach the reviewer outside Git")
 		}
@@ -170,18 +170,18 @@ func TestReviewWithoutGit(t *testing.T) {
 	}
 	info := f.inspect(f.command, "--file", "package.md")
 	for _, out := range []string{f.repo, f.root} {
-		result := f.call("--out", f.review(info["approval_id"].(string), f.command, "--file", "package.md", "--out", out)...)
+		result := f.call("--out", f.review(info["approval_token"].(string), f.command, "--file", "package.md", "--out", out)...)
 		if !strings.Contains(result, "$TMPDIR/<name>") {
 			t.Errorf("non-Git output rejection lacks a destination example: %s", result)
 		}
 	}
 	t.Setenv("TMPDIR", f.root)
 	info = f.inspect(f.command, "--file", "package.md")
-	f.call("", f.review(info["approval_id"].(string), f.command, "--file", "package.md")...)
+	f.call("", f.review(info["approval_token"].(string), f.command, "--file", "package.md")...)
 	f.clearCalls()
 	t.Setenv("TMPDIR", f.repo)
 	info = f.inspect(f.command, "--file", "package.md")
-	f.call("--out", f.review(info["approval_id"].(string), f.command, "--file", "package.md")...)
+	f.call("--out", f.review(info["approval_token"].(string), f.command, "--file", "package.md")...)
 	f.noCalls()
 }
 
@@ -217,7 +217,7 @@ func TestReviewPathRuleHints(t *testing.T) {
 		}
 	}
 	for _, out := range []string{"relative", filepath.Join(scratch, "missing"), f.repo, f.root, link, filepath.Join(scratch, "regular.md"), readOnly} {
-		result := f.call("--out", f.review(info["approval_id"].(string), f.command, "--file", "app.go", "--out", out)...)
+		result := f.call("--out", f.review(info["approval_token"].(string), f.command, "--file", "app.go", "--out", out)...)
 		if !strings.Contains(result, "$TMPDIR/<name>") {
 			t.Errorf("output rejection lacks a destination example: %s", result)
 		}
@@ -245,7 +245,7 @@ func TestReviewRangePathRuleHints(t *testing.T) {
 	for _, tc := range []struct{ base, head, needle string }{
 		{f.head, linkHead, "symlink"},
 		{linkHead, submoduleHead, "submodule"},
-		{submoduleHead, secretHead, "sensitive path"},
+		{submoduleHead, secretHead, "secret-like path"},
 	} {
 		result := f.call(tc.needle, "inspect", "--base", tc.base, "--head", tc.head, "--provider", "vendor-a", "--provider-command", f.command)
 		if !strings.Contains(result, "--file") || !strings.Contains(result, "$TMPDIR") {

@@ -47,8 +47,8 @@ type options struct {
 }
 
 var (
-	idPattern                = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,127}$`)
-	sensitiveContentPatterns = []*regexp.Regexp{
+	idPattern             = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,127}$`)
+	secretContentPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----`),
 		regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
 		regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{30,}`),
@@ -239,8 +239,8 @@ func validateRecord(label string, rec record, asOf time.Time) []string {
 			findings = append(findings, fmt.Sprintf("%s: %s exceeds size limit", label, detail.field))
 		}
 	}
-	if hasSensitive(rec) {
-		findings = append(findings, label+": sensitive content rejected")
+	if hasSecret(rec) {
+		findings = append(findings, label+": secret-like content rejected")
 	}
 	if !allowedEvidence[rec.Evidence] {
 		findings = append(findings, label+": unsupported evidence class")
@@ -310,9 +310,9 @@ func parseRecordDate(label, field, raw string, asOf time.Time) (time.Time, bool,
 	return parsed, true, ""
 }
 
-func hasSensitive(rec record) bool {
+func hasSecret(rec record) bool {
 	data := []byte(strings.Join([]string{rec.Claim, rec.Origin, rec.Source, rec.Scope}, "\n"))
-	for _, pattern := range sensitiveContentPatterns {
+	for _, pattern := range secretContentPatterns {
 		if pattern.Match(data) {
 			return true
 		}

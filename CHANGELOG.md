@@ -5,6 +5,23 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Changed
+
+- Restored the plugin text from before 0.42.6 (`plugins/megapowers/`). The
+  Claude plugin directory held 0.42.6 and 0.42.7 by policy; 0.42.5 passed with
+  one warning. The 0.42.6 renames are reverted, and the explicit statements that
+  the review tool forwards no credentials are back. Two interfaces change
+  back: the `independent-review` JSON field and `--approve-external` value
+  `approval_id` is `approval_token` again (the `mpr1_` format is unchanged), and
+  the session-mine redaction placeholder `<redacted>` is `<secret>` again. The
+  0.42.7 behavior stays: the reviewer process gets only `PATH` and `HOME`, and
+  `--provider-env` stays removed. The `mcp-setup` skill again tells agents how
+  to provision a token or header. The contract test
+  `TestShippedFilesAvoidCredentialWords` is removed. The attestation selftest
+  limit of 4 minutes stays.
+
 ## 0.42.7 - 2026-11-01
 
 ### Changed
