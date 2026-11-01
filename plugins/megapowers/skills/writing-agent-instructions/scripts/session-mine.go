@@ -168,9 +168,9 @@ var (
 	reUserinfo = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*://)[^/\s@]+@`)
 	reHomePath = regexp.MustCompile(`(?i:\b[a-z]:[\\/]users[\\/][^\\/]+)|(?:/home|/Users)/[A-Za-z0-9._-]+|/root\b`)
 	// The literal $HOME and USERPROFILE values, when set, become "~" as well.
-	reHomeValues = homeValuePatterns()
-	reBearer     = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
-	reTokens     = []*regexp.Regexp{
+	reHomeValues   = homeValuePatterns()
+	reBearer       = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
+	reProviderKeys = []*regexp.Regexp{
 		regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}`),
 		regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}`),
 		regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,}`),
@@ -969,21 +969,21 @@ func redact(text string) string {
 		text = pattern.ReplaceAllString(text, "~${1}")
 	}
 	text = reHomePath.ReplaceAllString(text, "~")
-	text = reBearer.ReplaceAllString(text, "Bearer <secret>")
-	for _, pattern := range reTokens {
-		text = pattern.ReplaceAllString(text, "<secret>")
+	text = reBearer.ReplaceAllString(text, "Bearer <redacted>")
+	for _, pattern := range reProviderKeys {
+		text = pattern.ReplaceAllString(text, "<redacted>")
 	}
 	text = reEmail.ReplaceAllString(text, "<email>")
-	// Any 32+ run of base64 or hex characters is a secret candidate. A run is
+	// Any 32+ run of base64 or hex characters is a redaction candidate. A run is
 	// kept as a path only when it has several "/" and every segment looks like
-	// a lowercase path name; a token such as AAAA/BBBB/CCCC is redacted whole.
+	// a lowercase path name; a run such as AAAA/BBBB/CCCC is redacted whole.
 	return reLongB64.ReplaceAllStringFunc(text, func(run string) string {
 		if strings.Count(run, "/") < 2 {
-			return "<secret>"
+			return "<redacted>"
 		}
 		for _, segment := range strings.Split(run, "/") {
 			if segment != "" && !rePathSegment.MatchString(segment) {
-				return "<secret>"
+				return "<redacted>"
 			}
 		}
 		return run
@@ -1540,8 +1540,8 @@ const (
 	maxShortSeconds = 5.0 // a sleep this short is a pause, not a wait
 )
 
-type token struct {
-	op     string   // operator token: ; \n && || | & ( ) ;;  (empty for words)
+type shellWord struct {
+	op     string   // operator: ; \n && || | & ( ) ;;  (empty for words)
 	text   string   // decoded word text
 	quoted bool     // any part of the word was quoted or escaped
 	subs   []string // command substitution bodies found in the word
@@ -1552,8 +1552,8 @@ type heredoc struct {
 	strip bool
 }
 
-func lex(s string) []token {
-	var toks []token
+func lex(s string) []shellWord {
+	var toks []shellWord
 	var pending []heredoc
 	n := len(s)
 	i := 0
@@ -1565,7 +1565,7 @@ func lex(s string) []token {
 		case c == '\\' && i+1 < n && s[i+1] == '\n':
 			i += 2
 		case c == '\n':
-			toks = append(toks, token{op: "\n"})
+			toks = append(toks, shellWord{op: "\n"})
 			i++
 			for _, h := range pending {
 				i = skipHeredoc(s, i, h)
@@ -1577,37 +1577,37 @@ func lex(s string) []token {
 			}
 		case c == ';':
 			if i+1 < n && s[i+1] == ';' {
-				toks = append(toks, token{op: ";;"})
+				toks = append(toks, shellWord{op: ";;"})
 				i += 2
 			} else {
-				toks = append(toks, token{op: ";"})
+				toks = append(toks, shellWord{op: ";"})
 				i++
 			}
 		case c == '|':
 			switch {
 			case i+1 < n && s[i+1] == '|':
-				toks = append(toks, token{op: "||"})
+				toks = append(toks, shellWord{op: "||"})
 				i += 2
 			case i+1 < n && s[i+1] == '&':
-				toks = append(toks, token{op: "|"})
+				toks = append(toks, shellWord{op: "|"})
 				i += 2
 			default:
-				toks = append(toks, token{op: "|"})
+				toks = append(toks, shellWord{op: "|"})
 				i++
 			}
 		case c == '&' && !(i+1 < n && s[i+1] == '>'):
 			if i+1 < n && s[i+1] == '&' {
-				toks = append(toks, token{op: "&&"})
+				toks = append(toks, shellWord{op: "&&"})
 				i += 2
 			} else {
-				toks = append(toks, token{op: "&"})
+				toks = append(toks, shellWord{op: "&"})
 				i++
 			}
 		case c == '(' || c == ')':
-			toks = append(toks, token{op: string(c)})
+			toks = append(toks, shellWord{op: string(c)})
 			i++
 		default:
-			var w token
+			var w shellWord
 			i = lexWord(s, i, &w, &pending)
 			toks = append(toks, w)
 		}
@@ -1616,7 +1616,7 @@ func lex(s string) []token {
 }
 
 // lexWord reads one word starting at i and returns the index after it.
-func lexWord(s string, i int, w *token, pending *[]heredoc) int {
+func lexWord(s string, i int, w *shellWord, pending *[]heredoc) int {
 	n := len(s)
 	var b strings.Builder
 	for i < n {
@@ -1704,7 +1704,7 @@ func lexWord(s string, i int, w *token, pending *[]heredoc) int {
 			for i < n && (s[i] == ' ' || s[i] == '\t') {
 				i++
 			}
-			var d token
+			var d shellWord
 			i = lexWord(s, i, &d, pending)
 			*pending = append(*pending, heredoc{delim: d.text, strip: strip})
 		default:
@@ -1718,7 +1718,7 @@ func lexWord(s string, i int, w *token, pending *[]heredoc) int {
 
 // lexDouble reads a double-quoted string body starting after the opening
 // quote and returns the index after the closing quote.
-func lexDouble(s string, i int, b *strings.Builder, w *token) int {
+func lexDouble(s string, i int, b *strings.Builder, w *shellWord) int {
 	n := len(s)
 	for i < n {
 		c := s[i]
@@ -1758,7 +1758,7 @@ func lexDouble(s string, i int, b *strings.Builder, w *token) int {
 
 // lexSubst reads a $( ... ) body starting after "$(" and records it. An
 // arithmetic $(( ... )) is consumed and ignored.
-func lexSubst(s string, i int, b *strings.Builder, w *token, arith bool) int {
+func lexSubst(s string, i int, b *strings.Builder, w *shellWord, arith bool) int {
 	end := matchParen(s, i)
 	body := s[i:min(end, len(s))]
 	if !arith {
@@ -1827,7 +1827,7 @@ func skipHeredoc(s string, i int, h heredoc) int {
 // ---------------------------------------------------------------------------
 
 type analyzer struct {
-	toks    []token
+	toks    []shellWord
 	loops   int
 	base    bool // started inside a loop (recursion into a payload)
 	depth   int
@@ -1848,7 +1848,7 @@ func analyze(command string, inLoop bool, depth int) []float64 {
 	}
 	a := &analyzer{toks: lex(command), base: inLoop, depth: depth}
 	a.frames = []*frame{{}}
-	var words []token
+	var words []shellWord
 	for i := 0; i < len(a.toks); i++ {
 		t := a.toks[i]
 		if t.op == "" {
@@ -1933,7 +1933,7 @@ var wrappers = map[string]bool{
 var shells = map[string]bool{"bash": true, "sh": true, "zsh": true, "dash": true, "ksh": true}
 
 // simple analyses one simple command; nextOp is the operator that ended it.
-func (a *analyzer) simple(words []token, nextOp string) {
+func (a *analyzer) simple(words []shellWord, nextOp string) {
 	i := 0
 strip:
 	for i < len(words) {
@@ -1994,7 +1994,7 @@ strip:
 	}
 }
 
-func (a *analyzer) subs(words []token) {
+func (a *analyzer) subs(words []shellWord) {
 	for _, w := range words {
 		for _, s := range w.subs {
 			a.recurse(s)
@@ -2009,7 +2009,7 @@ func (a *analyzer) recurse(payload string) {
 }
 
 // skipWrapper returns the index of the command after a wrapper's options.
-func skipWrapper(words []token, i int, name string) int {
+func skipWrapper(words []shellWord, i int, name string) int {
 	needDuration := name == "timeout"
 	for i < len(words) {
 		t := words[i].text
@@ -2031,7 +2031,7 @@ func skipWrapper(words []token, i int, name string) int {
 	return i
 }
 
-func (a *analyzer) shellPayload(args []token) {
+func (a *analyzer) shellPayload(args []shellWord) {
 	for i := 0; i < len(args); i++ {
 		t := args[i].text
 		if strings.HasPrefix(t, "--") || !strings.HasPrefix(t, "-") {
@@ -2050,7 +2050,7 @@ func (a *analyzer) shellPayload(args []token) {
 var durationRE = regexp.MustCompile(`^([0-9]+(?:\.[0-9]*)?|\.[0-9]+)([smhd]?)$`)
 
 // sleep records a foreground sleep unless it is short or inside a loop.
-func (a *analyzer) sleep(args []token) {
+func (a *analyzer) sleep(args []shellWord) {
 	if len(args) == 0 || a.inLoop() {
 		return
 	}

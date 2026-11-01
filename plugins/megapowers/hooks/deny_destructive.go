@@ -467,11 +467,11 @@ func isForkBomb(text string) bool {
 		if !strings.Contains(background, "&") {
 			continue
 		}
-		tokens := strings.FieldsFunc(body, func(r rune) bool {
+		fields := strings.FieldsFunc(body, func(r rune) bool {
 			return unicode.IsSpace(r) || strings.ContainsRune("|&;(){}<>", r)
 		})
-		for _, token := range tokens {
-			if token == name {
+		for _, field := range fields {
+			if field == name {
 				return true
 			}
 		}
@@ -539,15 +539,15 @@ func splitSegments(command string) []string {
 // backslash escapes only $, `, ", \, and newline. Unbalanced quotes fail.
 func shellWords(text string) ([]string, bool) {
 	var words []string
-	var token strings.Builder
-	inToken := false
+	var current strings.Builder
+	inWord := false
 	for i := 0; i < len(text); {
 		c := text[i]
 		switch {
 		case c == '\\':
-			inToken = true
+			inWord = true
 			if i+1 < len(text) {
-				token.WriteByte(text[i+1])
+				current.WriteByte(text[i+1])
 			}
 			i += 2
 			continue
@@ -556,20 +556,20 @@ func shellWords(text string) ([]string, bool) {
 			if end < 0 {
 				return nil, false
 			}
-			inToken = true
-			token.WriteString(text[i+1 : i+1+end])
+			inWord = true
+			current.WriteString(text[i+1 : i+1+end])
 			i += end + 2
 			continue
 		case c == '"':
-			inToken = true
+			inWord = true
 			i++
 			for i < len(text) && text[i] != '"' {
 				if text[i] == '\\' && i+1 < len(text) && strings.IndexByte("$`\"\\\n", text[i+1]) >= 0 {
-					token.WriteByte(text[i+1])
+					current.WriteByte(text[i+1])
 					i += 2
 					continue
 				}
-				token.WriteByte(text[i])
+				current.WriteByte(text[i])
 				i++
 			}
 			if i >= len(text) {
@@ -578,20 +578,20 @@ func shellWords(text string) ([]string, bool) {
 			i++
 			continue
 		case isSpace(c):
-			if inToken {
-				words = append(words, token.String())
-				token.Reset()
-				inToken = false
+			if inWord {
+				words = append(words, current.String())
+				current.Reset()
+				inWord = false
 			}
 			i++
 			continue
 		}
-		token.WriteByte(c)
-		inToken = true
+		current.WriteByte(c)
+		inWord = true
 		i++
 	}
-	if inToken {
-		words = append(words, token.String())
+	if inWord {
+		words = append(words, current.String())
 	}
 	return words, true
 }
@@ -698,12 +698,12 @@ func redirectTargets(text string) []string {
 // escapes, the way PowerShell and cmd treat backslashes as path separators.
 func literalWords(text string) ([]string, bool) {
 	var words []string
-	var token strings.Builder
-	inToken := false
+	var current strings.Builder
+	inWord := false
 	for i := 0; i < len(text); {
 		if text[i] == '\'' || text[i] == '"' {
 			quote := text[i]
-			inToken = true
+			inWord = true
 			i++
 			start := i
 			for i < len(text) && text[i] != quote {
@@ -712,25 +712,25 @@ func literalWords(text string) ([]string, bool) {
 			if i == len(text) {
 				return nil, false
 			}
-			token.WriteString(text[start:i])
+			current.WriteString(text[start:i])
 			i++
 			continue
 		}
 		if isSpace(text[i]) {
-			if inToken {
-				words = append(words, token.String())
-				token.Reset()
-				inToken = false
+			if inWord {
+				words = append(words, current.String())
+				current.Reset()
+				inWord = false
 			}
 			i++
 			continue
 		}
-		token.WriteByte(text[i])
-		inToken = true
+		current.WriteByte(text[i])
+		inWord = true
 		i++
 	}
-	if inToken {
-		words = append(words, token.String())
+	if inWord {
+		words = append(words, current.String())
 	}
 	return words, true
 }
