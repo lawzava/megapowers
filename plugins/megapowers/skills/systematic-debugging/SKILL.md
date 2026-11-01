@@ -23,7 +23,7 @@ instead of retrying until green. For slowness, use
 If output is filtered or truncated, retrieve the relevant raw diagnostics before
 diagnosing the failure. If raw evidence remains unavailable or incomplete, treat
 the diagnosis as inconclusive.
-Redact secrets before quoting captured output.
+Redact sensitive values before quoting captured output.
 Do not repeat a side effect solely to recover output.
 
 Before choosing the fix location, inspect callers of the implicated code and

@@ -19,7 +19,7 @@ Show before and after for each behavior the change claims:
 - what the evidence does not cover, such as deployment, other platforms, or
   load.
 
-Link saved logs or screenshots instead of pasting long output. Keep secrets,
+Link saved logs or screenshots instead of pasting long output. Keep sensitive values,
 private hosts, and raw agent transcripts out of the body.
 
 ## Merge risk

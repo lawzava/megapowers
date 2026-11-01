@@ -94,6 +94,6 @@ it toward a retrospective class.
 
 The tool runs locally and never writes files. Only a sanitized scorecard
 may leave the machine, and only after the user has seen it. Excerpts are short and redacted:
-emails, tokens, home paths, and URL credentials are removed. Redaction can
+emails, key-shaped strings, home paths, and URL userinfo are removed. Redaction can
 miss things. Never paste raw transcripts or unreviewed excerpts into
 a review package, issue, commit, or other public text.

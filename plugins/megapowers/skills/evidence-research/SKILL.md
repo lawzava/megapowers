@@ -32,7 +32,7 @@ contested claim.
 
 Lead with the decision and minimum sufficient evidence. Cite the source next to
 the claim it supports. Save a durable research artifact only at an approved
-path. Keep secrets, sensitive transcripts, raw chat, and irrelevant personal
+path. Keep sensitive values, transcripts, raw chat, and irrelevant personal
 data out of the result. Do not write to trackers or publish findings without
 separate authority.
 

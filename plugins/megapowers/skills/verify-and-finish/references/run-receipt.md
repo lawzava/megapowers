@@ -53,5 +53,5 @@ status. It is refused on Windows; pass the command as arguments instead.
 
 Files go to `$TMPDIR/megapowers-receipts` unless you pass `--dir`. The tool
 sets that directory to owner-only and refuses a symlink. Logs can contain
-secrets the check printed, so keep them local and do not paste or upload them
+sensitive values the check printed, so keep them local and do not paste or upload them
 whole.
