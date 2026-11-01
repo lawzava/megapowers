@@ -492,7 +492,7 @@ func reviewFlagSet(command string, opt *options) *flag.FlagSet {
 	fs.StringVar(&opt.head, "head", "", "head commit")
 	fs.StringVar(&opt.provider, "provider", "", "reviewer label; must differ from --author")
 	fs.StringVar(&opt.providerCommand, "provider-command", "", "provider command template: argv[0] plus arguments, with optional {prompt_file} and {scratch_dir}")
-	fs.Var(&opt.providerEnv, "provider-env", "environment variable name to pass through (repeatable)")
+	fs.Var(&opt.providerEnv, "provider-env", "directory variable to pass through: HOME, TMPDIR, *_HOME, or *_CONFIG_DIR; credentials are never forwarded (repeatable)")
 	fs.StringVar(&opt.intent, "intent", "", "artifact intent and acceptance boundary sent to the reviewer")
 	fs.StringVar(&opt.author, "author", "", "review only: artifact author label; must differ from --provider")
 	fs.StringVar(&opt.out, "out", "", "review only: existing absolute private receipt directory outside the review root")
@@ -586,6 +586,9 @@ func parseOptions(command string, args []string) (options, error) {
 	for _, name := range opt.providerEnv {
 		if !environmentNamePattern.MatchString(name) {
 			return opt, fmt.Errorf("--provider-env %q is not an environment variable name", name)
+		}
+		if !environmentPathVariable(name) {
+			return opt, fmt.Errorf("--provider-env %s: only directory variables (HOME, TMPDIR, *_HOME, *_CONFIG_DIR) are forwarded; the review tool never forwards credentials; sign the reviewer CLI in through its own login", name)
 		}
 	}
 	if command == "review" {

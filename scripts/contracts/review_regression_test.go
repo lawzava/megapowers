@@ -371,23 +371,29 @@ func TestReviewDeliveryReceiptsAndEnvironment(t *testing.T) {
 			t.Errorf("missing allowed environment %s", required)
 		}
 	}
-	envFlags := []string{"--provider-env", "FAKE_API_KEY", "--provider-env", "FAKE_HOME", "--provider-env", "FAKE_CONFIG_DIR"}
+	envFlags := []string{"--provider-env", "FAKE_HOME", "--provider-env", "FAKE_CONFIG_DIR"}
 	envToken := f.inspect(f.command, append([]string{"--file", "app.go"}, envFlags...)...)["approval_token"].(string)
 	args := f.review(envToken, f.command, append([]string{"--file", "app.go", "--out", out}, envFlags...)...)
 	f.call("", args...)
 	env = f.recordText("env")
-	for _, required := range []string{"FAKE_API_KEY=test-credential", "FAKE_HOME=" + os.Getenv("FAKE_HOME"), "FAKE_CONFIG_DIR=" + os.Getenv("FAKE_CONFIG_DIR")} {
+	for _, required := range []string{"FAKE_HOME=" + os.Getenv("FAKE_HOME"), "FAKE_CONFIG_DIR=" + os.Getenv("FAKE_CONFIG_DIR")} {
 		if !strings.Contains(env, required) {
 			t.Errorf("explicit environment not passed: %s", required)
 		}
 	}
 	f.call("provider-env", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE=VALUE")...)
+	f.clearCalls()
+	for _, name := range []string{"FAKE_API_KEY", "FAKE_TOKEN", "PATH_EXTRA", "HOMEDIR"} {
+		f.call("only directory variables", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", name)...)
+		f.call("only directory variables", "inspect", "--provider", "vendor-a", "--provider-command", f.command, "--file", "app.go", "--provider-env", name)
+	}
+	f.noCalls()
 	t.Setenv("FAKE_HOME", filepath.Join(f.repo, "inside-home"))
 	t.Setenv("FAKE_CONFIG_DIR", filepath.Join(f.repo, "inside-home", "config"))
 	envToken = f.inspect(f.command, append([]string{"--file", "app.go"}, envFlags...)...)["approval_token"].(string)
 	f.call("", f.review(envToken, f.command, append([]string{"--file", "app.go", "--out", out}, envFlags...)...)...)
 	env = f.recordText("env")
-	if strings.Contains(env, "FAKE_HOME=") || strings.Contains(env, "FAKE_CONFIG_DIR=") || !strings.Contains(env, "FAKE_API_KEY=test-credential") {
+	if strings.Contains(env, "FAKE_HOME=") || strings.Contains(env, "FAKE_CONFIG_DIR=") || strings.Contains(env, "FAKE_API_KEY=") {
 		t.Fatal("repository-local config environment was not removed")
 	}
 	fileCommand := `fake-reviewer --prompt-file {prompt_file} --scratch {scratch_dir} --note 'hello world' --pipe 'a|b' --sub "$(id)" back\slash`
@@ -682,16 +688,16 @@ func TestReviewApprovalBindsProviderEnvironment(t *testing.T) {
 	if err := os.Mkdir(out, 0700); err != nil {
 		t.Fatal(err)
 	}
-	info := f.inspect(f.command, "--file", "app.go", "--provider-env", "FAKE_API_KEY")
+	info := f.inspect(f.command, "--file", "app.go", "--provider-env", "FAKE_HOME")
 	names, _ := json.Marshal(info["provider_environment"])
-	if !bytes.Contains(names, []byte("FAKE_API_KEY")) || bytes.Contains(names, []byte("test-credential")) {
+	if !bytes.Contains(names, []byte("FAKE_HOME")) || bytes.Contains(names, []byte(os.Getenv("FAKE_HOME"))) {
 		t.Fatalf("inspection must disclose forwarded variable names without values: %s", names)
 	}
 	token := info["approval_token"].(string)
 	f.clearCalls()
-	f.call("approval token does not match", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE_API_KEY", "--provider-env", "FAKE_HOME")...)
-	t.Setenv("FAKE_API_KEY", "rerouted-credential")
-	f.call("approval token does not match", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE_API_KEY")...)
+	f.call("approval token does not match", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE_HOME", "--provider-env", "FAKE_CONFIG_DIR")...)
+	t.Setenv("FAKE_HOME", filepath.Join(f.root, "rerouted-home"))
+	f.call("approval token does not match", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE_HOME")...)
 	f.noCalls()
 }
 

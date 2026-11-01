@@ -5,6 +5,18 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Changed
+
+- The review tool no longer forwards credentials. `--provider-env NAME` accepts
+  only directory variables (`HOME`, `TMPDIR`, names ending in `_HOME` or
+  `_CONFIG_DIR`) and rejects any other name at option parsing. Sign the
+  reviewer CLI in through its own login. The skill, the help text, and
+  `docs/advanced/independent-review.md` no longer describe credential
+  passing. This answers the Claude plugin directory finding "Uses a credential
+  from the user's machine".
+
 ## 0.42.4 - 2026-11-01
 
 ### Changed
