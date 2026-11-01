@@ -236,6 +236,13 @@ receipts with `oracle_match: true` and `state_stable: true` become normalized
 `test` events; stricter scorers consume the reserved receipt directly.
 Response schema `2` and the actor-event field shape remain unchanged.
 
+Each receipt takes the trace position of one test anchor. A test run through
+the `verify-and-finish` run-receipt tool (`go run .../run-receipt.go [--dir D]
+[--tail N] [--reuse] -- go test ./...`) is an anchor, because the tool exits
+with the wrapped check's status. With `--shell` it is not. When anchors and
+receipts differ in number, receipt events follow the whole trace, so a commit
+that came after the test can appear to precede it.
+
 ## Skills catalog assertion
 
 Treatment responses carry an optional `skills_catalog` object:

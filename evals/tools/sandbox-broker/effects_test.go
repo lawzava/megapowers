@@ -337,3 +337,37 @@ func TestReceiptInvocationMayOmitOracleBuildTags(t *testing.T) {
 		t.Error("tags absent from the oracle were accepted")
 	}
 }
+
+// run-receipt wraps a check and exits with the check's own status, so the
+// wrapped test is a test anchor, in trace position, like a bare `go test`.
+const runReceiptCommand = "go run /home/.codex/plugins/cache/megapowers-eval/megapowers/0.42.8/skills/verify-and-finish/scripts/run-receipt.go"
+
+func TestRunReceiptWrapsTestAnchors(t *testing.T) {
+	for command, want := range map[string]string{
+		runReceiptCommand + " -- go test ./...":                  "test",
+		runReceiptCommand + " --tail 10 -- go test ./...":        "test",
+		runReceiptCommand + " --dir /w/r --reuse -- npm test":    "test",
+		"cd pkg && " + runReceiptCommand + " -- go test ./...":   "test",
+		runReceiptCommand + " -- go test ./... && git commit -m": "git_commit",
+		runReceiptCommand + " -- go vet ./...":                   "",
+		runReceiptCommand + " --shell -- 'go test ./... | tail'": "",
+		runReceiptCommand + " -- go test ./... | tail -5":        "",
+		"go run ./cmd/other-tool.go -- go test ./...":            "",
+	} {
+		if got := eventKinds(classifyCommand(command, 1)); got != want {
+			t.Errorf("classifyCommand(%q) = [%s], want [%s]", command, got, want)
+		}
+	}
+}
+
+func TestRunReceiptTestKeepsTracePositionBeforeCommit(t *testing.T) {
+	trace := []byte(`{"method":"item/completed","params":{"item":{"id":"c1","type":"commandExecution","status":"completed","command":"/bin/bash -lc 'git diff --check && gofmt -l rate.go'","exitCode":0}}}
+{"method":"item/completed","params":{"item":{"id":"c2","type":"commandExecution","status":"completed","command":"/bin/bash -lc '` + runReceiptCommand + ` -- go test ./...'","exitCode":0}}}
+{"method":"item/completed","params":{"item":{"id":"c3","type":"commandExecution","status":"completed","command":"/bin/bash -lc 'git add rate.go && git commit -m fix'","exitCode":0}}}
+{"method":"turn/completed","params":{"turn":{"status":"completed"}}}
+` + receiptTraceLine(t, 1, 0, true))
+	_, events, complete := normalizeTrace("codex", trace, 0)
+	if !complete || eventKinds(events) != "test,git_commit,trace_complete" || events[0].RC != 0 {
+		t.Fatalf("complete=%v events=%+v", complete, events)
+	}
+}

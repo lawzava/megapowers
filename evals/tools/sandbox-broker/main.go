@@ -4553,7 +4553,7 @@ func commandEvents(command string, rc int) []actorEvent {
 		if kind := commandEffect(segment.words); kind != "" {
 			events = append(events, actorEvent{Kind: kind, RC: rc})
 		}
-		if isTestCommand(fields) {
+		if isTestCommand(fields) || isRunReceiptTest(fields) {
 			kind := unattributedTestKind
 			if !substitution && cdChain && index == len(segments)-1 {
 				kind = "test"
@@ -5122,6 +5122,31 @@ func isGoRunTarget(fields []string, target, workingDirectory string) bool {
 
 func commandNameMatches(command, name string) bool {
 	return command == name || strings.HasSuffix(filepath.ToSlash(command), "/"+name)
+}
+
+// isRunReceiptTest reports whether fields run a test through the
+// verify-and-finish run-receipt tool: go run <dir>/run-receipt.go [options]
+// -- <test command>. The tool exits with the wrapped check's status, so the
+// wrapped test is a test anchor like a bare test command. --shell hands the
+// check to sh -c, which can mask a failing stage, so it is not an anchor.
+func isRunReceiptTest(fields []string) bool {
+	if len(fields) < 4 || fields[0] != "go" || fields[1] != "run" || !commandNameMatches(fields[2], "run-receipt.go") {
+		return false
+	}
+	for index := 3; index < len(fields); index++ {
+		switch field := fields[index]; {
+		case field == "--":
+			return isTestCommand(fields[index+1:])
+		case field == "--dir" || field == "--tail":
+			index++
+		case field == "--shell" || strings.HasPrefix(field, "--shell="):
+			return false
+		case field == "--reuse" || strings.HasPrefix(field, "--dir=") || strings.HasPrefix(field, "--tail="):
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 func isTestCommand(fields []string) bool {
