@@ -5,6 +5,20 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Changed
+
+- The review tool passes only `PATH` and `HOME` to the reviewer process. It no
+  longer forwards `TMPDIR`, `LANG`, `LC_ALL`, `TERM`, `SSL_CERT_FILE`,
+  `SSL_CERT_DIR`, the proxy variables, or the `XDG_*` directories, and the
+  `--provider-env` flag is removed; passing it is now an unknown-flag error.
+  `PATH` is still sanitized, and `HOME` is still dropped when it resolves inside
+  the repository. Approval IDs from earlier versions no longer match: the
+  forwarded environment is part of the ID, and its contents changed. Run
+  `inspect` again after upgrading. This answers the Claude plugin directory hold
+  on the environment-forwarding rule.
+
 ## 0.42.6 - 2026-11-01
 
 ### Changed

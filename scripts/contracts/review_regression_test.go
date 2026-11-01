@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -163,6 +164,19 @@ func (f *reviewFixture) recordText(name string) string {
 		f.t.Fatal(err)
 	}
 	return string(data)
+}
+
+// recordEnvNames returns the sorted variable names the provider saw.
+func (f *reviewFixture) recordEnvNames() []string {
+	f.t.Helper()
+	var names []string
+	for _, line := range strings.Split(f.recordText("env"), "\n") {
+		if name, _, ok := strings.Cut(line, "="); ok {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (f *reviewFixture) clearCalls() {
@@ -371,31 +385,43 @@ func TestReviewDeliveryReceiptsAndEnvironment(t *testing.T) {
 			t.Errorf("missing allowed environment %s", required)
 		}
 	}
-	envFlags := []string{"--provider-env", "FAKE_HOME", "--provider-env", "FAKE_CONFIG_DIR"}
-	envToken := f.inspect(f.command, append([]string{"--file", "app.go"}, envFlags...)...)["approval_id"].(string)
-	args := f.review(envToken, f.command, append([]string{"--file", "app.go", "--out", out}, envFlags...)...)
-	f.call("", args...)
-	env = f.recordText("env")
-	for _, required := range []string{"FAKE_HOME=" + os.Getenv("FAKE_HOME"), "FAKE_CONFIG_DIR=" + os.Getenv("FAKE_CONFIG_DIR")} {
-		if !strings.Contains(env, required) {
-			t.Errorf("explicit environment not passed: %s", required)
-		}
+	// The provider environment is PATH and HOME only, however many other
+	// variables the caller has set.
+	scratchTmp := filepath.Join(f.root, "tmp")
+	if err := os.Mkdir(scratchTmp, 0700); err != nil {
+		t.Fatal(err)
 	}
-	f.call("provider-env", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE=VALUE")...)
+	for name, value := range map[string]string{
+		"TMPDIR": scratchTmp, "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "TERM": "xterm",
+		"SSL_CERT_FILE": "/etc/ssl/cert.pem", "SSL_CERT_DIR": "/etc/ssl/certs",
+		"HTTPS_PROXY": "http://localhost:3128", "HTTP_PROXY": "http://localhost:3128",
+		"ALL_PROXY": "http://localhost:3128", "NO_PROXY": "localhost",
+		"XDG_CONFIG_HOME": filepath.Join(f.root, "xdg"), "XDG_DATA_HOME": filepath.Join(f.root, "xdg"),
+		"XDG_CACHE_HOME": filepath.Join(f.root, "xdg"),
+	} {
+		t.Setenv(name, value)
+	}
+	envToken := f.inspect(f.command, "--file", "app.go")["approval_id"].(string)
+	f.call("", f.review(envToken, f.command, "--file", "app.go", "--out", out)...)
+	if got := f.recordEnvNames(); strings.Join(got, ",") != "HOME,PATH" {
+		t.Fatalf("provider environment must be exactly HOME and PATH, got %v", got)
+	}
 	f.clearCalls()
-	for _, name := range []string{"FAKE_API_KEY", "FAKE_TOKEN", "PATH_EXTRA", "HOMEDIR"} {
-		f.call("only directory variables", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", name)...)
-		f.call("only directory variables", "inspect", "--provider", "vendor-a", "--provider-command", f.command, "--file", "app.go", "--provider-env", name)
+	for _, args := range [][]string{
+		f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "HOME"),
+		{"inspect", "--provider", "vendor-a", "--provider-command", f.command, "--file", "app.go", "--provider-env", "HOME"},
+	} {
+		f.call("provider-env", args...)
 	}
 	f.noCalls()
-	t.Setenv("FAKE_HOME", filepath.Join(f.repo, "inside-home"))
-	t.Setenv("FAKE_CONFIG_DIR", filepath.Join(f.repo, "inside-home", "config"))
-	envToken = f.inspect(f.command, append([]string{"--file", "app.go"}, envFlags...)...)["approval_id"].(string)
-	f.call("", f.review(envToken, f.command, append([]string{"--file", "app.go", "--out", out}, envFlags...)...)...)
-	env = f.recordText("env")
-	if strings.Contains(env, "FAKE_HOME=") || strings.Contains(env, "FAKE_CONFIG_DIR=") || strings.Contains(env, "FAKE_API_KEY=") {
-		t.Fatal("repository-local config environment was not removed")
+	realHome := os.Getenv("HOME")
+	t.Setenv("HOME", filepath.Join(f.repo, "inside-home"))
+	envToken = f.inspect(f.command, "--file", "app.go")["approval_id"].(string)
+	f.call("", f.review(envToken, f.command, "--file", "app.go", "--out", out)...)
+	if got := f.recordEnvNames(); strings.Join(got, ",") != "PATH" {
+		t.Fatalf("repository-local HOME must be dropped, got %v", got)
 	}
+	t.Setenv("HOME", realHome)
 	fileCommand := `fake-reviewer --prompt-file {prompt_file} --scratch {scratch_dir} --note 'hello world' --pipe 'a|b' --sub "$(id)" back\slash`
 	fileToken := f.inspect(fileCommand, "--file", "app.go")["approval_id"].(string)
 	f.call("", f.review(fileToken, fileCommand, "--file", "app.go", "--out", out)...)
@@ -688,16 +714,15 @@ func TestReviewApprovalBindsProviderEnvironment(t *testing.T) {
 	if err := os.Mkdir(out, 0700); err != nil {
 		t.Fatal(err)
 	}
-	info := f.inspect(f.command, "--file", "app.go", "--provider-env", "FAKE_HOME")
+	info := f.inspect(f.command, "--file", "app.go")
 	names, _ := json.Marshal(info["provider_environment"])
-	if !bytes.Contains(names, []byte("FAKE_HOME")) || bytes.Contains(names, []byte(os.Getenv("FAKE_HOME"))) {
+	if string(names) != `["HOME","PATH"]` || bytes.Contains(names, []byte(os.Getenv("HOME"))) {
 		t.Fatalf("inspection must disclose forwarded variable names without values: %s", names)
 	}
 	token := info["approval_id"].(string)
 	f.clearCalls()
-	f.call("approval ID does not match", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE_HOME", "--provider-env", "FAKE_CONFIG_DIR")...)
-	t.Setenv("FAKE_HOME", filepath.Join(f.root, "rerouted-home"))
-	f.call("approval ID does not match", f.review(token, f.command, "--file", "app.go", "--out", out, "--provider-env", "FAKE_HOME")...)
+	t.Setenv("HOME", filepath.Join(f.root, "rerouted-home"))
+	f.call("approval ID does not match", f.review(token, f.command, "--file", "app.go", "--out", out)...)
 	f.noCalls()
 }
 
@@ -789,26 +814,21 @@ func TestReviewReportsProviderStdoutOverflow(t *testing.T) {
 	}
 }
 
-// The Claude Code sandbox injects a proxy URL whose credentials change on
-// every shell call, so approval binds the proxy endpoint, not its userinfo.
+// Proxy variables never reach the provider, so they cannot change the
+// approval ID or the provider environment.
 func TestReviewApprovalIgnoresProxyCredentials(t *testing.T) {
 	f := newReviewFixture(t)
 	t.Setenv("HTTPS_PROXY", "http://call-one:secret-one@localhost:3128")
 	t.Setenv("ALL_PROXY", "http://call-one:secret-one@localhost:3128/?session=1")
 	token := f.inspect(f.command, "--file", "app.go")["approval_id"].(string)
-	t.Setenv("HTTPS_PROXY", "http://call-two:secret-two@localhost:3128")
-	t.Setenv("ALL_PROXY", "http://call-two:secret-two@localhost:3128/?session=2")
+	t.Setenv("HTTPS_PROXY", "http://call-two:secret-two@proxy.example.invalid:3128")
 	if f.inspect(f.command, "--file", "app.go")["approval_id"] != token {
-		t.Fatal("proxy credentials changed the approval ID")
+		t.Fatal("proxy variables changed the approval ID")
 	}
 	f.call("", f.review(token, f.command, "--file", "app.go")...)
-	t.Setenv("HTTPS_PROXY", "http://call-two:secret-two@proxy.example.invalid:3128")
-	if f.inspect(f.command, "--file", "app.go")["approval_id"] == token {
-		t.Fatal("a different proxy host must change the approval ID")
+	if env := f.recordText("env"); strings.Contains(env, "PROXY") {
+		t.Fatalf("proxy variable reached provider:\n%s", env)
 	}
-	f.clearCalls()
-	f.call("approval ID does not match", f.review(token, f.command, "--file", "app.go")...)
-	f.noCalls()
 }
 
 func TestReviewSecretScanSeparatesCodeFromLiterals(t *testing.T) {

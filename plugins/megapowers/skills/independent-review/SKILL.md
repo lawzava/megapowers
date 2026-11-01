@@ -41,7 +41,7 @@ Author and provider labels must differ and name real vendor families. `--file` t
 repository, in the current directory outside Git, or under `$TMPDIR`; keep
 review packages and receipts under `$TMPDIR`, never in the deliverable.
 Reviewer CLIs sign in themselves.
-`--provider-env NAME` takes only `HOME`, `TMPDIR`, `*_HOME`, `*_CONFIG_DIR`.
+The reviewer process gets only `PATH` and `HOME`.
 `--preflight` probes liveness before bytes leave. `--help` prints path rules.
 
 ## Dispatch authority
