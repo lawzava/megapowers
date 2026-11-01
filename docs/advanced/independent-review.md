@@ -33,8 +33,10 @@ review_tool=/absolute/path/to/installed/independent-review/scripts/megapowers-re
 or `zai`. `--provider-command` is the reviewer command as one quoted string; it
 is split into arguments without a shell. `{prompt_file}` expands to a private
 prompt file and `{scratch_dir}` to the private scratch directory; without
-`{prompt_file}` the prompt arrives on stdin. Credentials pass only through
-`--provider-env NAME`. Example shapes, to be replaced by whatever the operator
+`{prompt_file}` the prompt arrives on stdin. Reviewer CLIs authenticate through their own
+sign-in; the tool forwards no credential variables. `--provider-env NAME` passes
+only directory variables (`HOME`, `TMPDIR`, `*_HOME`, `*_CONFIG_DIR`) and
+rejects any other name. Example shapes, to be replaced by whatever the operator
 runs:
 
 ```bash
@@ -96,7 +98,7 @@ submodules, binary data, oversized packages, secret-like paths, and common
 secret patterns. A secret rejection names the file and line, never the value.
 Commit ranges use immutable revisions and exclude unrelated
 worktree changes. Reviewer processes receive a small environment allowlist plus
-the named `--provider-env` variables.
+the named `--provider-env` directory variables.
 
 Review recaptures the source and resolves the reviewer again before dispatch.
 Any change to the package, intent, binary, or command invalidates an

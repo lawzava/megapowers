@@ -37,13 +37,12 @@ binary hash, command, and chunk package hashes, and pass the emitted token to
 `review --approve-external "$approval_token"`. Any file, intent, binary, or
 command change requires a new inspection and token.
 
-Author and provider labels must differ and name real vendor families (such as
-`anthropic`, `openai`, or `google`). `--file` takes a file in the
+Author and provider labels must differ and name real vendor families. `--file` takes a file in the
 repository, in the current directory outside Git, or under `$TMPDIR`; keep
 review packages and receipts under `$TMPDIR`, never in the deliverable.
-Credentials pass only through `--provider-env NAME`. `--preflight` probes
-liveness before artifact bytes leave the machine. `--help` prints every path
-rule.
+The tool forwards no credentials; reviewer CLIs sign in themselves.
+`--provider-env NAME` takes only `HOME`, `TMPDIR`, `*_HOME`, `*_CONFIG_DIR`.
+`--preflight` probes liveness before bytes leave. `--help` prints path rules.
 
 ## Dispatch authority
 
@@ -54,8 +53,7 @@ without asking. Ask first only when no configured reviewer exists, the
 disclosure exceeds the intended scope or holds content an instruction keeps
 local, or an instruction requires approval. Never silently substitute a
 same-provider review. If the harness's own reviewer denies the send, report its
-reason and stop. Surface a permission prompt or provider stall instead of
-waiting silently.
+reason and stop. Surface a permission prompt or provider stall.
 
 Receipts are advisory, not an approval gate; `--out` must be an existing
 absolute directory outside the review root. If the tool fails, report
