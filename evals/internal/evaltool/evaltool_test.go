@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPortableSkillBody(t *testing.T) {
@@ -67,5 +68,17 @@ func TestRunAllRejectsInvalidTimeout(t *testing.T) {
 	}
 	if got, err := positiveSeconds("7"); err != nil || got.Seconds() != 7 {
 		t.Fatalf("positiveSeconds(7) = %v, %v", got, err)
+	}
+}
+
+// The installed-ab selftest builds and runs Go fixtures with a cold build
+// cache. Measured cold on one CPU it takes about 70 s, and the attest job runs
+// it on a shared 4-vCPU runner next to other test packages. A 60 s per-selftest
+// limit turned that into a "timeout" harness error on release v0.42.5. The
+// limit stays a hard ceiling, but it must leave room for a loaded runner.
+func TestDefaultSelftestLimitCoversColdLoadedRunner(t *testing.T) {
+	const measuredColdSingleCPU = 70 * time.Second
+	if defaultSelftestLimit < 3*measuredColdSingleCPU {
+		t.Fatalf("defaultSelftestLimit = %s, want at least %s", defaultSelftestLimit, 3*measuredColdSingleCPU)
 	}
 }
