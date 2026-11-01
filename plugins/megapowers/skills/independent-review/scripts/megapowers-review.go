@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,7 +51,6 @@ type options struct {
 	head             string
 	provider         string
 	providerCommand  string
-	providerEnv      stringList
 	intent           string
 	author           string
 	out              string
@@ -61,16 +59,6 @@ type options struct {
 	maxFilesPerChunk int
 	preflight        bool
 	preflightTimeout time.Duration
-}
-
-// stringList collects a repeatable string flag.
-type stringList []string
-
-func (l *stringList) String() string { return strings.Join(*l, ",") }
-
-func (l *stringList) Set(value string) error {
-	*l = append(*l, value)
-	return nil
 }
 
 type sourceFile struct {
@@ -136,7 +124,7 @@ type disclosure struct {
 	Paths           []string          `json:"paths"`
 	Source          sourceIdentity    `json:"source"`
 	Chunks          []chunkDisclosure `json:"chunks"`
-	// ProviderEnvironment names the variables forwarded to the provider;
+	// ProviderEnvironment names the variables forwarded to the provider (PATH and HOME only);
 	// values stay private but their digests are bound to the approval ID.
 	ProviderEnvironment []string `json:"provider_environment"`
 	ApprovalID          string   `json:"approval_id"`
@@ -329,7 +317,7 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	providerEnv, err := providerEnvironment(opt.providerEnv, root)
+	providerEnv, err := providerEnvironment(root)
 	if err != nil {
 		return err
 	}
@@ -400,7 +388,7 @@ func run(args []string) error {
 			_ = receiptDest.Root.RemoveAll(runName)
 		}
 	}()
-	session, err := openProviderSession(binary, opt.providerEnv, root)
+	session, err := openProviderSession(binary, root)
 	if err != nil {
 		return err
 	}
@@ -492,7 +480,6 @@ func reviewFlagSet(command string, opt *options) *flag.FlagSet {
 	fs.StringVar(&opt.head, "head", "", "head commit")
 	fs.StringVar(&opt.provider, "provider", "", "reviewer label; must differ from --author")
 	fs.StringVar(&opt.providerCommand, "provider-command", "", "provider command template: argv[0] plus arguments, with optional {prompt_file} and {scratch_dir}")
-	fs.Var(&opt.providerEnv, "provider-env", "directory variable to pass through: HOME, TMPDIR, *_HOME, or *_CONFIG_DIR; nothing else is forwarded (repeatable)")
 	fs.StringVar(&opt.intent, "intent", "", "artifact intent and acceptance boundary sent to the reviewer")
 	fs.StringVar(&opt.author, "author", "", "review only: artifact author label; must differ from --provider")
 	fs.StringVar(&opt.out, "out", "", "review only: existing absolute private receipt directory outside the review root")
@@ -569,7 +556,7 @@ func parseOptions(command string, args []string) (options, error) {
 	// second vendor.
 	opt.provider, opt.author = strings.TrimSpace(opt.provider), strings.TrimSpace(opt.author)
 	if command == "inspect" && (opt.author != "" || opt.out != "" || opt.approveExternal != "" || opt.retainTranscript || opt.preflight) {
-		return opt, errors.New("inspect accepts --provider, --provider-command, --provider-env, --intent, and one input mode only")
+		return opt, errors.New("inspect accepts --provider, --provider-command, --intent, and one input mode only")
 	}
 	if opt.maxFilesPerChunk < 1 {
 		return opt, errors.New("--max-files-per-chunk must be at least 1")
@@ -583,14 +570,6 @@ func parseOptions(command string, args []string) (options, error) {
 	if strings.TrimSpace(opt.providerCommand) == "" {
 		return opt, errors.New("--provider-command 'ARGV' is required")
 	}
-	for _, name := range opt.providerEnv {
-		if !environmentNamePattern.MatchString(name) {
-			return opt, fmt.Errorf("--provider-env %q is not an environment variable name", name)
-		}
-		if !environmentPathVariable(name) {
-			return opt, fmt.Errorf("--provider-env %s: only directory variables (HOME, TMPDIR, *_HOME, *_CONFIG_DIR) are forwarded; sign the reviewer CLI in through its own login", name)
-		}
-	}
 	if command == "review" {
 		if strings.TrimSpace(opt.author) == "" {
 			return opt, errors.New("--author LABEL is required")
@@ -601,8 +580,6 @@ func parseOptions(command string, args []string) (options, error) {
 	}
 	return opt, nil
 }
-
-var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func validateInputMode(opt options) error {
 	fileMode := opt.file != ""
@@ -1311,19 +1288,11 @@ func approvalID(binary providerExecutable, packageSHA256s, envDigests []string, 
 	return "mpr1_" + hex.EncodeToString(sum[:])
 }
 
-// environmentDigests maps each NAME=value entry to NAME=sha256(value). A
-// proxy URL contributes only its scheme, host, and port: the Claude Code
-// sandbox rotates proxy userinfo on every shell call, and the endpoint is
-// what decides where traffic goes.
+// environmentDigests maps each NAME=value entry to NAME=sha256(value).
 func environmentDigests(env []string) []string {
 	digests := make([]string, 0, len(env))
 	for _, entry := range env {
 		name, value, _ := strings.Cut(entry, "=")
-		if upper := strings.ToUpper(name); strings.HasSuffix(upper, "_PROXY") && upper != "NO_PROXY" {
-			if parsed, err := url.Parse(value); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-				value = parsed.Scheme + "://" + parsed.Host
-			}
-		}
 		digests = append(digests, name+"="+hashBytes([]byte(value)))
 	}
 	return digests
@@ -1424,7 +1393,7 @@ type providerSession struct {
 	env     []string
 }
 
-func openProviderSession(binary providerExecutable, extraEnv []string, root string) (*providerSession, error) {
+func openProviderSession(binary providerExecutable, root string) (*providerSession, error) {
 	scratch, err := os.MkdirTemp("", "megapowers-review-")
 	if err != nil {
 		return nil, fmt.Errorf("create provider scratch directory: %w", err)
@@ -1452,7 +1421,7 @@ func openProviderSession(binary providerExecutable, extraEnv []string, root stri
 			return nil, err
 		}
 	}
-	session.env, err = providerEnvironment(extraEnv, root)
+	session.env, err = providerEnvironment(root)
 	if err != nil {
 		session.close()
 		return nil, err
@@ -1661,36 +1630,20 @@ func classifyProviderDiagnostic(raw []byte) string {
 	return "details withheld because provider stderr is untrusted"
 }
 
-// providerEnvironment builds the provider process environment from a neutral
-// base allowlist plus the operator's --provider-env names. PATH is sanitized
-// and any directory-valued variable that resolves inside the repository is
-// dropped.
-func providerEnvironment(extra []string, root string) ([]string, error) {
-	names := []string{
-		"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM",
-		"SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY",
-		"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+// providerEnvironment builds the provider process environment from PATH and
+// HOME only. PATH is sanitized, and HOME is dropped when it resolves inside
+// the repository.
+func providerEnvironment(root string) ([]string, error) {
+	env := make([]string, 0, 2)
+	if home, ok := os.LookupEnv("HOME"); ok && !pathValueInsideRoot(home, root) {
+		env = append(env, "HOME="+home)
 	}
-	names = append(names, extra...)
-	sort.Strings(names)
-	env := make([]string, 0, len(names))
-	seen := make(map[string]bool, len(names))
-	for _, name := range names {
-		if seen[name] {
-			continue
+	if path, ok := os.LookupEnv("PATH"); ok {
+		path = sanitizedPath(path, root)
+		if path == "" {
+			return nil, errors.New("PATH has no absolute entry outside the repository or current directory review root; add the provider's installation directory outside the review root to PATH")
 		}
-		seen[name] = true
-		if value, ok := os.LookupEnv(name); ok {
-			if name == "PATH" {
-				value = sanitizedPath(value, root)
-				if value == "" {
-					return nil, errors.New("PATH has no absolute entry outside the repository or current directory review root; add the provider's installation directory outside the review root to PATH")
-				}
-			} else if environmentPathVariable(name) && pathValueInsideRoot(value, root) {
-				continue
-			}
-			env = append(env, name+"="+value)
-		}
+		env = append(env, "PATH="+path)
 	}
 	return env, nil
 }
@@ -1715,17 +1668,6 @@ func sanitizedPath(value, root string) string {
 		kept = append(kept, entry)
 	}
 	return strings.Join(kept, string(os.PathListSeparator))
-}
-
-// environmentPathVariable reports whether a variable names a directory the
-// provider would read configuration or state from, so a value inside the
-// repository must not be forwarded.
-func environmentPathVariable(name string) bool {
-	switch name {
-	case "HOME", "TMPDIR":
-		return true
-	}
-	return strings.HasSuffix(name, "_HOME") || strings.HasSuffix(name, "_CONFIG_DIR")
 }
 
 func pathValueInsideRoot(value, root string) bool {

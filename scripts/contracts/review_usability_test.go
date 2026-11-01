@@ -48,7 +48,7 @@ func TestReviewUsage(t *testing.T) {
 			}
 			for _, want := range []string{
 				"inspect", "review", "snapshot", "delta", "-file", "-base", "-head",
-				"-provider", "-provider-command", "-provider-env", "-intent", "-author",
+				"-provider", "-provider-command", "-intent", "-author",
 				"-out", "-approve-external", "-retain-transcript", "-max-files-per-chunk",
 				"-preflight", "-preflight-timeout", "-since",
 				"current directory", "Git work tree", "regular file", "$TMPDIR/<name>",
@@ -57,6 +57,9 @@ func TestReviewUsage(t *testing.T) {
 				if !strings.Contains(stdout, want) {
 					t.Errorf("usage lacks %q:\n%s", want, stdout)
 				}
+			}
+			if strings.Contains(stdout, "provider-env") {
+				t.Errorf("usage still documents the removed -provider-env flag:\n%s", stdout)
 			}
 			if usage == "" {
 				usage = stdout

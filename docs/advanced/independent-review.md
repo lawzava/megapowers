@@ -34,10 +34,9 @@ or `zai`. `--provider-command` is the reviewer command as one quoted string; it
 is split into arguments without a shell. `{prompt_file}` expands to a private
 prompt file and `{scratch_dir}` to the private scratch directory; without
 `{prompt_file}` the prompt arrives on stdin. Reviewer CLIs authenticate through their own
-sign-in; the tool forwards no sign-in variables. `--provider-env NAME` passes
-only directory variables (`HOME`, `TMPDIR`, `*_HOME`, `*_CONFIG_DIR`) and
-rejects any other name. Example shapes, to be replaced by whatever the operator
-runs:
+sign-in. The tool passes the reviewer process only `PATH` and `HOME`; there
+is no flag to add variables. Example shapes, to be replaced by whatever the
+operator runs:
 
 ```bash
 reviewer_cmd='claude -p --safe-mode --no-session-persistence --permission-mode plan --tools ""'
@@ -97,8 +96,7 @@ project-selected binaries, shell metacharacters in the command, symlinks,
 submodules, binary data, oversized packages, sensitive paths, and common
 sensitive-content patterns. A rejection names the file and line, never the value.
 Commit ranges use immutable revisions and exclude unrelated
-worktree changes. Reviewer processes receive a small environment allowlist plus
-the named `--provider-env` directory variables.
+worktree changes. Reviewer processes receive only `PATH` and `HOME`.
 
 Review recaptures the source and resolves the reviewer again before dispatch.
 Any change to the package, intent, binary, or command invalidates an
