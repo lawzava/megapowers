@@ -122,7 +122,7 @@ type archiveEntry struct {
 	Name           string
 	Size           uint64
 	CompressedSize uint64
-	Method         uint16 // zip.Store or zip.Deflate
+	Method         uint16 // ZIP compression method: stored or deflate
 	Mode           fs.FileMode
 }
 
