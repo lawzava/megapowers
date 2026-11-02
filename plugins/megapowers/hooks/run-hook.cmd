@@ -29,7 +29,7 @@ if not defined PROCESSOR_ARCHITECTURE (
 set "GO111MODULE=off"
 set "GOTOOLCHAIN=local"
 set "GO_VERSION="
-set "GO_CACHE_ID="
+set "GO_KEY="
 set "GO_FOUND="
 where go >nul 2>nul
 if not errorlevel 1 (
@@ -37,15 +37,15 @@ if not errorlevel 1 (
     for /f "delims=" %%v in ('go env GOVERSION 2^>nul') do set "GO_VERSION=%%v"
 )
 if defined GO_VERSION (
-    set "GO_CACHE_ID=!GO_VERSION:devel =!"
-    for /f "tokens=1" %%k in ("!GO_CACHE_ID!") do set "GO_CACHE_ID=%%k"
+    set "GO_KEY=!GO_VERSION:devel =!"
+    for /f "tokens=1" %%k in ("!GO_KEY!") do set "GO_KEY=%%k"
     rem A colon, as in go1.26.8-X:nodwarf5, would start an NTFS alternate data stream.
-    set "GO_CACHE_ID=!GO_CACHE_ID::=_!"
+    set "GO_KEY=!GO_KEY::=_!"
 )
-set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-e2c343e96be70b99-windows-%PROCESSOR_ARCHITECTURE%"
+set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-72b1345d63dffcc4-windows-%PROCESSOR_ARCHITECTURE%"
 set "RUNNER="
-if defined GO_CACHE_ID (
-    set "RUNNER=!RUNNER_PREFIX!-!GO_CACHE_ID!.exe"
+if defined GO_KEY (
+    set "RUNNER=!RUNNER_PREFIX!-!GO_KEY!.exe"
 ) else (
     for %%f in ("!RUNNER_PREFIX!-*.exe") do (
         if /i not "%%~xf"==".tmp" set "RUNNER=!CACHE_DIR!\%%~nxf"
@@ -85,7 +85,7 @@ if exist "!RUNNER!\*" (
 )
 
 if not exist "!RUNNER!" (
-    set "GO_SEMVER=!GO_CACHE_ID:go=!"
+    set "GO_SEMVER=!GO_KEY:go=!"
     set "GO_MAJOR=0"
     set "GO_MINOR=0"
     for /f "tokens=1,2 delims=.-" %%a in ("!GO_SEMVER!") do (
@@ -96,7 +96,7 @@ if not exist "!RUNNER!" (
     if !GO_MAJOR! GTR 1 set "GO_OK=1"
     if !GO_MAJOR! EQU 1 if !GO_MINOR! GEQ 25 set "GO_OK=1"
     if not defined GO_OK (
-        set "REASON=cannot build hook runner: Go 1.25 or newer is required (found !GO_CACHE_ID!)"
+        set "REASON=cannot build hook runner: Go 1.25 or newer is required (found !GO_KEY!)"
         goto fail
     )
     if not defined GOCACHE (
@@ -284,7 +284,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-runner_prefix="$cache_dir/megapowers-hook-e2c343e96be70b99-$platform_os-$platform_arch"
+runner_prefix="$cache_dir/megapowers-hook-72b1345d63dffcc4-$platform_os-$platform_arch"
 if [ -n "$go_key" ]; then
   runner="$runner_prefix-$go_key"
 else

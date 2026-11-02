@@ -61,7 +61,7 @@ var requiredSkillFacts = map[string][]string{
 		"author and provider labels must differ",
 		"pre-approved",
 		"ask first only when",
-		"sensitive-content scan",
+		"secret scan",
 		"--intent",
 	},
 	"mcp-setup": {
@@ -89,7 +89,7 @@ var requiredSkillFacts = map[string][]string{
 		"prerequisites have passed",
 	},
 	"safe-effects": {
-		"under the user's name", "sign-in stores", "i allow", "say whether it is authorized",
+		"under the user's name", "credential stores", "i allow", "say whether it is authorized",
 		"paid batch",
 	},
 	"systematic-debugging": {

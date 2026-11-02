@@ -7,7 +7,7 @@ supplements those tests; it does not replace them.
 
 The tool is vendor-neutral. It runs whatever reviewer command the operator
 names, verifies that binary, and ties approval to the exact package, binary,
-and command. megapowers ships no provider list, model choice, or sign-in
+and command. megapowers ships no provider list, model choice, or credential
 handling; those live in the operator's registry and instructions.
 
 ## Requirements
@@ -34,10 +34,9 @@ or `zai`. `--provider-command` is the reviewer command as one quoted string; it
 is split into arguments without a shell. `{prompt_file}` expands to a private
 prompt file and `{scratch_dir}` to the private scratch directory; without
 `{prompt_file}` the prompt arrives on stdin. Reviewer CLIs authenticate through their own
-sign-in; the tool forwards no sign-in variables. `--provider-env NAME` passes
-only directory variables (`HOME`, `TMPDIR`, `*_HOME`, `*_CONFIG_DIR`) and
-rejects any other name. Example shapes, to be replaced by whatever the operator
-runs:
+sign-in; the tool forwards no credential variables. It passes the reviewer process only `PATH` and `HOME`; there
+is no flag to add variables. Example shapes, to be replaced by whatever the
+operator runs:
 
 ```bash
 reviewer_cmd='claude -p --safe-mode --no-session-persistence --permission-mode plan --tools ""'
@@ -72,11 +71,11 @@ go run "$review_tool" inspect --base <base-revision> --head <head-revision> \
 
 The disclosure shows source identity, per-chunk paths, bytes, and package
 hashes, the intent, the resolved binary path and hash, the command, and an
-`approval_id`. Stop if a path, byte count, intent, provider, binary, or
-command is not the one intended. Copy the ID only after reviewing those fields:
+`approval_token`. Stop if a path, byte count, intent, provider, binary, or
+command is not the one intended. Copy the token only after reviewing those fields:
 
 ```bash
-approval_id='<approval_id from the inspected JSON>'
+approval_token='<approval_token from the inspected JSON>'
 ```
 
 ## Approve and dispatch
@@ -84,27 +83,24 @@ approval_id='<approval_id from the inspected JSON>'
 ```bash
 go run "$review_tool" review --file path/to/file --intent "$intent" \
   --provider <reviewer-family> --provider-command "$reviewer_cmd" \
-  --author <author-family> --approve-external "$approval_id"
+  --author <author-family> --approve-external "$approval_token"
 ```
 
 For a pre-approved reviewer bound to `independent-review` in the capability
 registry or named in user or repository instructions, `--approve-external
 configured` runs the disclosure check and dispatches in one step while still
-enforcing the sensitive-content scan, path checks, and binary verification.
+enforcing the secret scan, path checks, and binary verification.
 
 The tool refuses matching author and reviewer labels. It also refuses
 project-selected binaries, shell metacharacters in the command, symlinks,
-submodules, binary data, oversized packages, sensitive paths, and common
-sensitive-content patterns. A rejection names the file and line, never the value.
+submodules, binary data, oversized packages, secret-like paths, and common
+secret patterns. A secret rejection names the file and line, never the value.
 Commit ranges use immutable revisions and exclude unrelated
-worktree changes. Reviewer processes receive a small environment allowlist plus
-the named `--provider-env` directory variables.
+worktree changes. Reviewer processes receive only `PATH` and `HOME`.
 
 Review recaptures the source and resolves the reviewer again before dispatch.
 Any change to the package, intent, binary, or command invalidates an
-`inspect` approval ID and requires a new inspection. Proxy variables bind only their
-scheme, host, and port, so a sandbox that rotates proxy userinfo per shell
-call does not invalidate the approval ID. Native binaries are copied into a private
+`inspect` token and requires a new inspection. Native binaries are copied into a private
 read-only execution path; script launchers outside the repository (such as
 Node/npm CLI shims) run from their installed path so relative runtime imports
 resolve, and their SHA-256 is verified before and after execution.
@@ -113,8 +109,8 @@ resolve, and their SHA-256 is verified before and after execution.
 
 Receipts are private advisory records. They bind the source identity, package
 hash, provider label, command, author, and command outcome. A range above one
-package splits into up to 16 directory-grouped chunks under one approval ID;
-an index `receipt.json` lists one `chunk-NN/receipt.json` per dispatched
+package splits into up to 16 directory-grouped chunks under one approval
+token; an index `receipt.json` lists one `chunk-NN/receipt.json` per dispatched
 package. When `--preflight` is passed, a liveness probe fails fast before any
 artifact bytes leave the machine if the reviewer reports a login or usage limit
 or stalls past `--preflight-timeout`. Receipts are not tamper-proof attestations

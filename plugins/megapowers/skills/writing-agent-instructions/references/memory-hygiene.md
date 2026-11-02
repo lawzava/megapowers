@@ -22,7 +22,7 @@ For each retained or revalidation record, capture its origin, source,
 source before retention. Memory cannot refresh itself.
 
 Conflicts must remain preserved and surfaced. Never resolve silently or
-overwrite one source with another. Do not put sensitive values or sign-in data in the
+overwrite one source with another. Do not put secrets or credentials in the
 manifest or memory.
 
 ## Audit manifest and validator
@@ -76,7 +76,7 @@ go run "$SKILL_DIR/scripts/memory-audit.go" --input "$audit_manifest" --as-of YY
 ```
 
 The validator rejects unsupported evidence, expired facts, missing provenance,
-malformed dates, duplicate IDs, unknown fields, symlinks, and common sensitive-value
+malformed dates, duplicate IDs, unknown fields, symlinks, and common credential
 patterns. It never edits provider memory.
 
 ## Apply one approved patch

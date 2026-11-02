@@ -58,7 +58,7 @@ diagnosis steps are in
 The guard catches a narrow set of obvious catastrophic shell commands, including
 compound forms and absolute-path wrappers. It is not a sandbox. The
 independent-review skill sends only an explicit file or immutable commit range,
-after a sensitive-content scan. It sends without asking only to a reviewer you configured
+after a secret scan. It sends without asking only to a reviewer you configured
 in your capability registry or instructions; otherwise it asks first. No
 hook, tool, or skill opens a network connection on its own. Read the
 [security policy](https://github.com/lawzava/megapowers/blob/main/SECURITY.md)

@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,7 +51,6 @@ type options struct {
 	head             string
 	provider         string
 	providerCommand  string
-	providerEnv      stringList
 	intent           string
 	author           string
 	out              string
@@ -61,16 +59,6 @@ type options struct {
 	maxFilesPerChunk int
 	preflight        bool
 	preflightTimeout time.Duration
-}
-
-// stringList collects a repeatable string flag.
-type stringList []string
-
-func (l *stringList) String() string { return strings.Join(*l, ",") }
-
-func (l *stringList) Set(value string) error {
-	*l = append(*l, value)
-	return nil
 }
 
 type sourceFile struct {
@@ -136,10 +124,11 @@ type disclosure struct {
 	Paths           []string          `json:"paths"`
 	Source          sourceIdentity    `json:"source"`
 	Chunks          []chunkDisclosure `json:"chunks"`
-	// ProviderEnvironment names the variables forwarded to the provider;
-	// values stay private but their digests are bound to the approval ID.
+	// ProviderEnvironment names the variables forwarded to the provider (PATH and HOME
+	// only; credentials are never forwarded); values stay private but their digests
+	// are bound to the token.
 	ProviderEnvironment []string `json:"provider_environment"`
-	ApprovalID          string   `json:"approval_id"`
+	ApprovalToken       string   `json:"approval_token"`
 }
 
 type transcriptEvidence struct {
@@ -234,17 +223,17 @@ const packagePathHint = "prepare a sanitized review package and pass --file $TMP
 const receiptPathHint = "use an existing writable absolute directory such as $TMPDIR/<name>, outside the repository (or current directory without Git) and not containing it"
 const deltaPathHint = "use a new .patch or .diff file such as $TMPDIR/<name>.patch in an existing directory"
 
-var sensitiveContentPatterns = []*regexp.Regexp{
+var secretContentPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----`),
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
 	regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{30,}`),
 	regexp.MustCompile(`sk-[A-Za-z0-9_-]{20,}`),
 }
 
-// sensitiveAssignmentPattern finds a sensitive-named key given a long value at
+// secretAssignmentPattern finds a credential-named key given a long value at
 // the start of a line, after an optional diff marker. Group 1 is the opening
 // quote and group 2 the value; codeReference filters values that are code.
-var sensitiveAssignmentPattern = regexp.MustCompile(`(?im)^[+-]?\s*(?:export\s+)?(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|client[_-]?secret|secret[_-]?key|aws_secret_access_key)\s*[:=]\s*(["']?)([A-Za-z0-9/+_.=-]{12,})`)
+var secretAssignmentPattern = regexp.MustCompile(`(?im)^[+-]?\s*(?:export\s+)?(?:api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|client[_-]?secret|secret[_-]?key|aws_secret_access_key)\s*[:=]\s*(["']?)([A-Za-z0-9/+_.=-]{12,})`)
 
 var identifierOrSelector = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 
@@ -253,7 +242,7 @@ var identifierOrSelector = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za
 // value's own shape proves nothing, since a passphrase such as
 // correct_horse_battery_staple looks like an identifier; a bare value at the
 // end of a config line, or one a shell statement ends with ";", stays a
-// candidate sensitive value.
+// candidate secret.
 func codeReference(data []byte, match []int) bool {
 	if match[3] > match[2] {
 		return false
@@ -329,12 +318,12 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	providerEnv, err := providerEnvironment(opt.providerEnv, root)
+	providerEnv, err := providerEnvironment(root)
 	if err != nil {
 		return err
 	}
 	envDigests := environmentDigests(providerEnv)
-	id := approvalID(binary, chunkHashes(cap), envDigests, opt.intent)
+	token := approvalToken(binary, chunkHashes(cap), envDigests, opt.intent)
 	disc := disclosure{
 		Provider:        opt.provider,
 		ProviderCommand: binary.Command,
@@ -346,7 +335,7 @@ func run(args []string) error {
 		Paths:           cap.Paths,
 		Source:          cap.Source,
 		Chunks:          make([]chunkDisclosure, 0, len(cap.Chunks)),
-		ApprovalID:      id,
+		ApprovalToken:   token,
 	}
 	for _, entry := range providerEnv {
 		name, _, _ := strings.Cut(entry, "=")
@@ -382,13 +371,13 @@ func run(args []string) error {
 			chunk.Index, disc.ChunkCount, chunk.FileCount, chunk.ByteCount, chunk.PackageSHA256, pathsJSON)
 	}
 	if opt.approveExternal == "" {
-		return errors.New("external disclosure not approved; pass --approve-external configured for a pre-approved reviewer, or run inspect and pass its approval ID as --approve-external ID")
+		return errors.New("external disclosure not approved; pass --approve-external configured for a pre-approved reviewer, or run inspect and pass its token as --approve-external TOKEN")
 	}
-	if opt.approveExternal != "configured" && !approvalIDMatches(opt.approveExternal, binary, chunkHashes(cap), envDigests, opt.intent) {
-		return errors.New("approval ID does not match the current package, intent, provider label, command, binary, and forwarded environment; run inspect again")
+	if opt.approveExternal != "configured" && !approvalTokenMatches(opt.approveExternal, binary, chunkHashes(cap), envDigests, opt.intent) {
+		return errors.New("approval token does not match the current package, intent, provider label, command, binary, and forwarded environment; run inspect again")
 	}
 	// Allocate the receipt run before dispatch so an unwritable destination
-	// fails before sign-in data or source reach the provider.
+	// fails before credentials or source reach the provider.
 	runRoot, runName, err := createReceiptRun(receiptDest)
 	if err != nil {
 		return fmt.Errorf("create receipt run directory: %w; the --out receipt destination must be writable before dispatch; %s", err, receiptPathHint)
@@ -400,7 +389,7 @@ func run(args []string) error {
 			_ = receiptDest.Root.RemoveAll(runName)
 		}
 	}()
-	session, err := openProviderSession(binary, opt.providerEnv, root)
+	session, err := openProviderSession(binary, root)
 	if err != nil {
 		return err
 	}
@@ -492,11 +481,10 @@ func reviewFlagSet(command string, opt *options) *flag.FlagSet {
 	fs.StringVar(&opt.head, "head", "", "head commit")
 	fs.StringVar(&opt.provider, "provider", "", "reviewer label; must differ from --author")
 	fs.StringVar(&opt.providerCommand, "provider-command", "", "provider command template: argv[0] plus arguments, with optional {prompt_file} and {scratch_dir}")
-	fs.Var(&opt.providerEnv, "provider-env", "directory variable to pass through: HOME, TMPDIR, *_HOME, or *_CONFIG_DIR; nothing else is forwarded (repeatable)")
 	fs.StringVar(&opt.intent, "intent", "", "artifact intent and acceptance boundary sent to the reviewer")
 	fs.StringVar(&opt.author, "author", "", "review only: artifact author label; must differ from --provider")
 	fs.StringVar(&opt.out, "out", "", "review only: existing absolute private receipt directory outside the review root")
-	fs.StringVar(&opt.approveExternal, "approve-external", "", "review only: configured or the approval ID emitted by inspect")
+	fs.StringVar(&opt.approveExternal, "approve-external", "", "review only: configured or token emitted by inspect")
 	fs.BoolVar(&opt.retainTranscript, "retain-transcript", false, "review only: retain prompt and provider output")
 	fs.IntVar(&opt.maxFilesPerChunk, "max-files-per-chunk", defaultMaxFilesPerChunk, "maximum files per provider package")
 	fs.BoolVar(&opt.preflight, "preflight", false, "review only: run a liveness probe before review dispatch")
@@ -520,7 +508,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, `Usage: megapowers-review <command> [options]
 
 Commands:
-  inspect   Inspect the package and print a disclosure and approval ID.
+  inspect   Inspect the package and print a disclosure and approval token.
   review    Send the package to the approved reviewer and write private receipts.
   snapshot  Print the current Git working tree id (no flags).
   delta     Write changes since a snapshot to a new temporary patch.
@@ -534,7 +522,7 @@ Path rules:
   the home directory and filesystem root are refused as that root.
   --file accepts a regular file inside that root or under $TMPDIR, with any
   extension. Symlink files are rejected; resolved paths must stay within an
-  accepted root. Sensitive-content scanning, text checks, and size limits always apply.
+  accepted root. Secret scanning, text checks, and size limits always apply.
   review --out must already exist as an absolute directory, have no symlinks,
   and be outside the review root. It must not contain that root.
   Create a directory such as $TMPDIR/<name>. Without --out, receipts go in
@@ -569,7 +557,7 @@ func parseOptions(command string, args []string) (options, error) {
 	// second vendor.
 	opt.provider, opt.author = strings.TrimSpace(opt.provider), strings.TrimSpace(opt.author)
 	if command == "inspect" && (opt.author != "" || opt.out != "" || opt.approveExternal != "" || opt.retainTranscript || opt.preflight) {
-		return opt, errors.New("inspect accepts --provider, --provider-command, --provider-env, --intent, and one input mode only")
+		return opt, errors.New("inspect accepts --provider, --provider-command, --intent, and one input mode only")
 	}
 	if opt.maxFilesPerChunk < 1 {
 		return opt, errors.New("--max-files-per-chunk must be at least 1")
@@ -583,14 +571,6 @@ func parseOptions(command string, args []string) (options, error) {
 	if strings.TrimSpace(opt.providerCommand) == "" {
 		return opt, errors.New("--provider-command 'ARGV' is required")
 	}
-	for _, name := range opt.providerEnv {
-		if !environmentNamePattern.MatchString(name) {
-			return opt, fmt.Errorf("--provider-env %q is not an environment variable name", name)
-		}
-		if !environmentPathVariable(name) {
-			return opt, fmt.Errorf("--provider-env %s: only directory variables (HOME, TMPDIR, *_HOME, *_CONFIG_DIR) are forwarded; sign the reviewer CLI in through its own login", name)
-		}
-	}
 	if command == "review" {
 		if strings.TrimSpace(opt.author) == "" {
 			return opt, errors.New("--author LABEL is required")
@@ -601,8 +581,6 @@ func parseOptions(command string, args []string) (options, error) {
 	}
 	return opt, nil
 }
-
-var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func validateInputMode(opt options) error {
 	fileMode := opt.file != ""
@@ -684,8 +662,8 @@ func captureFile(root, name string, inGit bool) (capture, error) {
 	} else if rel, inTemp = tempFilePath(physical); !inTemp {
 		return capture{}, fmt.Errorf("file must be inside the repository (or the current directory without Git), or under $TMPDIR: %s; %s", name, filePathHint)
 	}
-	if sensitivePath(rel) {
-		return capture{}, fmt.Errorf("sensitive path rejected: %s; prepare a sanitized review package at a non-sensitive path; %s", rel, filePathHint)
+	if secretLikePath(rel) {
+		return capture{}, fmt.Errorf("secret-like path rejected: %s; prepare a sanitized review package at a non-secret path; %s", rel, filePathHint)
 	}
 	if inGit && !inTemp {
 		if err := rejectTrackedSubmodule(root, rel); err != nil {
@@ -783,8 +761,8 @@ func captureRange(root, baseRev, headRev string, maxFilesPerChunk int) (capture,
 	}
 	files := make([]rangeFile, 0, len(records))
 	for _, rec := range records {
-		if sensitivePath(rec.path) {
-			return capture{}, fmt.Errorf("sensitive path rejected: %s; %s", rec.path, packagePathHint)
+		if secretLikePath(rec.path) {
+			return capture{}, fmt.Errorf("secret-like path rejected: %s; %s", rec.path, packagePathHint)
 		}
 		if rec.oldMode == "120000" || rec.newMode == "120000" {
 			return capture{}, fmt.Errorf("symlink input rejected in commit range: %s; %s", rec.path, packagePathHint)
@@ -1069,20 +1047,20 @@ func validateText(path string, data []byte) error {
 	}
 	// The message names the line, never the matched value.
 	line := func(offset int) int { return 1 + bytes.Count(data[:offset], []byte{'\n'}) }
-	for _, pattern := range sensitiveContentPatterns {
+	for _, pattern := range secretContentPatterns {
 		if match := pattern.FindIndex(data); match != nil {
-			return fmt.Errorf("likely sensitive content rejected: %s:%d", path, line(match[0]))
+			return fmt.Errorf("likely secret content rejected: %s:%d", path, line(match[0]))
 		}
 	}
-	for _, match := range sensitiveAssignmentPattern.FindAllSubmatchIndex(data, -1) {
+	for _, match := range secretAssignmentPattern.FindAllSubmatchIndex(data, -1) {
 		if !codeReference(data, match) {
-			return fmt.Errorf("likely sensitive content rejected: %s:%d", path, line(match[4]))
+			return fmt.Errorf("likely secret content rejected: %s:%d", path, line(match[4]))
 		}
 	}
 	return nil
 }
 
-func sensitivePath(path string) bool {
+func secretLikePath(path string) bool {
 	clean := strings.ToLower(filepath.ToSlash(path))
 	parts := strings.Split(clean, "/")
 	blockedDirs := map[string]bool{
@@ -1277,12 +1255,12 @@ func hashProviderBinary(path string, before os.FileInfo) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-// approvalID binds the provider label, the command template as given,
+// approvalToken binds the provider label, the command template as given,
 // the resolved binary identity, the ordered list of chunk package hashes, the
 // stated intent, and the forwarded environment (names with value digests, since a variable can
-// redirect the destination), so a single approval ID approves the whole run and any
+// redirect the destination), so a single token approves the whole run and any
 // of those changing invalidates it.
-func approvalID(binary providerExecutable, packageSHA256s, envDigests []string, intent string) string {
+func approvalToken(binary providerExecutable, packageSHA256s, envDigests []string, intent string) string {
 	material := struct {
 		Schema          string   `json:"schema"`
 		Provider        string   `json:"provider"`
@@ -1291,7 +1269,7 @@ func approvalID(binary providerExecutable, packageSHA256s, envDigests []string, 
 		BinarySHA256    string   `json:"binary_sha256"`
 		PackageSHA256s  []string `json:"package_sha256s"`
 		Environment     []string `json:"environment"`
-		// Omitted when empty so IDs without an intent keep their v4 encoding.
+		// Omitted when empty so tokens without an intent keep their v4 encoding.
 		Intent string `json:"intent,omitempty"`
 	}{
 		Schema:          "megapowers.external-review-approval.v4",
@@ -1305,32 +1283,24 @@ func approvalID(binary providerExecutable, packageSHA256s, envDigests []string, 
 	}
 	encoded, err := json.Marshal(material)
 	if err != nil {
-		panic(fmt.Sprintf("encode fixed approval ID material: %v", err))
+		panic(fmt.Sprintf("encode fixed approval token material: %v", err))
 	}
 	sum := sha256.Sum256(encoded)
 	return "mpr1_" + hex.EncodeToString(sum[:])
 }
 
-// environmentDigests maps each NAME=value entry to NAME=sha256(value). A
-// proxy URL contributes only its scheme, host, and port: the Claude Code
-// sandbox rotates proxy userinfo on every shell call, and the endpoint is
-// what decides where traffic goes.
+// environmentDigests maps each NAME=value entry to NAME=sha256(value).
 func environmentDigests(env []string) []string {
 	digests := make([]string, 0, len(env))
 	for _, entry := range env {
 		name, value, _ := strings.Cut(entry, "=")
-		if upper := strings.ToUpper(name); strings.HasSuffix(upper, "_PROXY") && upper != "NO_PROXY" {
-			if parsed, err := url.Parse(value); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-				value = parsed.Scheme + "://" + parsed.Host
-			}
-		}
 		digests = append(digests, name+"="+hashBytes([]byte(value)))
 	}
 	return digests
 }
 
-func approvalIDMatches(provided string, binary providerExecutable, packageSHA256s, envDigests []string, intent string) bool {
-	expected := approvalID(binary, packageSHA256s, envDigests, intent)
+func approvalTokenMatches(provided string, binary providerExecutable, packageSHA256s, envDigests []string, intent string) bool {
+	expected := approvalToken(binary, packageSHA256s, envDigests, intent)
 	var providedDigest [sha256.Size]byte
 	valid := false
 	if strings.HasPrefix(provided, "mpr1_") {
@@ -1342,7 +1312,7 @@ func approvalIDMatches(provided string, binary providerExecutable, packageSHA256
 	}
 	expectedDigest, err := hex.DecodeString(strings.TrimPrefix(expected, "mpr1_"))
 	if err != nil || len(expectedDigest) != len(providedDigest) {
-		panic("internal approval ID encoding failure")
+		panic("internal approval token encoding failure")
 	}
 	equal := subtle.ConstantTimeCompare(providedDigest[:], expectedDigest)
 	return valid && equal == 1
@@ -1424,7 +1394,7 @@ type providerSession struct {
 	env     []string
 }
 
-func openProviderSession(binary providerExecutable, extraEnv []string, root string) (*providerSession, error) {
+func openProviderSession(binary providerExecutable, root string) (*providerSession, error) {
 	scratch, err := os.MkdirTemp("", "megapowers-review-")
 	if err != nil {
 		return nil, fmt.Errorf("create provider scratch directory: %w", err)
@@ -1452,7 +1422,7 @@ func openProviderSession(binary providerExecutable, extraEnv []string, root stri
 			return nil, err
 		}
 	}
-	session.env, err = providerEnvironment(extraEnv, root)
+	session.env, err = providerEnvironment(root)
 	if err != nil {
 		session.close()
 		return nil, err
@@ -1631,7 +1601,7 @@ func classifyProviderDiagnostic(raw []byte) string {
 		needles []string
 	}{
 		{
-			message: "authentication failed; verify provider login or API access",
+			message: "authentication failed; verify provider login or API credentials",
 			needles: []string{"authentication", "unauthorized", "not logged in", "oauth", "api key", "api_key", "credential", "401", "token has expired", "login expired", "please log in"},
 		},
 		{
@@ -1661,36 +1631,20 @@ func classifyProviderDiagnostic(raw []byte) string {
 	return "details withheld because provider stderr is untrusted"
 }
 
-// providerEnvironment builds the provider process environment from a neutral
-// base allowlist plus the operator's --provider-env names. PATH is sanitized
-// and any directory-valued variable that resolves inside the repository is
-// dropped.
-func providerEnvironment(extra []string, root string) ([]string, error) {
-	names := []string{
-		"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TERM",
-		"SSL_CERT_FILE", "SSL_CERT_DIR", "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY",
-		"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+// providerEnvironment builds the provider process environment from PATH and
+// HOME only. PATH is sanitized, and HOME is dropped when it resolves inside
+// the repository.
+func providerEnvironment(root string) ([]string, error) {
+	env := make([]string, 0, 2)
+	if home, ok := os.LookupEnv("HOME"); ok && !pathValueInsideRoot(home, root) {
+		env = append(env, "HOME="+home)
 	}
-	names = append(names, extra...)
-	sort.Strings(names)
-	env := make([]string, 0, len(names))
-	seen := make(map[string]bool, len(names))
-	for _, name := range names {
-		if seen[name] {
-			continue
+	if path, ok := os.LookupEnv("PATH"); ok {
+		path = sanitizedPath(path, root)
+		if path == "" {
+			return nil, errors.New("PATH has no absolute entry outside the repository or current directory review root; add the provider's installation directory outside the review root to PATH")
 		}
-		seen[name] = true
-		if value, ok := os.LookupEnv(name); ok {
-			if name == "PATH" {
-				value = sanitizedPath(value, root)
-				if value == "" {
-					return nil, errors.New("PATH has no absolute entry outside the repository or current directory review root; add the provider's installation directory outside the review root to PATH")
-				}
-			} else if environmentPathVariable(name) && pathValueInsideRoot(value, root) {
-				continue
-			}
-			env = append(env, name+"="+value)
-		}
+		env = append(env, "PATH="+path)
 	}
 	return env, nil
 }
@@ -1715,17 +1669,6 @@ func sanitizedPath(value, root string) string {
 		kept = append(kept, entry)
 	}
 	return strings.Join(kept, string(os.PathListSeparator))
-}
-
-// environmentPathVariable reports whether a variable names a directory the
-// provider would read configuration or state from, so a value inside the
-// repository must not be forwarded.
-func environmentPathVariable(name string) bool {
-	switch name {
-	case "HOME", "TMPDIR":
-		return true
-	}
-	return strings.HasSuffix(name, "_HOME") || strings.HasSuffix(name, "_CONFIG_DIR")
 }
 
 func pathValueInsideRoot(value, root string) bool {

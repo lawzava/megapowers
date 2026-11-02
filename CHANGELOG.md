@@ -11,6 +11,37 @@ semver.
 
 - The output style sends every decision through the harness question tool: one decision per question, the recommended option first, approvals as checkboxes. It no longer allows a numbered prose list to answer by number. Without a question tool, the agent asks one question per message.
 
+## 0.42.8 - 2026-11-01
+
+### Changed
+
+- Restored the plugin text from before 0.42.6 (`plugins/megapowers/`). The
+  Claude plugin directory held 0.42.6 and 0.42.7 by policy; 0.42.5 passed with
+  one warning. The 0.42.6 renames are reverted, and the explicit statements that
+  the review tool forwards no credentials are back. Two interfaces change
+  back: the `independent-review` JSON field and `--approve-external` value
+  `approval_id` is `approval_token` again (the `mpr1_` format is unchanged), and
+  the session-mine redaction placeholder `<redacted>` is `<secret>` again. The
+  0.42.7 behavior stays: the reviewer process gets only `PATH` and `HOME`, and
+  `--provider-env` stays removed. The `mcp-setup` skill again tells agents how
+  to provision a token or header. The contract test
+  `TestShippedFilesAvoidCredentialWords` is removed. The attestation selftest
+  limit of 4 minutes stays.
+
+## 0.42.7 - 2026-11-01
+
+### Changed
+
+- The review tool passes only `PATH` and `HOME` to the reviewer process. It no
+  longer forwards `TMPDIR`, `LANG`, `LC_ALL`, `TERM`, `SSL_CERT_FILE`,
+  `SSL_CERT_DIR`, the proxy variables, or the `XDG_*` directories, and the
+  `--provider-env` flag is removed; passing it is now an unknown-flag error.
+  `PATH` is still sanitized, and `HOME` is still dropped when it resolves inside
+  the repository. Approval IDs from earlier versions no longer match: the
+  forwarded environment is part of the ID, and its contents changed. Run
+  `inspect` again after upgrading. This answers the Claude plugin directory hold
+  on the environment-forwarding rule.
+
 ## 0.42.6 - 2026-11-01
 
 ### Changed

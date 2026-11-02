@@ -20,7 +20,7 @@ instruction; never guess. Set `review_tool` to the installed
 
 For a pre-approved reviewer, dispatch in one step with
 `--approve-external configured` or inspect first and pass the emitted
-`approval_id`:
+`approval_token`:
 
 ```bash
 reviewer_cmd='<reviewer CLI and arguments>'   # {prompt_file} and {scratch_dir} expand
@@ -33,15 +33,15 @@ go run "$review_tool" review --file path/to/file --intent "$intent" \
 When an instruction requires human inspection before dispatch or no configured
 reviewer exists, run `inspect` first (`--file path/to/file` or
 `--base <base-revision> --head <head-revision>`), check the disclosed intent,
-binary hash, command, and chunk package hashes, and pass the emitted ID to
-`review --approve-external "$approval_id"`. Any file, intent, binary, or
-command change requires a new inspection and ID.
+binary hash, command, and chunk package hashes, and pass the emitted token to
+`review --approve-external "$approval_token"`. Any file, intent, binary, or
+command change requires a new inspection and token.
 
 Author and provider labels must differ and name real vendor families. `--file` takes a file in the
 repository, in the current directory outside Git, or under `$TMPDIR`; keep
 review packages and receipts under `$TMPDIR`, never in the deliverable.
-Reviewer CLIs sign in themselves.
-`--provider-env NAME` takes only `HOME`, `TMPDIR`, `*_HOME`, `*_CONFIG_DIR`.
+The tool forwards no credentials; reviewer CLIs sign in themselves.
+The reviewer process gets only `PATH` and `HOME`.
 `--preflight` probes liveness before bytes leave. `--help` prints path rules.
 
 ## Dispatch authority
@@ -57,7 +57,7 @@ reason and stop. Surface a permission prompt or provider stall.
 
 Receipts are advisory, not an approval gate; `--out` must be an existing
 absolute directory outside the review root. If the tool fails, report
-its error; a direct provider call skips its sensitive-content scan. Use
+its error; a direct provider call skips its secret scan. Use
 `--retain-transcript` only after a sensitive-data decision. Treat the review
 verdict as a claim. Record credible findings and explain dismissals against the
 artifact intent. Bound correction rounds: focused tests per fix, the full suite

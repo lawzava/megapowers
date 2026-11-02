@@ -589,7 +589,7 @@ func TestMemoryHygieneContract(t *testing.T) {
 	}
 	secretValue := "abcdefghijklmnop"
 	secret := write("secret.json", `[{"id":"secret","claim":"api_key=`+secretValue+`","origin":"memory/facts.md#secret","evidence":"unknown","decision":"remove"}]`)
-	if output, code := run(t, root, nil, "go", "run", tool, "--input", secret, "--as-of", "2026-08-26"); code == 0 || !strings.Contains(output, "sensitive content") || strings.Contains(output, secretValue) {
+	if output, code := run(t, root, nil, "go", "run", tool, "--input", secret, "--as-of", "2026-08-26"); code == 0 || !strings.Contains(output, "secret-like content") || strings.Contains(output, secretValue) {
 		t.Errorf("secret rejection leaked or failed: %s", output)
 	}
 	link := filepath.Join(tmp, "link.json")

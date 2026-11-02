@@ -4553,9 +4553,15 @@ func commandEvents(command string, rc int) []actorEvent {
 		if kind := commandEffect(segment.words); kind != "" {
 			events = append(events, actorEvent{Kind: kind, RC: rc})
 		}
+		testAnchors, attributable := 0, true
 		if isTestCommand(fields) {
+			testAnchors = 1
+		} else {
+			testAnchors, attributable = runReceiptTests(segment.words)
+		}
+		for anchor := 0; anchor < testAnchors; anchor++ {
 			kind := unattributedTestKind
-			if !substitution && cdChain && index == len(segments)-1 {
+			if attributable && !substitution && cdChain && index == len(segments)-1 {
 				kind = "test"
 			}
 			events = append(events, actorEvent{Kind: kind, RC: rc})
@@ -5122,6 +5128,113 @@ func isGoRunTarget(fields []string, target, workingDirectory string) bool {
 
 func commandNameMatches(command, name string) bool {
 	return command == name || strings.HasSuffix(filepath.ToSlash(command), "/"+name)
+}
+
+// runReceiptTests counts the test anchors in a verify-and-finish run-receipt
+// invocation: go run <dir>/run-receipt.go [flags] [--] <command>. The tool
+// exits with the wrapped check's status, so a wrapped test is an anchor like a
+// bare test command, and it records one execution receipt per test it runs,
+// which binds to that anchor's trace position. Under --shell the check is a
+// script for sh -c: each test stage in it is an anchor, but the script's exit
+// code can mask a failing stage, so attributable is false. The flags follow
+// Go's flag package, as the tool parses them: -x or --x, -x=value, an optional
+// =value on booleans, and the command starts at "--" or the first non-flag.
+func runReceiptTests(words []string) (anchors int, attributable bool) {
+	words = executableFields(words)
+	if len(words) < 3 || words[0] != "go" || words[1] != "run" || !commandNameMatches(words[2], "run-receipt.go") {
+		return 0, false
+	}
+	shell := false
+	index := 3
+	for ; index < len(words); index++ {
+		word := words[index]
+		if word == "--" {
+			index++
+			break
+		}
+		if len(word) < 2 || word[0] != '-' {
+			break
+		}
+		name, value, hasValue := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(word, "-"), "-"), "=")
+		switch name {
+		case "dir", "tail":
+			if !hasValue {
+				index++
+			}
+		case "shell", "reuse":
+			enabled := true
+			if hasValue {
+				parsed, err := strconv.ParseBool(value)
+				if err != nil {
+					return 0, false
+				}
+				enabled = parsed
+			}
+			if name == "shell" {
+				shell = enabled
+			}
+		default:
+			return 0, false
+		}
+	}
+	// Redirections belong to the caller's shell, not to the wrapped command.
+	command := make([]string, 0, len(words)-min(index, len(words)))
+	rest := words[min(index, len(words)):]
+	for position := 0; position < len(rest); position++ {
+		if isRedirectionWord(rest[position]) {
+			if redirectionNeedsTarget(rest[position]) {
+				position++
+			}
+			continue
+		}
+		command = append(command, strings.ToLower(rest[position]))
+	}
+	if len(command) == 0 {
+		return 0, false
+	}
+	if !shell {
+		if isTestCommand(executableFields(command)) {
+			return 1, true
+		}
+		return 0, false
+	}
+	if len(command) != 1 {
+		return 0, false
+	}
+	segments, _, ok := splitCommandSegments(command[0])
+	if !ok {
+		return 0, false
+	}
+	for _, segment := range segments {
+		if isTestCommand(executableFields(lowerWords(segment.words))) {
+			anchors++
+		}
+	}
+	return anchors, false
+}
+
+func lowerWords(words []string) []string {
+	lowered := make([]string, len(words))
+	for index, word := range words {
+		lowered[index] = strings.ToLower(word)
+	}
+	return lowered
+}
+
+// redirectionNeedsTarget reports an operator word with no attached target,
+// such as ">" or "2>>", whose target is the next word.
+func redirectionNeedsTarget(word string) bool {
+	switch strings.TrimLeft(word, "0123456789") {
+	case ">", ">>", ">|", "<", "<<", "<>", "&>", "&>>":
+		return true
+	}
+	return false
+}
+
+// isRedirectionWord reports shell redirections such as 2>&1, >log, &>log, <in.
+func isRedirectionWord(word string) bool {
+	word = strings.TrimLeft(word, "0123456789")
+	return strings.HasPrefix(word, ">") || strings.HasPrefix(word, "<") || strings.HasPrefix(word, "&>")
 }
 
 func isTestCommand(fields []string) bool {

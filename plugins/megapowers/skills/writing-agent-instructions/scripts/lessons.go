@@ -879,14 +879,14 @@ func cmdRetire(opt options) (int, error) {
 	return exitOK, nil
 }
 
-// rePathField matches any whitespace-delimited field that contains a path
+// rePathToken matches any whitespace-delimited token that contains a path
 // separator. It over-scrubs words such as and/or, which is the safe side:
 // a path can name a client, a user, or a machine, and a path with a space
-// in it splits into fields that each still contain a separator.
-var rePathField = regexp.MustCompile(`\S*[/\\]\S*`)
+// in it splits into tokens that each still contain a separator.
+var rePathToken = regexp.MustCompile(`\S*[/\\]\S*`)
 
-// scrub replaces path-like fields before text leaves the machine.
-func scrub(text string) string { return rePathField.ReplaceAllString(text, "<path>") }
+// scrub replaces path-like tokens before text leaves the machine.
+func scrub(text string) string { return rePathToken.ReplaceAllString(text, "<path>") }
 
 // cmdExport prints what may leave the machine for the upstream loop: the
 // lesson, its class and surface, the check command, and an installed-ab case
