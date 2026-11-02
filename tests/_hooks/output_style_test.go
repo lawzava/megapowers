@@ -130,6 +130,8 @@ func TestRepositoryOutputStyleRendersWithoutFrontmatter(t *testing.T) {
 		"Default to 100 prose words or fewer.",
 		"Do not exceed 250 prose words",
 		"Preserve exact identifiers, commands, numbers, caveats, decisions, and material uncertainty.",
+		"Ask each decision through the harness question tool.",
+		"If the harness has no question tool, ask one question per message.",
 	} {
 		if !strings.Contains(output.String(), required) {
 			t.Errorf("rendered output omits %q", required)
@@ -137,5 +139,8 @@ func TestRepositoryOutputStyleRendersWithoutFrontmatter(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "force-for-plugin:") {
 		t.Error("rendered output exposes Claude frontmatter")
+	}
+	if strings.Contains(output.String(), "answer by number") {
+		t.Error("rendered output still offers a numbered list for decisions")
 	}
 }
