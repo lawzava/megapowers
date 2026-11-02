@@ -134,6 +134,20 @@
       "provenance": "authored 2026-08-30; repository-answerable questions need no external evidence"
     },
     {
+      "id": "close-off-explicit",
+      "kind": "explicit",
+      "expected": "close-off",
+      "prompt": "Use $megapowers:close-off. The session's task is finished: the tests in this repository pass. Close off the session.",
+      "files": { "go.mod": "module example.com/probe\n\ngo 1.24\n", "value.go": "package probe\n\nfunc Value() int { return 1 }\n", "value_test.go": "package probe\n\nimport \"testing\"\n\nfunc TestValue(t *testing.T) { if Value() != 1 { t.Fatal(\"value\") } }\n" },
+      "provenance": "authored 2026-11-02; explicit-only close-off skill keeps its single explicit probe"
+    },
+    {
+      "id": "close-off-implicit",
+      "kind": "near-miss",
+      "prompt": "That is all I needed from this session. Record what we learned and clean up anything you started, then tell me when it is safe to archive.",
+      "provenance": "authored 2026-11-02; an implicit request must not select the explicit-only close-off skill"
+    },
+    {
       "id": "grill-me-explicit",
       "kind": "explicit",
       "expected": "grill-me",

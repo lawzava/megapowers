@@ -28,6 +28,10 @@ var requiredSkillFacts = map[string][]string{
 		"blocks nothing",
 		"references/pr-babysit.md",
 	},
+	"close-off": {
+		"verify-and-finish", "references/learning-loop.md", "did not create", "uncommitted work",
+		"ask about first", "never archive", "it's ready for archiving.",
+	},
 	"design-and-plan": {
 		"acceptance oracle",
 		"requirement id",
@@ -190,6 +194,19 @@ func TestSkillRequiredFacts(t *testing.T) {
 	style := read(t, root, "plugins/megapowers/output-styles/megapowers.md")
 	for _, needle := range forbiddenEverywhere {
 		requireAbsent(t, style, needle, "output style")
+	}
+}
+
+// close-off ends sessions, so both harnesses must keep it explicit-only.
+func TestCloseOffExplicitOnly(t *testing.T) {
+	root := repoRoot(t)
+	skill := read(t, root, "plugins/megapowers/skills/close-off/SKILL.md")
+	if !regexp.MustCompile(`(?m)^disable-model-invocation: true$`).MatchString(skill) {
+		t.Error("close-off lacks disable-model-invocation: true")
+	}
+	policy := read(t, root, "plugins/megapowers/skills/close-off/agents/openai.yaml")
+	if !regexp.MustCompile(`(?m)^policy:\n  allow_implicit_invocation: false$`).MatchString(policy) {
+		t.Error("close-off openai.yaml lacks policy.allow_implicit_invocation: false")
 	}
 }
 

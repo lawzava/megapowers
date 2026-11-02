@@ -6,7 +6,7 @@
 
 <p align="center">
   Plan, test, debug, and ship with more care in Claude Code and Codex.<br>
-  One plugin, 15 skills, and safety hooks. About 1.4k tokens per session.
+  One plugin, 16 skills, and safety hooks. About 1.4k tokens per session.
 </p>
 
 <p align="center">
@@ -114,7 +114,7 @@ that site.
 |---|---|---|---|
 | Works with | Claude Code and Codex, one plugin, shared hook code | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
 | Get it from | This repository's marketplace | The official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
-| What you get | 15 skills, one style, three hooks, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
+| What you get | 16 skills, one style, three hooks, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
 | Published measurements | The A/B study below, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
 
 Which one fits:
@@ -141,6 +141,7 @@ only when your request matches. The *experimental* labels come from
 | Skill | Use it when |
 |---|---|
 | `design-and-plan` | A feature or interface needs a spec, a tradeoff decision, or a step-by-step plan |
+| `close-off` *(experimental)* | You invoke it by name at the end of a session: it checks the task is complete, records learnings in the project's own surface, cleans up what the session started, and says it is ready for archiving |
 | `grill-me` *(experimental)* | You invoke it by name to stress-test a plan or idea through a structured interview before any action |
 | `test-first-implementation` | Adding or changing behavior, fixing a confirmed bug, or refactoring: red, green, refactor, with each run observed |
 | `systematic-debugging` | A bug, flaky test, incident, or regression has an unknown cause |
@@ -270,7 +271,7 @@ words and loads only when that skill is used.
 <details>
 <summary>Exactly what installs</summary>
 
-- 15 skills under `skills/`, listed in `skills/catalog.json`.
+- 16 skills under `skills/`, listed in `skills/catalog.json`.
 - One output style, `output-styles/megapowers.md`, shared by both tools.
 - Go hooks on three events, compiled once into a local cache:
   - `SessionStart`: a reminder that skill guidance applies once its file is

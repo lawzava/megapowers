@@ -5,6 +5,17 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Added
+
+- `close-off`, an explicit-only skill (`disable-model-invocation` for Claude
+  Code, `allow_implicit_invocation: false` for Codex) that ends a session: it
+  checks completion with `verify-and-finish`, records learnings in the
+  project's own learning surface, removes only what the session created, lists
+  what it left, and ends with `It's ready for archiving.` without archiving the
+  session.
+
 ## 0.43.0 - 2026-11-02
 
 ### Added

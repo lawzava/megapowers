@@ -18,6 +18,7 @@ installed-plugin-ab	grill-me	behavioral
 installed-plugin-ab	megapowers-doctor	behavioral
 install-smoke	evidence-research	delivery
 trigger-recall	autonomous-run	activation
+trigger-recall	close-off	activation
 trigger-recall	design-and-plan	activation
 trigger-recall	evidence-research	activation
 trigger-recall	grill-me	activation
