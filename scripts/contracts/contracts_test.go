@@ -239,11 +239,16 @@ func TestOutputStyleContract(t *testing.T) {
 		"Do not exceed 250 prose words", "Do not use em dashes.", "`humanizing-prose`",
 		"named source, direct observation, or explicit uncertainty", "actor, mechanism, scope, condition, or measurement",
 		"intent line", "progress lines", "decision, approval, or input",
+		"Ask each decision through the harness question tool.", "one decision per question", "recommended option first",
+		"Offer approvals as checkboxes.", "Never use a numbered prose list.", "If the harness has no question tool, ask one question per message.",
 	} {
 		requireContains(t, style, marker, "output style")
 	}
 	// Narration suppression was removed: one intent line and brief progress lines are allowed.
 	requireAbsent(t, style, "Do not narrate routine tool use.", "output style")
+	// Law's standing preference: decisions use the question tool, never a numbered prose list to answer by number.
+	requireAbsent(t, style, "answer by number", "output style")
+	requireAbsent(t, style, "or as a numbered list the user can", "output style")
 	hooks := read(t, root, "plugins/megapowers/hooks/hooks.json")
 	requireContains(t, hooks, "run-hook.cmd session-start", "session-start hook")
 	requireContains(t, read(t, root, "docs/harness-support.md"), "MEGAPOWERS_OUTPUT_STYLE=off", "Codex output style opt-out")

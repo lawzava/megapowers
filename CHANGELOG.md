@@ -5,6 +5,12 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Changed
+
+- The output style sends every decision through the harness question tool: one decision per question, the recommended option first, approvals as checkboxes. It no longer allows a numbered prose list to answer by number. Without a question tool, the agent asks one question per message.
+
 ## 0.42.8 - 2026-11-01
 
 ### Changed
