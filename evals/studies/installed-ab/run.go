@@ -1894,6 +1894,7 @@ func forbiddenSkillSelections(events []actorEvent, forbidden []string) int {
 
 var publicMegapowersSkillNames = [...]string{
 	"autonomous-run",
+	"close-off",
 	"design-and-plan",
 	"evidence-research",
 	"grill-me",
