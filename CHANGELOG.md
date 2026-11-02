@@ -5,6 +5,20 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.44.1 - 2026-11-02
+
+### Fixed
+
+- User commands in `safe-effects` use fenced code blocks.
+- Trigger-recall explicit probes use each harness's invocation syntax.
+  Interview and MCP setup probes permit their legitimate planning and
+  completion-verification co-selections without relaxing the scorer.
+
+### Added
+
+- Validation caps each skill's description plus triggers at 1,536 characters
+  and its body at 20,000 bytes, and reports total catalog characters.
+
 ## 0.44.0 - 2026-11-02
 
 ### Added

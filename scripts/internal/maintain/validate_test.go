@@ -75,6 +75,31 @@ func TestValidateKeepsDiagnosticsOfAbruptExitsAndBuildFailures(t *testing.T) {
 	}
 }
 
+func TestValidateCatalogBudgets(t *testing.T) {
+	for _, tc := range []struct{ name, description, trigger, body, want string }{
+		{"combined", strings.Repeat("x", 1000), strings.Repeat("y", 537), "Body", "1537 characters"},
+		{"body", "Use for tests", "", strings.Repeat("x", 20001), "20001 bytes"},
+		{"crlf-body", "Use for tests", "", strings.Repeat("x\r\n", 7000), "21000 bytes"},
+		{"boundary", strings.Repeat("é", 1000), strings.Repeat("y", 536), strings.Repeat("x", 20000), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, _ := newValidateFixture(t)
+			path := filepath.Join(repo, "plugins/megapowers/skills/alpha/SKILL.md")
+			if err := os.WriteFile(path, []byte("---\nname: alpha\ndescription: "+tc.description+"\nwhen_to_use: \""+tc.trigger+"\"\n---\n"+tc.body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var out, errOut bytes.Buffer
+			code := runValidate(context.Background(), repo, nil, &out, &errOut)
+			if tc.want != "" && (code == 0 || !strings.Contains(errOut.String(), tc.want)) {
+				t.Fatalf("oversize catalog accepted: code %d\n%s\n%s", code, &out, &errOut)
+			}
+			if tc.want == "" && (code != 0 || !strings.Contains(out.String(), "total catalog characters: 1541")) {
+				t.Fatalf("boundary/count: code %d\n%s\n%s", code, &out, &errOut)
+			}
+		})
+	}
+}
+
 func newValidateFixture(t *testing.T) (string, string) {
 	t.Helper()
 	repo := t.TempDir()

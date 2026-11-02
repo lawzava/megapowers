@@ -94,6 +94,13 @@ are exempt from implicit recall. The runner reads each harness's native policy.
 `grill-me` has separate explicit-invocation and implicit non-selection
 probes. Every probe records provenance.
 
+Explicit prompts use the Codex `$megapowers:` form in the corpus; the runner
+converts it to Claude's `/megapowers:` form before execution and hashes the
+executed prompt. The implicit interview probe permits `design-and-plan` for
+requirements discovery while still forbidding `grill-me`. The MCP setup
+paraphrase permits `verify-and-finish` because it requests proof that the tools
+load. These are case-specific co-selections, not scorer or gate exceptions.
+
 `gates.json` enforces for the harnesses in `enforce_harnesses` (currently
 Claude only) and records violations without failing elsewhere. The 2026-09-02
 Codex run reported 0/117 implicit recall despite a rendered catalog.
