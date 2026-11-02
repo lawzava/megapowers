@@ -16,9 +16,9 @@ only.
 ## 1. Confirm the task is complete
 
 Apply [verify-and-finish](../verify-and-finish/SKILL.md) to the session's task.
-If in-scope work remains, do it. If something blocks, report the exact blocker
-and what it needs. Then stop: skip steps 2 to 4 and never say the session is
-ready.
+If in-scope work remains, do it, then run verify-and-finish again. If
+something blocks, report the exact blocker and what it needs, skip steps 2 to
+4, and never say the session is ready.
 
 ## 2. Record the learnings
 
@@ -26,19 +26,22 @@ Write what this session taught that a later session needs into the learning
 surface the project defines: its instruction files, learning log, or native
 memory. Choose the target and evidence as in the
 [learning loop](../writing-agent-instructions/references/learning-loop.md).
-Invoking this skill approves lesson entries there, not a commit or push. Keep
-only durable, evidenced lessons, not session history. If the project defines no
-surface, skip this step and say so.
+Invoking this skill approves lesson entries there, not a commit or push. Edit
+only lesson entries, and keep only durable, evidenced lessons, not session
+history. If the session taught none, or the project defines no surface, skip
+this step and say so.
 
 ## 3. Clean up what this session created
 
-Remove only items this session created and can identify by a recorded PID, ID,
-or path:
+Remove only items this session created and recorded when it created them (PID,
+ID, or path). Before signalling a PID, confirm it is still the process this
+session started. Targets:
 
 - background processes, shells, local servers, and daemons;
 - subagents and orchestrator sessions it started;
-- temporary worktrees with no uncommitted work, never their branches;
-- scratch files under `$TMPDIR`.
+- temporary worktrees that are clean, whose commits are reachable from a
+  branch, and that are not the current directory; never their branches;
+- scratch files under `$TMPDIR` (skip when it is unset).
 
 Read back each removal. Never stop or delete anything this session did not
 create, anything holding uncommitted work, or anything the instructions say to
