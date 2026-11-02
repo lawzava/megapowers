@@ -18,7 +18,7 @@ Take the reviewer family and exact command from the capability registry or user
 instruction; never guess. Set `review_tool` to the installed
 `scripts/megapowers-review.go` beside this `SKILL.md`, not a project copy.
 
-For a pre-approved reviewer, dispatch in one step with
+Dispatch a pre-approved reviewer in one step with
 `--approve-external configured` or inspect first and pass the emitted
 `approval_token`:
 
@@ -42,7 +42,8 @@ repository, in the current directory outside Git, or under `$TMPDIR`; keep
 review packages and receipts under `$TMPDIR`, never in the deliverable.
 The tool forwards no credentials; reviewer CLIs sign in themselves.
 The reviewer process gets only `PATH` and `HOME`.
-`--preflight` probes liveness before bytes leave. `--help` prints path rules.
+`--preflight` probes liveness before bytes leave. Without Go or a shell, send
+nothing: the secret scan lives in the tool. Tell the user.
 
 ## Dispatch authority
 
@@ -60,8 +61,7 @@ absolute directory outside the review root. If the tool fails, report
 its error; a direct provider call skips its secret scan. Use
 `--retain-transcript` only after a sensitive-data decision. Treat the review
 verdict as a claim. Record credible findings and explain dismissals against the
-artifact intent. Bound correction rounds: focused tests per fix, the full suite
-once after the last round; re-review only
+artifact intent. Bound correction rounds: re-review only
 [fixes since the prior round](references/correction-rounds.md), affected
 boundaries, and new evidence. Join every requested review before completion;
 approval cannot settle a queued review.

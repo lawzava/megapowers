@@ -20,5 +20,8 @@ units; unparseable numbers report `threshold-changed` as unverifiable.
 Exit codes are 0 clean, 1 findings, 2 unable to run. `go run` maps either
 failure to 1; build the file when exact exit codes matter.
 
+If Go or a shell is not available, read the diff by hand for the same
+weakening and report each finding, or report that the check did not run.
+
 A same-line `bar-guard:allow <reason>` remains visible as waived and permits
 exit 0. Fix each finding or justify it to the user.

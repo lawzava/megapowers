@@ -5,6 +5,10 @@ to correct the agent are the best evidence for a new check, rule, or skill.
 `scripts/session-mine.go` reads local Claude Code and Codex transcripts,
 read-only, so a retrospective can cover many sessions, not one.
 
+It needs Go, a shell, and local transcripts. Without them, say so and ask the
+user to paste the corrections or sessions to review; do not reconstruct them
+from memory.
+
 Use it when:
 
 - a retrospective needs to know if a mistake repeats across sessions;
@@ -69,7 +73,7 @@ work was; each thread with a status tag such as `[merged #12]`, `[open PR #14]`,
 `[abandoned]`, or `[unknown]`; at most five open problems; and the next move.
 
 `scorecard` counts outcome signals per project: skill loads and the
-corrections that followed them, megapowers gate blocks, `VERIFIED` and `NOT
+corrections that followed them, megapowers gate blocks (written by the plugin's hooks, so zero without them), `VERIFIED` and `NOT
 VERIFIED` reports, foreground `sleep` calls, and autonomous-run journal
 events. `human_turns` and `corrections` leave out machine turns, which show as
 `machine_turns`. A call counts as a foreground sleep when a shell command in it

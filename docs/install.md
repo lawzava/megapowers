@@ -92,6 +92,39 @@ The local marketplace is `.agents/plugins/marketplace.json`. The new home
 needs its own `codex login`. Trust the hooks when Codex asks, and confirm with
 `hooks/list`.
 
+## Directory edition
+
+The directory edition is a skills-only ZIP for the OpenAI Plugins
+Directory, shared by ChatGPT and Codex. It is generated from
+`plugins/megapowers`; the plugin installed from the marketplace is unchanged.
+
+```bash
+go run ./scripts/cmd/maintainer directory-edition --out "$TMPDIR/megapowers-directory"
+```
+
+The command writes `megapowers-<version>.zip` and prints its size and sha256.
+The same input gives the same bytes. `--check` builds and validates without
+keeping the output, and `scripts/validate.sh` runs it.
+
+The edition ships the skills, an icon, and a `.codex-plugin/plugin.json` for
+the directory listing. It does not ship:
+
+- the destructive-command guard and the completion and effect gates (hooks);
+- the startup skill reminder and the Codex startup style (hooks);
+- the Claude Code output style;
+- the doctor runner. `megapowers-doctor` reports the directory edition and
+  checks the skill and version only.
+
+Each packaged `SKILL.md` ends with one line that ranks explicit user
+instructions above skill guidance. Skills that run bundled Go scripts need a
+local shell and Go; without them each skill states a manual fallback or
+stops without sending anything. The skill `upgrading-megapowers` drives the
+Claude Code and Codex plugin CLIs and does not apply to directory installs.
+
+Install the full plugin from the self-hosted marketplace to get the guard,
+the gates, and the style. Submission to the directory is a manual step in
+the OpenAI portal.
+
 ## Pin a release
 
 A local immutable checkout makes the selected source explicit for either

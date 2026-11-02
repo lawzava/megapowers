@@ -8,19 +8,21 @@ metadata:
 
 # Megapowers Doctor
 
-Run the deterministic check first. The plugin root is two directories above
-this skill's directory:
+The plugin root is two directories above this skill's directory. If
+`<plugin root>/hooks/run-hook.cmd` is missing, this is the directory
+edition: follow [directory edition](references/directory-edition.md) and stop.
+Otherwise run:
 
 ```bash
 "<plugin root>/hooks/run-hook.cmd" doctor
 ```
 
-It prints the plugin version and root, the detected harness, the Go toolchain
-against the cached hook runner, the output-style setting, the registered hook
-events, whether the hooks ran, the local marketplace copy, and recent skill
-loads in this workspace. Problems start with `WARN`. Quote only those lines and give one
-fix per line from [fixes by check](references/fixes.md). If the command itself
-fails, report its exit status and raw error; that failure is the diagnosis.
+It prints the plugin version and root, the harness, the Go toolchain
+against the cached runner, the output-style setting, the registered
+hooks, whether hooks ran, the marketplace copy, and recent skill loads.
+Problems start with `WARN`. Quote only those lines and give one fix per line
+from [fixes by check](references/fixes.md). If the command fails, report its
+exit status and raw error; that failure is the diagnosis.
 
 ## Did a skill fire?
 

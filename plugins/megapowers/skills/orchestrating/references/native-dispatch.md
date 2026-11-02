@@ -1,7 +1,8 @@
 # Native dispatch and lane lifecycle
 
 Adapt argument names to the active harness version without changing the call
-order.
+order. If the harness has no agent-spawning call, run the lanes inline, one at
+a time.
 
 Codex:
 
@@ -59,6 +60,8 @@ needs the lead's effort.
   never carries, unless `--discard` is given.
   `diff --name NAME` prints the patch, and `list` shows every lane. A lane
   starts from a commit, so lead changes that are not yet committed are absent.
+  If Go or a shell is not available, run writing lanes one at a time, so no two
+  lanes edit the same file.
 - Worktree lanes multiply build output. Share build caches across worktrees
   where the toolchain allows it, such as a common `CARGO_TARGET_DIR` or the
   default Go cache, and check free disk before fanning out builds.

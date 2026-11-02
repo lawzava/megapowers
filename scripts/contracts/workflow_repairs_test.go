@@ -52,7 +52,7 @@ var requiredSkillFacts = map[string][]string{
 	},
 	"humanizing-prose": {
 		"their own voice", "without bold labels",
-		"../../output-styles/megapowers.md",
+		"megapowers output style",
 		"every recommendation",
 	},
 	"independent-review": {

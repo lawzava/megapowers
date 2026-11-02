@@ -75,6 +75,9 @@ Resolve `scripts/memory-audit.go` in this skill's directory, then run:
 go run "$SKILL_DIR/scripts/memory-audit.go" --input "$audit_manifest" --as-of YYYY-MM-DD
 ```
 
+If Go or a shell is not available, check each record against the same rules
+by hand and report the audit as manual.
+
 The validator rejects unsupported evidence, expired facts, missing provenance,
 malformed dates, duplicate IDs, unknown fields, symlinks, and common credential
 patterns. It never edits provider memory.

@@ -1,7 +1,7 @@
 # Handoff notes
 
-Write a handoff note only when the work must travel: to another harness, such as
-Claude Code to Codex; to another directory or repository; to a colleague; or to
+Write a handoff note only when the work must travel: to another harness or
+assistant; to another directory or repository; to a colleague; or to
 a side task forked mid-task. When the same session can continue, continue it.
 An approved autonomous goal keeps its handoff in `autonomous-run` state instead.
 

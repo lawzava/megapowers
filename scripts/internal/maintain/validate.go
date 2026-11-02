@@ -127,6 +127,19 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 		fmt.Fprintln(stdout, "  PASS plugin folder holds only shipped files")
 		pass++
 	}
+	if report, err := checkDirectoryEdition(root); err != nil {
+		fmt.Fprintf(stderr, "  FAIL OpenAI directory edition package (exit 1)\n%v\n", err)
+		fail++
+	} else if len(report.Errors) != 0 {
+		fmt.Fprintln(stderr, "  FAIL OpenAI directory edition package (exit 1)")
+		for _, issue := range report.Errors {
+			fmt.Fprintf(stderr, "error: %s\n", issue)
+		}
+		fail++
+	} else {
+		fmt.Fprintln(stdout, "  PASS OpenAI directory edition package")
+		pass++
+	}
 	// Hook tests live outside the plugin folder and join the hooks package
 	// through a build overlay, so vet and test both need it.
 	overlayDir, overlayErr := privateTempDir("megapowers-validate-overlay")

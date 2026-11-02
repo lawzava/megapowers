@@ -68,6 +68,12 @@ for example `result: mismatch (exit 3)`.
 Text is folded to one line and capped at 2000 characters. Files are 0600.
 The journal is never rewritten.
 
+If Go or a shell is not available, write the same four files by hand, keep
+`.megapowers/` out of version control, and count continuations on each item
+yourself: stop at the cap and report the item as blocked. Where files cannot
+be written, keep the charter and latest checkpoint in the conversation. Keep
+holdout scenarios out of every brief.
+
 These commands replace hand-building the four state files, the exclude
 entry, and the repository, branch, worktree, and HEAD part of resume
 reconciliation. Each checkpoint overwrites `checkpoint.md`, so record artifact

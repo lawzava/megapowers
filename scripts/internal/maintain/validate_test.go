@@ -84,6 +84,7 @@ func newValidateFixture(t *testing.T) (string, string) {
 		"plugins/megapowers/.claude-plugin",
 		"plugins/megapowers/.codex-plugin",
 		"plugins/megapowers/hooks",
+		"plugins/megapowers/skills/alpha",
 		"tests/_hooks",
 		"scripts",
 		"evals",
@@ -105,6 +106,8 @@ func newValidateFixture(t *testing.T) (string, string) {
 	write("plugins/megapowers/.claude-plugin/plugin.json", manifest)
 	write("plugins/megapowers/.codex-plugin/plugin.json", manifest)
 	write("CHANGELOG.md", "# Changelog\n\n## 1.2.3 - test\n")
+	write("plugins/megapowers/.claude-plugin/icon.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"></svg>`)
+	write("plugins/megapowers/skills/alpha/SKILL.md", "---\nname: alpha\ndescription: Use when testing.\n---\n\nBody.\n")
 	write("tests/_hooks/dummy_test.go", "package main\n")
 	write("scripts/dummy.go", "package dummy\n")
 	write("scripts/dummy.sh", "#!/bin/sh\necho ok\n")
