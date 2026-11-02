@@ -1,5 +1,9 @@
 # Fixes by check
 
+- Directory edition: no `hooks/run-hook.cmd` means the plugin root holds
+  skills only. This is the shipped shape, not a fault, so there is nothing to
+  fix. Follow [directory edition](directory-edition.md); to get the guard, the
+  style, and the hook doctor, install the full plugin.
 - Output style, Claude Code: the style is optional and active only when
   settings set `outputStyle` to exactly `megapowers:Megapowers`. Bare
   `Megapowers` does not resolve and leaves the style silently off. Fix: run
@@ -15,9 +19,9 @@
   "unsupported GOVERSION value" means `go env GOVERSION` printed characters
   outside letters, digits, and `_.+-`; report the value to the maintainers.
 - Hooks not registered: the plugin is installed but the harness has not loaded
-  `hooks/hooks.json`. Fix: re-enable the plugin; on Codex review and trust the
-  plugin hooks (trust is recorded per hook hash, so a release that changes a
-  hook asks again); then restart the session.
+  the plugin hook registrations. Fix: re-enable the plugin; on Codex review and
+  trust the plugin hooks (trust is recorded per hook hash, so a release that
+  changes a hook asks again); then restart the session.
 - Agent registry: `orchestrating` ignores
   `~/.config/megapowers/agent-capabilities.md` when it is expired or has no
   readable `expires_at`, and falls back to native defaults. Fix: recheck the
