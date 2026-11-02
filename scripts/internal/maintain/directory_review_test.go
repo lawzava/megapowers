@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -350,5 +351,50 @@ func TestDirectoryAssetPathsRejectDotAndEmptySegments(t *testing.T) {
 			setManifest(pkg, func(m, ui map[string]any) { ui["logo"] = value })
 			requireCode(t, validateDirectoryPackage(pkg), "declared_asset_path_unsafe")
 		})
+	}
+}
+
+// Round 3.
+
+func TestDirectoryZipDirectoryEntryTinyBodiesAreRejected(t *testing.T) {
+	for _, body := range []string{"x", "xy"} {
+		t.Run(body, func(t *testing.T) {
+			path := writeFixtureZip(t, []rawZipEntry{{name: "skills/alpha/references/", mode: fs.ModeDir | 0o755, compressed: []byte(body)}}, nil)
+			report, err := validateDirectoryZip(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			requireCode(t, report, "archive_directory_entry_not_empty")
+		})
+	}
+}
+
+func TestDirectoryArchiveFoldedDirectoryShapesAreOrderIndependent(t *testing.T) {
+	file := func(name string) archiveEntry { return archiveEntry{Name: name, Size: 1, Mode: 0o644} }
+	dir := func(name string) archiveEntry { return archiveEntry{Name: name, Mode: fs.ModeDir | 0o755} }
+	cases := []struct {
+		name string
+		want []string
+		a, b archiveEntry
+	}{
+		{"directory spellings", []string{"archive_member_path_normalization_collision"}, file("skills/alpha/references/doc.md"), dir("skills/alpha/References/")},
+		{"file versus directory", []string{"archive_member_path_type_conflict"}, file("skills/alpha/item"), dir("skills/alpha/ITEM/")},
+		{"file versus nested directory", []string{"archive_member_path_type_conflict"}, file("skills/alpha/item"), file("skills/alpha/ITEM/sub.md")},
+	}
+	for _, tc := range cases {
+		for _, order := range [][]archiveEntry{{tc.a, tc.b}, {tc.b, tc.a}} {
+			var codes []string
+			seen := map[string]bool{}
+			for _, issue := range validateArchiveEntries(order, 1<<20) {
+				if !seen[issue.Code] {
+					seen[issue.Code] = true
+					codes = append(codes, issue.Code)
+				}
+			}
+			sort.Strings(codes)
+			if strings.Join(codes, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("%s, first=%s: codes %v, want %v", tc.name, order[0].Name, codes, tc.want)
+			}
+		}
 	}
 }

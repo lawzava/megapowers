@@ -122,6 +122,7 @@ type archiveEntry struct {
 	Name           string
 	Size           uint64
 	CompressedSize uint64
+	Method         uint16 // zip.Store or zip.Deflate
 	Mode           fs.FileMode
 }
 
@@ -164,6 +165,8 @@ func validateArchiveEntries(entries []archiveEntry, compressedTotal int64) []dir
 	filePaths := map[string]bool{}
 	allPaths := map[string]bool{}
 	spellings := map[string]string{}
+	type spellingClash struct{ folded, name, prefix, other string }
+	var clashes []spellingClash
 	for _, e := range entries {
 		name := e.Name
 		isDir := strings.HasSuffix(name, "/")
@@ -213,8 +216,8 @@ func validateArchiveEntries(entries []archiveEntry, compressedTotal int64) []dir
 		if e.Mode.Type() != wantType {
 			add("archive_member_type_unsupported", name, "entry is not a regular file or directory")
 		}
-		// An empty deflate stream is two bytes; anything more is a payload.
-		if isDir && (e.Size != 0 || e.CompressedSize > 2) {
+		// A stored directory has no body; an empty deflate stream is two bytes.
+		if isDir && (e.Size != 0 || e.CompressedSize > 2 || (e.Method == zip.Store && e.CompressedSize != 0)) {
 			add("archive_directory_entry_not_empty", name, "directory entry declares %d bytes (%d compressed)", e.Size, e.CompressedSize)
 		}
 		if e.Size > dirMaxArchiveMember {
@@ -228,7 +231,7 @@ func validateArchiveEntries(entries []archiveEntry, compressedTotal int64) []dir
 			switch {
 			case prev.name == name:
 				add("archive_member_path_duplicate", name, "duplicate entry path")
-			case prev.isDir != isDir && prev.canon == canon:
+			case prev.isDir != isDir:
 				add("archive_member_path_type_conflict", name, "%s is both a file and a directory", canon)
 			default:
 				add("archive_member_path_normalization_collision", name, "collides with %s after normalization", prev.name)
@@ -242,16 +245,22 @@ func validateArchiveEntries(entries []archiveEntry, compressedTotal int64) []dir
 		for i := range canonSegments {
 			prefix := strings.Join(canonSegments[:i+1], "/")
 			folded := strings.ToLower(prefix)
-			if i < len(canonSegments)-1 {
-				// Parent directories that differ only by case clash after extraction.
+			if i < len(canonSegments)-1 || isDir {
+				// Directories that differ only by case clash after extraction.
 				if other, ok := spellings[folded]; ok && other != prefix {
-					add("archive_member_path_normalization_collision", name, "directory %s collides with %s after case folding", prefix, other)
+					clashes = append(clashes, spellingClash{folded, name, prefix, other})
 				}
 			}
 			if _, ok := spellings[folded]; !ok {
 				spellings[folded] = prefix
 			}
 			allPaths[folded] = true
+		}
+	}
+	for _, clash := range clashes {
+		// A path that is also a file is reported once, as a type conflict.
+		if !filePaths[clash.folded] {
+			add("archive_member_path_normalization_collision", clash.name, "directory %s collides with %s after case folding", clash.prefix, clash.other)
 		}
 	}
 	if total > dirMaxArchiveUncompressed {
@@ -305,7 +314,7 @@ func validateDirectoryZipBytes(blob []byte) dirReport {
 	}
 	var entries []archiveEntry
 	for _, f := range reader.File {
-		entries = append(entries, archiveEntry{Name: f.Name, Size: f.UncompressedSize64, CompressedSize: f.CompressedSize64, Mode: f.Mode()})
+		entries = append(entries, archiveEntry{Name: f.Name, Size: f.UncompressedSize64, CompressedSize: f.CompressedSize64, Method: f.Method, Mode: f.Mode()})
 	}
 	var report dirReport
 	report.Errors = validateArchiveEntries(entries, int64(len(blob)))
@@ -317,6 +326,17 @@ func validateDirectoryZipBytes(blob []byte) dirReport {
 	for _, f := range reader.File {
 		if strings.HasSuffix(f.Name, "/") {
 			// Directory entries are checked like files for layout and mode.
+			if body, err := f.Open(); err != nil {
+				report.Errors = append(report.Errors, dirIssue{"archive_directory_entry_not_empty", f.Name, err.Error()})
+				continue
+			} else {
+				n, readErr := io.CopyN(io.Discard, body, 1)
+				body.Close()
+				if n > 0 || (readErr != nil && readErr != io.EOF) {
+					report.Errors = append(report.Errors, dirIssue{"archive_directory_entry_not_empty", f.Name, "directory entry holds data"})
+					continue
+				}
+			}
 			pkg[strings.TrimSuffix(f.Name, "/")] = dirFile{Path: strings.TrimSuffix(f.Name, "/"), Mode: fs.ModeDir | 0o755}
 			continue
 		}
