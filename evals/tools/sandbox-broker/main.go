@@ -4553,9 +4553,13 @@ func commandEvents(command string, rc int) []actorEvent {
 		if kind := commandEffect(segment.words); kind != "" {
 			events = append(events, actorEvent{Kind: kind, RC: rc})
 		}
-		if isTestCommand(fields) || isRunReceiptTest(fields) {
+		testAnchor, attributable := isTestCommand(fields), true
+		if !testAnchor {
+			testAnchor, attributable = runReceiptTest(segment.words)
+		}
+		if testAnchor {
 			kind := unattributedTestKind
-			if !substitution && cdChain && index == len(segments)-1 {
+			if attributable && !substitution && cdChain && index == len(segments)-1 {
 				kind = "test"
 			}
 			events = append(events, actorEvent{Kind: kind, RC: rc})
@@ -5124,29 +5128,67 @@ func commandNameMatches(command, name string) bool {
 	return command == name || strings.HasSuffix(filepath.ToSlash(command), "/"+name)
 }
 
-// isRunReceiptTest reports whether fields run a test through the
-// verify-and-finish run-receipt tool: go run <dir>/run-receipt.go [options]
-// -- <test command>. The tool exits with the wrapped check's status, so the
-// wrapped test is a test anchor like a bare test command. --shell hands the
-// check to sh -c, which can mask a failing stage, so it is not an anchor.
-func isRunReceiptTest(fields []string) bool {
-	if len(fields) < 4 || fields[0] != "go" || fields[1] != "run" || !commandNameMatches(fields[2], "run-receipt.go") {
-		return false
+// runReceiptTest reports whether words run a test through the
+// verify-and-finish run-receipt tool: go run <dir>/run-receipt.go [flags]
+// [--] <test command>. The tool exits with the wrapped check's status, so a
+// wrapped test is a test anchor like a bare test command, and it records one
+// execution receipt that binds to that anchor's trace position. Under --shell
+// the check runs through sh -c, which can mask a failing stage: it is still an
+// anchor, but its exit code is not attributable. The flags follow Go's flag
+// package, as the tool parses them: -x or --x, -x=value, an optional =value on
+// booleans, and the command starts at "--" or the first non-flag word.
+func runReceiptTest(words []string) (anchor, attributable bool) {
+	words = executableFields(words)
+	if len(words) < 3 || words[0] != "go" || words[1] != "run" || !commandNameMatches(words[2], "run-receipt.go") {
+		return false, false
 	}
-	for index := 3; index < len(fields); index++ {
-		switch field := fields[index]; {
-		case field == "--":
-			return isTestCommand(fields[index+1:])
-		case field == "--dir" || field == "--tail":
+	shell := false
+	index := 3
+	for ; index < len(words); index++ {
+		word := words[index]
+		if word == "--" {
 			index++
-		case field == "--shell" || strings.HasPrefix(field, "--shell="):
-			return false
-		case field == "--reuse" || strings.HasPrefix(field, "--dir=") || strings.HasPrefix(field, "--tail="):
+			break
+		}
+		if len(word) < 2 || word[0] != '-' {
+			break
+		}
+		name, value, hasValue := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(word, "-"), "-"), "=")
+		switch name {
+		case "dir", "tail":
+			if !hasValue {
+				index++
+			}
+		case "shell", "reuse":
+			enabled := true
+			if hasValue {
+				parsed, err := strconv.ParseBool(value)
+				if err != nil {
+					return false, false
+				}
+				enabled = parsed
+			}
+			if name == "shell" {
+				shell = enabled
+			}
 		default:
-			return false
+			return false, false
 		}
 	}
-	return false
+	if index >= len(words) {
+		return false, false
+	}
+	command := make([]string, 0, len(words)-index)
+	for _, word := range words[index:] {
+		command = append(command, strings.ToLower(word))
+	}
+	if shell {
+		if len(command) != 1 {
+			return false, false
+		}
+		return isTestCommand(executableFields(strings.Fields(command[0]))), false
+	}
+	return isTestCommand(executableFields(command)), true
 }
 
 func isTestCommand(fields []string) bool {

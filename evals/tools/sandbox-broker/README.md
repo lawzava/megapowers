@@ -237,11 +237,13 @@ receipts with `oracle_match: true` and `state_stable: true` become normalized
 Response schema `2` and the actor-event field shape remain unchanged.
 
 Each receipt takes the trace position of one test anchor. A test run through
-the `verify-and-finish` run-receipt tool (`go run .../run-receipt.go [--dir D]
-[--tail N] [--reuse] -- go test ./...`) is an anchor, because the tool exits
-with the wrapped check's status. With `--shell` it is not. When anchors and
-receipts differ in number, receipt events follow the whole trace, so a commit
-that came after the test can appear to precede it.
+the `verify-and-finish` run-receipt tool (`go run .../run-receipt.go [flags]
+-- go test ./...`) is an anchor, because the tool exits with the wrapped
+check's status. Flags are read as the tool reads them (Go `flag` syntax). With
+`--shell` the test is still an anchor, but its exit code is not attributed
+from the trace. When anchors and receipts differ in number, receipt events
+follow the whole trace, so a commit that came after the test can appear to
+precede it.
 
 ## Skills catalog assertion
 
