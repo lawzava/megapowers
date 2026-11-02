@@ -5,6 +5,28 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Added
+
+- A directory edition for the OpenAI Plugins Directory:
+  `maintainer directory-edition` builds a deterministic skills-only ZIP from
+  `plugins/megapowers` (no hooks, no output style) and validates it against
+  OpenAI's package rules. `scripts/validate.sh` runs the check. The marketplace
+  plugin is unchanged. See [docs/install.md](./docs/install.md#directory-edition).
+
+### Changed
+
+- `megapowers-doctor` detects a missing `hooks/run-hook.cmd`, reports the
+  directory edition, and checks the skill and version. It runs the doctor
+  command as before when the runner exists.
+- Skills that run bundled Go scripts (`independent-review`, `autonomous-run`,
+  `verify-and-finish`, `orchestrating`, `writing-agent-instructions`) state what
+  to do when Go or a shell is unavailable. `independent-review` sends nothing
+  without the tool's secret scan.
+- `humanizing-prose` and `verify-and-finish` use provider-neutral wording where
+  no product is meant.
+
 ## 0.42.10 - 2026-11-02
 
 ### Changed
