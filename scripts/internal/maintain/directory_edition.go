@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -438,48 +437,8 @@ func runDirectoryEdition(ctx context.Context, root string, args []string, stdout
 	}
 	manifestVersion := versionFromFiles(files)
 
-	var zipPath, treeDir string
-	if opts.check {
-		tmp, err := privateTempDir("megapowers-directory-check")
-		if err != nil {
-			fmt.Fprintf(stderr, "directory-edition: %v\n", err)
-			return 2
-		}
-		defer os.RemoveAll(tmp)
-		zipPath = filepath.Join(tmp, "megapowers.zip")
-	} else {
-		out := opts.out
-		if out == "" {
-			base := os.Getenv("TMPDIR")
-			if base == "" {
-				base = os.TempDir()
-			}
-			out = filepath.Join(base, "megapowers-directory")
-		}
-		out = callerPath(out)
-		treeDir = filepath.Join(out, "megapowers")
-		zipPath = filepath.Join(out, "megapowers-"+manifestVersion+".zip")
-		if opts.zip != "" {
-			zipPath = callerPath(opts.zip)
-		}
-		if err := os.MkdirAll(filepath.Dir(zipPath), 0o755); err != nil {
-			fmt.Fprintf(stderr, "directory-edition: %v\n", err)
-			return 2
-		}
-		if err := writeDirectoryTree(treeDir, files); err != nil {
-			fmt.Fprintf(stderr, "directory-edition: %v\n", err)
-			return 2
-		}
-	}
-	if err := os.WriteFile(zipPath, blob, 0o644); err != nil {
-		fmt.Fprintf(stderr, "directory-edition: %v\n", err)
-		return 2
-	}
-	report, err := validateDirectoryZip(zipPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "directory-edition: %v\n", err)
-		return 2
-	}
+	// Validate the exact bytes before anything touches the disk.
+	report := validateDirectoryZipBytes(blob)
 	for _, note := range report.Notes {
 		fmt.Fprintf(stdout, "note: %s\n", note)
 	}
@@ -495,7 +454,45 @@ func runDirectoryEdition(ctx context.Context, root string, args []string, stdout
 		fmt.Fprintf(stdout, "directory-edition: check ok (%d files, %d bytes, sha256 %x)\n", len(files), len(blob), sum)
 		return 0
 	}
-	fmt.Fprintf(stdout, "tree: %s\nzip: %s\nsize: %d bytes\nsha256: %x\n", treeDir, zipPath, len(blob), sum)
+
+	// --zip alone writes only that file; the default tree directory is
+	// touched only when no --zip is given or --out is explicit.
+	var zipPath, treeDir string
+	writeTree := opts.zip == "" || opts.out != ""
+	if writeTree {
+		out := opts.out
+		if out == "" {
+			base := os.Getenv("TMPDIR")
+			if base == "" {
+				base = os.TempDir()
+			}
+			out = filepath.Join(base, "megapowers-directory")
+		}
+		out = callerPath(out)
+		treeDir = filepath.Join(out, "megapowers")
+		zipPath = filepath.Join(out, "megapowers-"+manifestVersion+".zip")
+	}
+	if opts.zip != "" {
+		zipPath = callerPath(opts.zip)
+	}
+	if err := os.MkdirAll(filepath.Dir(zipPath), 0o755); err != nil {
+		fmt.Fprintf(stderr, "directory-edition: %v\n", err)
+		return 2
+	}
+	if writeTree {
+		if err := writeDirectoryTree(treeDir, files); err != nil {
+			fmt.Fprintf(stderr, "directory-edition: %v\n", err)
+			return 2
+		}
+	}
+	if err := os.WriteFile(zipPath, blob, 0o644); err != nil {
+		fmt.Fprintf(stderr, "directory-edition: %v\n", err)
+		return 2
+	}
+	if writeTree {
+		fmt.Fprintf(stdout, "tree: %s\n", treeDir)
+	}
+	fmt.Fprintf(stdout, "zip: %s\nsize: %d bytes\nsha256: %x\n", zipPath, len(blob), sum)
 	return 0
 }
 
@@ -511,8 +508,8 @@ func versionFromFiles(files []dirFile) string {
 	return "unknown"
 }
 
-// checkDirectoryEdition builds the directory edition in memory, writes it to
-// a temporary ZIP, validates the ZIP, and discards it. validate.go calls it.
+// checkDirectoryEdition builds the directory edition in memory and validates
+// the ZIP bytes without writing anything. validate.go calls it.
 func checkDirectoryEdition(root string) (dirReport, error) {
 	files, err := buildDirectoryFiles(root)
 	if err != nil {
@@ -522,16 +519,7 @@ func checkDirectoryEdition(root string) (dirReport, error) {
 	if err != nil {
 		return dirReport{}, err
 	}
-	tmp, err := privateTempDir("megapowers-directory-validate")
-	if err != nil {
-		return dirReport{}, err
-	}
-	defer os.RemoveAll(tmp)
-	zipPath := path.Join(filepath.ToSlash(tmp), "megapowers.zip")
-	if err := os.WriteFile(zipPath, blob, 0o644); err != nil {
-		return dirReport{}, err
-	}
-	return validateDirectoryZip(zipPath)
+	return validateDirectoryZipBytes(blob), nil
 }
 
 // userPrecedenceLine makes the priority of explicit user instructions clear,

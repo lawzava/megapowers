@@ -154,8 +154,12 @@ func validateArchiveEntries(entries []archiveEntry, compressedTotal int64) []dir
 		add("archive_too_many_entries", "", "%d entries, limit %d", len(entries), dirMaxArchiveEntries)
 	}
 	var total uint64
-	exact := map[string]bool{}
-	folded := map[string]string{}
+	type seenEntry struct {
+		name  string
+		canon string
+		isDir bool
+	}
+	seen := map[string]seenEntry{}
 	filePaths := map[string]bool{}
 	allPaths := map[string]bool{}
 	for _, e := range entries {
@@ -188,31 +192,49 @@ func validateArchiveEntries(entries []archiveEntry, compressedTotal int64) []dir
 				break
 			}
 		}
+		for _, seg := range segments {
+			if seg == "." {
+				add("archive_member_path_has_dot_segment", name, "entry path has a . segment")
+				break
+			}
+		}
 		if len(segments) > dirMaxPathSegments {
 			add("archive_member_path_too_deep", name, "%d segments, limit %d", len(segments), dirMaxPathSegments)
 		}
 		if len(name) > dirMaxPathBytes {
 			add("archive_member_path_too_long", name, "%d bytes, limit %d", len(name), dirMaxPathBytes)
 		}
-		if !isDir && e.Mode.Type() != 0 {
-			add("archive_member_type_unsupported", name, "entry is not a regular file")
+		wantType := fs.FileMode(0)
+		if isDir {
+			wantType = fs.ModeDir
+		}
+		if e.Mode.Type() != wantType {
+			add("archive_member_type_unsupported", name, "entry is not a regular file or directory")
 		}
 		if e.Size > dirMaxArchiveMember {
 			add("archive_member_too_large", name, "%d bytes, limit %d", e.Size, dirMaxArchiveMember)
 		}
 		total += e.Size
-		if exact[name] {
-			add("archive_member_path_duplicate", name, "duplicate entry path")
-		} else if other, ok := folded[strings.ToLower(clean)]; ok && other != clean {
-			add("archive_member_path_normalization_collision", name, "collides with %s after case folding", other)
+		// Collisions are judged on the canonical path, so a/./b and a/b clash.
+		canon := path.Clean(strings.TrimPrefix(clean, "/"))
+		key := strings.ToLower(canon)
+		if prev, ok := seen[key]; ok {
+			switch {
+			case prev.name == name:
+				add("archive_member_path_duplicate", name, "duplicate entry path")
+			case prev.isDir != isDir && prev.canon == canon:
+				add("archive_member_path_type_conflict", name, "%s is both a file and a directory", canon)
+			default:
+				add("archive_member_path_normalization_collision", name, "collides with %s after normalization", prev.name)
+			}
 		}
-		exact[name] = true
-		folded[strings.ToLower(clean)] = clean
+		seen[key] = seenEntry{name: name, canon: canon, isDir: isDir}
+		canonSegments := strings.Split(canon, "/")
 		if !isDir {
-			filePaths[clean] = true
+			filePaths[canon] = true
 		}
-		for i := range segments {
-			allPaths[strings.Join(segments[:i+1], "/")] = true
+		for i := range canonSegments {
+			allPaths[strings.Join(canonSegments[:i+1], "/")] = true
 		}
 	}
 	if total > dirMaxArchiveUncompressed {
@@ -246,23 +268,39 @@ func validateDirectoryZip(zipPath string) (dirReport, error) {
 	if err != nil {
 		return dirReport{}, err
 	}
-	reader, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return dirReport{Errors: []dirIssue{{"archive_format_not_zip", zipPath, err.Error()}}}, nil
+	if info.Size() > dirMaxArchiveCompressed {
+		return dirReport{Errors: []dirIssue{{"archive_too_large", zipPath, fmt.Sprintf("compressed ZIP is %d bytes, limit %d", info.Size(), dirMaxArchiveCompressed)}}}, nil
 	}
-	defer reader.Close()
+	blob, err := os.ReadFile(zipPath)
+	if err != nil {
+		return dirReport{}, err
+	}
+	return validateDirectoryZipBytes(blob), nil
+}
+
+// validateDirectoryZipBytes validates an in-memory ZIP. Header sizes are
+// claims: each member is read with a bound derived from its header, and any
+// disagreement between header and real bytes is an error.
+func validateDirectoryZipBytes(blob []byte) dirReport {
+	reader, err := zip.NewReader(bytes.NewReader(blob), int64(len(blob)))
+	if err != nil {
+		return dirReport{Errors: []dirIssue{{"archive_format_not_zip", "", err.Error()}}}
+	}
 	var entries []archiveEntry
 	for _, f := range reader.File {
 		entries = append(entries, archiveEntry{Name: f.Name, Size: f.UncompressedSize64, Mode: f.Mode()})
 	}
 	var report dirReport
-	report.Errors = validateArchiveEntries(entries, info.Size())
+	report.Errors = validateArchiveEntries(entries, int64(len(blob)))
 	if len(report.Errors) != 0 {
-		return report, nil
+		return report
 	}
 	pkg := dirPackage{}
+	var total uint64
 	for _, f := range reader.File {
 		if strings.HasSuffix(f.Name, "/") {
+			// Directory entries are checked like files for layout and mode.
+			pkg[strings.TrimSuffix(f.Name, "/")] = dirFile{Path: strings.TrimSuffix(f.Name, "/"), Mode: fs.ModeDir | 0o755}
 			continue
 		}
 		body, err := f.Open()
@@ -270,21 +308,30 @@ func validateDirectoryZip(zipPath string) (dirReport, error) {
 			report.Errors = append(report.Errors, dirIssue{"archive_member_unreadable", f.Name, err.Error()})
 			continue
 		}
-		data, err := io.ReadAll(io.LimitReader(body, dirMaxArchiveMember+1))
+		data, err := io.ReadAll(io.LimitReader(body, int64(f.UncompressedSize64)+1))
 		body.Close()
-		if err != nil {
+		switch {
+		case err != nil:
 			report.Errors = append(report.Errors, dirIssue{"archive_member_unreadable", f.Name, err.Error()})
 			continue
+		case uint64(len(data)) != f.UncompressedSize64:
+			report.Errors = append(report.Errors, dirIssue{"archive_member_size_mismatch", f.Name, fmt.Sprintf("header says %d bytes, member holds at least %d", f.UncompressedSize64, len(data))})
+			continue
+		}
+		total += uint64(len(data))
+		if total > dirMaxArchiveUncompressed {
+			report.Errors = append(report.Errors, dirIssue{"archive_uncompressed_too_large", "", fmt.Sprintf("extracted bytes exceed %d", dirMaxArchiveUncompressed)})
+			return report
 		}
 		pkg[f.Name] = dirFile{Path: f.Name, Data: data, Mode: f.Mode()}
 	}
 	if len(report.Errors) != 0 {
-		return report, nil
+		return report
 	}
 	inner := validateDirectoryPackage(pkg)
 	report.Errors = append(report.Errors, inner.Errors...)
 	report.Notes = append(report.Notes, inner.Notes...)
-	return report, nil
+	return report
 }
 
 // validateDirectoryPackage checks a built package tree against the OpenAI
@@ -307,18 +354,23 @@ func (c *dirChecker) checkLayout() {
 	reported := map[string]bool{}
 	for _, name := range c.pkg.paths() {
 		file := c.pkg[name]
-		if file.Mode.Type() != 0 {
-			c.fail("archive_member_type_unsupported", name, "entry is not a regular file")
+		isDir := file.Mode.Type() == fs.ModeDir
+		if file.Mode.Type() != 0 && !isDir {
+			c.fail("archive_member_type_unsupported", name, "entry is not a regular file or directory")
 		}
 		segments := strings.Split(name, "/")
 		root := segments[0]
 		base := segments[len(segments)-1]
+		parents := segments[:len(segments)-1]
+		if isDir {
+			parents = segments
+		}
 		if !allowedRoots[root] && !reported[root] {
 			reported[root] = true
 			switch {
 			case root == "hooks" || root == "output-styles" || root == ".claude-plugin" || root == ".mcp.json" || root == ".app.json":
 				c.fail("forbidden_path", root, "the directory edition ships skills only")
-			case len(segments) == 1:
+			case len(segments) == 1 && !isDir:
 				c.fail("plugin_root_has_siblings", root, "only .codex-plugin, skills, and assets may sit at the package root")
 			default:
 				c.fail("unexpected_root_entry", root, "only .codex-plugin, skills, and assets may sit at the package root")
@@ -327,7 +379,7 @@ func (c *dirChecker) checkLayout() {
 		if base == "hooks.json" && root != "hooks" {
 			c.fail("forbidden_path", name, "hooks.json is not allowed")
 		}
-		if strings.HasSuffix(base, "_test.go") || containsSegment(segments[:len(segments)-1], "testdata") {
+		if strings.HasSuffix(base, "_test.go") || containsSegment(parents, "testdata") {
 			c.fail("forbidden_test_file", name, "test files and testdata do not ship in the package")
 		}
 	}
@@ -701,38 +753,49 @@ func (c *dirChecker) checkIcon(ui map[string]any, field, missingCode string) {
 		c.fail("declared_asset_path_wrong_type", manifestPath, "interface.%s must be a string", field)
 		return
 	}
+	c.declaredAsset(manifestPath, "interface."+field, value, "", true)
+}
+
+// declaredAsset checks one declared asset path and, when it resolves to a
+// regular file in the package, the image behind it. base is the directory the
+// path is relative to ("" for the package root); manifest icons must carry a
+// ./ prefix, skill icons may omit it.
+func (c *dirChecker) declaredAsset(owner, label, value, base string, requirePrefix bool) {
 	switch {
 	case value == "":
-		c.fail("declared_asset_path_empty", manifestPath, "interface.%s is empty", field)
+		c.fail("declared_asset_path_empty", owner, "%s is empty", label)
 		return
 	case strings.TrimSpace(value) != value:
-		c.fail("declared_asset_path_has_outer_whitespace", manifestPath, "interface.%s has outer whitespace", field)
+		c.fail("declared_asset_path_has_outer_whitespace", owner, "%s has outer whitespace", label)
 		return
 	case strings.IndexFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0:
-		c.fail("declared_asset_path_has_control_character", manifestPath, "interface.%s has a control character", field)
+		c.fail("declared_asset_path_has_control_character", owner, "%s has a control character", label)
 		return
-	case !strings.HasPrefix(value, "./"):
-		c.fail("branding_asset_path_missing_root_prefix", manifestPath, "interface.%s must start with ./", field)
+	case requirePrefix && !strings.HasPrefix(value, "./"):
+		c.fail("branding_asset_path_missing_root_prefix", owner, "%s must start with ./", label)
 		return
 	}
 	rel := strings.TrimPrefix(value, "./")
 	if strings.Contains(rel, `\`) || strings.HasPrefix(rel, "/") || containsSegment(strings.Split(rel, "/"), "..") ||
 		(len(rel) >= 2 && rel[1] == ':') || rel == "" {
-		c.fail("declared_asset_path_unsafe", manifestPath, "interface.%s %q is not a safe relative path", field, value)
+		c.fail("declared_asset_path_unsafe", owner, "%s %q is not a safe relative path", label, value)
 		return
 	}
 	clean := path.Clean(rel)
+	if base != "" {
+		clean = path.Join(base, clean)
+	}
 	file, exists := c.pkg[clean]
 	if !exists {
 		if c.pkg.hasDir(clean) {
-			c.fail("declared_asset_not_regular_file", manifestPath, "interface.%s %q is a directory", field, value)
+			c.fail("declared_asset_not_regular_file", owner, "%s %q is a directory", label, value)
 		} else {
-			c.fail("declared_asset_file_missing", manifestPath, "interface.%s %q does not exist in the package", field, value)
+			c.fail("declared_asset_file_missing", owner, "%s %q does not exist in the package", label, value)
 		}
 		return
 	}
 	if file.Mode.Type() != 0 {
-		c.fail("declared_asset_not_regular_file", manifestPath, "interface.%s %q is not a regular file", field, value)
+		c.fail("declared_asset_not_regular_file", owner, "%s %q is not a regular file", label, value)
 		return
 	}
 	c.checkImage(clean, file.Data)
@@ -910,6 +973,8 @@ func (c *dirChecker) checkSkills(pluginName string) {
 			continue
 		}
 		switch {
+		case len(parts) == 2 && c.pkg[name].Mode.Type() == fs.ModeDir:
+			dirs[parts[1]] = true
 		case len(parts) == 2:
 			c.fail("skill_file_ignored", name, "files directly under skills/ are not imported as skills")
 		case len(parts) >= 3:
@@ -1075,6 +1140,8 @@ func (c *dirChecker) checkAgentYAML(name string, file dirFile) {
 					c.fail("skill_agent_"+key+"_wrong_type", name, "interface.%s must be a relative file path", key)
 				} else if strings.TrimSpace(v.text) == "" {
 					c.fail("skill_agent_"+key+"_empty", name, "interface.%s must not be empty", key)
+				} else {
+					c.declaredAsset(name, "interface."+key, v.text, path.Dir(path.Dir(name)), false)
 				}
 			}
 		}
