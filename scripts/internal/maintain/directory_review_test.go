@@ -276,3 +276,79 @@ func TestDirectoryEditionZipOnlyLeavesDefaultTreeAlone(t *testing.T) {
 		t.Errorf("stdout reports a tree that was not written:\n%s", stdout.String())
 	}
 }
+
+// Round 2.
+
+func TestDirectoryZipDirectoryEntriesMustBeEmpty(t *testing.T) {
+	t.Run("declared size", func(t *testing.T) {
+		path := writeFixtureZip(t, []rawZipEntry{{name: "skills/alpha/references/", mode: fs.ModeDir | 0o755, declared: 5, compressed: []byte("hello")}}, nil)
+		report, err := validateDirectoryZip(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		requireCode(t, report, "archive_directory_entry_not_empty")
+	})
+	t.Run("body without declared size", func(t *testing.T) {
+		path := writeFixtureZip(t, []rawZipEntry{{name: "skills/alpha/references/", mode: fs.ModeDir | 0o755, compressed: []byte("hello world payload")}}, nil)
+		report, err := validateDirectoryZip(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		requireCode(t, report, "archive_directory_entry_not_empty")
+	})
+	t.Run("entry list", func(t *testing.T) {
+		issues := validateArchiveEntries([]archiveEntry{{Name: "a/", Size: 3, Mode: fs.ModeDir | 0o755}}, 10)
+		if len(issues) == 0 || issues[0].Code != "archive_directory_entry_not_empty" {
+			t.Fatalf("issues = %v", issues)
+		}
+	})
+}
+
+func TestDirectoryArchiveFoldsParentSegments(t *testing.T) {
+	f := func(name string) archiveEntry { return archiveEntry{Name: name, Size: 1, Mode: 0o644} }
+	cases := []struct {
+		name    string
+		code    string
+		entries []archiveEntry
+	}{
+		{"file and folded directory", "archive_member_path_type_conflict", []archiveEntry{f("skills/alpha/item"), f("skills/alpha/ITEM/sub.md")}},
+		{"folded skill directories", "archive_member_path_normalization_collision", []archiveEntry{f("skills/alpha/SKILL.md"), f("skills/Alpha/references/doc.md")}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var codes []string
+			for _, issue := range validateArchiveEntries(tc.entries, 1<<20) {
+				codes = append(codes, issue.Code)
+			}
+			if !contains(codes, tc.code) {
+				t.Fatalf("want %s, got %v", tc.code, codes)
+			}
+		})
+	}
+	t.Run("package level skill directories", func(t *testing.T) {
+		pkg := fixturePackage(t)
+		setFile(pkg, "skills/Alpha/SKILL.md", "---\nname: other\ndescription: d\n---\nbody\n")
+		requireCode(t, validateDirectoryPackage(pkg), "archive_member_path_normalization_collision")
+	})
+}
+
+func TestDirectoryAssetPathsRejectDotAndEmptySegments(t *testing.T) {
+	agent := func(value string) string {
+		return "interface:\n  display_name: \"x\"\n  short_description: \"y\"\n  icon_small: \"" + value + "\"\n"
+	}
+	for _, value := range []string{"assets/./ok.svg", "././assets/ok.svg", "assets//ok.svg", "./.", "./assets/"} {
+		t.Run("agent "+value, func(t *testing.T) {
+			pkg := fixturePackage(t)
+			setFile(pkg, "skills/beta/assets/ok.svg", fixtureSVG)
+			setFile(pkg, "skills/beta/agents/openai.yaml", agent(value))
+			requireCode(t, validateDirectoryPackage(pkg), "declared_asset_path_unsafe")
+		})
+	}
+	for _, value := range []string{"./assets/./icon.svg", "././assets/icon.svg", "./assets//icon.svg", "./."} {
+		t.Run("manifest "+value, func(t *testing.T) {
+			pkg := fixturePackage(t)
+			setManifest(pkg, func(m, ui map[string]any) { ui["logo"] = value })
+			requireCode(t, validateDirectoryPackage(pkg), "declared_asset_path_unsafe")
+		})
+	}
+}

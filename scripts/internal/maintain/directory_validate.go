@@ -119,9 +119,10 @@ type dirReport struct {
 }
 
 type archiveEntry struct {
-	Name string
-	Size uint64
-	Mode fs.FileMode
+	Name           string
+	Size           uint64
+	CompressedSize uint64
+	Mode           fs.FileMode
 }
 
 type dirChecker struct {
@@ -162,6 +163,7 @@ func validateArchiveEntries(entries []archiveEntry, compressedTotal int64) []dir
 	seen := map[string]seenEntry{}
 	filePaths := map[string]bool{}
 	allPaths := map[string]bool{}
+	spellings := map[string]string{}
 	for _, e := range entries {
 		name := e.Name
 		isDir := strings.HasSuffix(name, "/")
@@ -211,6 +213,10 @@ func validateArchiveEntries(entries []archiveEntry, compressedTotal int64) []dir
 		if e.Mode.Type() != wantType {
 			add("archive_member_type_unsupported", name, "entry is not a regular file or directory")
 		}
+		// An empty deflate stream is two bytes; anything more is a payload.
+		if isDir && (e.Size != 0 || e.CompressedSize > 2) {
+			add("archive_directory_entry_not_empty", name, "directory entry declares %d bytes (%d compressed)", e.Size, e.CompressedSize)
+		}
 		if e.Size > dirMaxArchiveMember {
 			add("archive_member_too_large", name, "%d bytes, limit %d", e.Size, dirMaxArchiveMember)
 		}
@@ -231,10 +237,21 @@ func validateArchiveEntries(entries []archiveEntry, compressedTotal int64) []dir
 		seen[key] = seenEntry{name: name, canon: canon, isDir: isDir}
 		canonSegments := strings.Split(canon, "/")
 		if !isDir {
-			filePaths[canon] = true
+			filePaths[key] = true
 		}
 		for i := range canonSegments {
-			allPaths[strings.Join(canonSegments[:i+1], "/")] = true
+			prefix := strings.Join(canonSegments[:i+1], "/")
+			folded := strings.ToLower(prefix)
+			if i < len(canonSegments)-1 {
+				// Parent directories that differ only by case clash after extraction.
+				if other, ok := spellings[folded]; ok && other != prefix {
+					add("archive_member_path_normalization_collision", name, "directory %s collides with %s after case folding", prefix, other)
+				}
+			}
+			if _, ok := spellings[folded]; !ok {
+				spellings[folded] = prefix
+			}
+			allPaths[folded] = true
 		}
 	}
 	if total > dirMaxArchiveUncompressed {
@@ -288,7 +305,7 @@ func validateDirectoryZipBytes(blob []byte) dirReport {
 	}
 	var entries []archiveEntry
 	for _, f := range reader.File {
-		entries = append(entries, archiveEntry{Name: f.Name, Size: f.UncompressedSize64, Mode: f.Mode()})
+		entries = append(entries, archiveEntry{Name: f.Name, Size: f.UncompressedSize64, CompressedSize: f.CompressedSize64, Mode: f.Mode()})
 	}
 	var report dirReport
 	report.Errors = validateArchiveEntries(entries, int64(len(blob)))
@@ -776,7 +793,9 @@ func (c *dirChecker) declaredAsset(owner, label, value, base string, requirePref
 		return
 	}
 	rel := strings.TrimPrefix(value, "./")
-	if strings.Contains(rel, `\`) || strings.HasPrefix(rel, "/") || containsSegment(strings.Split(rel, "/"), "..") ||
+	segments := strings.Split(rel, "/")
+	if strings.Contains(rel, `\`) || strings.HasPrefix(rel, "/") || containsSegment(segments, "..") ||
+		containsSegment(segments, ".") || containsSegment(segments, "") ||
 		(len(rel) >= 2 && rel[1] == ':') || rel == "" {
 		c.fail("declared_asset_path_unsafe", owner, "%s %q is not a safe relative path", label, value)
 		return
@@ -988,7 +1007,13 @@ func (c *dirChecker) checkSkills(pluginName string) {
 		c.fail("plugin_runtime_surface_missing", "skills", "package has no skills")
 	}
 	identities := map[string]string{}
+	folded := map[string]string{}
 	for _, dir := range sortedKeys(dirs) {
+		if other, ok := folded[strings.ToLower(dir)]; ok {
+			c.fail("archive_member_path_normalization_collision", "skills/"+dir, "skill directory collides with skills/%s after case folding", other)
+			continue
+		}
+		folded[strings.ToLower(dir)] = dir
 		if strings.HasPrefix(dir, ".") {
 			c.fail("skill_directory_hidden", "skills/"+dir, "skill directory names must not begin with a dot")
 			continue
