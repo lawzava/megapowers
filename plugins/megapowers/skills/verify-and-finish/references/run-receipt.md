@@ -41,10 +41,15 @@ that changed nothing. It compares repository state only, so do not use it for
 a check that depends on the network, the environment, or files outside the
 repository.
 
+If Go or a shell is not available, run the check by the means the harness
+has, read its full output and real exit status, and report the command, exit
+status, and commit. Never report a pass from a truncated or piped result.
+
 Wait for a running check by blocking on it. Do not poll it or call `sleep`,
 because each poll costs a model turn and a fixed sleep overshoots the finish.
 In Codex, one `write_stdin` call with a long `yield_time_ms` returns early once
-the process exits. In Claude Code, a background command reports its exit. For
+the process exits. In Claude Code, a background command reports its exit. Elsewhere, use the
+harness's own blocking wait. For
 CI, run `gh run watch <run-id> --exit-status` in the foreground. Start
 independent work before you block.
 

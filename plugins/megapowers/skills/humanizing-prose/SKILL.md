@@ -8,9 +8,9 @@ metadata:
 
 # Humanizing Prose
 
-This skill replaces the length, sentence, and opening defaults of the
-operator [output style](../../output-styles/megapowers.md). Its attribution
-and specific-evaluation rules still apply.
+With the megapowers output style active, this skill replaces its length,
+sentence, and opening defaults; attribution and specific-evaluation rules
+still apply.
 
 Identify the speaker, recipient, purpose, and what is already settled. Ask for
 missing context only when it changes the substance. Write from an established

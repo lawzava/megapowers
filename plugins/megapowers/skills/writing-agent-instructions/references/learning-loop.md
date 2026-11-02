@@ -7,7 +7,10 @@ retire. Each step ends with evidence the user can check. The agent never edits
 an instruction file, memory, or check without the user's approval of that
 change.
 
-`SKILL_DIR` is this skill's directory.
+`SKILL_DIR` is this skill's directory. The loop needs Go, a shell, and local
+transcripts. Without them, record each lesson, its evidence, and its proof in
+the reply for the user to keep, and promote nothing without a read-back of the
+target.
 
 ## 1. Observe
 

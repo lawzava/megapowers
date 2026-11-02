@@ -4,6 +4,9 @@ A later review round needs only the fixes made since the prior round. Sending
 the whole diff again repeats the earlier review and adds minutes to each
 round.
 
+Both commands need Go and a shell. Without them, send no review package; see
+[independent review](../SKILL.md).
+
 Before each review, record a snapshot of the working tree. `snapshot` prints a
 Git tree id that includes untracked files, and it leaves the index unchanged:
 
