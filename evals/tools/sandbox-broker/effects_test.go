@@ -337,3 +337,87 @@ func TestReceiptInvocationMayOmitOracleBuildTags(t *testing.T) {
 		t.Error("tags absent from the oracle were accepted")
 	}
 }
+
+// run-receipt wraps a check and exits with the check's own status, so the
+// wrapped test is a test anchor, in trace position, like a bare `go test`.
+// Its flags follow Go's flag package: -x and --x, -x=v, boolean flags with an
+// optional =value, and the command starts at `--` or the first non-flag.
+const runReceiptCommand = "go run /home/.codex/plugins/cache/megapowers-eval/megapowers/0.42.8/skills/verify-and-finish/scripts/run-receipt.go"
+
+func TestRunReceiptWrapsTestAnchors(t *testing.T) {
+	for command, want := range map[string]string{
+		runReceiptCommand + " -- go test ./...":                      "test",
+		runReceiptCommand + " --tail 10 -- go test ./...":            "test",
+		runReceiptCommand + " -tail=10 -reuse -- go test ./...":      "test",
+		runReceiptCommand + " --dir /w/r --reuse -- npm test":        "test",
+		runReceiptCommand + " --reuse=true -- go test ./...":         "test",
+		runReceiptCommand + " --shell=false -- go test ./...":        "test",
+		runReceiptCommand + ` --dir "/tmp/my repo" -- go test ./...`: "test",
+		"go run \"/tmp/my tools/run-receipt.go\" -- go test ./...":   "test",
+		runReceiptCommand + " go test ./...":                         "test",
+		runReceiptCommand + " -- env CGO_ENABLED=0 go test ./...":    "test",
+		"cd pkg && " + runReceiptCommand + " -- go test ./...":       "test",
+		runReceiptCommand + " -- go test ./... && git commit -m":     "git_commit",
+		runReceiptCommand + " -- go vet ./...":                       "",
+		runReceiptCommand + ` -- "go test ./..."`:                    "",
+		runReceiptCommand + " --bogus -- go test ./...":              "",
+		runReceiptCommand + " -- go test ./... | tail -5":            "",
+		"go run ./cmd/other-tool.go -- go test ./...":                "",
+	} {
+		if got := eventKinds(classifyCommand(command, 1)); got != want {
+			t.Errorf("classifyCommand(%q) = [%s], want [%s]", command, got, want)
+		}
+	}
+}
+
+// The shell hides the check's own status, but a --shell run still executes the
+// check and records a receipt, so it must stay a position anchor.
+func TestRunReceiptShellTestIsAnUnattributedAnchor(t *testing.T) {
+	for command, want := range map[string]string{
+		runReceiptCommand + ` --shell -- 'go test ./... | tail -5'`: unattributedTestKind,
+		runReceiptCommand + ` --shell=true -- 'go test ./...'`:      unattributedTestKind,
+		runReceiptCommand + ` --shell -- 'go vet ./... | tail -5'`:  "",
+		runReceiptCommand + " -- go test ./... | tail -5":           unattributedTestKind,
+		// The script is a shell command line: stages, quoting and
+		// redirections follow the broker's own segment parser.
+		runReceiptCommand + ` --shell 'cd app && go test ./...'`:                       unattributedTestKind,
+		runReceiptCommand + ` --shell 'set -o pipefail; go test ./... | tee test.log'`: unattributedTestKind,
+		runReceiptCommand + ` --shell 'GOFLAGS="-count=1 -v" go test ./...'`:           unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./... 2>&1'`:                            unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./...' 2>&1`:                            unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./a && go test ./b'`:                    unattributedTestKind + "," + unattributedTestKind,
+		runReceiptCommand + ` --shell 'echo go test ./... | cat'`:                      "",
+		runReceiptCommand + ` --shell 'cd pkg && go test ./...' > /tmp/test.log`:       unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./...' 2> /tmp/err.log`:                 unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./...' >> /tmp/t.log 2>&1 < /dev/null`:  unattributedTestKind,
+	} {
+		if got := eventKinds(commandEvents(command, 0)); got != want {
+			t.Errorf("commandEvents(%q) = [%s], want [%s]", command, got, want)
+		}
+	}
+}
+
+func TestRunReceiptTestKeepsTracePositionBeforeCommit(t *testing.T) {
+	for name, wrapped := range map[string]string{
+		"plain":       runReceiptCommand + " -- go test ./...",
+		"shell":       runReceiptCommand + ` --shell -- "go test ./... | tail -5"`,
+		"shell stage": runReceiptCommand + ` --shell "cd . && go test ./..." 2>&1`,
+		"piped":       runReceiptCommand + " -- go test ./... | tail -5",
+		"quoted flag": runReceiptCommand + ` --dir "/tmp/my repo" -- go test ./...`,
+		"env prefix":  runReceiptCommand + " -- env CGO_ENABLED=0 go test ./...",
+		"single dash": runReceiptCommand + " -tail 5 -- go test ./...",
+	} {
+		line, err := json.Marshal(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{"id": "c2", "type": "commandExecution", "status": "completed", "command": "/bin/bash -lc '" + strings.ReplaceAll(wrapped, "'", "'\\''") + "'", "exitCode": 0}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		trace := []byte(`{"method":"item/completed","params":{"item":{"id":"c1","type":"commandExecution","status":"completed","command":"/bin/bash -lc 'git diff --check && gofmt -l rate.go'","exitCode":0}}}
+` + string(line) + "\n" + `{"method":"item/completed","params":{"item":{"id":"c3","type":"commandExecution","status":"completed","command":"/bin/bash -lc 'git add rate.go && git commit -m fix'","exitCode":0}}}
+{"method":"turn/completed","params":{"turn":{"status":"completed"}}}
+` + receiptTraceLine(t, 1, 0, true))
+		_, events, complete := normalizeTrace("codex", trace, 0)
+		if !complete || eventKinds(events) != "test,git_commit,trace_complete" || events[0].RC != 0 {
+			t.Errorf("%s: complete=%v events=%+v", name, complete, events)
+		}
+	}
+}
