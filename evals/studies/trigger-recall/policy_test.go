@@ -85,6 +85,42 @@ func TestExplicitInvocationIsNotImplicitRecall(t *testing.T) {
 	}
 }
 
+func TestExplicitPromptUsesHarnessSyntax(t *testing.T) {
+	c := probeCase{Kind: "explicit", Prompt: "Use $megapowers:grill-me on this plan"}
+	if got := promptForHarness(c, "claude"); got != "Use /megapowers:grill-me on this plan" {
+		t.Fatalf("Claude prompt: %q", got)
+	}
+	if got := promptForHarness(c, "codex"); got != c.Prompt {
+		t.Fatalf("Codex prompt: %q", got)
+	}
+	c.Kind = "near-miss"
+	if got := promptForHarness(c, "claude"); got != c.Prompt {
+		t.Fatal("rewrote non-invocation text")
+	}
+}
+
+func TestCoSelectionStillRejectsImplicitInterviewAndMissingMCP(t *testing.T) {
+	catalog := map[string]bool{"grill-me": true, "design-and-plan": true, "mcp-setup": true, "verify-and-finish": true}
+	for _, tc := range []struct {
+		probe      probeCase
+		selections []string
+		want       string
+	}{
+		{probeCase{Kind: "near-miss", Allowed: []string{"design-and-plan"}}, []string{"design-and-plan"}, "pass"},
+		{probeCase{Kind: "near-miss", Allowed: []string{"design-and-plan"}}, []string{"design-and-plan", "grill-me"}, "fail"},
+		{probeCase{Kind: "paraphrase", Expected: "mcp-setup", Allowed: []string{"verify-and-finish"}}, []string{"mcp-setup", "verify-and-finish"}, "pass"},
+		{probeCase{Kind: "paraphrase", Expected: "mcp-setup", Allowed: []string{"verify-and-finish"}}, []string{"verify-and-finish"}, "fail"},
+	} {
+		var events []actorEvent
+		for _, name := range tc.selections {
+			events = append(events, actorEvent{Kind: "skill_selected", Path: name, RC: 0})
+		}
+		if _, got := evaluateProbe(tc.probe, events, catalog); got != tc.want {
+			t.Fatalf("%v: got %s, want %s", tc.selections, got, tc.want)
+		}
+	}
+}
+
 func TestStagePluginTreePreservesExecutableBits(t *testing.T) {
 	source, destination := t.TempDir(), filepath.Join(t.TempDir(), "staged")
 	if err := os.MkdirAll(filepath.Join(source, "hooks"), 0o755); err != nil {

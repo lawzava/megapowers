@@ -42,7 +42,7 @@ autonomous agents do not add a second refusal gate: confirm the boundary once,
 then execute inside it without re-refusing each step. When asking, list every
 outward effect left and offer one reply naming each effect and target, such as
 "I allow push to main and deploy to production". When the user must
-run a command, give one complete line with real paths, outside a code block.
+run a command, give one complete line with real paths in a fenced code block.
 
 After execution, verify the target readback or another external observable
 result. Record partial completion and the compensating action plainly. Local

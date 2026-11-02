@@ -76,6 +76,14 @@ type casesFile struct {
 	Cases         []probeCase `json:"cases"`
 }
 
+// Explicit invocation syntax belongs to the harness, not the corpus.
+func promptForHarness(c probeCase, harness string) string {
+	if c.Kind == "explicit" && harness == "claude" {
+		return strings.ReplaceAll(c.Prompt, "$megapowers:", "/megapowers:")
+	}
+	return c.Prompt
+}
+
 type gatesAcceptance struct {
 	MinimumReps                  int     `json:"minimum_reps"`
 	DefaultMinRecall             float64 `json:"default_min_recall"`
@@ -860,6 +868,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, catalog
 	catalogSource := ""
 	for _, c := range cases.Cases {
 		tally := caseTally{CaseID: c.ID, Expected: c.Expected}
+		c.Prompt = promptForHarness(c, opts.Harness)
 		for rep := 1; rep <= opts.Reps; rep++ {
 			blockID := fmt.Sprintf("rep-%d", rep)
 			var result actorResult

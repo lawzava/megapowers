@@ -157,8 +157,9 @@
     {
       "id": "grill-me-implicit",
       "kind": "near-miss",
+      "allowed": ["design-and-plan"],
       "prompt": "Here is my idea: shard user data by region code. Stress-test it by interviewing me on the open decisions before we start, and wait for my answers.",
-      "provenance": "authored 2026-10-13; an implicit request must not select the explicit-only grill-me skill"
+      "provenance": "authored 2026-10-13; revised 2026-11-02: requirements interviews may select design-and-plan; implicit grill-me remains forbidden"
     },
     {
       "id": "grill-me-near-miss",
@@ -259,8 +260,9 @@
       "id": "mcp-setup-paraphrase",
       "kind": "paraphrase",
       "expected": "mcp-setup",
+      "allowed": ["verify-and-finish"],
       "prompt": "Wire up an MCP server that exposes GitHub tools to this CLI and prove the tools actually load. If you cannot verify here, say exactly which verification step is blocked.",
-      "provenance": "session scan 2026-08-23: MCP setup ranked top of the plumbing-friction backlog"
+      "provenance": "session scan 2026-08-23; revised 2026-11-02: the completion proof legitimately permits verify-and-finish alongside required mcp-setup"
     },
     {
       "id": "mcp-setup-buried",

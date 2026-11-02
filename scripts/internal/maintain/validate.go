@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type validation struct {
@@ -31,6 +32,15 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 		}
 	}
 	pass, fail := 0, 0
+	total, catalogErr := checkCatalogBudgets(root)
+	fmt.Fprintf(stdout, "  total catalog characters: %d (name + description + when_to_use)\n", total)
+	if catalogErr != nil {
+		fmt.Fprintf(stderr, "  FAIL skill catalog budgets\n%v\n", catalogErr)
+		fail++
+	} else {
+		fmt.Fprintln(stdout, "  PASS skill catalog budgets")
+		pass++
+	}
 	run := func(check validation) {
 		checkCtx, cancel := deadline(ctx, check.limit)
 		defer cancel()
@@ -181,6 +191,47 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 		return 1
 	}
 	return 0
+}
+
+func checkCatalogBudgets(root string) (int, error) {
+	paths, err := filepath.Glob(filepath.Join(root, "plugins/megapowers/skills/*/SKILL.md"))
+	if err != nil || len(paths) == 0 {
+		return 0, fmt.Errorf("no skill catalog found: %v", err)
+	}
+	total := 0
+	var issues []string
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return total, err
+		}
+		fm, err := parseSkillFrontMatter(string(data))
+		if err != nil {
+			return total, fmt.Errorf("%s: %w", path, err)
+		}
+		chars := utf8.RuneCountInString(fm.Scalars["description"] + fm.Scalars["when_to_use"])
+		total += chars + utf8.RuneCountInString(fm.Scalars["name"])
+		if chars > 1536 {
+			issues = append(issues, fmt.Sprintf("%s: description + when_to_use has %d characters (limit 1536)", path, chars))
+		}
+		// Count source bytes, including CRLF, rather than the parser's
+		// normalized body used by the directory edition.
+		bodyBytes := 0
+		lines := bytes.SplitAfter(data, []byte("\n"))
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(string(lines[i])) == "---" {
+				bodyBytes = len(bytes.Join(lines[i+1:], nil))
+				break
+			}
+		}
+		if bodyBytes > 20000 {
+			issues = append(issues, fmt.Sprintf("%s: body has %d bytes (limit 20000)", path, bodyBytes))
+		}
+	}
+	if len(issues) > 0 {
+		return total, fmt.Errorf("%s", strings.Join(issues, "\n"))
+	}
+	return total, nil
 }
 
 func checkShellSyntax(ctx context.Context, root string, files []string) error {
