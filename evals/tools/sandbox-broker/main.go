@@ -5179,10 +5179,15 @@ func runReceiptTests(words []string) (anchors int, attributable bool) {
 	}
 	// Redirections belong to the caller's shell, not to the wrapped command.
 	command := make([]string, 0, len(words)-min(index, len(words)))
-	for _, word := range words[min(index, len(words)):] {
-		if !isRedirectionWord(word) {
-			command = append(command, strings.ToLower(word))
+	rest := words[min(index, len(words)):]
+	for position := 0; position < len(rest); position++ {
+		if isRedirectionWord(rest[position]) {
+			if redirectionNeedsTarget(rest[position]) {
+				position++
+			}
+			continue
 		}
+		command = append(command, strings.ToLower(rest[position]))
 	}
 	if len(command) == 0 {
 		return 0, false
@@ -5214,6 +5219,16 @@ func lowerWords(words []string) []string {
 		lowered[index] = strings.ToLower(word)
 	}
 	return lowered
+}
+
+// redirectionNeedsTarget reports an operator word with no attached target,
+// such as ">" or "2>>", whose target is the next word.
+func redirectionNeedsTarget(word string) bool {
+	switch strings.TrimLeft(word, "0123456789") {
+	case ">", ">>", ">|", "<", "<<", "<>", "&>", "&>>":
+		return true
+	}
+	return false
 }
 
 // isRedirectionWord reports shell redirections such as 2>&1, >log, &>log, <in.

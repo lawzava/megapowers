@@ -387,6 +387,9 @@ func TestRunReceiptShellTestIsAnUnattributedAnchor(t *testing.T) {
 		runReceiptCommand + ` --shell 'go test ./...' 2>&1`:                            unattributedTestKind,
 		runReceiptCommand + ` --shell 'go test ./a && go test ./b'`:                    unattributedTestKind + "," + unattributedTestKind,
 		runReceiptCommand + ` --shell 'echo go test ./... | cat'`:                      "",
+		runReceiptCommand + ` --shell 'cd pkg && go test ./...' > /tmp/test.log`:       unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./...' 2> /tmp/err.log`:                 unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./...' >> /tmp/t.log 2>&1 < /dev/null`:  unattributedTestKind,
 	} {
 		if got := eventKinds(commandEvents(command, 0)); got != want {
 			t.Errorf("commandEvents(%q) = [%s], want [%s]", command, got, want)
