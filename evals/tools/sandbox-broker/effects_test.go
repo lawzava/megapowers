@@ -378,6 +378,15 @@ func TestRunReceiptShellTestIsAnUnattributedAnchor(t *testing.T) {
 		runReceiptCommand + ` --shell=true -- 'go test ./...'`:      unattributedTestKind,
 		runReceiptCommand + ` --shell -- 'go vet ./... | tail -5'`:  "",
 		runReceiptCommand + " -- go test ./... | tail -5":           unattributedTestKind,
+		// The script is a shell command line: stages, quoting and
+		// redirections follow the broker's own segment parser.
+		runReceiptCommand + ` --shell 'cd app && go test ./...'`:                       unattributedTestKind,
+		runReceiptCommand + ` --shell 'set -o pipefail; go test ./... | tee test.log'`: unattributedTestKind,
+		runReceiptCommand + ` --shell 'GOFLAGS="-count=1 -v" go test ./...'`:           unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./... 2>&1'`:                            unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./...' 2>&1`:                            unattributedTestKind,
+		runReceiptCommand + ` --shell 'go test ./a && go test ./b'`:                    unattributedTestKind + "," + unattributedTestKind,
+		runReceiptCommand + ` --shell 'echo go test ./... | cat'`:                      "",
 	} {
 		if got := eventKinds(commandEvents(command, 0)); got != want {
 			t.Errorf("commandEvents(%q) = [%s], want [%s]", command, got, want)
@@ -389,6 +398,7 @@ func TestRunReceiptTestKeepsTracePositionBeforeCommit(t *testing.T) {
 	for name, wrapped := range map[string]string{
 		"plain":       runReceiptCommand + " -- go test ./...",
 		"shell":       runReceiptCommand + ` --shell -- "go test ./... | tail -5"`,
+		"shell stage": runReceiptCommand + ` --shell "cd . && go test ./..." 2>&1`,
 		"piped":       runReceiptCommand + " -- go test ./... | tail -5",
 		"quoted flag": runReceiptCommand + ` --dir "/tmp/my repo" -- go test ./...`,
 		"env prefix":  runReceiptCommand + " -- env CGO_ENABLED=0 go test ./...",
