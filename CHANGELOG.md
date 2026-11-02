@@ -5,11 +5,19 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
-## 0.42.9 - 2026-11-02
+## 0.42.10 - 2026-11-02
 
 ### Changed
 
 - The output style sends every decision through the harness question tool: one decision per question, the recommended option first, approvals as checkboxes. It no longer allows a numbered prose list to answer by number. Without a question tool, the agent asks one question per message.
+
+## 0.42.9 - 2026-11-02
+
+### Fixed
+
+- Superseded by 0.42.10 with the same change. The v0.42.9 tag points at a
+  commit signed by GitHub's web key, which the release check cannot verify, so
+  the release was never attested and the `release` branch never moved to it.
 
 ## 0.42.8 - 2026-11-01
 
