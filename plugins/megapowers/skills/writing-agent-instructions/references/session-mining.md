@@ -2,8 +2,9 @@
 
 Past sessions show how work really goes. Places where the user stepped in
 to correct the agent are the best evidence for a new check, rule, or skill.
-`scripts/session-mine.go` reads local Claude Code and Codex transcripts,
-read-only, so a retrospective can cover many sessions, not one.
+`scripts/session-mine.go` reads Claude Code and Codex transcript files and
+OpenCode V2 sessions through its CLI API, read-only, so a retrospective can
+cover many sessions, not one. This does not add an OpenCode plugin install target.
 
 It needs Go, a shell, and local transcripts. Without them, say so and ask the
 user to paste the corrections or sessions to review; do not reconstruct them
@@ -24,7 +25,7 @@ go run "$SKILL_DIR/scripts/session-mine.go" recall --topic "release script" --wo
 go run "$SKILL_DIR/scripts/session-mine.go" scorecard --workspace "$PWD" --since 2026-10-01
 ```
 
-Shared flags: `--harness claude|codex|both` (default `both`), `--format
+Shared flags: `--harness claude|codex|opencode|both|all` (default `all`), `--format
 text|json`, `--limit N` (examples per class, default 5; sessions for recall,
 default 10), `--all-workspaces` instead of `--workspace`, and `--claude-root`
 or `--codex-root` to override the transcript locations.
@@ -32,6 +33,74 @@ By default, Codex scans both `sessions` and `archived_sessions` under
 `CODEX_HOME` (or `~/.codex`), counting each rollout filename once;
 `--codex-root` scans only the given directory, including archives only when
 pointed there.
+
+`both` remains Claude Code + Codex; `all` adds OpenCode when available.
+Each report includes `by_source` session, human, machine, and subagent-prompt
+counts, plus `skipped_sources`, `partial_sources`, `skipped_sessions`, and
+`deduplicated_sessions`. An unavailable OpenCode CLI/service is skipped with
+a stderr note, not a failed run. Failed exports, later-page failures, and the
+overall deadline make OpenCode partial, retaining sessions already loaded.
+A failed export also increments `skipped_sessions`. The OpenCode source's
+`status` is `complete`, `partial`, or `skipped`; its `environment` records the
+selected CLI environment.
+
+### OpenCode API access
+
+The adapter checks `opencode service status`, then uses only `opencode api get`
+against `/api/session` (all cursor pages) and
+`/api/experimental/session/{sessionID}/export`. It issues no service start,
+stop, or restart commands, and never opens OpenCode data, state, database, or
+credential files. Use an already-running service. Status calls have a 10-second
+timeout; API calls have a 30-second timeout. `WaitDelay` bounds leftover child
+pipes to one additional second. Timed-out attempts are not retried.
+The whole OpenCode source has a 5-minute deadline, including status, retries,
+and exports. Set `--opencode-timeout 2m` or `SESSION_MINE_OPENCODE_TIMEOUT`
+to a positive Go duration to change it; the flag wins. A deadline produces a
+partial source even if no sessions have loaded, and scanning other sources continues.
+API output goes to a private temporary file under `TMPDIR` (removed after
+reading), since some CLI versions truncate piped output. Missing or malformed
+API JSON is retried once, then reported without raw CLI diagnostics.
+An empty list/export is also retried once for location warm-up. A valid empty
+snapshot is retained if the retry fails, unless the attempt times out.
+A persistently empty list may mean no sessions or the wrong server/environment.
+
+`--workspace DIR` selects sessions whose current `location.directory` equals
+the resolved directory, including children, not every session sharing a project
+ID. Moved sessions are attributed to their current session directory.
+`--all-workspaces` has no directory filter. `--since` filters message timestamps;
+sessions last updated before that date need no export.
+
+`--opencode-cmd FILE` or `SESSION_MINE_OPENCODE_CMD` selects an executable
+(not a shell command); the flag wins. It receives `service status` or
+`api get PATH` arguments. A wrapper can select the correct CLI environment or
+server without changing the miner. If status reports no running service and
+`XDG_STATE_HOME` is nonempty, the adapter retries status with that variable
+removed from the child environment, then uses that same environment for all
+API calls. The source summary reports `environment: without_xdg_state_home`
+and stderr notes the fallback. Otherwise it reports `environment: inherited`.
+No parent environment is changed and no state path is hardcoded.
+For other environment conflicts, a wrapper or an explicit caller override
+can select the intended running service:
+
+```bash
+env -u XDG_STATE_HOME go run "$SKILL_DIR/scripts/session-mine.go" corrections --workspace "$PWD" --harness opencode
+```
+
+OpenCode `user` messages are human turns unless a machine-text anchor below
+matches. `synthetic` messages are machine turns; child sessions (`parentID`
+set) classify user/synthetic turns as subagent prompts, never human. Assistant
+text is kept; reasoning, system text, and tool outputs are not conversation
+excerpts. Skill loads and shell/read/error tool events feed scorecards.
+The V2 API has no standard scheduler/Paseo-origin field: unmarked scripted root
+prompts cannot be distinguished from typed prompts and still count as human.
+
+Claude Agent exports have `model.providerID: claude-agent` and content blocks
+with `native.sessionID`, observed to match Claude JSONL `sessionId`. When both
+sources are selected and the OpenCode export contributes in-range messages,
+the linked Claude transcript is omitted. Other `sdk-ts` transcripts stay.
+If that link is absent, or OpenCode cannot be read, no heuristic dedupe is
+attempted; per-source counts can overlap. Inspect those counts before treating
+combined totals as unique activity.
 
 `corrections` puts each user turn next to the agent text that came before it
 and sorts the turn into a class by keywords:
@@ -53,7 +122,7 @@ excludes:
 - Claude compaction summaries (`isCompactSummary`) and turns whose `origin` names
   a producer, such as a `<task-notification>`;
 - Codex turns in a `codex exec` run (`source: exec`);
-- in either harness, a turn that starts with "This session is being continued
+- in any source, a turn that starts with "This session is being continued
   from a previous conversation", "This is an approved autonomous run", or
   "Continue the approved run and finish it", or that has a line starting with
   "Unattended run:" (a schedule prompt).
@@ -96,7 +165,8 @@ it toward a retrospective class.
 
 ## Privacy
 
-The tool runs locally and never writes files. Only a sanitized scorecard
+The tool runs locally and keeps no transcript copies beyond its temporary API
+output files, which it removes after reading. Only a sanitized scorecard
 may leave the machine, and only after the user has seen it. Excerpts are short and redacted:
 emails, tokens, home paths, and URL credentials are removed. Redaction can
 miss things. Never paste raw transcripts or unreviewed excerpts into
