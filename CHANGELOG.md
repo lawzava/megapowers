@@ -5,6 +5,20 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.45.0 - 2026-11-03
+
+### Added
+
+- `session-mine` reads OpenCode V2 sessions through the CLI's GET API for
+  corrections, recall, and scorecards. The default harness is `all`; `both`
+  still means Claude Code and Codex. Reports include per-source counts and
+  deduplicate linked Claude Agent SDK transcripts without dropping other SDK clients.
+- OpenCode mining retries an unavailable inherited state-directory selection
+  without `XDG_STATE_HOME` and reports the environment used. A configurable
+  5-minute source deadline and bounded child-pipe waits prevent stalled CLI
+  wrappers from blocking the other sources. Failures after data loads are
+  reported as partial, not skipped.
+
 ## 0.44.1 - 2026-11-02
 
 ### Fixed
