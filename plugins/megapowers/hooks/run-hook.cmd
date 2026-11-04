@@ -153,7 +153,7 @@ set -u
 umask 077
 
 if [ "$#" -ne 1 ]; then
-  printf 'megapowers hook: cannot run hook: expected deny-destructive, session-start, subagent-start, output-style, or doctor\n' >&2
+  echo 'megapowers hook: cannot run hook: expected deny-destructive, session-start, subagent-start, output-style, or doctor' >&2
   exit 1
 fi
 hook_name="$1"
@@ -162,7 +162,7 @@ hook_name="$1"
 # call because the launcher itself broke: they warn the user via
 # systemMessage and exit 0. subagent-start stays silent; doctor fails hard.
 fail() {
-  printf 'megapowers hook: %s\n' "$1" >&2
+  echo "megapowers hook: $1" >&2
   case "$hook_name" in
     deny-destructive)
       # Tool calls warn once per breakage; session-start still warns every

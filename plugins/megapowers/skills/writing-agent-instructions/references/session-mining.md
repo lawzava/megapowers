@@ -74,7 +74,8 @@ sessions last updated before that date need no export.
 (not a shell command); the flag wins. The child receives only set values of
 `PATH`, `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `XDG_CONFIG_HOME`,
 `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`, and
-`TMPDIR`. It receives `service status` or
+`TMPDIR`. The platform may also add its required system variable.
+It receives `service status` or
 `api get PATH` arguments. A wrapper can select the correct CLI environment or
 server without changing the miner. If status reports no running service and
 `XDG_STATE_HOME` is nonempty, the adapter retries status with that variable

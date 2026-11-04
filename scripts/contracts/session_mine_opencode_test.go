@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -496,6 +497,10 @@ func TestSessionMineOpenCodeEnvironment(t *testing.T) {
 	command, fixture := fakeSessionMineOpenCode(t, map[string][]string{"/api/session?limit=100&order=desc": {`{"data":[],"cursor":{}}`}})
 	names := []string{"PATH", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR", "TMPDIR"}
 	expected := map[string]string{}
+	if runtime.GOOS == "windows" {
+		// os/exec adds the system directory even with an explicit environment.
+		expected["SYSTEMROOT"] = os.Getenv("SYSTEMROOT")
+	}
 	env := []string{"DEMO_PASSWORD=sentinel", "DEMO_TOKEN=sentinel", "DEMO_KEY=sentinel", "DEMO_SECRET=sentinel", "DEMO_AUTH=sentinel", "UNRELATED=sentinel"}
 	for _, name := range names {
 		value := filepath.Join(t.TempDir(), name)
