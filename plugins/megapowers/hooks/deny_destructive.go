@@ -138,11 +138,11 @@ func scanLevel(command, home string) (decision, []string) {
 			}
 		case "blkdiscard":
 			if blkdiscardIsCatastrophic(tail) {
-				return decision{true, "blkdiscard targeting a block device (would wipe a disk). --dry-run is allowed."}, nil
+				return decision{true, "blkdiscard targeting a block device (would wipe a disk). --dry-run is fine."}, nil
 			}
 		case "mkfs", "shred", "truncate":
 			if formatIsCatastrophic(tail) {
-				return decision{true, name + " targeting a block device (would wipe a disk). Against a plain file this is allowed."}, nil
+				return decision{true, name + " targeting a block device (would wipe a disk). Against a plain file this is fine."}, nil
 			}
 		case "tee":
 			if formatIsCatastrophic(tail) {
@@ -162,7 +162,7 @@ func scanLevel(command, home string) (decision, []string) {
 			}
 		default:
 			if strings.HasPrefix(name, "mkfs.") && formatIsCatastrophic(tail) {
-				return decision{true, name + " targeting a block device (would wipe a disk). Against a plain file this is allowed."}, nil
+				return decision{true, name + " targeting a block device (would wipe a disk). Against a plain file this is fine."}, nil
 			}
 		}
 	}

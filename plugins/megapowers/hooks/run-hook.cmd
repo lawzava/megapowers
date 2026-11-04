@@ -42,7 +42,7 @@ if defined GO_VERSION (
     rem A colon, as in go1.26.8-X:nodwarf5, would start an NTFS alternate data stream.
     set "GO_KEY=!GO_KEY::=_!"
 )
-set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-72b1345d63dffcc4-windows-%PROCESSOR_ARCHITECTURE%"
+set "RUNNER_PREFIX=!CACHE_DIR!\megapowers-hook-7b0af30fb57ccde7-windows-%PROCESSOR_ARCHITECTURE%"
 set "RUNNER="
 if defined GO_KEY (
     set "RUNNER=!RUNNER_PREFIX!-!GO_KEY!.exe"
@@ -145,9 +145,7 @@ rem Tool calls warn once per breakage; session-start still warns every session.
 if defined CACHE_DIR if exist "!CACHE_DIR!\guard-inactive.warned" exit /b 0
 if defined CACHE_DIR if exist "!CACHE_DIR!\" type nul > "!CACHE_DIR!\guard-inactive.warned" 2>nul
 :warn
-set "JSON_REASON=!REASON:\=\\!"
-set JSON_REASON=!JSON_REASON:"=\"!
-echo {"systemMessage":"megapowers: destructive-command guard is inactive (!JSON_REASON!). Run megapowers-doctor for the fix."}
+echo {"systemMessage":"megapowers: destructive-command guard is inactive. See stderr for the reason. Run megapowers-doctor for the fix."}
 exit /b 0
 CMDBLOCK
 
@@ -159,23 +157,6 @@ if [ "$#" -ne 1 ]; then
   exit 1
 fi
 hook_name="$1"
-
-# json_escape quotes a short message for a JSON string using only shell
-# builtins, so it works under a PATH without sed or awk.
-json_escape() {
-  remaining="$1"
-  escaped=""
-  while [ -n "$remaining" ]; do
-    char="${remaining%"${remaining#?}"}"
-    remaining="${remaining#?}"
-    case "$char" in
-      \\) escaped="$escaped\\\\" ;;
-      \") escaped="$escaped\\\"" ;;
-      *) escaped="$escaped$char" ;;
-    esac
-  done
-  printf '%s' "$escaped"
-}
 
 # fail reports a launcher failure. The guard hooks must never block a tool
 # call because the launcher itself broke: they warn the user via
@@ -190,11 +171,11 @@ fail() {
         [ -e "$cache_dir/guard-inactive.warned" ] && exit 0
         : > "$cache_dir/guard-inactive.warned" 2>/dev/null
       fi
-      printf '{"systemMessage":"megapowers: destructive-command guard is inactive (%s). Run megapowers-doctor for the fix."}\n' "$(json_escape "$1")"
+      echo '{"systemMessage":"megapowers: destructive-command guard is inactive. See stderr for the reason. Run megapowers-doctor for the fix."}'
       exit 0
       ;;
     session-start)
-      printf '{"systemMessage":"megapowers: destructive-command guard is inactive (%s). Run megapowers-doctor for the fix."}\n' "$(json_escape "$1")"
+      echo '{"systemMessage":"megapowers: destructive-command guard is inactive. See stderr for the reason. Run megapowers-doctor for the fix."}'
       exit 0
       ;;
     subagent-start)
@@ -218,7 +199,7 @@ export GO111MODULE=off GOTOOLCHAIN=local
 go_key=""
 go_found=0
 go_version=""
-if command -v go >/dev/null 2>&1; then
+if command -v go >/dev/null 2>/dev/null; then
   go_found=1
   go_version="$(go env GOVERSION 2>/dev/null)" || go_version=""
   go_key="${go_version#devel }"
@@ -284,7 +265,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-runner_prefix="$cache_dir/megapowers-hook-72b1345d63dffcc4-$platform_os-$platform_arch"
+runner_prefix="$cache_dir/megapowers-hook-7b0af30fb57ccde7-$platform_os-$platform_arch"
 if [ -n "$go_key" ]; then
   runner="$runner_prefix-$go_key"
 else
@@ -299,7 +280,7 @@ else
   done
   if [ -z "$runner" ]; then
     if [ -n "$go_version" ]; then
-      # The value is not echoed: fail() escapes only backslash and quote.
+      # Keep an unsupported version value out of the warning.
       fail "cannot build hook runner: unsupported GOVERSION value from go env GOVERSION"
     fi
     if [ "$go_found" -eq 1 ]; then
@@ -351,7 +332,7 @@ if [ ! -x "$runner" ]; then
   # access time because running a runner never changes its mtime. Another
   # install may still use a recent one, so those stay; a pruned runner that is
   # still needed is rebuilt once.
-  if command -v find >/dev/null 2>&1; then
+  if command -v find >/dev/null 2>/dev/null; then
     find "$cache_dir" -maxdepth 1 -type f -name 'megapowers-hook-*' ! -name "${runner_prefix##*/}-*" \
       -atime +30 -exec rm -f -- {} + 2>/dev/null || :
   fi

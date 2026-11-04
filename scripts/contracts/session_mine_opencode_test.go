@@ -20,19 +20,21 @@ func fakeSessionMineOpenCode(t *testing.T, responses map[string][]string) (strin
 import ("encoding/json"; "os"; "os/exec"; "path/filepath"; "fmt"; "time")
 func main() {
  if len(os.Args)==2 && os.Args[1]=="linger" { time.Sleep(3*time.Second); return }
- dir := os.Getenv("MINE_FIXTURE")
+ exe, _ := os.Executable(); dir := filepath.Dir(exe)
+ dataFlags, _ := os.ReadFile(filepath.Join(dir,"flags.json")); var flags map[string]string; json.Unmarshal(dataFlags,&flags)
+ envLog, _ := os.OpenFile(filepath.Join(dir,"environment"), os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600); json.NewEncoder(envLog).Encode(os.Environ()); envLog.Close()
  log, _ := os.OpenFile(filepath.Join(dir,"calls"), os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600)
  defer log.Close()
  if len(os.Args)==3 && os.Args[1]=="service" && os.Args[2]=="status" {
   fmt.Fprintln(log,"status")
-  if os.Getenv("MINE_STATUS_DELAY")=="1" { time.Sleep(30*time.Second) }
-  if os.Getenv("MINE_REQUIRE_DEFAULT_STATE")=="1" && os.Getenv("XDG_STATE_HOME")!="" { fmt.Println("stopped"); return }
-  if os.Getenv("MINE_LINGER_STATUS")=="1" { child:=exec.Command(os.Args[0],"linger"); child.Stdout=os.Stdout; child.Start() }
+  if flags["MINE_STATUS_DELAY"]=="1" { time.Sleep(30*time.Second) }
+  if flags["MINE_REQUIRE_DEFAULT_STATE"]=="1" && os.Getenv("XDG_STATE_HOME")!="" { fmt.Println("stopped"); return }
+  if flags["MINE_LINGER_STATUS"]=="1" { child:=exec.Command(os.Args[0],"linger"); child.Stdout=os.Stdout; child.Start() }
   fmt.Println("http://localhost:1234"); return
  }
  if len(os.Args)!=4 || os.Args[1]!="api" || os.Args[2]!="get" { os.Exit(3) }
  key := os.Args[3]; fmt.Fprintln(log,key)
- if os.Getenv("MINE_REQUIRE_DEFAULT_STATE")=="1" && os.Getenv("XDG_STATE_HOME")!="" { os.Exit(5) }
+ if flags["MINE_REQUIRE_DEFAULT_STATE"]=="1" && os.Getenv("XDG_STATE_HOME")!="" { os.Exit(5) }
  data,_ := os.ReadFile(filepath.Join(dir,"responses.json")); var responses map[string][]string; json.Unmarshal(data,&responses)
  seq,ok := responses[key]; if !ok || len(seq)==0 { os.Exit(4) }
  if seq[0]=="!fail" { os.Exit(4) }; if seq[0]=="!wait" { time.Sleep(30*time.Second) }
@@ -72,6 +74,26 @@ func openCodeExport(info map[string]any, messages ...map[string]any) string {
 
 func runSessionMineStreams(t *testing.T, root string, env []string, tool string, args ...string) (string, string) {
 	t.Helper()
+	// Fixture controls live beside the fake CLI, outside its environment.
+	fixture := ""
+	for i, arg := range args {
+		if arg == "--opencode-cmd" && i+1 < len(args) {
+			fixture = filepath.Dir(args[i+1])
+		}
+	}
+	if fixture != "" {
+		flags := map[string]string{}
+		for _, item := range env {
+			key, value, _ := strings.Cut(item, "=")
+			if strings.HasPrefix(key, "MINE_") {
+				flags[key] = value
+			}
+		}
+		data, _ := json.Marshal(flags)
+		if err := os.WriteFile(filepath.Join(fixture, "flags.json"), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	cmd := exec.Command(tool, args...)
 	cmd.Dir, cmd.Env = root, append(os.Environ(), env...)
 	var stdout, stderr bytes.Buffer
@@ -465,5 +487,53 @@ func TestSessionMineInstalledSingleFile(t *testing.T) {
 	var report sessionMineCorrections
 	if code != 0 || json.Unmarshal([]byte(output), &report) != nil || report.SessionsScanned != 0 {
 		t.Fatalf("standalone installed copy (%d): %s", code, output)
+	}
+}
+
+func TestSessionMineOpenCodeEnvironment(t *testing.T) {
+	root := repoRoot(t)
+	tool := buildSessionMine(t, root)
+	command, fixture := fakeSessionMineOpenCode(t, map[string][]string{"/api/session?limit=100&order=desc": {`{"data":[],"cursor":{}}`}})
+	names := []string{"PATH", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR", "TMPDIR"}
+	expected := map[string]string{}
+	env := []string{"DEMO_PASSWORD=sentinel", "DEMO_TOKEN=sentinel", "DEMO_KEY=sentinel", "DEMO_SECRET=sentinel", "DEMO_AUTH=sentinel", "UNRELATED=sentinel"}
+	for _, name := range names {
+		value := filepath.Join(t.TempDir(), name)
+		if name == "PATH" || name == "HOME" || name == "TMPDIR" {
+			value = os.Getenv(name)
+		}
+		expected[name] = value
+		env = append(env, name+"="+value)
+	}
+	output, _ := runSessionMineStreams(t, root, env, tool, "--harness", "opencode", "--all-workspaces", "--opencode-cmd", command, "--format", "json")
+	if !strings.Contains(output, `"status": "complete"`) {
+		t.Fatalf("source incomplete: %s", output)
+	}
+	data, err := os.ReadFile(filepath.Join(fixture, "environment"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("want status and two API calls, got %d", len(lines))
+	}
+	for _, line := range lines {
+		var items []string
+		if err := json.Unmarshal([]byte(line), &items); err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, item := range items {
+			key, value, _ := strings.Cut(item, "=")
+			got[key] = value
+			if want, ok := expected[key]; !ok || value != want {
+				t.Errorf("unexpected child variable %s", key)
+			}
+		}
+		for key, want := range expected {
+			if got[key] != want {
+				t.Errorf("missing child variable %s", key)
+			}
+		}
 	}
 }
