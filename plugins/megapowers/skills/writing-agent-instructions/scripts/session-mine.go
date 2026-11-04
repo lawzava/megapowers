@@ -563,9 +563,9 @@ type openCodeMessage struct {
 	} `json:"content"`
 }
 
-// openCodeGET uses only the CLI's public GET interface and native auth context.
+// openCodeGET uses only the CLI's public GET interface and existing configuration.
 // A regular file, not a pipe, avoids CLI stdout truncation on large exports.
-// No OpenCode data/state/credential files are opened by this program.
+// This program opens no OpenCode files directly.
 func openCodeGET(parent context.Context, opt options, env []string, route string, result any) error {
 	file, err := os.CreateTemp("", "session-mine-opencode-*.json")
 	if err != nil {

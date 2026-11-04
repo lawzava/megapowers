@@ -49,8 +49,8 @@ selected CLI environment.
 The adapter checks `opencode service status`, then uses only `opencode api get`
 against `/api/session` (all cursor pages) and
 `/api/experimental/session/{sessionID}/export`. It issues no service start,
-stop, or restart commands, and never opens OpenCode data, state, database, or
-credential files. Use an already-running service. Status calls have a 10-second
+stop, or restart commands, and opens no OpenCode files directly.
+Use an already-running service. Status calls have a 10-second
 timeout; API calls have a 30-second timeout. `WaitDelay` bounds leftover child
 pipes to one additional second. Timed-out attempts are not retried.
 The whole OpenCode source has a 5-minute deadline, including status, retries,
