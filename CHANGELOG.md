@@ -5,6 +5,12 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.45.2 - 2026-11-05
+
+### Changed
+
+- Reworded the OpenCode reader's comments and documentation with no behavior change.
+
 ## 0.45.1 - 2026-11-04
 
 ### Fixed
