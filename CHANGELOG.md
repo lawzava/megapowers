@@ -5,6 +5,15 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.45.1 - 2026-11-04
+
+### Fixed
+
+- The session miner passes only executable and directory variables to the
+  OpenCode CLI, preserving the state-directory fallback.
+- Hook launcher warnings use fixed JSON messages and keep specific diagnostics
+  on stderr. Destructive-command decisions are unchanged.
+
 ## 0.45.0 - 2026-11-03
 
 ### Added

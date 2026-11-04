@@ -709,7 +709,17 @@ func loadOpenCode(opt options, stats *scanStats) []session {
 		stats.notes = append(stats.notes, "opencode source "+status+": "+reason+"; check service status and --opencode-cmd environment")
 	}
 	// Do not ask the CLI to discover/start a service when none is running.
-	env := os.Environ()
+	// The CLI needs only executable discovery and local directory selection.
+	env := []string{}
+	for _, name := range []string{
+		"PATH", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+		"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
+		"XDG_RUNTIME_DIR", "TMPDIR",
+	} {
+		if value, ok := os.LookupEnv(name); ok {
+			env = append(env, name+"="+value)
+		}
+	}
 	running, err := openCodeStatus(ctx, opt, env)
 	if !running && err == nil && os.Getenv("XDG_STATE_HOME") != "" {
 		fallback := make([]string, 0, len(env))

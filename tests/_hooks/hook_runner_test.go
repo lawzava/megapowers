@@ -658,7 +658,7 @@ func environmentWithout(keys ...string) []string {
 
 // expectLauncherWarning asserts the non-blocking failure contract: exit 0,
 // stdout holds exactly one JSON object whose only key is systemMessage naming
-// the reason, and stderr still carries the diagnostic.
+// the inactive guard, and stderr still carries the specific diagnostic.
 func expectLauncherWarning(t *testing.T, cmd *exec.Cmd, reason string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
@@ -671,7 +671,7 @@ func expectLauncherWarning(t *testing.T, cmd *exec.Cmd, reason string) {
 		t.Fatalf("stdout must be one JSON object: %v\n%q", err, stdout.String())
 	}
 	message, _ := parsed["systemMessage"].(string)
-	want := "megapowers: destructive-command guard is inactive (" + reason + "). Run megapowers-doctor for the fix."
+	want := "megapowers: destructive-command guard is inactive. See stderr for the reason. Run megapowers-doctor for the fix."
 	if len(parsed) != 1 || message != want {
 		t.Fatalf("systemMessage = %q (keys %d), want %q", message, len(parsed), want)
 	}
