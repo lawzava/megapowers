@@ -5,6 +5,28 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.48.0 - 2026-11-05
+
+### Added
+
+- A Go fence checker for arbitrary Git worker checkouts or revision ranges,
+  including dirty and untracked paths, plus pre-dispatch lead snapshots and
+  drift detection before integration.
+- Task fence syntax, out-of-scope boundaries, per-item acceptance commands and
+  handoff smells in the planning reference.
+
+### Changed
+
+- Orchestration, independent review and autonomous-run guidance use native
+  harness capabilities with portable fallbacks. Claude Code and Codex remain
+  the tested plugin installs; skills and supporting files may be copied into
+  other Agent Skills harnesses. Local bindings and hooks remain user-owned.
+- Independent review supports native different-vendor subagents as well as the
+  scanned external-command adapter. Both use scope-creep/shrink reports and
+  evidenced findings; the lead fails blockers, majors, creep and shrink, never
+  nits, regardless of the reviewer's verdict. Correction rounds use fresh agents
+  without resetting their cap.
+
 ## 0.47.0 - 2026-11-05
 
 ### Changed
