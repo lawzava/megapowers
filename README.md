@@ -156,7 +156,6 @@ only when your request matches. The *experimental* labels come from
 |---|---|
 | `megapowers-doctor` *(experimental)* | A skill did not fire, the Claude Code style looks off, or the install needs checking |
 | `upgrading-megapowers` | You want to update, reinstall, or repair the plugin |
-| `mcp-setup` *(experimental)* | An MCP server needs installing or fixing, or its tools are missing |
 
 [docs/orchestration.md](./docs/orchestration.md) explains which kinds of task
 go to which skill.

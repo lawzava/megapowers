@@ -10,7 +10,7 @@ orchestration daemon, or vendor choice.
 - `skills/`: one skill per task type: orchestration, structured interviews,
   research, design, implementation with language-specific code judgment,
   debugging, verification, actions with real-world side effects, long
-  unattended runs, independent review, MCP setup, prose, safe upgrades,
+  unattended runs, independent review, prose, safe upgrades,
   writing agent instructions (including retrospectives, session recall, and
   memory hygiene), and self-diagnosis (`megapowers-doctor`).
   `skills/catalog.json` records whether each skill is stable or experimental,

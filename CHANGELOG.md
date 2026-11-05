@@ -5,6 +5,15 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.52.0 - 2026-11-05
+
+### Changed
+
+- Directory-review probe: move the mcp-setup skill unchanged to
+  `extras/skills/mcp-setup/` for repository-only use. Remove its shipped
+  catalog entry, listings and eval cases. This does not establish the
+  directory scanner's cause or approval outcome.
+
 ## 0.51.0 - 2026-11-05
 
 ### Changed

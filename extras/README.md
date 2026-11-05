@@ -1,5 +1,8 @@
 # Optional helpers
 
+The v0.52.0 directory-review probe keeps `skills/mcp-setup/` here unchanged
+for repository-only use. It is not shipped with the plugin.
+
 The v0.51.0 directory-review probe moves nine Go helpers from the plugin into
 `extras/scripts/<skill>/`, unchanged. Nested paths within each former skill scripts
 folder stay intact. These helpers are not installed with the plugin.
