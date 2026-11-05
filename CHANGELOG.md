@@ -5,6 +5,19 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.51.0 - 2026-11-05
+
+### Changed
+
+- Directory-review probe: ship no executable code in the plugin to isolate
+  whether helper scripts trigger the directory hold. This does not establish
+  the scanner's cause or approval outcome.
+- Move all nine helper scripts unchanged to extras/scripts, preserving their
+  layout within each skill. Keep their tests against the repository extras.
+- Replace bundled-helper commands with manual procedures using normal agent
+  tools. Keep manifests, assets, references, catalog and output style.
+- Reject executable code, hooks and MCP entries in the shipped plugin.
+
 ## 0.50.0 - 2026-11-05
 
 ### Removed

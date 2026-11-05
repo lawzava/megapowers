@@ -132,6 +132,9 @@ func newValidateFixture(t *testing.T) (string, string) {
 	write("CHANGELOG.md", "# Changelog\n\n## 1.2.3 - test\n")
 	write("plugins/megapowers/.claude-plugin/icon.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"></svg>`)
 	write("plugins/megapowers/skills/alpha/SKILL.md", "---\nname: alpha\ndescription: Use when testing.\n---\n\nBody.\n")
+	if err := os.MkdirAll(filepath.Join(repo, "extras"), 0755); err != nil {
+		t.Fatal(err)
+	}
 	write("scripts/dummy.go", "package dummy\n")
 	write("scripts/dummy.sh", "#!/bin/sh\necho ok\n")
 	if err := os.Chmod(filepath.Join(repo, "scripts/dummy.sh"), 0o755); err != nil {
@@ -170,7 +173,7 @@ func newValidateFixture(t *testing.T) (string, string) {
 // A fresh checkout has no tests/ directory after the hook-only tests are removed.
 func TestDiscoverGoFilesWithoutLegacyHookTests(t *testing.T) {
 	root := t.TempDir()
-	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers"} {
+	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers", "extras"} {
 		path := filepath.Join(root, rel)
 		if err := os.MkdirAll(path, 0755); err != nil {
 			t.Fatal(err)
@@ -183,7 +186,7 @@ func TestDiscoverGoFilesWithoutLegacyHookTests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Go discovery must work without legacy hook tests: %v", err)
 	}
-	if len(files) != 4 {
-		t.Fatalf("discovered %d files, want 4", len(files))
+	if len(files) != 5 {
+		t.Fatalf("discovered %d files, want 5", len(files))
 	}
 }

@@ -18,7 +18,7 @@ proves. An empty search or scan proves absence only after it finds a known
 positive. Never weaken a test, baseline, threshold, or predicate to obtain a
 pass; after a code change, run the [bar guard](references/bar-guard.md) and fix
 or report each finding. Run long or verbose checks through the
-[run receipt tool](references/run-receipt.md); block on a running check and
+[run receipt procedure](references/run-receipt.md); block on a running check and
 never poll with `sleep`.
 
 Label inspection and inference; neither is an executed check. Rerun relevant

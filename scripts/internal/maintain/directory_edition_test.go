@@ -50,9 +50,9 @@ func newDirectorySource(t *testing.T) string {
 	write("hooks/hooks.json", "{}", 0o644)
 	write("output-styles/megapowers.md", "style\n", 0o644)
 	write("skills/catalog.json", "{}", 0o644)
-	write("skills/alpha/SKILL.md", "---\nname: alpha\ndescription: Use when testing alpha.\nmetadata:\n  short-description: Alpha short\n---\n\n# Alpha\n\nRead [the ref](references/ref.md) and run `scripts/tool.go`.\n", 0o644)
-	write("skills/alpha/references/ref.md", "# Ref\n\nSee `scripts/tool.go` and [site](https://example.com/x).\n", 0o644)
-	write("skills/alpha/scripts/tool.go", "package main\n\nfunc main() {}\n", 0o755)
+	write("skills/alpha/SKILL.md", "---\nname: alpha\ndescription: Use when testing alpha.\nmetadata:\n  short-description: Alpha short\n---\n\n# Alpha\n\nRead [the ref](references/ref.md) and read `assets/tool.md`.\n", 0o644)
+	write("skills/alpha/references/ref.md", "# Ref\n\nSee `assets/tool.md` and [site](https://example.com/x).\n", 0o644)
+	write("skills/alpha/assets/tool.md", "# Tool notes\n", 0o644)
 	write("skills/alpha/scripts/tool_test.go", "package main\n", 0o644)
 	write("skills/beta/SKILL.md", "---\nname: \"beta\"\ndescription: \"Use when beta: colon inside.\"\nmetadata:\n  short-description: Beta short\n---\n\nBody.\n", 0o644)
 	write("skills/beta/agents/openai.yaml", "policy:\n  allow_implicit_invocation: false\n", 0o644)
@@ -91,8 +91,8 @@ func TestDirectoryBuildSelectsSkillsOnly(t *testing.T) {
 		".codex-plugin/plugin.json",
 		"assets/icon.svg",
 		"skills/alpha/SKILL.md",
+		"skills/alpha/assets/tool.md",
 		"skills/alpha/references/ref.md",
-		"skills/alpha/scripts/tool.go",
 		"skills/beta/SKILL.md",
 		"skills/beta/agents/openai.yaml",
 	}
@@ -103,7 +103,7 @@ func TestDirectoryBuildSelectsSkillsOnly(t *testing.T) {
 	for _, f := range files {
 		modes[f.Path] = f.Mode
 	}
-	if modes["skills/alpha/scripts/tool.go"] != 0o755 || modes["skills/alpha/SKILL.md"] != 0o644 {
+	if modes["skills/alpha/assets/tool.md"] != 0o644 || modes["skills/alpha/SKILL.md"] != 0o644 {
 		t.Fatalf("modes not normalized: %v", modes)
 	}
 }
@@ -561,9 +561,9 @@ func TestDirectoryValidateAcceptsReferenceShapes(t *testing.T) {
 	pkg := fixturePackage(t)
 	setFile(pkg, "skills/alpha/SKILL.md", "---\nname: alpha\ndescription: d\n---\n"+
 		"[a](references/ref.md#anchor) [b](./references/ref.md) [url](https://example.com/a) [mail](mailto:a@b.c) [frag](#top)\n"+
-		"`references/ref.md` `scripts/tool.go` `./scripts/tool.go` `scripts/<name>.go` `~/x/y` `/abs/path` `$ROOT/scripts/x.go` `assets/` `agents/openai.yaml`\n"+
-		"```sh\ngo run scripts/tool.go --help\n```\n")
-	setFile(pkg, "skills/alpha/references/ref.md", "Back to [skill](../SKILL.md) and `scripts/tool.go`.\n")
+		"`references/ref.md` `assets/tool.md` `./assets/tool.md` `scripts/<name>.go` `~/x/y` `/abs/path` `$ROOT/scripts/x.go` `assets/` `agents/openai.yaml`\n"+
+		"```sh\ncat assets/tool.md\n```\n")
+	setFile(pkg, "skills/alpha/references/ref.md", "Back to [skill](../SKILL.md) and `assets/tool.md`.\n")
 	if report := validateDirectoryPackage(pkg); len(report.Errors) != 0 {
 		t.Fatalf("valid references flagged: %v", report.Errors)
 	}

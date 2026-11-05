@@ -1,7 +1,7 @@
 # Manual checks
 
-Use these checks when the local shell or Go is unavailable. The directory
-edition bundles the same doctor script. Neither edition has a hook launcher;
+Use these checks with normal file and session tools. Both editions contain
+guidance only. Neither edition has a hook launcher;
 its absence does not identify the edition or indicate a fault.
 Never claim a command ran when it did not.
 
@@ -17,5 +17,14 @@ Never claim a command ran when it did not.
 5. Inspect successful body-load records in available session traces. Say when
    traces or counts are unavailable; do not infer them from skill listings.
 
-Report shell and Go checks as skipped when unavailable. Skills with bundled
-scripts may require them; loading guidance does not.
+Report any inaccessible input as unchecked. Never infer a successful check
+from the presence of guidance.
+
+Compare the installed manifest with the active marketplace registration's
+copy. Discover its configured root first. Default Claude copies are beneath
+`~/.claude/plugins/marketplaces/megapowers/plugins/megapowers/`; default Codex
+copies are beneath `~/.codex/.tmp/marketplaces/megapowers/plugins/megapowers/`.
+Respect configured roots instead of assuming defaults. A missing copy is an
+unchecked comparison. Read the optional agent registry's `expires_at` and
+compare it with today's date. An expired or unreadable registry supplies no
+current binding; use the harness defaults and report the limit.

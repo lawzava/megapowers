@@ -312,7 +312,7 @@ func validateManifestContract(root string) error {
 
 func discoverShellFiles(root string) ([]string, error) {
 	var files []string
-	for _, rel := range []string{"scripts", "evals"} {
+	for _, rel := range []string{"scripts", "evals", "extras"} {
 		paths, err := regularFiles(filepath.Join(root, filepath.FromSlash(rel)), ".sh", ".bash", ".cmd")
 		if err != nil {
 			return nil, err
@@ -325,7 +325,7 @@ func discoverShellFiles(root string) ([]string, error) {
 
 func discoverGoFiles(root string) ([]string, error) {
 	var files []string
-	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers"} {
+	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers", "extras"} {
 		paths, err := regularFiles(filepath.Join(root, filepath.FromSlash(rel)), ".go")
 		if err != nil {
 			return nil, err

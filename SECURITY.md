@@ -1,23 +1,23 @@
 # Security
 
-megapowers is not a security boundary. It installs model instructions and bundled Go
-tools into the agent's permission context.
+megapowers is not a security boundary. It installs model instructions into the agent's permission context.
+Optional Go helpers live in repository extras and are not installed.
 Review the exact revision before installing it.
 
-## Installed capabilities
+## Guidance and optional repository helpers
 
 | Component | Reads | Writes | Network |
 |---|---|---|---|
 | Skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
-| Doctor script | Plugin manifests and catalog, local marketplace manifests, Claude settings, optional agent registry, workspace Git root, local Claude and Codex session records | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
-| Memory-audit tool | One explicit audit manifest | Standard output only | None |
-| Session miner | Local Claude Code and Codex transcripts, project run journals | Redacted reports on standard output | None |
+| Optional extras doctor | Plugin manifests and catalog, local marketplace manifests, Claude settings, optional agent registry, workspace Git root, local Claude and Codex session records | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
+| Optional extras memory-audit tool | One explicit audit manifest | Standard output only | None |
+| Optional extras session miner | Local Claude Code and Codex transcripts, project run journals | Redacted reports on standard output | None |
 | Independent-review guidance | Context selected by the active agent | Review brief and findings through existing harness tools | Selected review route under user permissions; no bundled launcher |
 
 There is no daemon, model router, formatter, status line, or background
 scheduler.
 
-The doctor reads `~/.claude/settings.json` and project `.claude/settings.json`
+The optional repository doctor in `extras/scripts/megapowers-doctor` reads `~/.claude/settings.json` and project `.claude/settings.json`
 and `.claude/settings.local.json` (parsing only `outputStyle`), the optional
 agent registry to check its expiry, and local marketplace manifests to compare
 versions. With a skill catalog, it reads recent local Claude transcripts in
@@ -37,7 +37,7 @@ may download a newer toolchain when selected by the active module or
 workspace. Use `GOTOOLCHAIN=local` with an installed suitable Go version when
 a local toolchain is required.
 
-The memory-audit tool checks provenance, dates, retention decisions, and
+The optional extras memory-audit tool checks provenance, dates, retention decisions, and
 common credential patterns. It rejects symlink inputs and never edits provider
 memory. Pattern checks cannot tell whether a claim is true or current, so the
 memory-hygiene reference in `writing-agent-instructions` requires inspecting
@@ -85,7 +85,7 @@ it does not prove an instruction safe.
 
 Before installation:
 
-1. Inspect both plugin manifests and bundled scripts.
+1. Inspect both plugin manifests and any optional repository extras you use.
 2. Read every skill likely to run in your environment.
 3. Run `scripts/security-lint.sh` and `scripts/validate.sh`.
 4. Verify the selected Git revision and use a pinned checkout when update
