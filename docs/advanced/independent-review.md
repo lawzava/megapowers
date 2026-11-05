@@ -7,7 +7,7 @@ launcher or credential handling.
 
 Follow the user's global CLAUDE.md or AGENTS.md for the definition of
 independence and reviewer choice. Otherwise choose an available native
-subagent with a different model, an installed agent CLI, or the harness's native
+subagent with a different model or the harness's native
 review. Prefer cross-vendor review when available; it is optional unless the
 user requires it. Report an unavailable required reviewer without silently
 replacing it. No reviewer binding ships with the plugin.

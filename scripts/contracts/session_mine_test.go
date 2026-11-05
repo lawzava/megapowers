@@ -554,14 +554,6 @@ func TestSessionMineUsage(t *testing.T) {
 // `go run` reports every non-zero exit as 1.
 func buildSessionMine(t *testing.T, root string) string {
 	t.Helper()
-	// Defaults include OpenCode now. Keep all contract tests isolated from a
-	// developer's running server unless a test supplies its own fixture CLI.
-	command, fixtures := fakeSessionMineOpenCode(t, map[string][]string{
-		"/api/session?limit=100&order=desc": {`{"data":[],"cursor":{}}`},
-	})
-	t.Setenv("SESSION_MINE_OPENCODE_CMD", command)
-	t.Setenv("SESSION_MINE_OPENCODE_TIMEOUT", "5m")
-	t.Setenv("MINE_FIXTURE", fixtures)
 	tool := filepath.Join(t.TempDir(), "session-mine")
 	if output, code := run(t, root, nil, "go", "build", "-o", tool, sessionMineTool); code != 0 {
 		t.Fatalf("build session-mine (%d): %s", code, output)

@@ -16,7 +16,7 @@ stakes warrant it. The lead owns remediation and reruns the oracle.
 Follow the user's global instructions (CLAUDE.md or AGENTS.md) for what counts
 as independent and which reviewer to use, including any local reviewer binding.
 Otherwise choose from what is actually available: native subagents with a
-different model, installed agent CLIs, or the harness's native review.
+different model or the harness's native review.
 Cross-vendor review is preferred but optional, depending on installed options.
 Do not assume a provider or model is available. Report unavailable required
 review without silently replacing the user's choice.

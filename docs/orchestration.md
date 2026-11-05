@@ -66,7 +66,7 @@ readable `expires_at`.
 
 Choose an available reviewer under the user's global independence and reviewer
 instructions. Cross-vendor review is preferred but optional unless required.
-Native subagents, installed agent CLIs, and native review use their existing
+Native subagents and native review use their existing
 interfaces and permissions. Inspect secrets and disclosure scope before
 sending off-machine. The plugin supplies no review launcher. The
 registry is advisory, with one exception: an `independent-review` binding is
