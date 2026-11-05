@@ -68,12 +68,6 @@ var requiredSkillFacts = map[string][]string{
 		"secret scan",
 		"--intent",
 	},
-	"mcp-setup": {
-		"restart the session",
-		"filter values out before the output reaches the transcript",
-		"at most once per server",
-		"user action",
-	},
 	"megapowers-doctor": {
 		"normal file",
 		"doctor",
@@ -148,7 +142,6 @@ var forbiddenSkillText = map[string][]string{
 	"design-and-plan":            {"OpenSpec CLI"},
 	"humanizing-prose":           {"named source, direct observation, or explicit uncertainty"},
 	"independent-review":         {"provides context separation", "does not authorize disclosure", "declare and approve again"},
-	"mcp-setup":                  {"narrow discovery miss"},
 	"orchestrating":              {"explicitly authorizes", "without dispatch is a contract violation"},
 	"systematic-debugging":       {"State one evidence-backed hypothesis"},
 	"test-first-implementation":  {"skills supply defaults only where the repository is silent"},
@@ -165,6 +158,34 @@ var forbiddenEverywhere = []string{
 
 func normalized(body string) string {
 	return strings.ToLower(strings.Join(strings.Fields(body), " "))
+}
+
+func TestMCPSetupIsRepositoryExtra(t *testing.T) {
+	root := repoRoot(t)
+	read(t, root, "extras/skills/mcp-setup/SKILL.md")
+	err := filepath.WalkDir(filepath.Join(root, "plugins"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(strings.ToLower(rel), "mcp-setup") || strings.Contains(strings.ToLower(string(body)), "mcp-setup") {
+			t.Errorf("repository extra appears in shipped plugin: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // The bare style name left the Claude Code style silently off for 20 days, so

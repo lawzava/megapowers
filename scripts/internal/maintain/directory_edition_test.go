@@ -127,6 +127,10 @@ func TestDirectoryBuildManifest(t *testing.T) {
 		t.Errorf("keywords = %q, want provider names dropped", keywords)
 	}
 	ui := manifest["interface"].(map[string]any)
+	listing, _ := json.Marshal(ui)
+	if strings.Contains(strings.ToLower(string(listing)), "mcp server") {
+		t.Error("directory listing advertises removed MCP server setup skill")
+	}
 	if _, ok := ui["screenshots"]; ok {
 		t.Error("interface has screenshots")
 	}
