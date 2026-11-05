@@ -253,10 +253,10 @@ longer shipped and do not describe this version.
 
 - 16 skills under `skills/`, listed in `skills/catalog.json`.
 - One optional Claude Code output style, `output-styles/megapowers.md`.
-- Five Go standard-library tools that load only with their skill: the review
+- Four Go standard-library tools that load only with their skill: the review
   packager for `independent-review`, a run receipt for `verify-and-finish`
   that keeps full output and the exit status, run state for `autonomous-run`,
-  and the session miner and memory-audit validator for
+  and the memory-audit validator for
   `writing-agent-instructions`.
 - A standalone Go doctor script behind `megapowers-doctor`, which reports
   the version, optional skill catalog, and shipped agent registry template.
@@ -268,6 +268,9 @@ can read an optional personal registry at
 access.
 
 </details>
+
+Repository maintainer tools include [session mining](docs/advanced/session-mining.md)
+(`go run ./scripts/cmd/session-mine`); this tool is not installed with the plugin.
 
 ## Troubleshooting
 

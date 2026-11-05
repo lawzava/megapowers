@@ -762,6 +762,11 @@ func TestRealPluginBuildsAndValidatesAsDirectoryEdition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, file := range files {
+		if strings.HasSuffix(file.Path, "/session-mine.go") || strings.HasPrefix(file.Path, "scripts/cmd/session-mine/") {
+			t.Errorf("repository miner shipped in directory edition: %s", file.Path)
+		}
+	}
 	blob, err := zipDirectoryFiles(files)
 	if err != nil {
 		t.Fatal(err)

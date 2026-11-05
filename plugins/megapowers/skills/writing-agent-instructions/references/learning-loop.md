@@ -14,9 +14,8 @@ target.
 
 ## 1. Observe
 
-```bash
-go run "$SKILL_DIR/scripts/session-mine.go" scorecard --workspace "$PWD" --since 2026-10-01
-```
+See [session mining](session-mining.md) for repository tool availability.
+Use a project scorecard when available, or review the original sessions.
 
 The scorecard reads local transcripts and the project's
 `.megapowers/run/*/journal.jsonl`. It reports:
@@ -100,10 +99,11 @@ redundant, delete the prose rule.
 
 ## 5. Review and retire
 
-Run review monthly, or whenever the user asks what is working:
+Run review monthly, or whenever the user asks what is working. Obtain a
+project scorecard as described in [session mining](session-mining.md), and
+save its JSON report to `$TMPDIR/card.json` before running:
 
 ```bash
-go run "$SKILL_DIR/scripts/session-mine.go" scorecard --workspace "$PWD" --since <date> --format json > "$TMPDIR/card.json"
 go run "$SKILL_DIR/scripts/lessons.go" review --scorecard "$TMPDIR/card.json"
 go run "$SKILL_DIR/scripts/lessons.go" retire --id ID --why TEXT
 ```
@@ -125,10 +125,10 @@ only with their agreement.
 
 ## Upstream
 
-What leaves the machine goes through two sanitized outputs:
+When a repository scorecard is available, use its sanitized form alongside
+the lesson export:
 
 ```bash
-go run "$SKILL_DIR/scripts/session-mine.go" scorecard --all-workspaces --sanitize --since <date> --format json
 go run "$SKILL_DIR/scripts/lessons.go" export --id ID
 ```
 
