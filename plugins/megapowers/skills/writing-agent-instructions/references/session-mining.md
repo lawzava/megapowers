@@ -87,7 +87,8 @@ seconds or less, and the word "sleep" in an argument or string do not count.
 A sleep that runs in the foreground waits on a guessed delay instead of an
 event. A gate counts only when its denial opens an error result, so reading
 the gate's source does not count. `--all-workspaces` adds a per-workspace
-table. `--sanitize`, valid only with `scorecard`, hashes workspace paths,
+table. `--sanitize`, valid only with `scorecard`, redacts output for local
+review. It hashes workspace paths,
 drops run IDs, and folds non-megapowers skill names into `other`. The
 [learning loop](learning-loop.md) uses the JSON form.
 

@@ -65,7 +65,7 @@ recurring or stale), 125 tool or usage error.
 
 var (
 	idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
-	surfaces  = []string{"check", "instructions", "memory", "upstream"}
+	surfaces  = []string{"check", "instructions", "memory"}
 	evidence  = []string{"direct-statement", "direct-observation", "source-backed", "history-entry-only"}
 	statuses  = []string{"candidate", "proven", "promoted", "retired"}
 )

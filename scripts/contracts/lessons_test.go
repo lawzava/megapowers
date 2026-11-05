@@ -267,11 +267,27 @@ func TestLessonsContract(t *testing.T) {
 	if output, code := lessons("add", "--id", "legacy", "--class", "verification",
 		"--lesson", "Review a plugin correction locally.", "--surface", "upstream",
 		"--target", "AGENTS.md",
-		"--evidence", "direct-observation", "--source", "old1", "--source", "old2"); code != 0 {
-		t.Fatalf("add legacy surface: %d %s", code, output)
+		"--evidence", "direct-observation", "--source", "old1", "--source", "old2"); code != 125 ||
+		!strings.Contains(output, "--surface must be one of check, instructions, memory") || strings.Contains(output, "upstream") {
+		t.Errorf("add legacy surface: want rejection with current surfaces, got %d: %s", code, output)
 	}
-	if output, code := lessons("promote", "--id", "legacy"); code != 0 {
-		t.Fatalf("promote legacy surface: %d %s", code, output)
+	legacyPath := filepath.Join(filepath.Dir(matches[0]), "legacy.json")
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Errorf("rejected add wrote a lesson: %v", err)
+	}
+	write(legacyPath, `{
+		"schema_version": "1", "id": "legacy", "class": "verification",
+		"lesson": "Review a plugin correction locally.", "surface": "upstream",
+		"target": "AGENTS.md", "evidence": "direct-observation",
+		"sources": ["old1", "old2"], "status": "promoted",
+		"created": "2026-10-10T09:02:00Z", "max_age_days": 90,
+		"promotion": {"promoted_at": "2026-10-12"}
+	}`)
+	if output, code := lessons("list"); code != 0 || !strings.Contains(output, "legacy") || !strings.Contains(output, "upstream") {
+		t.Errorf("list stored legacy surface: %d %s", code, output)
+	}
+	if output, code := lessons("export", "--id", "legacy"); code != 0 || !strings.Contains(output, `"surface": "upstream"`) {
+		t.Errorf("export stored legacy surface: %d %s", code, output)
 	}
 	output, code = lessons("review", "--scorecard", card("2026-10-13", map[string]int{}), "--today", "2026-10-20")
 	if code != 0 || !strings.Contains(output, "legacy: legacy draft; run export for local review") || strings.Contains(output, "share") {
