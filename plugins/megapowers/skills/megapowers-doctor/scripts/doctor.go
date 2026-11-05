@@ -103,12 +103,13 @@ func main() {
 		os.Exit(2)
 	}
 	if *root == "" {
-		for _, key := range []string{"MEGAPOWERS_PLUGIN_ROOT", "PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT"} {
-			if value := os.Getenv(key); value != "" {
-				*root = value
-				break
-			}
-		}
+		*root = os.Getenv("MEGAPOWERS_PLUGIN_ROOT")
+	}
+	if *root == "" {
+		*root = os.Getenv("PLUGIN_ROOT")
+	}
+	if *root == "" {
+		*root = os.Getenv("CLAUDE_PLUGIN_ROOT")
 	}
 	if err := runDoctor(*root, *harness, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "megapowers doctor: cannot write report")

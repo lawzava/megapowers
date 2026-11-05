@@ -10,6 +10,7 @@ Review the exact revision before installing it.
 |---|---|---|---|
 | Skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
 | Doctor script | Plugin manifests, optional skill catalog and listed skill bodies, shipped agent registry template | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
+| Session-mine tool | Local Claude Code and Codex transcripts | Reports on standard output | None |
 | Memory-audit tool | One explicit audit manifest | Standard output only | None |
 | Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | One operator-named reviewer command after token approval |
 

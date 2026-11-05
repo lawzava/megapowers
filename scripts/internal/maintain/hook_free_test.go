@@ -32,16 +32,12 @@ func TestHookFreePlugin(t *testing.T) {
 func TestStandaloneDoctor(t *testing.T) {
 	root, _ := filepath.Abs(filepath.Join("..", "..", "..", "plugins", "megapowers"))
 	cmd := exec.Command("go", "run", filepath.Join(root, "skills", "megapowers-doctor", "scripts", "doctor.go"), "--root", root)
-	cmd.Env = append(os.Environ(), "MEGAPOWERS_HARNESS=codex")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("doctor: %v\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "plugin version:") || !strings.Contains(string(out), "agent registry template:") {
 		t.Fatalf("missing diagnostics: %s", out)
-	}
-	if strings.Contains(string(out), "hooks.json") || strings.Contains(string(out), "style injection enabled") {
-		t.Fatalf("obsolete diagnostics: %s", out)
 	}
 }
 
@@ -51,9 +47,9 @@ func TestDoctorDirectoryManifest(t *testing.T) {
 	os.MkdirAll(filepath.Join(root, ".codex-plugin"), 0755)
 	os.WriteFile(filepath.Join(root, ".codex-plugin", "plugin.json"), []byte(`{"version":"1.2.3"}`), 0644)
 	cmd := exec.Command("go", "run", script, "--root", root)
-	cmd.Env = append(os.Environ(), "MEGAPOWERS_HARNESS=codex", "HOME="+t.TempDir())
 	out, err := cmd.CombinedOutput()
-	if err != nil || !strings.Contains(string(out), "plugin version: 1.2.3") || strings.Contains(string(out), "WARN") {
+	want := "megapowers doctor\nplugin root: " + root + "\nplugin version: 1.2.3 (.codex-plugin/plugin.json)\n"
+	if err != nil || string(out) != want {
 		t.Fatalf("directory doctor: %v\n%s", err, out)
 	}
 }

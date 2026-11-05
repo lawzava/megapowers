@@ -36,8 +36,7 @@ or run `/output-style megapowers:Megapowers`. The resulting setting is
 `"outputStyle": "megapowers:Megapowers"`. The bare value `Megapowers` does not
 resolve to the plugin style. The style preserves built-in coding instructions.
 To opt out while keeping the plugin enabled, select another style. Start a new
-session after changing style, then run `/megapowers:megapowers-doctor` to
-confirm the value in effect.
+session after changing style, then confirm the selected output style in `/config`.
 
 For a project-scoped install, add `--scope project` to both marketplace and
 install commands. For a local user-only install, use `--scope local`.

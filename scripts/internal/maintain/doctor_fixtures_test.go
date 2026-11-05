@@ -103,14 +103,10 @@ func TestDoctorWithoutRootSkipsRelativeFiles(t *testing.T) {
 	workspace := t.TempDir()
 	doctorWrite(t, filepath.Join(workspace, ".claude-plugin/plugin.json"), `{"version":"99.99.99"}`)
 	doctorWrite(t, filepath.Join(workspace, "skills/catalog.json"), `{"skills":[{"name":"safe-effects"}]}`)
-	report := doctorOutput(t, map[string]string{"HOME": t.TempDir(), "PWD": workspace, "TEST_DOCTOR_CWD": workspace, "MEGAPOWERS_HARNESS": "codex"})
-	if !strings.Contains(report, "plugin root unknown") {
-		t.Fatalf("missing root diagnostic: %s", report)
-	}
-	for _, unexpected := range []string{"plugin version:", "skill loads,", "marketplace copy"} {
-		if strings.Contains(report, unexpected) {
-			t.Errorf("relative check ran without root: %s", report)
-		}
+	report := doctorOutput(t, map[string]string{"HOME": t.TempDir(), "PWD": workspace, "TEST_DOCTOR_CWD": workspace})
+	want := "megapowers doctor\nWARN: plugin root unknown: pass --root with the installed plugin directory\n"
+	if report != want {
+		t.Fatalf("without root: got %q, want %q", report, want)
 	}
 }
 
@@ -179,5 +175,26 @@ func TestDoctorRootEnvironment(t *testing.T) {
 				t.Fatalf("root variable ignored: %s", got)
 			}
 		})
+	}
+}
+
+func TestDoctorRootPrecedence(t *testing.T) {
+	keys := []string{"MEGAPOWERS_PLUGIN_ROOT", "PLUGIN_ROOT", "CLAUDE_PLUGIN_ROOT"}
+	env := map[string]string{}
+	roots := make([]string, len(keys))
+	for i, key := range keys {
+		roots[i] = t.TempDir()
+		doctorWrite(t, filepath.Join(roots[i], ".claude-plugin/plugin.json"), `{"version":"1.2.3"}`)
+		env[key] = roots[i]
+	}
+	explicit := doctorPluginRoot(t)
+	if got := doctorArgs(t, env, "--root", explicit); !strings.Contains(got, "plugin root: "+explicit+"\n") {
+		t.Fatalf("explicit root lost precedence: %s", got)
+	}
+	for i, key := range keys {
+		if got := doctorOutput(t, env); !strings.Contains(got, "plugin root: "+roots[i]+"\n") {
+			t.Fatalf("%s lost precedence: %s", key, got)
+		}
+		delete(env, key)
 	}
 }
