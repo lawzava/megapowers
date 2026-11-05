@@ -99,8 +99,8 @@ func TestExplicitPromptUsesHarnessSyntax(t *testing.T) {
 	}
 }
 
-func TestCoSelectionStillRejectsImplicitInterviewAndMissingMCP(t *testing.T) {
-	catalog := map[string]bool{"grill-me": true, "design-and-plan": true, "mcp-setup": true, "verify-and-finish": true}
+func TestCoSelectionStillRejectsImplicitInterviewAndMissingRequiredSkill(t *testing.T) {
+	catalog := map[string]bool{"grill-me": true, "design-and-plan": true, "systematic-debugging": true, "verify-and-finish": true}
 	for _, tc := range []struct {
 		probe      probeCase
 		selections []string
@@ -108,8 +108,8 @@ func TestCoSelectionStillRejectsImplicitInterviewAndMissingMCP(t *testing.T) {
 	}{
 		{probeCase{Kind: "near-miss", Allowed: []string{"design-and-plan"}}, []string{"design-and-plan"}, "pass"},
 		{probeCase{Kind: "near-miss", Allowed: []string{"design-and-plan"}}, []string{"design-and-plan", "grill-me"}, "fail"},
-		{probeCase{Kind: "paraphrase", Expected: "mcp-setup", Allowed: []string{"verify-and-finish"}}, []string{"mcp-setup", "verify-and-finish"}, "pass"},
-		{probeCase{Kind: "paraphrase", Expected: "mcp-setup", Allowed: []string{"verify-and-finish"}}, []string{"verify-and-finish"}, "fail"},
+		{probeCase{Kind: "paraphrase", Expected: "systematic-debugging", Allowed: []string{"verify-and-finish"}}, []string{"systematic-debugging", "verify-and-finish"}, "pass"},
+		{probeCase{Kind: "paraphrase", Expected: "systematic-debugging", Allowed: []string{"verify-and-finish"}}, []string{"verify-and-finish"}, "fail"},
 	} {
 		var events []actorEvent
 		for _, name := range tc.selections {

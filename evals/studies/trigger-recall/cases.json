@@ -250,35 +250,6 @@
       "provenance": "authored 2026-08-30; low-stakes cleanup must not summon cross-vendor review"
     },
     {
-      "id": "mcp-setup-verbatim",
-      "kind": "verbatim",
-      "expected": "mcp-setup",
-      "prompt": "The firecrawl MCP server is configured for this harness but its tools stopped appearing. Diagnose the configuration and lay out the fix; stop before touching credentials.",
-      "provenance": "session scan 2026-08-23: MCP setup ranked top of the plumbing-friction backlog"
-    },
-    {
-      "id": "mcp-setup-paraphrase",
-      "kind": "paraphrase",
-      "expected": "mcp-setup",
-      "allowed": ["verify-and-finish"],
-      "prompt": "Wire up an MCP server that exposes GitHub tools to this CLI and prove the tools actually load. If you cannot verify here, say exactly which verification step is blocked.",
-      "provenance": "session scan 2026-08-23; revised 2026-11-02: the completion proof legitimately permits verify-and-finish alongside required mcp-setup"
-    },
-    {
-      "id": "mcp-setup-buried",
-      "kind": "buried",
-      "expected": "mcp-setup",
-      "prompt": "Before standup: first tell me what port config.json declares. Then the annoying one — the database MCP server shows up in config but none of its tools resolve at runtime; work out why and what to change, stopping before any credential edits.",
-      "files": { "config.json": "{ \"port\": 8443 }\n" },
-      "provenance": "session scan 2026-08-23: MCP setup ranked top of the plumbing-friction backlog"
-    },
-    {
-      "id": "mcp-setup-near-miss",
-      "kind": "near-miss",
-      "prompt": "What is the Model Context Protocol, in two sentences?",
-      "provenance": "authored 2026-08-30; explaining MCP is not installing or debugging a server"
-    },
-    {
       "id": "megapowers-doctor-verbatim",
       "kind": "verbatim",
       "expected": "megapowers-doctor",
