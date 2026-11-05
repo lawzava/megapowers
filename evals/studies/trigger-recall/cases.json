@@ -289,8 +289,8 @@
       "id": "megapowers-doctor-paraphrase",
       "kind": "paraphrase",
       "expected": "megapowers-doctor",
-      "prompt": "Every shell command now prints a megapowers hook error before it runs. Figure out what is wrong with the plugin install and how to repair it.",
-      "provenance": "audit 2026-09-25: a hook runner cached by an old Go failed every Bash call"
+      "prompt": "The installed megapowers doctor reports a different marketplace version. Figure out what is wrong with the plugin install and how to repair it.",
+      "provenance": "hook-free migration 2026-11-05: diagnose a stale installed plugin version"
     },
     {
       "id": "megapowers-doctor-buried",

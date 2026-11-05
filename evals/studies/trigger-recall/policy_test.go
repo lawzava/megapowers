@@ -123,10 +123,10 @@ func TestCoSelectionStillRejectsImplicitInterviewAndMissingMCP(t *testing.T) {
 
 func TestStagePluginTreePreservesExecutableBits(t *testing.T) {
 	source, destination := t.TempDir(), filepath.Join(t.TempDir(), "staged")
-	if err := os.MkdirAll(filepath.Join(source, "hooks"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(source, "scripts"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(source, "hooks", "run-hook.cmd"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(source, "scripts", "tool.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte("text\n"), 0o644); err != nil {
@@ -136,14 +136,14 @@ func TestStagePluginTreePreservesExecutableBits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(filepath.Join(destination, "hooks", "run-hook.cmd"))
+	info, err := os.Stat(filepath.Join(destination, "scripts", "tool.sh"))
 	if err != nil || info.Mode().Perm()&0o100 == 0 {
-		t.Fatalf("staged launcher lost its executable bit: %v %v", info.Mode(), err)
+		t.Fatalf("staged script lost its executable bit: %v %v", info.Mode(), err)
 	}
 	if plain, _ := os.Stat(filepath.Join(destination, "README.md")); plain.Mode().Perm()&0o111 != 0 {
 		t.Fatalf("staged plain file became executable: %v", plain.Mode())
 	}
-	if err := os.Chmod(filepath.Join(source, "hooks", "run-hook.cmd"), 0o644); err != nil {
+	if err := os.Chmod(filepath.Join(source, "scripts", "tool.sh"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	second, err := stagePluginTree(source, filepath.Join(t.TempDir(), "staged"))

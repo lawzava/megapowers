@@ -17,8 +17,8 @@ import (
 )
 
 // The directory edition is a skills-only build of plugins/megapowers for the
-// OpenAI Plugins Directory. It drops hooks, the output style, the Claude
-// manifest, skills/catalog.json (only the doctor hook reads it), and the
+// OpenAI Plugins Directory. It omits the Claude output style, the Claude
+// manifest, the repository skill inventory, and the
 // plugin README, and it rewrites the listing manifest. See
 // developers.openai.com/plugins/deploy/submission-errors for the rules the
 // validator enforces.

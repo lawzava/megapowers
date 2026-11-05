@@ -6,7 +6,7 @@
 
 <p align="center">
   Plan, test, debug, and ship with more care in Claude Code and Codex.<br>
-  One plugin, 16 skills, and safety hooks. About 1.4k tokens per session.
+  One plugin, task skills, and an optional Claude Code output style.
 </p>
 
 <p align="center">
@@ -27,8 +27,7 @@ Coding agents are fast, but they can skip steps: edit before they know the
 cause, say "done" without re-running the tests, or push and deploy without a
 second look. megapowers gives Claude Code and Codex a skill (a short
 playbook) for each of those moments. When your request matches one, the agent
-is reminded to load it and follow it. Before the first commit or deploy in a
-session, a hook pauses once and names the skill to load first.
+can load it and follow it.
 
 It is exactly one plugin for Claude Code and Codex. It uses each tool's own
 agents, permissions, worktrees, and memory, and ships no daemon, scheduler,
@@ -40,25 +39,12 @@ model router, formatter, or status line.
 |---|---|
 | "Why is this test flaky?" | `systematic-debugging`: finds the root cause before editing anything |
 | "Add rate limiting to the API" | `test-first-implementation`: writes a failing test, sees it fail, then makes it pass |
-| "Commit this and open a PR" | The first commit in the session pauses once and points the agent to `verify-and-finish`, which has it re-run your checks and report what actually passed |
+| "Commit this and open a PR" | `verify-and-finish`: re-runs your checks and reports what actually passed |
 | "Deploy to production" | `safe-effects`: confirms the exact target with you, then reads the result back |
 | "Get a second opinion on this auth change" | `independent-review`: shows you what it will send, then asks a model from a different provider to review it |
-| Agent runs `rm -rf ~` or `mkfs.ext4 /dev/sda1` | Blocked before it runs |
-
-```mermaid
-flowchart TD
-    ask([You ask for something]) --> skill[Matching skill loads:<br/>plan, test first, debug, ...]
-    skill --> work[Agent works]
-    work --> gate{First commit, push,<br/>or deploy this session?}
-    gate -- yes --> check[Hook pauses once and names<br/>verify-and-finish or safe-effects]
-    check --> retry([Agent retries; command runs])
-    gate -- no --> run([Command runs])
-    work -. catastrophic command .-> blocked([Blocked])
-```
 
 Skills guide the agent; they do not force it ([how often they load](#results)).
-Only the pause and the command block are enforced, by the hook. Your
-repository's own instructions and tools always come first.
+Your repository's own instructions and tools always come first.
 
 ## Install
 
@@ -76,13 +62,11 @@ codex plugin marketplace add lawzava/megapowers --ref release
 codex plugin add megapowers@megapowers
 ```
 
-Then start a fresh session. You need Go 1.25 or newer on `PATH`; the hooks
-compile once into a local cache. Codex asks you to review and trust the hooks
-before it runs them, and asks again whenever a release changes them.
+Then start a fresh session. Bundled Go tools, including the doctor, need Go
+1.25 or newer on `PATH`; loading skill guidance does not.
 
 **Try it:** ask "check my megapowers setup". The doctor reports the plugin
-version, whether the hooks are registered, and whether the output style is
-active.
+version, local marketplace copy, and Claude Code output-style setting.
 
 Both installs track the `release` branch, which only moves to signed release
 tags, so you never get unreleased `main`. Pinning, install scopes, and
@@ -90,11 +74,10 @@ uninstall are in [docs/install.md](./docs/install.md).
 
 ## Why megapowers
 
-- **Same behavior on Claude Code and Codex.** One plugin, the same skills, and
-  the same Go hook code on both.
-- **Checks before you ship.** A hook pauses the first commit, push, PR, or
-  deploy in a session once and tells the agent to load the verification or
-  side-effect skill. The retry runs as normal.
+- **Shared skills on Claude Code and Codex.** One plugin supplies the same
+  task guidance on both.
+- **Checks before you ship.** Verification and side-effect skills guide the
+  agent to check evidence and authority before acting.
 - **Tested with and without the plugin.** Installed-plugin A/B studies
   compare the same tasks with and without megapowers. Historical totals
   need revalidation after a grader correction.
@@ -102,8 +85,8 @@ uninstall are in [docs/install.md](./docs/install.md).
 - **Cross-provider review.** `independent-review` sends one artifact to a
   different model vendor. It sends without asking only to a reviewer you
   configured, and asks first for any other destination.
-- **Light by default.** About 1.4k tokens load per session. A skill's full
-  text loads only when you need it.
+- **Loads on demand.** The catalog supplies trigger descriptions. A skill's
+  full text loads only when you need it.
 
 ### How it compares
 
@@ -112,9 +95,9 @@ that site.
 
 | | megapowers | [obra/superpowers](https://github.com/obra/superpowers) | [mattpocock/skills](https://github.com/mattpocock/skills) |
 |---|---|---|---|
-| Works with | Claude Code and Codex, one plugin, shared hook code | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
+| Works with | Claude Code and Codex, one plugin, shared skills | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
 | Get it from | This repository's marketplace | The official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
-| What you get | 16 skills, one style, three hooks, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
+| What you get | Task skills, an optional Claude Code style, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
 | Published measurements | The A/B study below, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
 
 Which one fits:
@@ -127,8 +110,7 @@ Which one fits:
   at a time through skills.sh. Its `grill-me` is a user-invoked pointer skill,
   which matches the Claude Code docs' advice for skills that over-trigger.
 - **megapowers** if you use Claude Code, Codex, or both, and want one plugin
-  that behaves the same on each, pauses before the first commit or deploy,
-  and publishes with-and-without measurements.
+  with shared task guidance and published with-and-without measurements.
 
 ## Skills
 
@@ -168,7 +150,7 @@ only when your request matches. The *experimental* labels come from
 
 | Skill | Use it when |
 |---|---|
-| `megapowers-doctor` *(experimental)* | A skill did not fire, the style looks off, or a hook errored |
+| `megapowers-doctor` *(experimental)* | A skill did not fire, the Claude Code style looks off, or the install needs checking |
 | `upgrading-megapowers` | You want to update, reinstall, or repair the plugin |
 | `mcp-setup` *(experimental)* | An MCP server needs installing or fixing, or its tools are missing |
 
@@ -185,10 +167,8 @@ no em dashes. It keeps the built-in coding instructions.
   `/output-style megapowers:Megapowers`, or pick it in `/config` under Output
   style. The setting must read `"outputStyle": "megapowers:Megapowers"`. The
   bare value `Megapowers` does not load the plugin style.
-- **Codex:** on once you trust the hooks. The trusted Codex startup hook (`SessionStart`)
-  adds the style as developer context on startup, resume, clear, and after
-  compaction. Set `MEGAPOWERS_OUTPUT_STYLE=off` before launching Codex to turn
-  it off and keep the safety hook.
+- **Codex:** the plugin does not apply a session-wide style. Invoke
+  `humanizing-prose` for writing tasks that need its editing guidance.
 
 In one operator's September 2026 Codex sessions, styled final messages had a
 median of 70 words, and 0.6 percent contained an em dash, against 36 percent
@@ -264,43 +244,23 @@ agent quality. Protocols are in [docs/advanced/evals.md](./docs/advanced/evals.m
 
 ## Cost
 
-About 1,350 tokens per session on Claude Code and about 1,390 on Codex, for
-the style, startup hook text, and skill list. Each skill body is 200 to 415
-words and loads only when that skill is used.
+The skill catalog loads per session; each skill body loads only when that
+skill is used. Earlier token estimates included startup text that is no
+longer shipped and do not describe this version.
 
 <details>
 <summary>Exactly what installs</summary>
 
 - 16 skills under `skills/`, listed in `skills/catalog.json`.
-- One output style, `output-styles/megapowers.md`, shared by both tools.
-- Go hooks on three events, compiled once into a local cache:
-  - `SessionStart`: a reminder that skill guidance applies once its file is
-    loaded and that your instructions take precedence, plus the style on Codex.
-  - `SubagentStart`: the same reminder and a compact report contract for
-    subagents: lead with the result, cite `file:line` or command evidence, no
-    padding, no em dashes.
-  - `PreToolUse` on Bash, PowerShell, and MCP tools: denies a narrow set of
-    catastrophic commands. The first `git commit`, `git push`, or
-    `gh pr create` in a session stops once and names `verify-and-finish`. The
-    first publish, deploy, write request to a remote API, `gh` command that
-    writes to GitHub, or MCP tool that creates, updates, deletes, sends, or
-    posts stops once and names `safe-effects`. The retry runs. Calls of the
-    same kind made within the next minute also stop until the skill loads, so
-    parallel calls cannot slip past. A skill already loaded in the transcript
-    or session marker skips the stop, and without a session ID the hook only
-    adds a reminder. A git command that discards uncommitted, stashed, or
-    unmerged work (`reset --hard`, a forced `clean`, a forced or whole-tree
-    `checkout`, a whole-tree `restore`, `branch -D` of an unmerged branch,
-    `stash drop` or `clear`) stops once per command and directory with a
-    reminder to check `git status` first.
+- One optional Claude Code output style, `output-styles/megapowers.md`.
 - Five Go standard-library tools that load only with their skill: the review
   packager for `independent-review`, a run receipt for `verify-and-finish`
   that keeps full output and the exit status, run state for `autonomous-run`,
   and the session miner and memory-audit validator for
   `writing-agent-instructions`.
-- A `doctor` command behind `megapowers-doctor`. It also reports whether the
-  hooks ran on each harness, recent skill loads in the workspace, and a newer
-  local marketplace copy.
+- A standalone Go doctor script behind `megapowers-doctor`, which reports
+  the version, Claude Code style setting, local marketplace copy, and optional
+  agent registry.
 
 The plugin does not edit global user configuration and supplies no model,
 provider, or agent configuration. For non-trivial delegation, `orchestrating`
@@ -314,26 +274,23 @@ access.
 
 Start with the doctor: `/megapowers:megapowers-doctor` on Claude Code, or the
 skill name after `$` as it appears in the Codex skills list. It runs
-`run-hook.cmd doctor` and reports the plugin version and root, which tool is running,
-the Go toolchain version against the cached runner, the Claude `outputStyle`
-value in effect, whether the hooks are registered, and how to see whether a
-skill fired in your transcripts.
+the standalone Go doctor script and reports the plugin version and root,
+which tool is running, the Claude `outputStyle` value in effect, the local
+marketplace copy, and the optional agent registry.
 
 | Symptom | Fix |
 |---|---|
 | Style not applied on Claude Code | The setting must read `megapowers:Megapowers`, not `Megapowers` |
-| Hooks silent on Codex | Trust the plugin hooks when prompted; a release that changed them prompts again |
-| Hook error mentioning Go | Install Go 1.25 or newer, or clear the cached runner the doctor names |
+| Doctor error mentioning Go | Install Go 1.25 or newer |
 | Wrong version after an upgrade | Use `upgrading-megapowers`, which compares the marketplace head with the approved release tag before writing |
 
 ## Limits
 
 - Skills are instructions, not enforcement. Model and tool behavior change.
-- The style cannot suppress tool-result rendering. Codex skips the hooks until
-  you trust them.
-- The destructive-command hook matches a narrow set of command strings,
-  including compound commands and absolute-path wrappers. OS sandboxing and
-  least privilege remain the real boundary. See [SECURITY.md](./SECURITY.md).
+- The Claude Code style cannot suppress tool-result rendering.
+- The plugin supplies no destructive-command guard or command gates. Use
+  harness permissions, OS sandboxing, and least privilege for enforcement.
+  See [SECURITY.md](./SECURITY.md).
 - Independent review sends the source you approve to the selected provider.
   It rejects common secret patterns, not every possible secret.
 - The evaluation studies that call real models cost money and need a reviewed

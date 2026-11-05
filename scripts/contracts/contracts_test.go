@@ -129,7 +129,7 @@ func TestDocsContract(t *testing.T) {
 		}
 	}
 	readme := read(t, root, "README.md")
-	for _, marker := range []string{"exactly one plugin", "Claude Code and Codex", "installed-plugin A/B", "skills/catalog.json", "trusted Codex startup hook"} {
+	for _, marker := range []string{"exactly one plugin", "Claude Code and Codex", "installed-plugin A/B", "skills/catalog.json"} {
 		requireContains(t, readme, marker, "README")
 	}
 	evalsReadme := read(t, root, "evals/README.md")
@@ -207,21 +207,6 @@ func TestNativeFirstContract(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(root, ".agents/skills")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf(".agents/skills must not exist; develop through the local marketplace (%v)", err)
 	}
-	hooks := read(t, root, "plugins/megapowers/hooks/hooks.json")
-	for _, marker := range []string{"run-hook.cmd session-start", "run-hook.cmd deny-destructive", `"Bash|PowerShell"`, `"mcp__.*"`} {
-		requireContains(t, hooks, marker, "hook manifest")
-	}
-	entries, _ := os.ReadDir(filepath.Join(root, "plugins/megapowers/hooks"))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if strings.HasSuffix(name, ".go") || name == "hooks.json" || name == "run-hook.cmd" {
-			continue
-		}
-		t.Errorf("unsupported hook artifact: %s", name)
-	}
 	for _, rel := range []string{"plugins/mega-orchestration", "plugins/mega-guardrails", "plugins/megapowers/opencode", "plugins/megapowers/agents", "plugins/megapowers/models.toml", "templates", "scripts/check-enforcement.go", "scripts/lib/validate-helpers.sh"} {
 		if _, err := os.Stat(filepath.Join(root, rel)); err == nil {
 			t.Errorf("removed surface remains: %s", rel)
@@ -249,9 +234,7 @@ func TestOutputStyleContract(t *testing.T) {
 	// Law's standing preference: decisions use the question tool, never a numbered prose list to answer by number.
 	requireAbsent(t, style, "answer by number", "output style")
 	requireAbsent(t, style, "or as a numbered list the user can", "output style")
-	hooks := read(t, root, "plugins/megapowers/hooks/hooks.json")
-	requireContains(t, hooks, "run-hook.cmd session-start", "session-start hook")
-	requireContains(t, read(t, root, "docs/harness-support.md"), "MEGAPOWERS_OUTPUT_STYLE=off", "Codex output style opt-out")
+
 }
 
 func TestHumanizingProseDiscussionScope(t *testing.T) {
@@ -515,7 +498,7 @@ func TestValidationContract(t *testing.T) {
 		t.Error("validate.sh is not a thin Go launcher")
 	}
 	implementation := read(t, root, "scripts/internal/maintain/validate.go")
-	for _, marker := range []string{"deadline(ctx", "plugins/megapowers", ".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "go\", \"test\", \"-overlay\", overlay, \"./...", "go\", \"vet\", \"-overlay\", overlay", "checkPluginFolderHoldsNoTests(root)"} {
+	for _, marker := range []string{"deadline(ctx", "plugins/megapowers", ".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "go\", \"test\", \"./...", "go\", \"vet\", \"./...", "checkPluginFolderHoldsNoTests(root)"} {
 		requireContains(t, implementation, marker, "validation implementation")
 	}
 	for _, removed := range []string{"OpenCode", "models.toml", "delegates.toml", "skill-router", "copied-agent"} {

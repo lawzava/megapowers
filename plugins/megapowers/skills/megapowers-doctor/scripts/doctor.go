@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -11,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -48,7 +49,7 @@ func runDoctor(getenv getenvFunc, output, errors io.Writer) int {
 		root = getenv("CLAUDE_PLUGIN_ROOT")
 	}
 	if root == "" {
-		report.warn("plugin root unknown: run through hooks/run-hook.cmd doctor so MEGAPOWERS_PLUGIN_ROOT is set")
+		report.warn("plugin root unknown: pass --root with the installed plugin directory")
 	} else {
 		report.add("plugin root: %s", root)
 	}
@@ -57,17 +58,9 @@ func runDoctor(getenv getenvFunc, output, errors io.Writer) int {
 	harness, signal := detectHarness(getenv)
 	report.add("harness: %s (%s)", harness, signal)
 
-	doctorGo(report)
-	doctorRunnerCache(report, getenv)
-
 	if harness != "codex" {
 		doctorClaudeOutputStyle(report, getenv)
 	}
-	if harness != "claude" {
-		doctorCodexOutputStyle(report, getenv)
-	}
-	doctorHooks(report, root)
-	doctorHookRuns(report, getenv, harness)
 	doctorMarketplace(report, getenv, harness, root)
 	doctorSkillLoads(report, getenv, root)
 	doctorAgentRegistry(report, getenv)
@@ -107,15 +100,14 @@ func doctorVersion(report *doctorReport, root string) {
 		}
 	case codexErr == nil:
 		report.add("plugin version: %s (.codex-plugin/plugin.json)", codex)
-		report.warn(".claude-plugin/plugin.json unreadable: %v", claudeErr)
 	default:
 		report.add("plugin version: unknown")
 		report.warn("no readable plugin manifest under %s: %v", root, claudeErr)
 	}
 }
 
-// detectHarness mirrors the runtime detection the hooks use: an explicit
-// MEGAPOWERS_HARNESS wins, then Codex's PLUGIN_ROOT, then Claude's markers.
+// detectHarness uses environment markers.
+// Explicit MEGAPOWERS_HARNESS wins, then Codex's PLUGIN_ROOT, then Claude's markers.
 func detectHarness(getenv getenvFunc) (string, string) {
 	switch getenv("MEGAPOWERS_HARNESS") {
 	case "claude":
@@ -132,46 +124,7 @@ func detectHarness(getenv getenvFunc) (string, string) {
 	if getenv("CLAUDE_PLUGIN_ROOT") != "" {
 		return "claude", "CLAUDE_PLUGIN_ROOT"
 	}
-	return "unknown", "no harness variables; both style checks follow"
-}
-
-func doctorGo(report *doctorReport) {
-	report.add("runner built with: %s (%s)", runtime.Version(), runnerPath())
-	goBinary, err := exec.LookPath("go")
-	if err != nil {
-		report.warn("go not on PATH: the cached runner keeps working, but a plugin update needs Go 1.25 or newer to rebuild it")
-		return
-	}
-	cmd := exec.Command(goBinary, "env", "GOVERSION")
-	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GO111MODULE=off")
-	out, err := cmd.Output()
-	version := strings.TrimSpace(string(out))
-	if err != nil || version == "" {
-		report.warn("go toolchain: cannot read `go env GOVERSION` from %s", goBinary)
-		return
-	}
-	report.add("go toolchain: %s (%s)", version, goBinary)
-	if err := requireGo125(version); err != nil {
-		report.warn("go toolchain %s: the launcher refuses to build with it; install Go 1.25 or newer", version)
-	}
-}
-
-func runnerPath() string {
-	path, err := os.Executable()
-	if err != nil {
-		return "runner path unknown"
-	}
-	return path
-}
-
-func doctorRunnerCache(report *doctorReport, getenv getenvFunc) {
-	dir := gateMarkerRoot(getenv)
-	if dir == "" {
-		report.warn("runner cache: no HOME, XDG_CACHE_HOME, or MEGAPOWERS_HOOK_CACHE; the launcher falls back to a temporary cache and rebuilds every call")
-		return
-	}
-	runners, _ := filepath.Glob(filepath.Join(dir, "megapowers-hook-*"))
-	report.add("runner cache: %s (%d cached runner(s))", dir, len(runners))
+	return "unknown", "no harness variables; Claude style check follows"
 }
 
 // userHome is HOME, or USERPROFILE where HOME is unset (Windows).
@@ -258,17 +211,6 @@ func reportClaudeStyle(report *doctorReport, style, source string) {
 	report.warn("claude outputStyle: %s in %s; the plugin style resolves only as %q (bare \"Megapowers\" is silently ignored)", style, source, expectedOutputStyle)
 }
 
-func doctorCodexOutputStyle(report *doctorReport, getenv getenvFunc) {
-	switch value := getenv("MEGAPOWERS_OUTPUT_STYLE"); value {
-	case "":
-		report.add("MEGAPOWERS_OUTPUT_STYLE: unset (style injection enabled)")
-	case "off":
-		report.add("MEGAPOWERS_OUTPUT_STYLE: off (style injection disabled)")
-	default:
-		report.add("MEGAPOWERS_OUTPUT_STYLE: %s (style injection enabled; only \"off\" disables it)", value)
-	}
-}
-
 // doctorNow is replaceable so registry expiry tests do not depend on the clock.
 var doctorNow = time.Now
 
@@ -310,111 +252,62 @@ func doctorAgentRegistry(report *doctorReport, getenv getenvFunc) {
 	report.add("agent registry: %s (expires %s)", path, match[1])
 }
 
-func doctorHooks(report *doctorReport, root string) {
-	path := filepath.Join(root, "hooks", "hooks.json")
-	data, err := os.ReadFile(path)
+// doctorMarketplace compares the installed version with the harness's local
+// marketplace copy, which a refresh updates before the install does.
+func doctorMarketplace(report *doctorReport, getenv getenvFunc, harness, root string) {
+	installed, err := manifestVersion(filepath.Join(root, ".claude-plugin", "plugin.json"))
 	if err != nil {
-		report.warn("hooks.json unreadable at %s: %v", path, err)
 		return
 	}
-	var manifest struct {
-		Hooks map[string][]struct {
-			Matcher string `json:"matcher"`
-			Hooks   []struct {
-				Command string `json:"command"`
-			} `json:"hooks"`
-		} `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		report.warn("hooks.json at %s is not valid JSON: %v", path, err)
-		return
-	}
-	var events []string
-	for event, groups := range manifest.Hooks {
-		var matchers []string
-		for _, group := range groups {
-			if group.Matcher != "" {
-				matchers = append(matchers, group.Matcher)
-			}
-		}
-		if len(matchers) > 0 {
-			event += " (" + strings.Join(matchers, ", ") + ")"
-		}
-		events = append(events, event)
-	}
-	sort.Strings(events)
-	report.add("hooks.json events: %s (declared; a loaded session shows whether the harness ran them)", strings.Join(events, ", "))
-	// An event key with no command entry registers nothing the harness can run.
-	for _, required := range []string{"PreToolUse", "SessionStart", "SubagentStart"} {
-		registered := false
-		for _, group := range manifest.Hooks[required] {
-			for _, hook := range group.Hooks {
-				if strings.TrimSpace(hook.Command) != "" {
-					registered = true
-				}
-			}
-		}
-		if !registered {
-			report.warn("hooks.json does not register %s", required)
+	home := userHome(getenv)
+	copies := map[string]string{}
+	if harness != "codex" {
+		if dir := getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+			copies["claude"] = filepath.Join(dir, "plugins", "marketplaces", "megapowers", "plugins", "megapowers", ".claude-plugin", "plugin.json")
+		} else if home != "" {
+			copies["claude"] = filepath.Join(home, ".claude", "plugins", "marketplaces", "megapowers", "plugins", "megapowers", ".claude-plugin", "plugin.json")
 		}
 	}
-}
-
-// markHookRun touches one marker per harness and hook in the runner cache, so
-// doctor can tell a harness that never ran the hooks, such as a Codex install
-// whose hooks were never trusted. It never creates the cache directory.
-func markHookRun(getenv getenvFunc, hook string) {
-	dir := gateMarkerRoot(getenv)
-	harness, _ := detectHarness(getenv)
-	if dir == "" || harness == "unknown" {
-		return
+	if harness != "claude" {
+		if dir := getenv("CODEX_HOME"); dir != "" {
+			copies["codex"] = filepath.Join(dir, ".tmp", "marketplaces", "megapowers", "plugins", "megapowers", ".codex-plugin", "plugin.json")
+		} else if home != "" {
+			copies["codex"] = filepath.Join(home, ".codex", ".tmp", "marketplaces", "megapowers", "plugins", "megapowers", ".codex-plugin", "plugin.json")
+		}
 	}
-	path := filepath.Join(dir, "hook-ran-"+harness+"-"+hook)
-	now := time.Now()
-	if os.Chtimes(path, now, now) == nil {
-		return
-	}
-	if file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-		file.Close()
-	}
-}
-
-func doctorHookRuns(report *doctorReport, getenv getenvFunc, harness string) {
-	dir := gateMarkerRoot(getenv)
-	if dir == "" {
-		return
-	}
-	harnesses := []string{harness}
-	if harness == "unknown" {
-		harnesses = []string{"claude", "codex"}
-	}
-	for _, name := range harnesses {
-		markers, _ := filepath.Glob(filepath.Join(dir, "hook-ran-"+name+"-*"))
-		if len(markers) == 0 {
-			fix := "check that the plugin is enabled, then start a new session"
-			if name == "codex" {
-				fix = "review and trust the plugin hooks, then start a new session"
-			}
-			report.warn("no megapowers hook has run on %s; %s", name, fix)
+	for _, name := range []string{"claude", "codex"} {
+		path, ok := copies[name]
+		if !ok {
 			continue
 		}
-		sort.Strings(markers)
-		var runs []string
-		for _, marker := range markers {
-			info, err := os.Stat(marker)
-			if err != nil {
-				continue
-			}
-			hook := strings.TrimPrefix(filepath.Base(marker), "hook-ran-"+name+"-")
-			runs = append(runs, fmt.Sprintf("%s %s ago", hook, time.Since(info.ModTime()).Round(time.Second)))
+		version, err := manifestVersion(path)
+		if err != nil {
+			continue
 		}
-		report.add("hooks last ran (%s): %s", name, strings.Join(runs, ", "))
+		if version != installed {
+			report.warn("%s marketplace copy is %s but %s is installed; use upgrading-megapowers", name, version, installed)
+			continue
+		}
+		report.add("%s marketplace copy: %s", name, version)
 	}
+}
+
+type getenvFunc func(string) string
+
+func main() {
+	root := flag.String("root", "", "installed plugin root")
+	flag.Parse()
+	getenv := func(key string) string {
+		if key == "MEGAPOWERS_PLUGIN_ROOT" && *root != "" {
+			return *root
+		}
+		return os.Getenv(key)
+	}
+	os.Exit(runDoctor(getenv, os.Stdout, os.Stderr))
 }
 
 // doctorSkillLoads counts, per skill, the sessions in this workspace from the
-// last seven days whose transcript records the skill loading, using the same
-// detection as the gates. It reads session stores only and prints counts.
+// last seven days whose transcript records the skill loading, from successful skill read records. It reads session stores only and prints counts.
 func doctorSkillLoads(report *doctorReport, getenv getenvFunc, root string) {
 	workspace := getenv("PWD")
 	if workspace == "" {
@@ -560,42 +453,217 @@ func codexSessionCwd(path string) string {
 	return meta.Payload.Cwd
 }
 
-// doctorMarketplace compares the installed version with the harness's local
-// marketplace copy, which a refresh updates before the install does.
-func doctorMarketplace(report *doctorReport, getenv getenvFunc, harness, root string) {
-	installed, err := manifestVersion(filepath.Join(root, ".claude-plugin", "plugin.json"))
+// skillLoaded reports whether the transcript records the skill body loading:
+// an injected skill body, or a successful tool result paired with a read or
+// Skill invocation. Catalog entries, pending reads, and failed calls do not
+// count. An unreadable
+// transcript counts as not loaded and reports readable false.
+func skillLoaded(transcriptPath, skill string) (loaded, readable bool) {
+	if transcriptPath == "" {
+		return false, false
+	}
+	file, err := os.Open(transcriptPath)
 	if err != nil {
-		return
+		return false, false
 	}
-	home := userHome(getenv)
-	copies := map[string]string{}
-	if harness != "codex" {
-		if dir := getenv("CLAUDE_CONFIG_DIR"); dir != "" {
-			copies["claude"] = filepath.Join(dir, "plugins", "marketplaces", "megapowers", "plugins", "megapowers", ".claude-plugin", "plugin.json")
-		} else if home != "" {
-			copies["claude"] = filepath.Join(home, ".claude", "plugins", "marketplaces", "megapowers", "plugins", "megapowers", ".claude-plugin", "plugin.json")
+	defer file.Close()
+	pending := make(map[string]bool)
+	reader := bufio.NewReaderSize(file, 64<<10)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(pending) != 0 || bytes.Contains(line, []byte(skill)) {
+			var event skillTranscriptEvent
+			if json.Unmarshal(line, &event) == nil && event.loadedSkill(skill, pending) {
+				return true, true
+			}
 		}
-	}
-	if harness != "claude" {
-		if dir := getenv("CODEX_HOME"); dir != "" {
-			copies["codex"] = filepath.Join(dir, ".tmp", "marketplaces", "megapowers", "plugins", "megapowers", ".codex-plugin", "plugin.json")
-		} else if home != "" {
-			copies["codex"] = filepath.Join(home, ".codex", ".tmp", "marketplaces", "megapowers", "plugins", "megapowers", ".codex-plugin", "plugin.json")
-		}
-	}
-	for _, name := range []string{"claude", "codex"} {
-		path, ok := copies[name]
-		if !ok {
-			continue
-		}
-		version, err := manifestVersion(path)
 		if err != nil {
-			continue
+			return false, true
 		}
-		if version != installed {
-			report.warn("%s marketplace copy is %s but %s is installed; use upgrading-megapowers", name, version, installed)
-			continue
-		}
-		report.add("%s marketplace copy: %s", name, version)
 	}
+}
+
+type skillTranscriptEvent struct {
+	Type, Role, Name, ID string
+	CallID               string `json:"call_id"`
+	ToolUseID            string `json:"tool_use_id"`
+	IsError              bool   `json:"is_error"`
+	Arguments            json.RawMessage
+	Action               json.RawMessage
+	Input                json.RawMessage
+	Output               json.RawMessage
+	Content              json.RawMessage
+	Text                 string
+	Message, Payload     *skillTranscriptEvent
+}
+
+func (event skillTranscriptEvent) loadedSkill(skill string, pending map[string]bool) bool {
+	if event.Payload != nil {
+		return event.Payload.loadedSkill(skill, pending)
+	}
+	if event.Message != nil {
+		if event.Message.Role == "" {
+			event.Message.Role = event.Type
+		}
+		return event.Message.loadedSkill(skill, pending)
+	}
+	if event.Role == "user" {
+		text, _ := skillResultText(event.Content)
+		if strings.HasPrefix(text, "Base directory for this skill:") && strings.Contains(text, "skills/"+skill) && strings.Contains(text, "\n# ") {
+			return true
+		}
+		if strings.HasPrefix(text, "<skill>\n<name>megapowers:"+skill+"</name>") && strings.Contains(text, "skills/"+skill+"/SKILL.md") && strings.Contains(text, "\n# ") {
+			return true
+		}
+	}
+	if len(event.Content) > 0 && event.Content[0] == '[' {
+		var blocks []skillTranscriptEvent
+		if json.Unmarshal(event.Content, &blocks) == nil {
+			for _, block := range blocks {
+				if block.loadedSkill(skill, pending) {
+					return true
+				}
+			}
+		}
+	}
+	id := event.CallID
+	if id == "" {
+		id = event.ID
+	}
+	switch event.Type {
+	case "tool_use", "function_call", "custom_tool_call", "local_shell_call":
+		input := string(event.Input) + string(event.Arguments) + string(event.Action)
+		var invocation struct{ Skill string }
+		isSkill := event.Name == "Skill" && json.Unmarshal(event.Input, &invocation) == nil && invocation.Skill == "megapowers:"+skill
+		reads := event.Type == "local_shell_call"
+		switch event.Name {
+		case "Read", "Bash", "exec_command", "shell_command", "shell", "exec", "functions.exec", "functions.exec_command":
+			reads = true
+		}
+		if id != "" && (isSkill || (reads && strings.Contains(input, "skills/"+skill+"/SKILL.md"))) {
+			pending[id] = isSkill
+		}
+	case "tool_result", "function_call_output", "custom_tool_call_output", "local_shell_call_output":
+		if event.ToolUseID != "" {
+			id = event.ToolUseID
+		}
+		invocation, ok := pending[id]
+		delete(pending, id)
+		if !ok || event.IsError {
+			return false
+		}
+		output := event.Output
+		if len(output) == 0 {
+			output = event.Content
+		}
+		if invocation {
+			text, success := skillResultText(output)
+			return success && strings.TrimSpace(text) != ""
+		}
+		for _, text := range successfulResultTexts(output) {
+			if containsSkillBody(text, skill) {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// successfulResultTexts returns the text of each command result inside a tool
+// output that did not fail. A batched code-mode call prints one result per
+// command, often as Promise.allSettled entries ({"i":N,"result":{"status",
+// "value"}}), so each result counts on its own: a failed sibling command does
+// not hide a successful skill read, and a failed or rejected read never counts.
+func successfulResultTexts(raw json.RawMessage) []string {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		trimmed := strings.TrimSpace(text)
+		if (strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[")) && json.Valid([]byte(trimmed)) {
+			return successfulResultTexts(json.RawMessage(trimmed))
+		}
+		if failedReadExit.MatchString(text) {
+			return nil
+		}
+		return []string{text}
+	}
+	var blocks []json.RawMessage
+	if json.Unmarshal(raw, &blocks) == nil {
+		var texts []string
+		for _, block := range blocks {
+			texts = append(texts, successfulResultTexts(block)...)
+		}
+		return texts
+	}
+	var result struct {
+		IsError                                      bool   `json:"is_error"`
+		MCPError                                     bool   `json:"isError"`
+		ExitCode                                     *int   `json:"exit_code"`
+		Status                                       string `json:"status"`
+		Output, Content, Text, Stdout, Value, Result json.RawMessage
+	}
+	if json.Unmarshal(raw, &result) != nil || result.IsError || result.MCPError || (result.ExitCode != nil && *result.ExitCode != 0) || result.Status == "rejected" {
+		return nil
+	}
+	for _, field := range []json.RawMessage{result.Output, result.Content, result.Text, result.Stdout, result.Value, result.Result} {
+		if len(field) != 0 {
+			return successfulResultTexts(field)
+		}
+	}
+	return nil
+}
+
+var readLineNumber = regexp.MustCompile(`(?m)^\s*[0-9]+[→\t :]+`)
+var failedReadExit = regexp.MustCompile(`(?m)(?:Process exited with code|Exit code:)[ \t]+[1-9][0-9]*\b`)
+
+func containsSkillBody(text, skill string) bool {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = readLineNumber.ReplaceAllString(text, "")
+	for _, name := range []string{skill, `"` + skill + `"`, "'" + skill + "'"} {
+		if strings.Contains(text, "\nname: "+name+"\n") && strings.Contains(text, "\n# ") {
+			return true
+		}
+	}
+	return false
+}
+
+// Tool results can be plain text, text blocks, or an encoded exec result.
+// Decode only output fields; a path in an input or an error is not evidence.
+func skillResultText(raw json.RawMessage) (string, bool) {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		trimmed := strings.TrimSpace(text)
+		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+			if nested, ok := skillResultText(json.RawMessage(trimmed)); nested != "" || !ok {
+				return nested, ok
+			}
+		}
+		return text, !failedReadExit.MatchString(text)
+	}
+	var blocks []json.RawMessage
+	if json.Unmarshal(raw, &blocks) == nil {
+		var texts []string
+		for _, block := range blocks {
+			text, ok := skillResultText(block)
+			if !ok {
+				return "", false
+			}
+			texts = append(texts, text)
+		}
+		return strings.Join(texts, "\n"), true
+	}
+	var result struct {
+		IsError                              bool `json:"is_error"`
+		ExitCode                             *int `json:"exit_code"`
+		Output, Content, Text, Stdout, Value json.RawMessage
+	}
+	if json.Unmarshal(raw, &result) != nil || result.IsError || (result.ExitCode != nil && *result.ExitCode != 0) {
+		return "", false
+	}
+	for _, field := range []json.RawMessage{result.Output, result.Content, result.Text, result.Stdout, result.Value} {
+		if len(field) != 0 {
+			return skillResultText(field)
+		}
+	}
+	return "", true
 }

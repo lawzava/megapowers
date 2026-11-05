@@ -1332,14 +1332,9 @@ func (c *dirChecker) checkFileReferences(skill, file, text string) {
 	skillDir := "skills/" + skill
 	fileDir := path.Dir(file)
 	reported := map[string]bool{}
-	notedHook := false
 	inFence := false
 	fence := ""
-	for n, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		if strings.Contains(line, "hooks/run-hook.cmd") && !notedHook {
-			notedHook = true
-			c.note("reference_run_hook", file, "line %d mentions hooks/run-hook.cmd, which the directory edition does not ship", n+1)
-		}
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 			marker := trimmed[:3]
@@ -1375,9 +1370,6 @@ func (c *dirChecker) checkFileReferences(skill, file, text string) {
 				bases = []string{fileDir}
 			}
 			stripped := strings.TrimLeft(strings.ReplaceAll(target, "../", ""), "./")
-			if strings.HasPrefix(stripped, "hooks/run-hook.cmd") {
-				continue
-			}
 			resolvedAny := false
 			var removed, outside bool
 			for _, base := range bases {

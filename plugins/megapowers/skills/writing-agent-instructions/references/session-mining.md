@@ -146,7 +146,7 @@ work was; each thread with a status tag such as `[merged #12]`, `[open PR #14]`,
 `[abandoned]`, or `[unknown]`; at most five open problems; and the next move.
 
 `scorecard` counts outcome signals per project: skill loads and the
-corrections that followed them, megapowers gate blocks (written by the plugin's hooks, so zero without them), `VERIFIED` and `NOT
+corrections that followed them, historical megapowers gate blocks (zero in hook-free versions), `VERIFIED` and `NOT
 VERIFIED` reports, foreground `sleep` calls, and autonomous-run journal
 events. `human_turns` and `corrections` leave out machine turns, which show as
 `machine_turns`. A call counts as a foreground sleep when a shell command in it
