@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-const runReceiptTool = "extras/scripts/verify-and-finish/run-receipt.go"
+const runReceiptTool = "plugins/megapowers/skills/verify-and-finish/scripts/run-receipt.go"
 
 var receiptLinePattern = regexp.MustCompile(`(?m)^receipt: exit=(-?\d+) duration=\d+ms head=([0-9a-f]{12}|none) tree=(clean|dirty:[0-9a-f]{12}|none) log=(\S+\.log) json=(\S+\.json)$`)
 

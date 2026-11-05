@@ -561,7 +561,7 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 			return `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":` + quote(command) + `}}]}}` + "\n" +
 				`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":` + quote(output) + `}]}}`
 		}
-		trace := call("cd /p && go run /p/extras/scripts/autonomous-run/run-state.go resume --id ledger", resumeOutput)
+		trace := call("cd /p && go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger", resumeOutput)
 		if s.skip {
 			trace = call("go test ./...", "ok")
 		}
@@ -586,7 +586,7 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 			trace = call("echo 'run-state: resume ledger' run-state.go resume", "run-state: resume ledger run-state.go resume")
 		}
 		if s.codexFormat {
-			trace = `{"type":"item.completed","item":{"type":"command_execution","command":"/bin/bash -lc 'go run /p/extras/scripts/autonomous-run/run-state.go resume --id ledger'","aggregated_output":` + quote(resumeOutput) + `,"exit_code":0}}`
+			trace = `{"type":"item.completed","item":{"type":"command_execution","command":"/bin/bash -lc 'go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger'","aggregated_output":` + quote(resumeOutput) + `,"exit_code":0}}`
 		}
 		if s.claim {
 			// Naming the command in text is not running it.

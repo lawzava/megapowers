@@ -10,8 +10,7 @@ unreleased `main`.
 
 - A current Claude Code or Codex CLI, already authenticated.
 - Git, for marketplace snapshots.
-- Optional repository helpers in `extras/scripts` require Go 1.25 or newer.
-  The installed plugin contains no executable code.
+- Go 1.25 or newer, for the plugin's bundled Go tools, including the doctor.
   Loading skill guidance alone does not require Go.
 
 ## Claude Code
@@ -98,14 +97,14 @@ The command writes `megapowers-<version>.zip` and prints its size and sha256.
 The same input gives the same bytes. `--check` builds and validates without
 keeping the output, and `scripts/validate.sh` runs it.
 
-The edition ships guidance-only skills, an icon, and a
+The edition ships the skills and their bundled scripts, an icon, and a
 `.codex-plugin/plugin.json` for the directory listing. It omits the Claude Code
 output style and manifest, the source README, and `skills/catalog.json`.
 
 Each packaged `SKILL.md` ends with one line that ranks explicit user
-instructions above skill guidance. Skills use normal agent tools for their
-manual procedures. Optional helpers live in the repository's extras folder.
-The skill `upgrading-megapowers` drives the
+instructions above skill guidance. Skills that run bundled Go scripts need a
+local shell and Go; without them each skill states a manual fallback or
+stops without sending anything. The skill `upgrading-megapowers` drives the
 Claude Code and Codex plugin CLIs and does not apply to directory installs.
 
 Install from the self-hosted marketplace for Claude Code's optional native
@@ -193,8 +192,10 @@ measure agent behavior. Optional behavioral studies are described in
 ## Diagnose an install
 
 Ask for `megapowers-doctor` (`/megapowers:megapowers-doctor` on Claude Code, or
-the skill name after `$` as the Codex skills list shows it). Follow its manual
-checks using normal file and session tools. Inspect the plugin version, root,
-harness, discovery, marketplace copy, applicable style, recent skill loads and
-optional registry. Report summaries and unchecked inputs. Optional repository
-helpers have separate [SECURITY.md](../SECURITY.md) read and execution boundaries.
+the skill name after `$` as the Codex skills list shows it). It runs the
+plugin's standalone `skills/megapowers-doctor/scripts/doctor.go` script and reports the plugin version and root, the
+harness, the Claude `outputStyle` value in effect, the local marketplace copy,
+recent workspace skill-load counts, and the optional agent registry. The
+directory edition omits the catalog and skips load counting. The doctor reads
+local settings and session records; see [SECURITY.md](../SECURITY.md) for its
+read and execution boundaries.

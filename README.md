@@ -66,8 +66,8 @@ codex plugin marketplace add lawzava/megapowers --ref release
 codex plugin add megapowers@megapowers
 ```
 
-Then start a fresh session. The plugin ships guidance only. Optional Go helpers
-live in [extras/scripts](extras/scripts) and need Go 1.25 or newer.
+Then start a fresh session. Bundled Go tools, including the doctor, need Go
+1.25 or newer on `PATH`; loading skill guidance does not.
 
 **Try it:** ask "check my megapowers setup". The doctor reports the plugin
 version, local marketplace copy, and Claude Code output-style setting.
@@ -156,6 +156,7 @@ only when your request matches. The *experimental* labels come from
 |---|---|
 | `megapowers-doctor` *(experimental)* | A skill did not fire, the Claude Code style looks off, or the install needs checking |
 | `upgrading-megapowers` | You want to update, reinstall, or repair the plugin |
+| `mcp-setup` *(experimental)* | An MCP server needs installing or fixing, or its tools are missing |
 
 [docs/orchestration.md](./docs/orchestration.md) explains which kinds of task
 go to which skill.
@@ -256,8 +257,14 @@ longer shipped and do not describe this version.
 
 - 16 skills under `skills/`, listed in `skills/catalog.json`.
 - One optional Claude Code output style, `output-styles/megapowers.md`.
-- Optional Go helpers in the repository's `extras/scripts` folder, outside
-  the installed plugin. Skills use manual procedures with normal agent tools.
+- Go standard-library tools that load only with their skill: a run receipt
+  for `verify-and-finish`
+  that keeps full output and the exit status, run state for `autonomous-run`,
+  and the session miner and memory-audit validator for
+  `writing-agent-instructions`.
+- A standalone Go doctor script behind `megapowers-doctor`, which reports
+  the version, Claude Code style setting, local marketplace copy, optional
+  agent registry, and recent workspace skill-load counts.
 
 The plugin does not edit global user configuration and supplies no model,
 provider, or agent configuration. For non-trivial delegation, `orchestrating`
@@ -270,15 +277,31 @@ access.
 ## Troubleshooting
 
 Start with the doctor: `/megapowers:megapowers-doctor` on Claude Code, or the
-skill name after `$` as it appears in the Codex skills list. Use its manual
-checks to inspect version, root, discovery, marketplace registration, recent
-skill loads and applicable output style. Report inaccessible inputs as unchecked.
-See [SECURITY.md](./SECURITY.md) for optional repository helper boundaries.
+skill name after `$` as it appears in the Codex skills list. It runs the
+standalone Go doctor script and reports the plugin version and root, which
+tool is running, the Claude `outputStyle` value in effect, the local
+marketplace copy, optional agent registry, and recent workspace skill-load
+counts. It reads plugin manifests and the skill catalog, local marketplace
+manifests, and the optional registry. It parses only `outputStyle` from
+`~/.claude/settings.json` and project `.claude/settings.json` and
+`.claude/settings.local.json`, and runs `git rev-parse --show-toplevel`
+locally. It reads recent Claude transcripts in the workspace's project
+directory, including subagents, and Codex rollout headers under
+`~/.codex/sessions` from today and the previous 14 date directories, examining
+at most 2,000 headers and collecting at most 500 transcripts across both
+harnesses. Environment overrides can select other local settings and session
+directories. It counts sessions modified in the last seven days that contain a
+successful load. It prints summaries rather than transcript bodies. The
+directory edition omits the catalog and skips load counting. Running the
+script uses Go's build caches; with `GOTOOLCHAIN=auto`, Go may download a
+selected toolchain. Set `GOTOOLCHAIN=local` to require a suitable locally
+installed toolchain. See [SECURITY.md](./SECURITY.md) for the read and
+execution boundaries.
 
 | Symptom | Fix |
 |---|---|
 | Style not applied on Claude Code | The setting must read `megapowers:Megapowers`, not `Megapowers` |
-| Optional extras helper error mentioning Go | Install Go 1.25 or newer |
+| Doctor error mentioning Go | Install Go 1.25 or newer |
 | Wrong version after an upgrade | Use `upgrading-megapowers`, which compares the marketplace head with the approved release tag before writing |
 
 ## Limits

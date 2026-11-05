@@ -49,6 +49,5 @@ check makes a mistake impossible, delete the prose rule it replaces.
 Order candidates by how much time or risk each would have saved. For each one,
 name the target file or tool, the change, and the observed failure it
 addresses. Validate an instruction change as the parent skill describes before
-keeping it. Record each accepted candidate's ID, class, lesson, surface, target and
-timestamped evidence. Follow the [learning loop](learning-loop.md) for proof,
-promotion and later review.
+keeping it. Record each candidate the user accepts with `lessons.go add`, so
+its proof, promotion, and later review follow the [learning loop](learning-loop.md).

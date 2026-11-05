@@ -509,7 +509,7 @@ func TestValidationContract(t *testing.T) {
 func TestMemoryHygieneContract(t *testing.T) {
 	root := repoRoot(t)
 	tmp := t.TempDir()
-	tool := "./extras/scripts/writing-agent-instructions/memory-audit.go"
+	tool := "./plugins/megapowers/skills/writing-agent-instructions/scripts/memory-audit.go"
 	write := func(name, records string) string {
 		t.Helper()
 		path := filepath.Join(tmp, name)

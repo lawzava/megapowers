@@ -13,8 +13,8 @@ guidance.
   yourself. Ask only when different readings of the request would lead to
   materially different work.
 - Before asking me for a fact, look where it already is: linked pull requests
-  and tickets, authenticated CLIs, connected MCP tools, and environment key
-  names (never values). Say what you checked.
+  and tickets, and the tools already connected in this session. Say what you
+  checked.
 - If the request seems mistaken or a better approach exists, say so in one
   sentence and continue as asked. Do not quietly narrow, widen, or transform
   the task.
@@ -63,8 +63,7 @@ guidance.
   A 1000 ms yield costs a turn per poll and returns nothing new.
 - Poll a condition under a ceiling:
   `timeout 590 bash -c 'until grep -q PASS run.log; do sleep 5; done'`.
-  Block on CI with `gh run watch <id> --exit-status` or
-  `gh pr checks <n> --watch --fail-fast`.
+  Block on CI with the CI provider's own watch command.
 
 ## Done
 

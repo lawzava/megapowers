@@ -94,7 +94,7 @@ func TestSessionMineInstalledSingleFile(t *testing.T) {
 
 func TestShippedGoNoAgentCLI(t *testing.T) {
 	root := repoRoot(t)
-	err := filepath.WalkDir(filepath.Join(root, "extras/scripts"), func(path string, entry os.DirEntry, err error) error {
+	err := filepath.WalkDir(filepath.Join(root, "plugins/megapowers"), func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

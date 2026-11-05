@@ -47,11 +47,11 @@ What it covers:
 - Research decisions that need evidence beyond the repository.
 - Keep long unattended runs moving across context resets.
 - Interview you to stress-test a plan (grill-me, started by name only).
-- Draft and edit prose, write agent instructions and skills, and check or upgrade this plugin.
+- Draft and edit prose, write agent instructions and skills, set up MCP servers, and check or upgrade this plugin.
 
 Who it is for: developers who work with coding agents in a repository and want consistent practice for planning, testing, debugging, review, and release work.
 
-Limits: this edition contains skills only. It has no hooks, no startup output style, and no destructive-command guard. No executable helpers are bundled. Optional helpers live in the repository extras folder. Review and orchestration skills use whichever agents or providers your environment already provides. Skills are guidance text for the agent; they do not enforce behavior or replace your own review.`
+Limits: this edition contains skills only. It has no hooks, no startup output style, and no destructive-command guard. Some skills bundle small Go programs in their scripts folders; running them needs a local shell and the Go toolchain. Review and orchestration skills use whichever agents or providers your environment already provides. Skills are guidance text for the agent; they do not enforce behavior or replace your own review.`
 
 var directoryCapabilities = []string{
 	"Specify changes and compare design tradeoffs",
@@ -66,6 +66,7 @@ var directoryCapabilities = []string{
 	"Stress-test a plan through a structured interview",
 	"Draft and edit prose",
 	"Write and audit agent instructions and skills",
+	"Set up and verify MCP servers",
 	"Check and upgrade the plugin install",
 }
 

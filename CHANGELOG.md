@@ -5,6 +5,17 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.53.0 - 2026-11-05
+
+### Changed
+
+- Restore the bundled helper scripts and the mcp-setup skill removed by the
+  0.51.0 and 0.52.0 directory-review probes. A control showed that the
+  directory hold does not come from these components.
+- Use session-connected tools and the user's configured test setup in shipped
+  guidance. Replace authenticated CLI and environment-key discovery advice
+  and GitHub CLI watch examples with tool-neutral wording.
+
 ## 0.52.0 - 2026-11-05
 
 ### Changed

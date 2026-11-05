@@ -1,7 +1,7 @@
 # megapowers plugin
 
 One workflow plugin for current Claude Code and Codex: task skills, an
-optional Claude Code output style, with no executable code. It uses the planning, agents, goals, permissions, memory, worktrees,
+optional Claude Code output style, and a standalone Go doctor. It uses the planning, agents, goals, permissions, memory, worktrees,
 and browser tools each harness already has. It ships no model router,
 orchestration daemon, or vendor choice.
 
@@ -10,12 +10,14 @@ orchestration daemon, or vendor choice.
 - `skills/`: one skill per task type: orchestration, structured interviews,
   research, design, implementation with language-specific code judgment,
   debugging, verification, actions with real-world side effects, long
-  unattended runs, independent review, prose, safe upgrades,
+  unattended runs, independent review, MCP setup, prose, safe upgrades,
   writing agent instructions (including retrospectives, session recall, and
   memory hygiene), and self-diagnosis (`megapowers-doctor`).
   `skills/catalog.json` records whether each skill is stable or experimental,
   since portable skill frontmatter has no field for that.
 - `output-styles/`: an optional native Claude Code style for direct, concise replies.
+- `skills/megapowers-doctor/scripts/doctor.go`: installation checks and recent
+  workspace skill-load counts from local session records.
 - `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: plugin
   metadata for each harness.
 
@@ -29,9 +31,8 @@ another selected style.
 
 Codex: the plugin does not apply a session-wide style. Invoke
 `humanizing-prose` for writing tasks that need its editing guidance.
-Optional helper scripts live in the repository's extras folder, outside the
-installed plugin. See [extras](https://github.com/lawzava/megapowers/tree/main/extras/scripts).
-They require Go 1.25 or newer.
+Bundled Go scripts need Go 1.25 or newer; the plugin contains no prebuilt
+binaries.
 
 ## Install
 
@@ -50,9 +51,21 @@ disclosure scope before sending material off-machine. Read the
 [security policy](https://github.com/lawzava/megapowers/blob/main/SECURITY.md)
 before enabling external review.
 
-Use normal harness tools for the skills' manual procedures. Review optional
-repository helpers before choosing to run them. They are not installed with
-the plugin.
+The doctor reads plugin and marketplace manifests, the skill catalog, user and
+project Claude settings, the optional agent registry, and recent local Claude
+main/subagent transcripts in the workspace's project directory and Codex
+rollout headers under `~/.codex/sessions` from today and the previous 14 date
+directories (at most 2,000 headers and 500 transcripts across both harnesses).
+It parses only `outputStyle` from `~/.claude/settings.json`, project
+`.claude/settings.json`, and `.claude/settings.local.json`; environment
+overrides can select other local settings and session directories. It resolves
+the workspace root with `git rev-parse --show-toplevel`, counts successful
+skill loads in sessions modified in the last seven days, and prints summaries
+rather than transcript bodies. The directory edition omits the catalog and
+skips load counting. The script does not edit these inputs and has no network
+client. `go run` uses Go's build caches; with `GOTOOLCHAIN=auto`, Go may
+download a selected toolchain. Set `GOTOOLCHAIN=local` to require a suitable
+locally installed toolchain.
 
 ## Attribution
 

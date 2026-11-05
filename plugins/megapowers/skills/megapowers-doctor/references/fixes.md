@@ -7,9 +7,9 @@
   names. Start a new session.
 - Output style, Codex: the plugin does not apply a session-wide style. Invoke
   `humanizing-prose` for writing tasks that need its editing guidance.
-- Inaccessible inputs: report unchecked files and use the harness's available
-  read-only tools to inspect them.
-  Follow the [manual checks](directory-edition.md).
+- Go toolchain: the doctor and other bundled scripts need Go 1.25 or newer.
+  Install it before running the script again, or use the
+  [manual checks](directory-edition.md).
 - Agent registry: `orchestrating` ignores
   `~/.config/megapowers/agent-capabilities.md` when it is expired or has no
   readable `expires_at`, and falls back to native defaults. Recheck the
@@ -17,6 +17,5 @@
   out. The orchestrating skill ships a template in `assets/`.
 - Version or root mismatch, or a newer local marketplace copy: use
   `upgrading-megapowers`.
-- Skill loads: inspect successful body-load records in recent workspace traces.
-  For other workspaces or periods, follow session mining in
-  `writing-agent-instructions`.
+- Skill loads: the doctor counts successful body-load records in recent workspace transcripts. For other workspaces or periods, use the
+  session miner in `writing-agent-instructions`.
