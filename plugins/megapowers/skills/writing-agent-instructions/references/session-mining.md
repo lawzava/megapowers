@@ -40,45 +40,29 @@ OpenCode is noted as not read. `both` always means Claude Code + Codex.
 Each report includes `by_source` counts, `skipped_sources`,
 `partial_sources`, `skipped_sessions`, and `deduplicated_sessions`.
 Invalid export files make the source partial, retaining valid sessions.
-Exports with an `export-status` manifest retain the exporter's status,
-skipped-session count, and environment. Without a manifest, `environment` is
-`offline`; status is `complete`,
-`partial`, or `skipped`.
+Exports with an `export-status` manifest retain its status and skipped-session
+count. The manifest's `environment` is a label copied as is: `offline`,
+`inherited`, or `without_xdg_state_home`. Without a manifest, `environment` is
+`offline`; status is `complete`, `partial`, or `skipped`.
 
-### OpenCode exports
+`--opencode-export PATH` reads OpenCode session export JSON files (a file or a directory) produced outside the plugin.
+Each file is one JSON object with this shape (`messages` contains message objects):
 
-First create exports with the repository maintainer tool, outside the installed
-plugin. Set `MEGAPOWERS_REPO` to the absolute path of a megapowers repository checkout:
-
-```bash
-go -C "$MEGAPOWERS_REPO" run github.com/lawzava/megapowers/scripts/cmd/opencode-export --all-workspaces --output /path/to/exports
+```json
+{"data":{"info":{"id":"session-id","parentID":"","location":{"directory":"/path/to/workspace"}},"messages":[]}}
 ```
 
-Then read the exports with the installed skill:
-
-```bash
-go run "$SKILL_DIR/scripts/session-mine.go" corrections --workspace "$PWD" --opencode-export /path/to/exports
-```
-
-The input is one JSON export file or a directory of `*.json` exports in the
-shape returned by `/api/experimental/session/{id}/export`. Session IDs are
-counted once. `--workspace` matches the export's current `location.directory`,
+`data`, a nonempty `info.id`, and the `messages` array are required.
+`parentID` is optional; workspace matching requires `location.directory`.
+Session IDs are counted once. `--workspace` matches the export's current `location.directory`,
 including child sessions; `--since` filters message timestamps.
-
-The repository tool uses an already-running OpenCode service, paginates the
-session list, and writes private export files into a new or empty directory at an absolute path outside the checkout.
-Exporter exit 1 means a partial result; its manifest distinguishes partial
-from skipped exports.
-Its CLI options and retry/deadline behavior are documented in the repository's
-[export tool reference](https://github.com/lawzava/megapowers/blob/main/docs/advanced/opencode-export.md).
-The installed miner reads only the supplied files.
 
 OpenCode `user` messages are human turns unless a machine-text anchor below
 matches. `synthetic` messages are machine turns; child sessions (`parentID`
 set) classify user/synthetic turns as subagent prompts, never human. Assistant
 text is kept; reasoning, system text, and tool outputs are not conversation
 excerpts. Skill loads and shell/read/error tool events feed scorecards.
-The V2 API has no standard scheduler/Paseo-origin field: unmarked scripted root
+The V2 format has no standard scheduler/Paseo-origin field: unmarked scripted root
 prompts cannot be distinguished from typed prompts and still count as human.
 
 Claude Agent exports have `model.providerID: claude-agent` and content blocks
@@ -152,8 +136,7 @@ it toward a retrospective class.
 
 ## Privacy
 
-The tool runs locally and keeps no transcript copies beyond its temporary API
-output files, which it removes after reading. Only a sanitized scorecard
+The tool runs locally and never writes files. Only a sanitized scorecard
 may leave the machine, and only after the user has seen it. Excerpts are short and redacted:
 emails, tokens, home paths, and URL credentials are removed. Redaction can
 miss things. Never paste raw transcripts or unreviewed excerpts into
