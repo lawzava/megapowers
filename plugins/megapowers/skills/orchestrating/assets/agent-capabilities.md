@@ -46,7 +46,7 @@ bindings:
       agent_type: <native-reviewer-role>  # role configured by the user, not shipped
       model: <model-id>
       effort: high
-      family: <different-vendor-family>  # e.g. anthropic, openai, or google
+      family: <vendor-family>  # e.g. anthropic, openai, or google
       access: native
       status: operator-selected
       rankable: false
@@ -57,16 +57,14 @@ fallbacks:
 
 ## Rules
 
+- Define what counts as independent and which reviewer to use in your global
+  CLAUDE.md or AGENTS.md. A different vendor is preferred but optional unless
+  your instructions require it. Bind a model and route that are available.
 - An `independent-review` binding is your standing approval to send review
-  material to that reviewer within the intended scope. With `access: native`,
-  the harness's native subagent tool selects `agent_type`; verify that its
-  configured vendor really differs from the author and keep tools read-only.
-  This route does not run the external tool's secret scan or hash checks.
-  For an external reviewer, use `access: approved-external` and a `provider`
-  label; supply the exact command in separate user instructions. The agent
-  decides when to review and dispatches without asking, but the external tool's
-  secret scan and disclosure inspection still apply. Delete the binding to
-  require approval again. Neither route widens the approved disclosure scope.
+  material to that reviewer within the stated scope. Check briefs and accessible
+  files for secrets and disclosure scope before sending anything off-machine.
+  Use existing native subagents, installed agent CLIs, or native review. The
+  plugin supplies no review launcher or automated disclosure checks.
 - An unavailable binding is reported, not replaced. Use a `fallbacks` entry
   only when access, disclosure, and permissions for it already exist.
 - A failed task oracle calls for diagnosis, not a provider switch.

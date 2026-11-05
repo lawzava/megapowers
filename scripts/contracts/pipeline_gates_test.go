@@ -24,7 +24,7 @@ func TestPipelineGuidanceContracts(t *testing.T) {
 		}
 	}
 	entry := normalized(read(t, root, "plugins/megapowers/skills/independent-review/SKILL.md"))
-	for _, fact := range []string{"native subagent", "different vendor", "does not run", "secret scan", "references/external-review.md", "forwards no credentials"} {
+	for _, fact := range []string{"native subagents", "another model", "guidance only", "secrets", "disclosure scope", "user's global instructions"} {
 		if !strings.Contains(entry, fact) {
 			t.Errorf("native review boundary missing %q", fact)
 		}
@@ -98,7 +98,7 @@ func TestCopiedOpenCodeSkillsResolveResources(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, tool := range []string{"orchestrating/scripts/lanes.go", "orchestrating/scripts/fence-check/fence.go", "independent-review/scripts/megapowers-review.go", "autonomous-run/scripts/run-state.go"} {
+	for _, tool := range []string{"orchestrating/scripts/lanes.go", "orchestrating/scripts/fence-check/fence.go", "autonomous-run/scripts/run-state.go"} {
 		if info, err := os.Stat(filepath.Join(dest, tool)); err != nil || !info.Mode().IsRegular() {
 			t.Errorf("copied script %s unavailable: %v", tool, err)
 		}

@@ -31,7 +31,7 @@ const (
 
 const directoryDescription = "Workflow skills for coding agents: planning, test-first implementation, " +
 	"systematic debugging, verification before completion, safe handling of real-world side effects, " +
-	"independent cross-provider review, parallel orchestration, evidence research, and instruction authoring. " +
+	"independent model review, parallel orchestration, evidence research, and instruction authoring. " +
 	"Skills only: the package ships no hooks, output style, or MCP server."
 
 const directoryLongDescription = `megapowers is a set of task-level workflow skills for coding agents. A skill loads when the task matches its description and gives the agent a short, checkable procedure.
@@ -43,7 +43,7 @@ What it covers:
 - Verify an outcome before claiming it is done, committing, or handing off.
 - Gate deploys, messages, migrations, and other real-world effects behind explicit authority and read-back.
 - Split independent work across parallel agents and coordinate the results.
-- Run adversarial review of high-stakes changes with a provider other than the author.
+- Get an independent opinion on high-stakes changes from another available model, following user reviewer preferences.
 - Research decisions that need evidence beyond the repository.
 - Keep long unattended runs moving across context resets.
 - Interview you to stress-test a plan (grill-me, started by name only).
@@ -60,7 +60,7 @@ var directoryCapabilities = []string{
 	"Verify outcomes before claiming completion",
 	"Gate real-world side effects behind authority checks",
 	"Orchestrate parallel agent lanes",
-	"Run independent cross-provider review",
+	"Run independent model review",
 	"Research decisions with classified evidence",
 	"Keep long unattended runs moving across resets",
 	"Stress-test a plan through a structured interview",

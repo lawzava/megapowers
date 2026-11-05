@@ -18,7 +18,7 @@ native agent/reviewer bindings, isolation, permissions and any hooks locally.
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
-| Independent review provider | Native different-vendor subagent or operator-named reviewer CLI | Native different-vendor subagent or operator-named reviewer CLI |
+| Independent review provider | Another available model under user reviewer instructions | Another available model under user reviewer instructions |
 | Credentialed installed A/B | Optional diagnostic | Optional diagnostic |
 | Exact-tag install smoke | Post-publish check | Post-publish check |
 
@@ -40,10 +40,11 @@ Codex's explicit-only policy lives in each such skill's `agents/openai.yaml` as
 harness's own policy and tests explicit invocation separately.
 
 `SKILL.md` bodies do not depend on which harness is running.
-`independent-review` uses a configured native reviewer from another vendor or an
-operator-named external command with secret-scan and disclosure checks. It ships
-no model bindings. Channel-specific upgrade commands live in a linked reference
-loaded only after the install channel is detected.
+`independent-review` supplies guidance for another available model, using
+native subagents, installed agent CLIs, or native review. Cross-vendor review
+is preferred but optional. Global CLAUDE.md or AGENTS.md instructions define
+independence and reviewer choice. Inspect secrets and disclosure scope before
+sending off-machine. No review launcher ships with the skill.
 
 Install smoke verifies the cached invocation-policy file and native skill
 discovery. Codex 0.162.0 does not expose invocation policy in `skills/list`,

@@ -9,8 +9,8 @@ The workflow core descends from
 planning, test-first, debugging, verification, worktree, and delegation methods
 were rewritten and consolidated into the current task-level skills.
 
-The independent-review prompt's reasonable-user standard for behavior a spec
-does not mention comes from the v6.4.1 reviewer guidance, reviewed at
+The former independent-review launcher's reasonable-user standard for behavior
+a spec does not mention came from the v6.4.1 reviewer guidance, reviewed at
 `8ca22dba9a94f28898bbce59f2537ff4d87c747d`.
 
 Upstream license: MIT, Copyright (c) 2025 Jesse Vincent.
@@ -186,8 +186,8 @@ Upstream license: MIT, Copyright (c) 2026 Affaan Mustafa.
 
 The adversarial-review framing and structured review outcome concepts were
 informed by [codex-plugin-cc](https://github.com/openai/codex-plugin-cc) by
-OpenAI. The current review package, disclosure, and receipt implementation is a
-new Go standard-library tool with a narrower explicit-input contract.
+OpenAI. The former Go review package, disclosure, and receipt implementation
+was removed in 0.49.0; independent review now supplies guidance only.
 
 Upstream license: Apache-2.0. Upstream notice: Copyright 2026 OpenAI.
 

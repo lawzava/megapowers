@@ -5,6 +5,22 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.49.0 - 2026-11-05
+
+### Removed
+
+- The independent-review provider launcher and its disclosure-token workflow.
+  The plugin no longer launches a reviewer using saved provider logins.
+
+### Changed
+
+- Independent review is guidance only. The agent selects another available
+  model under the user's global reviewer and independence instructions.
+  Cross-vendor review is preferred but optional. The reviewer contract,
+  correction-round caps, and secret/disclosure checks remain in the guidance.
+- Update review documentation, manifests, eval fixtures, and contracts for the
+  guidance-only workflow.
+
 ## 0.48.0 - 2026-11-05
 
 ### Added

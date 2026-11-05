@@ -1,45 +1,40 @@
 ---
 name: independent-review
-description: Use when security, auth, billing, concurrency, data integrity, or another high-stakes artifact needs adversarial review by a provider other than its author.
+description: Use when security, auth, billing, concurrency, data integrity, or another high-stakes artifact needs an independent opinion from another model.
 when_to_use: "Trigger phrases: get a second opinion from another model, external review, have another vendor review this, adversarial review of auth, billing, or migration code before merge."
 metadata:
-  short-description: Cross-provider adversarial review of a high-stakes artifact
+  short-description: Independent model review of a high-stakes artifact
 ---
 
 # Independent Review
 
-Use model review for residual uncertainty after executable checks. Same-provider
-review gives only context separation, not independence. The lead owns
-remediation and reruns the oracle.
+Use another model for residual uncertainty after executable checks when the
+stakes warrant it. The lead owns remediation and reruns the oracle.
 
 ## Choose the review route
 
-Read the reviewer binding from the capability registry or user instruction.
-Use a different vendor from each portion's author. Unavailable review remains
-pending, not permission to switch providers.
+Follow the user's global instructions (CLAUDE.md or AGENTS.md) for what counts
+as independent and which reviewer to use, including any local reviewer binding.
+Otherwise choose from what is actually available: native subagents with a
+different model, installed agent CLIs, or the harness's native review.
+Cross-vendor review is preferred but optional, depending on installed options.
+Do not assume a provider or model is available. Report unavailable required
+review without silently replacing the user's choice.
 
-- **Native subagent:** use the harness's native tool with the bound read-only
-  reviewer. Supply artifact identity, requirements, acceptance boundary, scope
-  and check evidence, not unrelated history. Inspect the brief and accessible
-  files for secrets and disclosure scope. This route forwards no credentials
-  in the brief; authentication stays with the harness. It does not run the
-  external tool's secret scan, binary verification, environment filtering or
-  package-hash checks, nor sandbox filesystem access. Confirm the actual vendor
-  and permissions; native review can send bytes off-machine.
-- **Outside the harness:** use the installed tool's secret scan and disclosure
-  inspection for every package. Read
-  [external review](references/external-review.md) for command shapes,
-  `--approve-external`, `--intent`, and approval-token handling. The tool
-  forwards no credentials. Without Go or a shell, send nothing through this
-  route and report the limitation.
+This skill supplies guidance only. Use the selected system's existing review
+interface and permissions. Give the reviewer artifact identity, requirements,
+acceptance boundary, scope, and check evidence. Keep review access read-only.
 
 ## Dispatch authority
 
-A bound or instruction-named reviewer is pre-approved within the intended
-scope. Ask first only when no reviewer is configured, disclosure exceeds that
-scope or includes local-only content, or instructions require approval or
-inspection. Both routes honor denials and report permission/provider stalls;
-never bypass a failed scan with a direct send.
+Check briefs and accessible files for secrets and disclosure scope before
+sending anything off-machine, including through native review. Exclude secrets
+and unrelated local content. Follow user instructions and existing permission
+rules for sending to the selected reviewer. A bound or instruction-named
+reviewer is pre-approved within its stated scope. Dispatch without asking
+again when that authority covers the review. Ask when required authority is
+missing or disclosure exceeds the approved scope. Honor denials and report
+permission or provider stalls.
 
 ## Reviewer contract
 
@@ -58,4 +53,4 @@ Set the round cap before dispatch; re-review only
 [fixes since the prior round](references/correction-rounds.md), affected
 boundaries, and new evidence. Exhaustion leaves unresolved findings open for
 the user. Join every review before completion; approval cannot settle a queued
-review. Receipts record execution, not acceptance.
+review.
