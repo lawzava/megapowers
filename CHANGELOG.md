@@ -5,6 +5,13 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.46.7 - 2026-11-05
+
+### Removed
+
+- mcp-setup skill no longer ships with the plugin; its text is kept in the
+  repository at `extras/skills/mcp-setup/SKILL.md`.
+
 ## 0.46.6 - 2026-11-05
 
 ### Changed
