@@ -8,21 +8,32 @@ metadata:
 
 # Megapowers Doctor
 
-The plugin root is two directories above this skill. Use your normal file
-tools to follow the [manual checks](references/directory-edition.md): read the
-plugin manifest version, `skills/catalog.json` and each listed skill's
-`SKILL.md`, and the shipped agent registry template. Report missing or unreadable
-files and give one fix per finding from [fixes by check](references/fixes.md).
+The plugin root is two directories above this skill. With Go 1.25 or newer, run:
 
-On Claude Code, check the optional output style with `/config` or ask the user which style
-is selected. Report checks you could not perform as skipped.
+```bash
+go run "<plugin root>/skills/megapowers-doctor/scripts/doctor.go" --root "<plugin root>" --harness "<harness>"
+```
 
-From a megapowers checkout, maintainers can run `go run ./scripts/cmd/doctor --root <plugin-root>`.
+Set `<harness>` using [harness invocation](references/invocation.md).
+`--harness` skips unrelated style checks.
+
+It prints the plugin version and root, harness, output-style
+setting, marketplace copy, recent skill loads, and optional agent registry. Problems start with
+`WARN`. Quote only those lines and give one fix per line from
+[fixes by check](references/fixes.md). If the command fails, report its exit
+status and raw error; that failure is the diagnosis.
+
+Without a local shell or Go, follow [manual checks](references/directory-edition.md).
 
 ## Did a skill fire?
 
-Ask for the skill explicitly and confirm its body loads. A catalog entry or
-prose mention alone does not establish a load. If an explicit request fails,
-check discovery. If a matching task never loads a discoverable skill, use
-`writing-agent-instructions` to inspect its trigger wording. If the skill
-loads but the outcome does not change, report that observation separately.
+A skill fired only if the session loaded its body; a catalog entry or a
+prose mention is not a load. Inspect the session trace, or use the session
+miner in `writing-agent-instructions`, to find successful load records. Report
+counts and session identifiers, not contents. The doctor's `skill loads` line
+counts sessions modified in the last seven days that contain a successful load.
+
+If a matching task never loaded the skill, the defect is trigger wording or
+skill discovery; use `writing-agent-instructions`
+for the trigger. If the skill loaded but the outcome did not change, say so; a
+load is not evidence of behavior.

@@ -9,11 +9,32 @@ Review the exact revision before installing it.
 | Component | Reads | Writes | Network |
 |---|---|---|---|
 | Skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
+| Doctor script | Plugin manifests and catalog, local marketplace manifests, Claude settings, optional agent registry, workspace Git root, local Claude and Codex session records | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
 | Memory-audit tool | One explicit audit manifest | Standard output only | None |
 | Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | One operator-named reviewer command after token approval |
 
 There is no daemon, model router, formatter, status line, or background
 scheduler.
+
+The doctor reads `~/.claude/settings.json` and project `.claude/settings.json`
+and `.claude/settings.local.json` (parsing only `outputStyle`), the optional
+agent registry to check its expiry, and local marketplace manifests to compare
+versions. With a skill catalog, it reads recent local Claude transcripts in
+the workspace's project directory, including subagents. Under
+`~/.codex/sessions`, it scans rollout headers from today and the previous 14
+date directories, examining at most 2,000 headers and collecting at most 500
+transcripts across both harnesses. Environment overrides can select other
+local settings and session directories. It counts sessions modified in the
+last seven days that contain a successful skill-body load and prints counts,
+paths, versions, style values, and warnings; it does not print transcript
+bodies. The directory edition omits the catalog, so it skips load counting. It
+runs `git rev-parse --show-toplevel` locally to resolve the workspace root.
+
+The script does not edit settings or transcripts and has no network client.
+Running it with `go run` uses Go's build caches; with `GOTOOLCHAIN=auto`, Go
+may download a newer toolchain when selected by the active module or
+workspace. Use `GOTOOLCHAIN=local` with an installed suitable Go version when
+a local toolchain is required.
 
 The memory-audit tool checks provenance, dates, retention decisions, and
 common credential patterns. It rejects symlink inputs and never edits provider
@@ -22,24 +43,6 @@ memory-hygiene reference in `writing-agent-instructions` requires inspecting
 the source and one exact approval. After approval, the active agent applies
 that patch through the harness memory boundary and reads every target back to
 verify it.
-
-## Repository tools (not installed)
-
-The doctor (`go run ./scripts/cmd/doctor --root <plugin-root>`) is a repository
-tool. It is not installed with the plugin.
-
-The doctor reads only files inside the supplied plugin root: the Claude and
-Codex manifests, the optional skill catalog and listed skill bodies, and the
-shipped agent registry template. It prints versions, catalog counts, paths, and
-warnings. Root environment variables only locate that tree.
-
-The tool has no network client. `go run` uses Go's build caches; with
-`GOTOOLCHAIN=auto`, Go may download a selected toolchain. Set
-`GOTOOLCHAIN=local` to require a suitable locally installed toolchain.
-
-The session-mine maintainer tool reads local Claude Code and Codex transcripts
-and reports on standard output. It has no network client and is not installed
-with the plugin. Commands are in [session mining](docs/advanced/session-mining.md).
 
 ## Enforcement boundary
 

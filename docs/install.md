@@ -10,7 +10,7 @@ unreleased `main`.
 
 - A current Claude Code or Codex CLI, already authenticated.
 - Git, for marketplace snapshots.
-- Go 1.25 or newer, for the plugin's bundled Go tools.
+- Go 1.25 or newer, for the plugin's bundled Go tools, including the doctor.
   Loading skill guidance alone does not require Go.
 
 ## Claude Code
@@ -36,7 +36,8 @@ or run `/output-style megapowers:Megapowers`. The resulting setting is
 `"outputStyle": "megapowers:Megapowers"`. The bare value `Megapowers` does not
 resolve to the plugin style. The style preserves built-in coding instructions.
 To opt out while keeping the plugin enabled, select another style. Start a new
-session after changing style, then confirm the selected output style in `/config`.
+session after changing style, then run `/megapowers:megapowers-doctor` to
+confirm the value in effect.
 
 For a project-scoped install, add `--scope project` to both marketplace and
 install commands. For a local user-only install, use `--scope local`.
@@ -191,13 +192,10 @@ measure agent behavior. Optional behavioral studies are described in
 ## Diagnose an install
 
 Ask for `megapowers-doctor` (`/megapowers:megapowers-doctor` on Claude Code, or
-the skill name after `$` as the Codex skills list shows it). The agent uses
-normal file tools to read the plugin manifest version, optional
-`skills/catalog.json`, each listed skill's `SKILL.md`, and the shipped agent
-registry template. Maintainers can run the repository tool
-`go run ./scripts/cmd/doctor --root <plugin-root>`; it is not installed with
-the plugin.
-
-Check the optional Claude Code output style with `/config` or ask the user,
-and confirm discovery by asking for a skill explicitly. See
-[SECURITY.md](../SECURITY.md) for its read and execution boundaries.
+the skill name after `$` as the Codex skills list shows it). It runs the
+plugin's standalone `skills/megapowers-doctor/scripts/doctor.go` script and reports the plugin version and root, the
+harness, the Claude `outputStyle` value in effect, the local marketplace copy,
+recent workspace skill-load counts, and the optional agent registry. The
+directory edition omits the catalog and skips load counting. The doctor reads
+local settings and session records; see [SECURITY.md](../SECURITY.md) for its
+read and execution boundaries.

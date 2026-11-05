@@ -148,7 +148,7 @@ func TestSessionMineScorecard(t *testing.T) {
 	)
 	base := []string{"scorecard", "--claude-root", claudeRoot, "--codex-root", codexRoot}
 
-	output, code := runClaudeCodexMine(t, root, nil, tool, append(base, "--workspace", workspace, "--format", "json")...)
+	output, code := run(t, root, nil, tool, append(base, "--workspace", workspace, "--format", "json")...)
 	if code != 0 {
 		t.Fatalf("scorecard failed (%d): %s", code, output)
 	}
@@ -194,7 +194,7 @@ func TestSessionMineScorecard(t *testing.T) {
 	}
 
 	// --since drops earlier events as well as messages.
-	output, code = runClaudeCodexMine(t, root, nil, tool, append(base, "--workspace", workspace, "--since", "2026-10-11", "--format", "json")...)
+	output, code = run(t, root, nil, tool, append(base, "--workspace", workspace, "--since", "2026-10-11", "--format", "json")...)
 	var later scorecard
 	if code != 0 || json.Unmarshal([]byte(output), &later) != nil {
 		t.Fatalf("scorecard --since failed (%d): %s", code, output)
@@ -203,7 +203,7 @@ func TestSessionMineScorecard(t *testing.T) {
 		t.Errorf("--since scorecard = %+v", later)
 	}
 
-	output, code = runClaudeCodexMine(t, root, nil, tool, append(base, "--workspace", workspace)...)
+	output, code = run(t, root, nil, tool, append(base, "--workspace", workspace)...)
 	for _, wantText := range []string{"megapowers:verify-and-finish", "gates:", "reports: 2 verified, 1 not verified", "run r1"} {
 		if code != 0 || !strings.Contains(output, wantText) {
 			t.Errorf("text scorecard missing %q (%d): %s", wantText, code, output)
@@ -212,7 +212,7 @@ func TestSessionMineScorecard(t *testing.T) {
 
 	// A sanitized all-workspace card is what may leave a user's machine for the
 	// upstream loop: counts only, no paths, run IDs, or non-megapowers names.
-	output, code = runClaudeCodexMine(t, root, nil, tool, append(base, "--all-workspaces", "--sanitize", "--format", "json")...)
+	output, code = run(t, root, nil, tool, append(base, "--all-workspaces", "--sanitize", "--format", "json")...)
 	if code != 0 {
 		t.Fatalf("sanitized scorecard failed (%d): %s", code, output)
 	}
@@ -245,10 +245,10 @@ func TestSessionMineScorecard(t *testing.T) {
 	if !foundOther {
 		t.Errorf("non-megapowers skills must fold into other: %+v", all.Skills)
 	}
-	if output, code := runClaudeCodexMine(t, root, nil, tool, append(base, "--workspace", workspace, "--sanitize", "--topic", "x")...); code != 2 {
+	if output, code := run(t, root, nil, tool, append(base, "--workspace", workspace, "--sanitize", "--topic", "x")...); code != 2 {
 		t.Errorf("--topic with scorecard: want 2, got %d: %s", code, output)
 	}
-	if output, code := runClaudeCodexMine(t, root, nil, tool, "corrections", "--workspace", workspace, "--sanitize", "--claude-root", claudeRoot); code != 2 {
+	if output, code := run(t, root, nil, tool, "corrections", "--workspace", workspace, "--sanitize", "--claude-root", claudeRoot); code != 2 {
 		t.Errorf("--sanitize outside scorecard: want 2, got %d: %s", code, output)
 	}
 }

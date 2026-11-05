@@ -60,7 +60,7 @@ func TestSessionMineMachineTurns(t *testing.T) {
 	)
 	base := []string{"--workspace", workspace, "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json"}
 
-	output, code := runClaudeCodexMine(t, root, nil, tool, append([]string{"corrections"}, base...)...)
+	output, code := run(t, root, nil, tool, append([]string{"corrections"}, base...)...)
 	var report machineReport
 	if code != 0 || json.Unmarshal([]byte(output), &report) != nil {
 		t.Fatalf("corrections failed (%d): %s", code, output)
@@ -85,7 +85,7 @@ func TestSessionMineMachineTurns(t *testing.T) {
 		}
 	}
 
-	output, code = runClaudeCodexMine(t, root, nil, tool, append([]string{"scorecard"}, base...)...)
+	output, code = run(t, root, nil, tool, append([]string{"scorecard"}, base...)...)
 	var card struct {
 		HumanTurns   int            `json:"human_turns"`
 		MachineTurns int            `json:"machine_turns"`
@@ -99,13 +99,13 @@ func TestSessionMineMachineTurns(t *testing.T) {
 	}
 
 	// A session that only a script drove still shows its first prompt in recall.
-	output, code = runClaudeCodexMine(t, root, nil, tool, "recall", "--topic", "scripted job", "--workspace", workspace, "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json")
+	output, code = run(t, root, nil, tool, "recall", "--topic", "scripted job", "--workspace", workspace, "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json")
 	var recalled sessionMineRecall
 	if code != 0 || json.Unmarshal([]byte(output), &recalled) != nil || len(recalled.Sessions) != 1 || !strings.Contains(recalled.Sessions[0].FirstPrompt, "scripted job") {
 		t.Errorf("recall of a scripted session lost its first prompt (%d): %s", code, output)
 	}
 
-	output, code = runClaudeCodexMine(t, root, nil, tool, "corrections", "--workspace", workspace, "--claude-root", claudeRoot, "--codex-root", codexRoot)
+	output, code = run(t, root, nil, tool, "corrections", "--workspace", workspace, "--claude-root", claudeRoot, "--codex-root", codexRoot)
 	if code != 0 || !strings.Contains(output, "machine turns 9") {
 		t.Errorf("text summary lacks machine turns (%d): %s", code, output)
 	}
@@ -172,7 +172,7 @@ func TestSessionMineForegroundSleeps(t *testing.T) {
 				lines := append([]string{claudeUser("2026-10-12T08:59:00Z", "Run the job.")}, tc.lines...)
 				writeLines(t, filepath.Join(claudeRoot, slugFor(workspace), "s.jsonl"), withCwd(workspace, lines...)...)
 			}
-			output, code := runClaudeCodexMine(t, root, nil, tool, "scorecard", "--workspace", workspace, "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json")
+			output, code := run(t, root, nil, tool, "scorecard", "--workspace", workspace, "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json")
 			var card scorecard
 			if code != 0 || json.Unmarshal([]byte(output), &card) != nil {
 				t.Fatalf("scorecard failed (%d): %s", code, output)

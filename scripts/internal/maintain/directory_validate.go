@@ -1351,11 +1351,6 @@ func (c *dirChecker) checkFileReferences(skill, file, text string) {
 				tokens = append(tokens, refToken{raw: m[1], link: true})
 			}
 			for _, m := range inlineCodePattern.FindAllStringSubmatch(line, -1) {
-				// Maintainer commands explicitly run from a repository checkout;
-				// scripts/cmd tools are not installed skill assets.
-				if strings.Contains(line, "From a megapowers checkout,") && strings.HasPrefix(m[1], "go run ./scripts/cmd/") {
-					continue
-				}
 				for _, word := range strings.Fields(m[1]) {
 					tokens = append(tokens, refToken{raw: word})
 				}

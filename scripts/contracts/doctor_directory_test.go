@@ -15,9 +15,6 @@ const doctorSkillRel = "plugins/megapowers/skills/megapowers-doctor"
 // holds the files the directory-edition branch reads.
 func TestDoctorSkillReferencesResolveWithoutHooks(t *testing.T) {
 	root := repoRoot(t)
-	if _, err := os.Stat(filepath.Join(root, doctorSkillRel, "scripts")); !os.IsNotExist(err) {
-		t.Fatal("doctor skill must ship guidance only")
-	}
 	plugin := t.TempDir()
 	dst := filepath.Join(plugin, "skills", "megapowers-doctor")
 	if err := os.CopyFS(dst, os.DirFS(filepath.Join(root, doctorSkillRel))); err != nil {
