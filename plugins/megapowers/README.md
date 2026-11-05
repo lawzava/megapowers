@@ -1,7 +1,7 @@
 # megapowers plugin
 
 One workflow plugin for current Claude Code and Codex: task skills, an
-optional Claude Code output style, and a standalone Go doctor. It uses the planning, agents, goals, permissions, memory, worktrees,
+optional Claude Code output style, and a self-diagnosis skill. It uses the planning, agents, goals, permissions, memory, worktrees,
 and browser tools each harness already has. It ships no model router,
 orchestration daemon, or vendor choice.
 
@@ -16,7 +16,6 @@ orchestration daemon, or vendor choice.
   `skills/catalog.json` records whether each skill is stable or experimental,
   since portable skill frontmatter has no field for that.
 - `output-styles/`: an optional native Claude Code style for direct, concise replies.
-- `skills/megapowers-doctor/scripts/doctor.go`: checks of the plugin's own files.
 - `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: plugin
   metadata for each harness.
 
@@ -50,14 +49,9 @@ in your capability registry or instructions; otherwise it asks first. Read the
 [security policy](https://github.com/lawzava/megapowers/blob/main/SECURITY.md)
 before enabling external review.
 
-The doctor reads only files inside the supplied plugin root: the Claude and
-Codex manifests, the optional skill catalog and listed skill bodies, and the
-shipped agent registry template. It prints versions, catalog counts, paths, and
-warnings. Root environment variables only locate that tree.
-
-The script has no network client. `go run` uses Go's build caches; with
-`GOTOOLCHAIN=auto`, Go may download a selected toolchain. Set
-`GOTOOLCHAIN=local` to require a suitable locally installed toolchain.
+The guidance-only doctor skill asks the agent to use normal file tools to read
+the plugin manifest version, optional `skills/catalog.json`, each listed skill's
+`SKILL.md`, and the shipped agent registry template.
 
 ## Attribution
 

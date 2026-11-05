@@ -8,25 +8,16 @@ metadata:
 
 # Megapowers Doctor
 
-The plugin root is two directories above this skill. With Go 1.25 or newer, run:
+The plugin root is two directories above this skill. Use your normal file
+tools to follow the [manual checks](references/directory-edition.md): read the
+plugin manifest version, `skills/catalog.json` and each listed skill's
+`SKILL.md`, and the shipped agent registry template. Report missing or unreadable
+files and give one fix per finding from [fixes by check](references/fixes.md).
 
-```bash
-go run "<plugin root>/skills/megapowers-doctor/scripts/doctor.go" --root "<plugin root>" --harness "<harness>"
-```
+On Claude Code, check the optional output style with `/config` or ask the user which style
+is selected. Report checks you could not perform as skipped.
 
-Set `<harness>` using [harness invocation](references/invocation.md).
-The optional harness flag labels the report.
-
-The script checks only the plugin's own files: manifests, the optional catalog
-and listed skill bodies, and the shipped agent registry template. Problems
-start with `WARN`. Quote those lines and give one fix per line from
-[fixes by check](references/fixes.md). If the command fails, report its exit
-status and raw error; that failure is the diagnosis.
-
-Without a local shell or Go, follow [manual checks](references/directory-edition.md).
-
-Check the optional output style using [manual checks](references/directory-edition.md),
-or ask the user which style is selected.
+From a megapowers checkout, maintainers can run `go run ./scripts/cmd/doctor --root <plugin-root>`.
 
 ## Did a skill fire?
 

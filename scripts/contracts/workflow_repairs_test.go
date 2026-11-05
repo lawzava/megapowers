@@ -75,9 +75,9 @@ var requiredSkillFacts = map[string][]string{
 		"user action",
 	},
 	"megapowers-doctor": {
-		"scripts/doctor.go",
+		"normal file",
 		"doctor",
-		"WARN",
+		"skills/catalog.json",
 		"references/fixes.md",
 		"registry template",
 	},

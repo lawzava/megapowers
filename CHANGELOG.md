@@ -5,6 +5,17 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.46.6 - 2026-11-05
+
+### Changed
+
+- Doctor moved unchanged to the repository tool `scripts/cmd/doctor`.
+- The megapowers-doctor skill guides checks with the agent's normal file tools.
+
+### Removed
+
+- The plugin's bundled doctor script and its invocation reference.
+
 ## 0.46.5 - 2026-11-05
 
 ### Changed

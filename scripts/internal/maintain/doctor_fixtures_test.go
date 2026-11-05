@@ -12,7 +12,7 @@ import (
 )
 
 // Ported from the pre-v0.46 doctor and gate regressions.
-// These fixtures exercise the shipped go-run entry point using isolated runtime
+// These fixtures exercise the repository go-run entry point using isolated runtime
 // homes. The Go tool itself keeps its normal environment and default caches.
 func runDoctorFixtureChild() int {
 	var values map[string]string
@@ -50,7 +50,7 @@ func doctorPluginRoot(t *testing.T) string {
 func doctorOutput(t *testing.T, values map[string]string) string { return doctorArgs(t, values) }
 func doctorArgs(t *testing.T, values map[string]string, args ...string) string {
 	t.Helper()
-	script := filepath.Join(doctorPluginRoot(t), "skills/megapowers-doctor/scripts/doctor.go")
+	script := filepath.Join(doctorPluginRoot(t), "../../scripts/cmd/doctor/main.go")
 	data, err := json.Marshal(values)
 	if err != nil {
 		t.Fatal(err)

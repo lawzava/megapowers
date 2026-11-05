@@ -10,7 +10,7 @@ unreleased `main`.
 
 - A current Claude Code or Codex CLI, already authenticated.
 - Git, for marketplace snapshots.
-- Go 1.25 or newer, for the plugin's bundled Go tools, including the doctor.
+- Go 1.25 or newer, for the plugin's bundled Go tools.
   Loading skill guidance alone does not require Go.
 
 ## Claude Code
@@ -191,12 +191,12 @@ measure agent behavior. Optional behavioral studies are described in
 ## Diagnose an install
 
 Ask for `megapowers-doctor` (`/megapowers:megapowers-doctor` on Claude Code, or
-the skill name after `$` as the Codex skills list shows it). It runs the
-plugin's standalone `skills/megapowers-doctor/scripts/doctor.go` script.
-The doctor reads only files inside the supplied plugin root: the Claude and
-Codex manifests, the optional skill catalog and listed skill bodies, and the
-shipped agent registry template. It prints versions, catalog counts, paths, and
-warnings. Root environment variables only locate that tree.
+the skill name after `$` as the Codex skills list shows it). The agent uses
+normal file tools to read the plugin manifest version, optional
+`skills/catalog.json`, each listed skill's `SKILL.md`, and the shipped agent
+registry template. Maintainers can run the repository tool
+`go run ./scripts/cmd/doctor --root <plugin-root>`; it is not installed with
+the plugin.
 
 Check the optional Claude Code output style with `/config` or ask the user,
 and confirm discovery by asking for a skill explicitly. See

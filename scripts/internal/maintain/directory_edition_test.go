@@ -569,6 +569,15 @@ func TestDirectoryValidateAcceptsReferenceShapes(t *testing.T) {
 	}
 }
 
+func TestDirectoryValidateRepositoryToolCommand(t *testing.T) {
+	pkg := fixturePackage(t)
+	setFile(pkg, "skills/alpha/SKILL.md", "---\nname: alpha\ndescription: d\n---\n"+
+		"From a megapowers checkout, maintainers can run `go run ./scripts/cmd/doctor --root <plugin-root>`.\n")
+	if report := validateDirectoryPackage(pkg); len(report.Errors) != 0 {
+		t.Fatalf("repository tool command flagged: %v", report.Errors)
+	}
+}
+
 func TestDirectoryValidateNotesMetadataIgnored(t *testing.T) {
 	report := validateDirectoryPackage(fixturePackage(t))
 	var found bool
@@ -763,6 +772,9 @@ func TestRealPluginBuildsAndValidatesAsDirectoryEdition(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, file := range files {
+		if strings.HasPrefix(file.Path, "skills/megapowers-doctor/scripts/") || strings.HasPrefix(file.Path, "scripts/cmd/doctor/") {
+			t.Errorf("repository doctor shipped in directory edition: %s", file.Path)
+		}
 		if strings.HasSuffix(file.Path, "/session-mine.go") || strings.HasPrefix(file.Path, "scripts/cmd/session-mine/") {
 			t.Errorf("repository miner shipped in directory edition: %s", file.Path)
 		}

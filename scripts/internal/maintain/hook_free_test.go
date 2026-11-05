@@ -31,7 +31,7 @@ func TestHookFreePlugin(t *testing.T) {
 
 func TestStandaloneDoctor(t *testing.T) {
 	root, _ := filepath.Abs(filepath.Join("..", "..", "..", "plugins", "megapowers"))
-	cmd := exec.Command("go", "run", filepath.Join(root, "skills", "megapowers-doctor", "scripts", "doctor.go"), "--root", root)
+	cmd := exec.Command("go", "run", filepath.Join(root, "../../scripts/cmd/doctor/main.go"), "--root", root)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("doctor: %v\n%s", err, out)
@@ -42,7 +42,7 @@ func TestStandaloneDoctor(t *testing.T) {
 }
 
 func TestDoctorDirectoryManifest(t *testing.T) {
-	script, _ := filepath.Abs(filepath.Join("..", "..", "..", "plugins", "megapowers", "skills", "megapowers-doctor", "scripts", "doctor.go"))
+	script, _ := filepath.Abs("../../cmd/doctor/main.go")
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, ".codex-plugin"), 0755)
 	os.WriteFile(filepath.Join(root, ".codex-plugin", "plugin.json"), []byte(`{"version":"1.2.3"}`), 0644)
@@ -55,7 +55,7 @@ func TestDoctorDirectoryManifest(t *testing.T) {
 }
 
 func TestDoctorInstallationDiagnostics(t *testing.T) {
-	script, _ := filepath.Abs(filepath.Join("..", "..", "..", "plugins", "megapowers", "skills", "megapowers-doctor", "scripts", "doctor.go"))
+	script, _ := filepath.Abs("../../cmd/doctor/main.go")
 	root := t.TempDir()
 	write := func(base, rel, body string) {
 		t.Helper()
