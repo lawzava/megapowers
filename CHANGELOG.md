@@ -5,6 +5,12 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.46.3 - 2026-11-05
+
+### Removed
+
+- session-mine reports no longer include `skipped_sources`, `partial_sources`, `skipped_sessions`, `deduplicated_sessions`, per-source `status`/`environment`, the `sources: skipped` text line, or OpenCode stderr notes. These remain available in repository opencode-mine reports.
+
 ## 0.46.2 - 2026-11-05
 
 ### Changed

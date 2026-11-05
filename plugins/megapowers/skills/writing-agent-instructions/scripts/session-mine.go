@@ -99,7 +99,7 @@ func (opt options) includes(harness string) bool {
 	return opt.harness == harness || opt.harness == "both"
 }
 
-func summarizeSources(opt options, sessions []session, stats scanStats) sourceSummary {
+func summarizeSources(opt options, sessions []session) sourceSummary {
 	r := sourceSummary{BySource: map[string]*sourceCounts{}}
 	for _, name := range []string{"claude", "codex"} {
 		if opt.includes(name) {
@@ -108,6 +108,9 @@ func summarizeSources(opt options, sessions []session, stats scanStats) sourceSu
 	}
 	for _, s := range sessions {
 		c := r.BySource[s.harness]
+		if c == nil {
+			continue
+		}
 		c.SessionsScanned++
 		for _, msg := range s.msgs {
 			switch msg.role {
@@ -425,7 +428,7 @@ func within(path, dir string) bool {
 
 func loadSessions(opt options, stats *scanStats) []session {
 	var sessions []session
-	if opt.harness != "codex" && opt.claudeRoot != "" {
+	if opt.includes("claude") && opt.claudeRoot != "" {
 		if root, err := filepath.EvalSymlinks(opt.claudeRoot); err == nil {
 			var dirs []string
 			if opt.all {
@@ -447,7 +450,7 @@ func loadSessions(opt options, stats *scanStats) []session {
 			}
 		}
 	}
-	if opt.harness != "claude" {
+	if opt.includes("codex") {
 		seen := map[string]bool{}
 		for _, dir := range opt.codexRoots {
 			root, err := filepath.EvalSymlinks(dir)
@@ -1109,7 +1112,7 @@ type turn struct {
 
 func corrections(opt options, sessions []session, stats scanStats) correctionsReport {
 	report := correctionsReport{
-		sourceSummary:   summarizeSources(opt, sessions, stats),
+		sourceSummary:   summarizeSources(opt, sessions),
 		Note:            "keyword classes are candidates; read each turn before treating it as a finding",
 		SessionsScanned: len(sessions),
 		SkippedLines:    stats.skippedLines,
@@ -1171,7 +1174,7 @@ func corrections(opt options, sessions []session, stats scanStats) correctionsRe
 }
 
 func recall(opt options, sessions []session, stats scanStats) recallReport {
-	report := recallReport{sourceSummary: summarizeSources(opt, sessions, stats), Topic: redact(strings.Join(opt.topic, " ")), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, SkippedFiles: stats.skippedFiles, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
+	report := recallReport{sourceSummary: summarizeSources(opt, sessions), Topic: redact(strings.Join(opt.topic, " ")), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, SkippedFiles: stats.skippedFiles, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
 	for _, s := range sessions {
 		matched := false
 		for _, msg := range s.msgs {
@@ -1343,7 +1346,7 @@ type scorecardReport struct {
 // the skill caused it.
 func scorecard(opt options, sessions []session, stats scanStats) scorecardReport {
 	report := scorecardReport{
-		sourceSummary:   summarizeSources(opt, sessions, stats),
+		sourceSummary:   summarizeSources(opt, sessions),
 		Note:            "counts are candidates; read the sessions behind a number before acting on it",
 		Scope:           opt.workspace,
 		SessionsScanned: len(sessions),
