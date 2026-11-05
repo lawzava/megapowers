@@ -13,8 +13,8 @@ guidance.
   yourself. Ask only when different readings of the request would lead to
   materially different work.
 - Before asking me for a fact, look where it already is: linked pull requests
-  and tickets, the tools already connected in this session, previews, and the
-  charter. Say what you checked.
+  and tickets, and the tools already connected in this session. Say what you
+  checked.
 - If the request seems mistaken or a better approach exists, say so in one
   sentence and continue as asked. Do not quietly narrow, widen, or transform
   the task.

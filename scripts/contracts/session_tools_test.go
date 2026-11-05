@@ -16,4 +16,10 @@ func TestShippedGuidanceUsesSessionTools(t *testing.T) {
 			requireAbsent(t, body, phrase, rel)
 		}
 	}
+	for _, name := range []string{"global-AGENTS.md", "global-CLAUDE.md"} {
+		rel := "plugins/megapowers/skills/writing-agent-instructions/assets/" + name
+		body := normalized(read(t, root, rel))
+		requireContains(t, body, "linked pull requests and tickets, and the tools already connected in this session. say what you checked.", rel)
+		requireAbsent(t, body, "charter", rel)
+	}
 }
