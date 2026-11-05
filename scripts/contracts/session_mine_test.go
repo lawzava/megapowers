@@ -244,8 +244,8 @@ func TestSessionMineCorrections(t *testing.T) {
 		t.Fatal(err, stderr.String())
 	}
 	output := string(data)
-	if !strings.Contains(stderr.String(), "not read") {
-		t.Fatalf("default all must note missing OpenCode exports: %s", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("default both must scan without source warnings: %s", stderr.String())
 	}
 	var code int
 	var report sessionMineCorrections

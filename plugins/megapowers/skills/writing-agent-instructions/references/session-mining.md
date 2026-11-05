@@ -2,9 +2,8 @@
 
 Past sessions show how work really goes. Places where the user stepped in
 to correct the agent are the best evidence for a new check, rule, or skill.
-`scripts/session-mine.go` reads Claude Code and Codex transcript files and
-OpenCode V2 sessions from offline JSON exports, so a retrospective can
-cover many sessions, not one. This does not add an OpenCode plugin install target.
+`scripts/session-mine.go` reads local Claude Code and Codex transcripts,
+read-only, so a retrospective can cover many sessions, not one.
 
 It needs Go, a shell, and local transcripts. Without them, say so and ask the
 user to paste the corrections or sessions to review; do not reconstruct them
@@ -25,7 +24,7 @@ go run "$SKILL_DIR/scripts/session-mine.go" recall --topic "release script" --wo
 go run "$SKILL_DIR/scripts/session-mine.go" scorecard --workspace "$PWD" --since 2026-10-01
 ```
 
-Shared flags: `--harness claude|codex|opencode|both|all` (default `all`), `--format
+Shared flags: `--harness claude|codex|both` (default `both`), `--format
 text|json`, `--limit N` (examples per class, default 5; sessions for recall,
 default 10), `--all-workspaces` instead of `--workspace`, and `--claude-root`
 or `--codex-root` to override the transcript locations.
@@ -34,44 +33,8 @@ By default, Codex scans both `sessions` and `archived_sessions` under
 `--codex-root` scans only the given directory, including archives only when
 pointed there.
 
-Both `both` and `all` cover Claude Code and Codex. With
-`--opencode-export PATH`, `all` also reads OpenCode exports; without it,
-OpenCode is noted as not read. `both` always means Claude Code + Codex.
-Each report includes `by_source` counts, `skipped_sources`,
-`partial_sources`, `skipped_sessions`, and `deduplicated_sessions`.
-Invalid export files make the source partial, retaining valid sessions.
-Exports with an `export-status` manifest retain its status and skipped-session
-count. The manifest's `environment` is a label copied as is: `offline`,
-`inherited`, or `without_xdg_state_home`. Without a manifest, `environment` is
-`offline`; status is `complete`, `partial`, or `skipped`.
-
-`--opencode-export PATH` reads OpenCode session export JSON files (a file or a directory) produced outside the plugin.
-Each file is one JSON object with this shape (`messages` contains message objects):
-
-```json
-{"data":{"info":{"id":"session-id","parentID":"","location":{"directory":"/path/to/workspace"}},"messages":[]}}
-```
-
-`data`, a nonempty `info.id`, and the `messages` array are required.
-`parentID` is optional; workspace matching requires `location.directory`.
-Session IDs are counted once. `--workspace` matches the export's current `location.directory`,
-including child sessions; `--since` filters message timestamps.
-
-OpenCode `user` messages are human turns unless a machine-text anchor below
-matches. `synthetic` messages are machine turns; child sessions (`parentID`
-set) classify user/synthetic turns as subagent prompts, never human. Assistant
-text is kept; reasoning, system text, and tool outputs are not conversation
-excerpts. Skill loads and shell/read/error tool events feed scorecards.
-The V2 format has no standard scheduler/Paseo-origin field: unmarked scripted root
-prompts cannot be distinguished from typed prompts and still count as human.
-
-Claude Agent exports have `model.providerID: claude-agent` and content blocks
-with `native.sessionID`, observed to match Claude JSONL `sessionId`. When both
-sources are selected and the OpenCode export contributes in-range messages,
-the linked Claude transcript is omitted. Other `sdk-ts` transcripts stay.
-If that link is absent, or OpenCode cannot be read, no heuristic dedupe is
-attempted; per-source counts can overlap. Inspect those counts before treating
-combined totals as unique activity.
+Each report includes `by_source` session, human, machine, and prompt counts for
+the selected sources.
 
 `corrections` puts each user turn next to the agent text that came before it
 and sorts the turn into a class by keywords:
@@ -93,7 +56,7 @@ excludes:
 - Claude compaction summaries (`isCompactSummary`) and turns whose `origin` names
   a producer, such as a `<task-notification>`;
 - Codex turns in a `codex exec` run (`source: exec`);
-- in any source, a turn that starts with "This session is being continued
+- in either harness, a turn that starts with "This session is being continued
   from a previous conversation", "This is an approved autonomous run", or
   "Continue the approved run and finish it", or that has a line starting with
   "Unattended run:" (a schedule prompt).
