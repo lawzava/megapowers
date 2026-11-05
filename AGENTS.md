@@ -6,7 +6,7 @@ This repository publishes harness-neutral Agent Skills in one optional
 `megapowers` plugin. Claude Code and Codex remain the tested install targets;
 the skills and their supporting files may be copied into other skill-loading
 harnesses. Harness-specific bindings and hooks belong in the user's local
-setup, not in the shared skill bodies. The read-only `session-mine` tool reads only
+setup, not in the shared skill bodies. The optional repository extras `session-mine` helper reads only
 local Claude Code and Codex transcript files. Keep every shipped artifact public-safe: no
 personal secrets, machine-specific paths, or undeclared private services.
 

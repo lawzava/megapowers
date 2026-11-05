@@ -10,7 +10,7 @@ import (
 	"unicode/utf8"
 )
 
-const barGuardTool = "plugins/megapowers/skills/verify-and-finish/scripts/bar-guard.go"
+const barGuardTool = "extras/scripts/verify-and-finish/bar-guard.go"
 
 type barGuardFinding struct {
 	Path   string `json:"path"`

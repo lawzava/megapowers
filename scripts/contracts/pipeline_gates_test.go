@@ -98,9 +98,9 @@ func TestCopiedOpenCodeSkillsResolveResources(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, tool := range []string{"orchestrating/scripts/lanes.go", "orchestrating/scripts/fence-check/fence.go", "autonomous-run/scripts/run-state.go"} {
-		if info, err := os.Stat(filepath.Join(dest, tool)); err != nil || !info.Mode().IsRegular() {
-			t.Errorf("copied script %s unavailable: %v", tool, err)
+	for _, tool := range []string{"orchestrating/lanes.go", "orchestrating/fence-check/fence.go", "autonomous-run/run-state.go"} {
+		if info, err := os.Stat(filepath.Join(repoRoot(t), "extras/scripts", tool)); err != nil || !info.Mode().IsRegular() {
+			t.Errorf("repository helper %s unavailable: %v", tool, err)
 		}
 	}
 }

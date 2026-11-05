@@ -1,17 +1,7 @@
 # Harness invocation
 
-Claude Code:
-
-```bash
-go run "<plugin root>/skills/megapowers-doctor/scripts/doctor.go" --root "<plugin root>" --harness claude
-```
-
-Codex:
-
-```bash
-go run "<plugin root>/skills/megapowers-doctor/scripts/doctor.go" --root "<plugin root>" --harness codex
-```
-
-An explicit harness overrides environment detection. Without the flag, the
-script uses the harness environment markers; outside a harness it reports
-unknown and checks the local Claude output-style setting.
+Identify the active harness from the session's tool schema and configuration.
+For Claude Code, inspect its marketplace registration, enabled plugin and
+selected output style. For Codex, inspect plugin registration and skill discovery;
+skip Claude output-style checks. If the harness is unknown, report that limit
+rather than applying unrelated checks. Use normal read-only file tools.
