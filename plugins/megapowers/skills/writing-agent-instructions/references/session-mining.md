@@ -3,7 +3,7 @@
 Past sessions show how work really goes. Places where the user stepped in
 to correct the agent are the best evidence for a new check, rule, or skill.
 `scripts/session-mine.go` reads Claude Code and Codex transcript files and
-OpenCode V2 sessions through its CLI API, read-only, so a retrospective can
+OpenCode V2 sessions from offline JSON exports, so a retrospective can
 cover many sessions, not one. This does not add an OpenCode plugin install target.
 
 It needs Go, a shell, and local transcripts. Without them, say so and ask the
@@ -34,61 +34,44 @@ By default, Codex scans both `sessions` and `archived_sessions` under
 `--codex-root` scans only the given directory, including archives only when
 pointed there.
 
-`both` remains Claude Code + Codex; `all` adds OpenCode when available.
-Each report includes `by_source` session, human, machine, and subagent-prompt
-counts, plus `skipped_sources`, `partial_sources`, `skipped_sessions`, and
-`deduplicated_sessions`. An unavailable OpenCode CLI/service is skipped with
-a stderr note, not a failed run. Failed exports, later-page failures, and the
-overall deadline make OpenCode partial, retaining sessions already loaded.
-A failed export also increments `skipped_sessions`. The OpenCode source's
-`status` is `complete`, `partial`, or `skipped`; its `environment` records the
-selected CLI environment.
+Both `both` and `all` cover Claude Code and Codex. With
+`--opencode-export PATH`, `all` also reads OpenCode exports; without it,
+OpenCode is noted as not read. `both` always means Claude Code + Codex.
+Each report includes `by_source` counts, `skipped_sources`,
+`partial_sources`, `skipped_sessions`, and `deduplicated_sessions`.
+Invalid export files make the source partial, retaining valid sessions.
+Exports with an `export-status` manifest retain the exporter's status,
+skipped-session count, and environment. Without a manifest, `environment` is
+`offline`; status is `complete`,
+`partial`, or `skipped`.
 
-### OpenCode API access
+### OpenCode exports
 
-The adapter checks `opencode service status`, then uses only `opencode api get`
-against `/api/session` (all cursor pages) and
-`/api/experimental/session/{sessionID}/export`. It issues no service start,
-stop, or restart commands, and opens no OpenCode files directly.
-Use an already-running service. Status calls have a 10-second
-timeout; API calls have a 30-second timeout. `WaitDelay` bounds leftover child
-pipes to one additional second. Timed-out attempts are not retried.
-The whole OpenCode source has a 5-minute deadline, including status, retries,
-and exports. Set `--opencode-timeout 2m` or `SESSION_MINE_OPENCODE_TIMEOUT`
-to a positive Go duration to change it; the flag wins. A deadline produces a
-partial source even if no sessions have loaded, and scanning other sources continues.
-API output goes to a private temporary file under `TMPDIR` (removed after
-reading), since some CLI versions truncate piped output. Missing or malformed
-API JSON is retried once, then reported without raw CLI diagnostics.
-An empty list/export is also retried once for location warm-up. A valid empty
-snapshot is retained if the retry fails, unless the attempt times out.
-A persistently empty list may mean no sessions or the wrong server/environment.
-
-`--workspace DIR` selects sessions whose current `location.directory` equals
-the resolved directory, including children, not every session sharing a project
-ID. Moved sessions are attributed to their current session directory.
-`--all-workspaces` has no directory filter. `--since` filters message timestamps;
-sessions last updated before that date need no export.
-
-`--opencode-cmd FILE` or `SESSION_MINE_OPENCODE_CMD` selects an executable
-(not a shell command); the flag wins. The child receives only set values of
-`PATH`, `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `XDG_CONFIG_HOME`,
-`XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`, and
-`TMPDIR`. The platform may also add its required system variable.
-It receives `service status` or
-`api get PATH` arguments. A wrapper can select the correct CLI environment or
-server without changing the miner. If status reports no running service and
-`XDG_STATE_HOME` is nonempty, the adapter retries status with that variable
-removed from the child environment, then uses that same environment for all
-API calls. The source summary reports `environment: without_xdg_state_home`
-and stderr notes the fallback. Otherwise it reports `environment: inherited`.
-No parent environment is changed and no state path is hardcoded.
-For other environment conflicts, a wrapper or an explicit caller override
-can select the intended running service:
+First create exports with the repository maintainer tool, outside the installed
+plugin. Set `MEGAPOWERS_REPO` to the absolute path of a megapowers repository checkout:
 
 ```bash
-env -u XDG_STATE_HOME go run "$SKILL_DIR/scripts/session-mine.go" corrections --workspace "$PWD" --harness opencode
+go -C "$MEGAPOWERS_REPO" run github.com/lawzava/megapowers/scripts/cmd/opencode-export --all-workspaces --output /path/to/exports
 ```
+
+Then read the exports with the installed skill:
+
+```bash
+go run "$SKILL_DIR/scripts/session-mine.go" corrections --workspace "$PWD" --opencode-export /path/to/exports
+```
+
+The input is one JSON export file or a directory of `*.json` exports in the
+shape returned by `/api/experimental/session/{id}/export`. Session IDs are
+counted once. `--workspace` matches the export's current `location.directory`,
+including child sessions; `--since` filters message timestamps.
+
+The repository tool uses an already-running OpenCode service, paginates the
+session list, and writes private export files into a new or empty directory at an absolute path outside the checkout.
+Exporter exit 1 means a partial result; its manifest distinguishes partial
+from skipped exports.
+Its CLI options and retry/deadline behavior are documented in the repository's
+[export tool reference](https://github.com/lawzava/megapowers/blob/main/docs/advanced/opencode-export.md).
+The installed miner reads only the supplied files.
 
 OpenCode `user` messages are human turns unless a machine-text anchor below
 matches. `synthetic` messages are machine turns; child sessions (`parentID`

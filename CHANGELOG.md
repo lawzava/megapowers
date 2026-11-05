@@ -5,6 +5,17 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.46.1 - 2026-11-05
+
+### Changed
+
+- session-mine reads OpenCode sessions only from an export directory; a repository tool creates the export.
+- Default `all` reads OpenCode only with `--opencode-export`, which accepts a file or a directory.
+
+### Removed
+
+- Removed `--opencode-cmd`, `--opencode-timeout`, `SESSION_MINE_OPENCODE_CMD`, and `SESSION_MINE_OPENCODE_TIMEOUT` from the installed session miner. CLI selection and timeouts belong to the repository export tool.
+
 ## 0.46.0 - 2026-11-05
 
 ### Removed

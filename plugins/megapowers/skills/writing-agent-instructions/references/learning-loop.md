@@ -20,9 +20,8 @@ go run "$SKILL_DIR/scripts/session-mine.go" scorecard --workspace "$PWD" --since
 
 The scorecard reads local transcripts and the project's
 `.megapowers/run/*/journal.jsonl`. It defaults to Claude Code, Codex, and
-available OpenCode V2 sessions; check `by_source` and skipped-source counts
-before comparing totals. See [session mining](session-mining.md) for API
-access, deduplication, and role limits. It reports:
+OpenCode V2 sessions supplied with `--opencode-export PATH`; check `by_source` and skipped-source counts
+before comparing totals. See [session mining](session-mining.md) for offline exports, deduplication, and role limits. It reports:
 
 - correction classes;
 - each skill's loads, the sessions that loaded it, and the corrections that
