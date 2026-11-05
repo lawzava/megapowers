@@ -66,7 +66,7 @@ Then start a fresh session. Bundled Go tools, including the doctor, need Go
 1.25 or newer on `PATH`; loading skill guidance does not.
 
 **Try it:** ask "check my megapowers setup". The doctor reports the plugin
-version, local marketplace copy, and Claude Code output-style setting.
+version, skill catalog, and shipped agent registry template.
 
 Both installs track the `release` branch, which only moves to signed release
 tags, so you never get unreleased `main`. Pinning, install scopes, and
@@ -259,8 +259,7 @@ longer shipped and do not describe this version.
   and the session miner and memory-audit validator for
   `writing-agent-instructions`.
 - A standalone Go doctor script behind `megapowers-doctor`, which reports
-  the version, Claude Code style setting, local marketplace copy, optional
-  agent registry, and recent workspace skill-load counts.
+  the version, optional skill catalog, and shipped agent registry template.
 
 The plugin does not edit global user configuration and supplies no model,
 provider, or agent configuration. For non-trivial delegation, `orchestrating`
@@ -274,25 +273,19 @@ access.
 
 Start with the doctor: `/megapowers:megapowers-doctor` on Claude Code, or the
 skill name after `$` as it appears in the Codex skills list. It runs the
-standalone Go doctor script and reports the plugin version and root, which
-tool is running, the Claude `outputStyle` value in effect, the local
-marketplace copy, optional agent registry, and recent workspace skill-load
-counts. It reads plugin manifests and the skill catalog, local marketplace
-manifests, and the optional registry. It parses only `outputStyle` from
-`~/.claude/settings.json` and project `.claude/settings.json` and
-`.claude/settings.local.json`, and runs `git rev-parse --show-toplevel`
-locally. It reads recent Claude transcripts in the workspace's project
-directory, including subagents, and Codex rollout headers under
-`~/.codex/sessions` from today and the previous 14 date directories, examining
-at most 2,000 headers and collecting at most 500 transcripts across both
-harnesses. Environment overrides can select other local settings and session
-directories. It counts sessions modified in the last seven days that contain a
-successful load. It prints summaries rather than transcript bodies. The
-directory edition omits the catalog and skips load counting. Running the
-script uses Go's build caches; with `GOTOOLCHAIN=auto`, Go may download a
-selected toolchain. Set `GOTOOLCHAIN=local` to require a suitable locally
-installed toolchain. See [SECURITY.md](./SECURITY.md) for the read and
-execution boundaries.
+standalone Go doctor script. The doctor reads only files inside the supplied
+plugin root: the Claude and
+Codex manifests, the optional skill catalog and listed skill bodies, and the
+shipped agent registry template. It prints versions, catalog counts, paths, and
+warnings. Root environment variables only locate that tree.
+
+Check the optional Claude Code output style with `/config` or ask the user.
+Confirm skill discovery by asking for the skill explicitly.
+
+The script has no network client. `go run` uses Go's build caches; with
+`GOTOOLCHAIN=auto`, Go may download a selected toolchain. Set
+`GOTOOLCHAIN=local` to require a suitable locally installed toolchain.
+See [SECURITY.md](./SECURITY.md) for the read and execution boundaries.
 
 | Symptom | Fix |
 |---|---|

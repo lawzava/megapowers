@@ -36,8 +36,7 @@ or run `/output-style megapowers:Megapowers`. The resulting setting is
 `"outputStyle": "megapowers:Megapowers"`. The bare value `Megapowers` does not
 resolve to the plugin style. The style preserves built-in coding instructions.
 To opt out while keeping the plugin enabled, select another style. Start a new
-session after changing style, then run `/megapowers:megapowers-doctor` to
-confirm the value in effect.
+session after changing style, then confirm the selected output style in `/config`.
 
 For a project-scoped install, add `--scope project` to both marketplace and
 install commands. For a local user-only install, use `--scope local`.
@@ -193,9 +192,12 @@ measure agent behavior. Optional behavioral studies are described in
 
 Ask for `megapowers-doctor` (`/megapowers:megapowers-doctor` on Claude Code, or
 the skill name after `$` as the Codex skills list shows it). It runs the
-plugin's standalone `skills/megapowers-doctor/scripts/doctor.go` script and reports the plugin version and root, the
-harness, the Claude `outputStyle` value in effect, the local marketplace copy,
-recent workspace skill-load counts, and the optional agent registry. The
-directory edition omits the catalog and skips load counting. The doctor reads
-local settings and session records; see [SECURITY.md](../SECURITY.md) for its
-read and execution boundaries.
+plugin's standalone `skills/megapowers-doctor/scripts/doctor.go` script.
+The doctor reads only files inside the supplied plugin root: the Claude and
+Codex manifests, the optional skill catalog and listed skill bodies, and the
+shipped agent registry template. It prints versions, catalog counts, paths, and
+warnings. Root environment variables only locate that tree.
+
+Check the optional Claude Code output style with `/config` or ask the user,
+and confirm discovery by asking for a skill explicitly. See
+[SECURITY.md](../SECURITY.md) for its read and execution boundaries.

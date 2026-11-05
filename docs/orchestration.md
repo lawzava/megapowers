@@ -61,8 +61,7 @@ exist. A failed task check calls for diagnosis, not a provider switch.
 Missing, expired, malformed, or unreadable data falls back to native defaults.
 This is model-readable guidance, not parser-enforced validation: if the lead
 cannot establish that the required fields and expiry are usable, it ignores the
-registry. `megapowers-doctor` warns when the file is expired or has no
-readable `expires_at`.
+registry.
 
 `manual` describes something the operator can run; `approved-external` still
 requires the explicit disclosure workflow. Neither is a native agent. The

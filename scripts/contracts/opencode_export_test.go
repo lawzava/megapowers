@@ -73,7 +73,13 @@ func openCodeExport(info map[string]any, messages ...map[string]any) string {
 	return openCodeJSON(map[string]any{"data": map[string]any{"info": info, "messages": messages}})
 }
 
-func runSessionMineStreams(t *testing.T, root string, env []string, tool string, args ...string) (string, string) {
+func runSessionMineStreams(t *testing.T, root, exportTool string, env []string, tool string, args ...string) (string, string) {
+	t.Helper()
+	out, stderr, _ := runSessionMineStreamsTimed(t, root, exportTool, env, tool, args...)
+	return out, stderr
+}
+
+func runSessionMineStreamsTimed(t *testing.T, root, exportTool string, env []string, tool string, args ...string) (string, string, time.Duration) {
 	t.Helper()
 	// Fixture controls live beside the fake CLI, outside its environment.
 	fixture := ""
@@ -97,10 +103,6 @@ func runSessionMineStreams(t *testing.T, root string, env []string, tool string,
 	}
 	// Exercise the repository exporter first, then the repository offline miner.
 	// Reports below are the miner's own output, including export-status health.
-	exportTool := filepath.Join(t.TempDir(), "opencode-export")
-	if out, code := run(t, root, nil, "go", "build", "-o", exportTool, "./scripts/cmd/opencode-export"); code != 0 {
-		t.Fatalf("build exporter: %s", out)
-	}
 	exportDir := filepath.Join(t.TempDir(), "exports")
 	exportArgs := []string{"--output", exportDir}
 	mineArgs := []string{}
@@ -142,12 +144,16 @@ func runSessionMineStreams(t *testing.T, root string, env []string, tool string,
 	if !selected {
 		exportArgs = append(exportArgs, "--all-workspaces")
 	}
+	var elapsed time.Duration
 	if !both {
 		cmd := exec.Command(exportTool, exportArgs...)
 		cmd.Dir, cmd.Env = root, append(os.Environ(), env...)
 		var out, errout bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &errout
+		// Source budgets cover the exporter process, excluding build and mining.
+		start := time.Now()
 		err := cmd.Run()
+		elapsed = time.Since(start)
 		var health struct {
 			Status string `json:"status"`
 		}
@@ -171,11 +177,12 @@ func runSessionMineStreams(t *testing.T, root string, env []string, tool string,
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("session-mine: %v %s %s", err, stdout.String(), stderr.String())
 	}
-	return stdout.String(), exportStderr + stderr.String()
+	return stdout.String(), exportStderr + stderr.String(), elapsed
 }
 
 func TestSessionMineOpenCode(t *testing.T) {
 	root := repoRoot(t)
+	exportTool := buildOpenCodeExporter(t, root)
 	tool := buildOpenCodeMine(t, root)
 	parent := openCodeInfo("ses_parent", "/work/demo", "")
 	child := openCodeInfo("ses_child", "/work/demo", "ses_parent")
@@ -221,7 +228,7 @@ func TestSessionMineOpenCode(t *testing.T) {
 	record["sessionId"] = "unrelated-sdk"
 	writeLines(t, filepath.Join(claudeRoot, slugFor("/work/demo"), "unrelated.jsonl"), openCodeJSON(record))
 	base := []string{"--workspace", "/work/demo", "--since", "2026-11-01", "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json"}
-	output, stderr := runSessionMineStreams(t, root, env, tool, append([]string{"corrections"}, base...)...)
+	output, stderr := runSessionMineStreams(t, root, exportTool, env, tool, append([]string{"corrections"}, base...)...)
 	var report struct {
 		sessionMineCorrections
 		MachineTurns int `json:"machine_turns"`
@@ -240,17 +247,17 @@ func TestSessionMineOpenCode(t *testing.T) {
 	if verbosity := findClass(report.Classes, "verbosity"); verbosity == nil || verbosity.Count != 3 {
 		t.Errorf("verbosity count (including unrelated SDK) wrong: %s", output)
 	}
-	output, _ = runSessionMineStreams(t, root, env, tool, append([]string{"scorecard", "--harness", "opencode"}, base...)...)
+	output, _ = runSessionMineStreams(t, root, exportTool, env, tool, append([]string{"scorecard", "--harness", "opencode"}, base...)...)
 	var card scorecard
 	if json.Unmarshal([]byte(output), &card) != nil || card.HumanTurns != 3 || card.SleepCalls != 1 || card.Reports.Verified != 1 || len(card.Skills) != 1 || card.Skills[0].FollowedByCorrection != 1 {
 		t.Errorf("scorecard wrong: %s", output)
 	}
-	output, _ = runSessionMineStreams(t, root, env, tool, append([]string{"recall", "--topic", "child retry flag", "--harness", "opencode"}, base...)...)
+	output, _ = runSessionMineStreams(t, root, exportTool, env, tool, append([]string{"recall", "--topic", "child retry flag", "--harness", "opencode"}, base...)...)
 	var recalled sessionMineRecall
 	if json.Unmarshal([]byte(output), &recalled) != nil || len(recalled.Sessions) != 1 || recalled.Sessions[0].FirstPrompt != "Keep going child retry flag" {
 		t.Errorf("child recall wrong: %s", output)
 	}
-	output, _ = runSessionMineStreams(t, root, env, tool, "corrections", "--harness", "opencode", "--all-workspaces", "--opencode-cmd", command, "--format", "json")
+	output, _ = runSessionMineStreams(t, root, exportTool, env, tool, "corrections", "--harness", "opencode", "--all-workspaces", "--opencode-cmd", command, "--format", "json")
 	if json.Unmarshal([]byte(output), &report) != nil || report.BySource["opencode"].Sessions != 3 {
 		t.Errorf("all-workspaces: %s", output)
 	}
@@ -279,10 +286,11 @@ func TestSessionMineOpenCode(t *testing.T) {
 
 func TestSessionMineOpenCodeUnavailable(t *testing.T) {
 	root := repoRoot(t)
+	exportTool := buildOpenCodeExporter(t, root)
 	tool := buildOpenCodeMine(t, root)
 	claudeRoot := t.TempDir()
 	writeLines(t, filepath.Join(claudeRoot, slugFor("/work/demo"), "human.jsonl"), claudeUser("2026-11-02T00:00:00Z", "Did you test it?"))
-	output, stderr := runSessionMineStreams(t, root, nil, tool, "--workspace", "/work/demo", "--opencode-cmd", filepath.Join(t.TempDir(), "missing"), "--claude-root", claudeRoot, "--codex-root", t.TempDir(), "--format", "json")
+	output, stderr := runSessionMineStreams(t, root, exportTool, nil, tool, "--workspace", "/work/demo", "--opencode-cmd", filepath.Join(t.TempDir(), "missing"), "--claude-root", claudeRoot, "--codex-root", t.TempDir(), "--format", "json")
 	var report struct {
 		Sessions int `json:"sessions_scanned"`
 		Skipped  int `json:"skipped_sources"`
@@ -294,6 +302,7 @@ func TestSessionMineOpenCodeUnavailable(t *testing.T) {
 
 func TestSessionMineOpenCodeFailuresAndEvents(t *testing.T) {
 	root := repoRoot(t)
+	exportTool := buildOpenCodeExporter(t, root)
 	tool := buildOpenCodeMine(t, root)
 	info := openCodeInfo("ses_events", "/work/demo", "")
 	gate := "Load and follow the megapowers verify-and-finish skill before finishing"
@@ -329,7 +338,7 @@ func TestSessionMineOpenCodeFailuresAndEvents(t *testing.T) {
 				responses["/api/session?cursor=repeat&limit=100&order=desc"] = []string{page}
 			}
 			command, fixture := fakeSessionMineOpenCode(t, responses)
-			output, stderr := runSessionMineStreams(t, root, []string{"MINE_FIXTURE=" + fixture}, tool, "scorecard", "--harness", "opencode", "--opencode-cmd", command, "--workspace", "/work/demo", "--since", "2026-11-01", "--format", "json")
+			output, stderr := runSessionMineStreams(t, root, exportTool, []string{"MINE_FIXTURE=" + fixture}, tool, "scorecard", "--harness", "opencode", "--opencode-cmd", command, "--workspace", "/work/demo", "--since", "2026-11-01", "--format", "json")
 			var card struct {
 				scorecard
 				SkippedSources  int `json:"skipped_sources"`
@@ -371,6 +380,7 @@ func TestSessionMineOpenCodeFailuresAndEvents(t *testing.T) {
 
 func TestSessionMineOpenCodeStateFallbackAndBudgets(t *testing.T) {
 	root := repoRoot(t)
+	exportTool := buildOpenCodeExporter(t, root)
 	tool := buildOpenCodeMine(t, root)
 	info := openCodeInfo("ses_budget", "/work/demo", "")
 	listPath := "/api/session?limit=100&order=desc"
@@ -423,9 +433,7 @@ func TestSessionMineOpenCodeStateFallbackAndBudgets(t *testing.T) {
 			}
 			command, fixture := fakeSessionMineOpenCode(t, responses)
 			env = append(env, "MINE_FIXTURE="+fixture, "SESSION_MINE_OPENCODE_TIMEOUT="+budget)
-			start := time.Now()
-			output, stderr := runSessionMineStreams(t, root, env, tool, "--harness", "opencode", "--all-workspaces", "--opencode-cmd", command, "--format", "json")
-			elapsed := time.Since(start)
+			output, stderr, elapsed := runSessionMineStreamsTimed(t, root, exportTool, env, tool, "--harness", "opencode", "--all-workspaces", "--opencode-cmd", command, "--format", "json")
 			var report struct {
 				Sessions int `json:"sessions_scanned"`
 				Partial  int `json:"partial_sources"`
@@ -479,6 +487,7 @@ func TestSessionMineOpenCodeStateFallbackAndBudgets(t *testing.T) {
 
 func TestSessionMineOpenCodeDedupeScopeAndRange(t *testing.T) {
 	root := repoRoot(t)
+	exportTool := buildOpenCodeExporter(t, root)
 	tool := buildOpenCodeMine(t, root)
 	for _, scenario := range []string{"slug collision", "no in-range OpenCode messages"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -503,7 +512,7 @@ func TestSessionMineOpenCodeDedupeScopeAndRange(t *testing.T) {
 			json.Unmarshal([]byte(claudeUserIn(cwd, "2026-11-02T00:00:00Z", "Did you test this?")), &record)
 			record["sessionId"] = "claude-linked"
 			writeLines(t, filepath.Join(claudeRoot, slugFor(workspace), "linked.jsonl"), `{"type":"system","sessionId":"claude-linked"}`, openCodeJSON(record))
-			output, stderr := runSessionMineStreams(t, root, []string{"MINE_FIXTURE=" + fixture}, tool, "--workspace", workspace, "--since", "2026-11-01", "--opencode-cmd", command, "--claude-root", claudeRoot, "--codex-root", t.TempDir(), "--format", "json")
+			output, stderr := runSessionMineStreams(t, root, exportTool, []string{"MINE_FIXTURE=" + fixture}, tool, "--workspace", workspace, "--since", "2026-11-01", "--opencode-cmd", command, "--claude-root", claudeRoot, "--codex-root", t.TempDir(), "--format", "json")
 			var report struct {
 				Sessions int `json:"sessions_scanned"`
 				Dedupe   int `json:"deduplicated_sessions"`
@@ -543,11 +552,12 @@ func TestSessionMineOpenCodeTimeoutOptions(t *testing.T) {
 
 func TestSessionMineOpenCodeDeadlineRetainsOtherSources(t *testing.T) {
 	root := repoRoot(t)
+	exportTool := buildOpenCodeExporter(t, root)
 	tool := buildOpenCodeMine(t, root)
 	command, fixture := fakeSessionMineOpenCode(t, map[string][]string{"/api/session?limit=100&order=desc": {"!wait"}})
 	claudeRoot := t.TempDir()
 	writeLines(t, filepath.Join(claudeRoot, slugFor("/work/demo"), "human.jsonl"), claudeUser("2026-11-02T00:00:00Z", "Did you test it?"))
-	output, stderr := runSessionMineStreams(t, root, []string{"MINE_FIXTURE=" + fixture}, tool, "--workspace", "/work/demo", "--opencode-cmd", command, "--opencode-timeout", "150ms", "--claude-root", claudeRoot, "--codex-root", t.TempDir(), "--format", "json")
+	output, stderr := runSessionMineStreams(t, root, exportTool, []string{"MINE_FIXTURE=" + fixture}, tool, "--workspace", "/work/demo", "--opencode-cmd", command, "--opencode-timeout", "150ms", "--claude-root", claudeRoot, "--codex-root", t.TempDir(), "--format", "json")
 	var report struct {
 		Sessions int `json:"sessions_scanned"`
 		Partial  int `json:"partial_sources"`
@@ -585,6 +595,7 @@ func TestSessionMineInstalledSingleFile(t *testing.T) {
 
 func TestSessionMineOpenCodeEnvironment(t *testing.T) {
 	root := repoRoot(t)
+	exportTool := buildOpenCodeExporter(t, root)
 	tool := buildOpenCodeMine(t, root)
 	command, fixture := fakeSessionMineOpenCode(t, map[string][]string{"/api/session?limit=100&order=desc": {`{"data":[],"cursor":{}}`}})
 	names := []string{"PATH", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR", "TMPDIR"}
@@ -602,7 +613,7 @@ func TestSessionMineOpenCodeEnvironment(t *testing.T) {
 		expected[name] = value
 		env = append(env, name+"="+value)
 	}
-	output, _ := runSessionMineStreams(t, root, env, tool, "--harness", "opencode", "--all-workspaces", "--opencode-cmd", command, "--format", "json")
+	output, _ := runSessionMineStreams(t, root, exportTool, env, tool, "--harness", "opencode", "--all-workspaces", "--opencode-cmd", command, "--format", "json")
 	if !strings.Contains(output, `"status": "complete"`) {
 		t.Fatalf("source incomplete: %s", output)
 	}
@@ -687,6 +698,15 @@ func buildOpenCodeMine(t *testing.T, root string) string {
 	t.Helper()
 	tool := filepath.Join(t.TempDir(), "opencode-mine")
 	if out, code := run(t, root, nil, "go", "build", "-o", tool, "./scripts/cmd/opencode-mine"); code != 0 {
+		t.Fatal(out)
+	}
+	return tool
+}
+
+func buildOpenCodeExporter(t *testing.T, root string) string {
+	t.Helper()
+	tool := filepath.Join(t.TempDir(), "opencode-export")
+	if out, code := run(t, root, nil, "go", "build", "-o", tool, "./scripts/cmd/opencode-export"); code != 0 {
 		t.Fatal(out)
 	}
 	return tool

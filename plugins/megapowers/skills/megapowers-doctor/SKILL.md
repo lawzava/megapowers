@@ -15,25 +15,23 @@ go run "<plugin root>/skills/megapowers-doctor/scripts/doctor.go" --root "<plugi
 ```
 
 Set `<harness>` using [harness invocation](references/invocation.md).
-`--harness` skips unrelated style checks.
+The optional harness flag labels the report.
 
-It prints the plugin version and root, harness, output-style
-setting, marketplace copy, recent skill loads, and optional agent registry. Problems start with
-`WARN`. Quote only those lines and give one fix per line from
+The script checks only the plugin's own files: manifests, the optional catalog
+and listed skill bodies, and the shipped agent registry template. Problems
+start with `WARN`. Quote those lines and give one fix per line from
 [fixes by check](references/fixes.md). If the command fails, report its exit
 status and raw error; that failure is the diagnosis.
 
 Without a local shell or Go, follow [manual checks](references/directory-edition.md).
 
+Check the optional output style using [manual checks](references/directory-edition.md),
+or ask the user which style is selected.
+
 ## Did a skill fire?
 
-A skill fired only if the session loaded its body; a catalog entry or a
-prose mention is not a load. Inspect the session trace, or use the session
-miner in `writing-agent-instructions`, to find successful load records. Report
-counts and session identifiers, not contents. The doctor's `skill loads` line
-counts sessions modified in the last seven days that contain a successful load.
-
-If a matching task never loaded the skill, the defect is trigger wording or
-skill discovery; use `writing-agent-instructions`
-for the trigger. If the skill loaded but the outcome did not change, say so; a
-load is not evidence of behavior.
+Ask for the skill explicitly and confirm its body loads. A catalog entry or
+prose mention alone does not establish a load. If an explicit request fails,
+check discovery. If a matching task never loads a discoverable skill, use
+`writing-agent-instructions` to inspect its trigger wording. If the skill
+loads but the outcome does not change, report that observation separately.
