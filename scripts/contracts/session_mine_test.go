@@ -555,7 +555,7 @@ func TestSessionMineUsage(t *testing.T) {
 		full := append([]string{}, args...)
 		full = append(full, "--claude-root", tmp, "--codex-root", tmp)
 		output, code := runClaudeCodexMine(t, root, nil, tool, full...)
-		if code != 2 || !strings.Contains(output, "usage:") {
+		if code != 2 || !strings.Contains(output, "usage: go run ./scripts/cmd/session-mine ") {
 			t.Errorf("%v: want exit 2 with usage, got %d: %s", args, code, output)
 		}
 	}

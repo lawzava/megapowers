@@ -1,6 +1,8 @@
 # Session mining
 
-Transcript mining with session-mine is available as a repository maintainer tool; ask the user for it, or use it when a megapowers checkout is present.
+Transcript mining with session-mine is a repository maintainer tool: inside a
+megapowers checkout, see `docs/advanced/session-mining.md` for commands;
+otherwise ask the user for a report or JSON scorecard.
 
 Past sessions can show repeated mistakes and earlier decisions. Read the
 original turns and command results before drawing a conclusion. When no

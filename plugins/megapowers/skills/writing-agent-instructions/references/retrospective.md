@@ -10,7 +10,8 @@ output. Use the current session when the user names none. Cite the moment in
 the session that motivates each candidate.
 
 When the user asks about a period or a pattern rather than one session, see
-[session mining](session-mining.md) for repository tool availability. If a
+[session mining](session-mining.md) for repository commands or user-supplied
+reports. If a
 report is available, it groups candidate corrections across sessions. Read each
 example before counting it, and cite sessions by file and time. For one
 project, also read its scorecard from the [learning loop](learning-loop.md):

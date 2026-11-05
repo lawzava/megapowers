@@ -24,7 +24,7 @@ import (
 	"unicode"
 )
 
-const usageText = `usage: go run session-mine.go [corrections|recall|scorecard] (--workspace DIR | --all-workspaces)
+const usageText = `usage: go run ./scripts/cmd/session-mine [corrections|recall|scorecard] (--workspace DIR | --all-workspaces)
   [--since YYYY-MM-DD] [--harness claude|codex|both] [--claude-root DIR]
   [--codex-root DIR] [--format text|json] [--limit N] [--topic "WORDS" (recall only)]
   [--sanitize (scorecard only)]`

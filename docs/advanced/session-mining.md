@@ -19,9 +19,12 @@ Use it when:
 Run from the megapowers checkout; `--workspace` names the project:
 
 ```bash
-go run ./scripts/cmd/session-mine corrections --workspace "$PWD" --since 2026-10-01
-go run ./scripts/cmd/session-mine recall --topic "release script" --workspace "$PWD"
-go run ./scripts/cmd/session-mine scorecard --workspace "$PWD" --since 2026-10-01
+go run ./scripts/cmd/session-mine corrections \
+  --workspace /path/to/project --since 2026-10-01
+go run ./scripts/cmd/session-mine recall \
+  --topic "release script" --workspace /path/to/project
+go run ./scripts/cmd/session-mine scorecard \
+  --workspace /path/to/project --since 2026-10-01
 ```
 
 Shared flags: `--harness claude|codex|both` (default `both`), `--format
