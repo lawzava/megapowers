@@ -763,6 +763,9 @@ func TestRealPluginBuildsAndValidatesAsDirectoryEdition(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, file := range files {
+		if strings.HasPrefix(file.Path, "skills/megapowers-doctor/scripts/") || strings.HasPrefix(file.Path, "scripts/cmd/doctor/") {
+			t.Errorf("repository doctor shipped in directory edition: %s", file.Path)
+		}
 		if strings.HasSuffix(file.Path, "/session-mine.go") || strings.HasPrefix(file.Path, "scripts/cmd/session-mine/") {
 			t.Errorf("repository miner shipped in directory edition: %s", file.Path)
 		}

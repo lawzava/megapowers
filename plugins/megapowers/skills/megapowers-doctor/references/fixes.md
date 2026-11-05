@@ -3,10 +3,8 @@
 - Version or root mismatch: use `upgrading-megapowers`.
 - Unreadable manifest, catalog, skill body, or registry template: confirm the
   installed plugin directory is complete. Use `upgrading-megapowers` to repair it.
-- Go toolchain: bundled scripts need Go 1.25 or newer. Install it before
-  running the script again, or use the [manual checks](directory-edition.md).
 
-For manual checks:
+For [manual checks](directory-edition.md):
 
 - Output style, Claude Code: run `/config`, open Output style, and select
   `megapowers:Megapowers`, or ask the user which style is selected. The style

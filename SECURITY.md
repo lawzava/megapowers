@@ -9,21 +9,11 @@ Review the exact revision before installing it.
 | Component | Reads | Writes | Network |
 |---|---|---|---|
 | Skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
-| Doctor script | Plugin manifests, optional skill catalog and listed skill bodies, shipped agent registry template | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
 | Memory-audit tool | One explicit audit manifest | Standard output only | None |
 | Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | One operator-named reviewer command after token approval |
 
 There is no daemon, model router, formatter, status line, or background
 scheduler.
-
-The doctor reads only files inside the supplied plugin root: the Claude and
-Codex manifests, the optional skill catalog and listed skill bodies, and the
-shipped agent registry template. It prints versions, catalog counts, paths, and
-warnings. Root environment variables only locate that tree.
-
-The script has no network client. `go run` uses Go's build caches; with
-`GOTOOLCHAIN=auto`, Go may download a selected toolchain. Set
-`GOTOOLCHAIN=local` to require a suitable locally installed toolchain.
 
 The memory-audit tool checks provenance, dates, retention decisions, and
 common credential patterns. It rejects symlink inputs and never edits provider
@@ -34,6 +24,18 @@ that patch through the harness memory boundary and reads every target back to
 verify it.
 
 ## Repository tools (not installed)
+
+The doctor (`go run ./scripts/cmd/doctor --root <plugin-root>`) is a repository
+tool. It is not installed with the plugin.
+
+The doctor reads only files inside the supplied plugin root: the Claude and
+Codex manifests, the optional skill catalog and listed skill bodies, and the
+shipped agent registry template. It prints versions, catalog counts, paths, and
+warnings. Root environment variables only locate that tree.
+
+The script has no network client. `go run` uses Go's build caches; with
+`GOTOOLCHAIN=auto`, Go may download a selected toolchain. Set
+`GOTOOLCHAIN=local` to require a suitable locally installed toolchain.
 
 The session-mine maintainer tool reads local Claude Code and Codex transcripts
 and reports on standard output. It has no network client and is not installed

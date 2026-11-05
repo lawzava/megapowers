@@ -65,7 +65,7 @@ func doctorSourceViolations(source string) []string {
 }
 
 func TestDoctorSourceBoundary(t *testing.T) {
-	source := read(t, repoRoot(t), doctorSkillRel+"/scripts/doctor.go")
+	source := read(t, repoRoot(t), "scripts/cmd/doctor/main.go")
 	if violations := doctorSourceViolations(source); len(violations) != 0 {
 		t.Fatalf("doctor source boundary: %v", violations)
 	}

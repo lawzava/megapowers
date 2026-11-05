@@ -62,7 +62,7 @@ codex plugin marketplace add lawzava/megapowers --ref release
 codex plugin add megapowers@megapowers
 ```
 
-Then start a fresh session. Bundled Go tools, including the doctor, need Go
+Then start a fresh session. Bundled Go tools need Go
 1.25 or newer on `PATH`; loading skill guidance does not.
 
 **Try it:** ask "check my megapowers setup". The doctor reports the plugin
@@ -97,7 +97,7 @@ that site.
 |---|---|---|---|
 | Works with | Claude Code and Codex, one plugin, shared skills | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
 | Get it from | This repository's marketplace | The official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
-| What you get | Task skills, an optional Claude Code style, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
+| What you get | Task skills, an optional Claude Code style, a self-diagnosis skill | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
 | Published measurements | The A/B study below, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
 
 Which one fits:
@@ -258,8 +258,8 @@ longer shipped and do not describe this version.
   that keeps full output and the exit status, run state for `autonomous-run`,
   and the memory-audit validator for
   `writing-agent-instructions`.
-- A standalone Go doctor script behind `megapowers-doctor`, which reports
-  the version, optional skill catalog, and shipped agent registry template.
+- A guidance-only `megapowers-doctor` skill for checking the version, optional
+  skill catalog, and shipped agent registry template with normal file tools.
 
 The plugin does not edit global user configuration and supplies no model,
 provider, or agent configuration. For non-trivial delegation, `orchestrating`
@@ -270,24 +270,21 @@ access.
 </details>
 
 Repository maintainer tools include [session mining](docs/advanced/session-mining.md)
-(`go run ./scripts/cmd/session-mine`); this tool is not installed with the plugin.
+(`go run ./scripts/cmd/session-mine`) and the doctor
+(`go run ./scripts/cmd/doctor --root <plugin-root>`); neither is installed with
+the plugin.
 
 ## Troubleshooting
 
 Start with the doctor: `/megapowers:megapowers-doctor` on Claude Code, or the
-skill name after `$` as it appears in the Codex skills list. It runs the
-standalone Go doctor script. The doctor reads only files inside the supplied
-plugin root: the Claude and
-Codex manifests, the optional skill catalog and listed skill bodies, and the
-shipped agent registry template. It prints versions, catalog counts, paths, and
-warnings. Root environment variables only locate that tree.
+skill name after `$` as it appears in the Codex skills list. The agent uses
+normal file tools to read the plugin manifest version, optional
+`skills/catalog.json`, each listed skill's `SKILL.md`, and the shipped agent
+registry template.
 
 Check the optional Claude Code output style with `/config` or ask the user.
 Confirm skill discovery by asking for the skill explicitly.
 
-The script has no network client. `go run` uses Go's build caches; with
-`GOTOOLCHAIN=auto`, Go may download a selected toolchain. Set
-`GOTOOLCHAIN=local` to require a suitable locally installed toolchain.
 See [SECURITY.md](./SECURITY.md) for the read and execution boundaries.
 
 | Symptom | Fix |
