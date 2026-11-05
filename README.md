@@ -62,11 +62,11 @@ codex plugin marketplace add lawzava/megapowers --ref release
 codex plugin add megapowers@megapowers
 ```
 
-Then start a fresh session. Bundled Go tools need Go
+Then start a fresh session. Bundled Go tools, including the doctor, need Go
 1.25 or newer on `PATH`; loading skill guidance does not.
 
 **Try it:** ask "check my megapowers setup". The doctor reports the plugin
-version, skill catalog, and shipped agent registry template.
+version, local marketplace copy, and Claude Code output-style setting.
 
 Both installs track the `release` branch, which only moves to signed release
 tags, so you never get unreleased `main`. Pinning, install scopes, and
@@ -97,7 +97,7 @@ that site.
 |---|---|---|---|
 | Works with | Claude Code and Codex, one plugin, shared skills | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
 | Get it from | This repository's marketplace | The official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
-| What you get | Task skills, an optional Claude Code style, a self-diagnosis skill | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
+| What you get | Task skills, an optional Claude Code style, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
 | Published measurements | The A/B study below, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
 
 Which one fits:
@@ -152,6 +152,7 @@ only when your request matches. The *experimental* labels come from
 |---|---|
 | `megapowers-doctor` *(experimental)* | A skill did not fire, the Claude Code style looks off, or the install needs checking |
 | `upgrading-megapowers` | You want to update, reinstall, or repair the plugin |
+| `mcp-setup` *(experimental)* | An MCP server needs installing or fixing, or its tools are missing |
 
 [docs/orchestration.md](./docs/orchestration.md) explains which kinds of task
 go to which skill.
@@ -250,15 +251,16 @@ longer shipped and do not describe this version.
 <details>
 <summary>Exactly what installs</summary>
 
-- 15 skills under `skills/`, listed in `skills/catalog.json`.
+- 16 skills under `skills/`, listed in `skills/catalog.json`.
 - One optional Claude Code output style, `output-styles/megapowers.md`.
-- Four Go standard-library tools that load only with their skill: the review
+- Five Go standard-library tools that load only with their skill: the review
   packager for `independent-review`, a run receipt for `verify-and-finish`
   that keeps full output and the exit status, run state for `autonomous-run`,
-  and the memory-audit validator for
+  and the session miner and memory-audit validator for
   `writing-agent-instructions`.
-- A guidance-only `megapowers-doctor` skill for checking the version, optional
-  skill catalog, and shipped agent registry template with normal file tools.
+- A standalone Go doctor script behind `megapowers-doctor`, which reports
+  the version, Claude Code style setting, local marketplace copy, optional
+  agent registry, and recent workspace skill-load counts.
 
 The plugin does not edit global user configuration and supplies no model,
 provider, or agent configuration. For non-trivial delegation, `orchestrating`
@@ -268,28 +270,34 @@ access.
 
 </details>
 
-Repository maintainer tools include [session mining](docs/advanced/session-mining.md)
-(`go run ./scripts/cmd/session-mine`) and the doctor
-(`go run ./scripts/cmd/doctor --root <plugin-root>`); neither is installed with
-the plugin.
-
 ## Troubleshooting
 
 Start with the doctor: `/megapowers:megapowers-doctor` on Claude Code, or the
-skill name after `$` as it appears in the Codex skills list. The agent uses
-normal file tools to read the plugin manifest version, optional
-`skills/catalog.json`, each listed skill's `SKILL.md`, and the shipped agent
-registry template.
-
-Check the optional Claude Code output style with `/config` or ask the user.
-Confirm skill discovery by asking for the skill explicitly.
-
-See [SECURITY.md](./SECURITY.md) for the read and execution boundaries.
+skill name after `$` as it appears in the Codex skills list. It runs the
+standalone Go doctor script and reports the plugin version and root, which
+tool is running, the Claude `outputStyle` value in effect, the local
+marketplace copy, optional agent registry, and recent workspace skill-load
+counts. It reads plugin manifests and the skill catalog, local marketplace
+manifests, and the optional registry. It parses only `outputStyle` from
+`~/.claude/settings.json` and project `.claude/settings.json` and
+`.claude/settings.local.json`, and runs `git rev-parse --show-toplevel`
+locally. It reads recent Claude transcripts in the workspace's project
+directory, including subagents, and Codex rollout headers under
+`~/.codex/sessions` from today and the previous 14 date directories, examining
+at most 2,000 headers and collecting at most 500 transcripts across both
+harnesses. Environment overrides can select other local settings and session
+directories. It counts sessions modified in the last seven days that contain a
+successful load. It prints summaries rather than transcript bodies. The
+directory edition omits the catalog and skips load counting. Running the
+script uses Go's build caches; with `GOTOOLCHAIN=auto`, Go may download a
+selected toolchain. Set `GOTOOLCHAIN=local` to require a suitable locally
+installed toolchain. See [SECURITY.md](./SECURITY.md) for the read and
+execution boundaries.
 
 | Symptom | Fix |
 |---|---|
 | Style not applied on Claude Code | The setting must read `megapowers:Megapowers`, not `Megapowers` |
-| Skill script error mentioning Go | Install Go 1.25 or newer |
+| Doctor error mentioning Go | Install Go 1.25 or newer |
 | Wrong version after an upgrade | Use `upgrading-megapowers`, which compares the marketplace head with the approved release tag before writing |
 
 ## Limits

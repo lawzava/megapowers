@@ -98,13 +98,6 @@ func portabilityHits(body string) []int {
 }
 
 func portabilityHitsFor(rel, body string) []int {
-	if rel == "plugins/megapowers/skills/megapowers-doctor/SKILL.md" {
-		// The optional output style is a Claude Code component. Keep its
-		// diagnostic scope explicit without permitting other harness mechanics.
-		body = strings.ReplaceAll(body,
-			"On Claude Code, check the optional output style with `/config` or ask the user which style\nis selected.",
-			"Check the optional output style.\n")
-	}
 	if rel != "plugins/megapowers/skills/writing-agent-instructions/SKILL.md" {
 		return portabilityHits(body)
 	}

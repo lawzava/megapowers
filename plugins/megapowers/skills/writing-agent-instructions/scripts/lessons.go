@@ -2,7 +2,7 @@
 
 // lessons keeps the per-project promotion ledger of the learning loop: a
 // lesson is added with evidence, proven, promoted with a read-back of its
-// target, reviewed against a project scorecard, and retired when it
+// target, reviewed against a session-mine scorecard, and retired when it
 // stops paying off. The store lives outside every worktree, like a holdout.
 package main
 
@@ -52,7 +52,7 @@ Commands:
 The store defaults to $MEGAPOWERS_LESSONS_DIR, else
 ${XDG_STATE_HOME:-~/.local/state}/megapowers/lessons, and must be outside the
 repository. Evidence is direct-statement, direct-observation, source-backed, or
-history-entry-only. CLASS is a correction class, "sleep", or
+history-entry-only. CLASS is a session-mine correction class, "sleep", or
 "gate:<skill>", so review can count recurrences.
 
 prove copies each --check-file, and each relative file or directory named on
@@ -799,10 +799,10 @@ func cmdReview(opt options) (int, error) {
 	}
 	var card scorecardFile
 	if err := json.Unmarshal(data, &card); err != nil {
-		return exitError, fail("%s is not a project scorecard JSON", opt.scorecard)
+		return exitError, fail("%s is not a session-mine scorecard JSON", opt.scorecard)
 	}
 	if resolve(card.Scope) != resolve(p.top) {
-		return exitError, fail("scorecard scope %q is not this project %s; obtain a scorecard for this workspace", card.Scope, p.top)
+		return exitError, fail("scorecard scope %q is not this project %s; run session-mine scorecard --workspace %s", card.Scope, p.top, p.top)
 	}
 	since, err := time.Parse(dateLayout, card.Since)
 	if err != nil {

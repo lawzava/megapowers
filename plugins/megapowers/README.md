@@ -1,7 +1,7 @@
 # megapowers plugin
 
 One workflow plugin for current Claude Code and Codex: task skills, an
-optional Claude Code output style, and a self-diagnosis skill. It uses the planning, agents, goals, permissions, memory, worktrees,
+optional Claude Code output style, and a standalone Go doctor. It uses the planning, agents, goals, permissions, memory, worktrees,
 and browser tools each harness already has. It ships no model router,
 orchestration daemon, or vendor choice.
 
@@ -10,12 +10,14 @@ orchestration daemon, or vendor choice.
 - `skills/`: one skill per task type: orchestration, structured interviews,
   research, design, implementation with language-specific code judgment,
   debugging, verification, actions with real-world side effects, long
-  unattended runs, independent review, prose, safe upgrades,
+  unattended runs, independent review, MCP setup, prose, safe upgrades,
   writing agent instructions (including retrospectives, session recall, and
   memory hygiene), and self-diagnosis (`megapowers-doctor`).
   `skills/catalog.json` records whether each skill is stable or experimental,
   since portable skill frontmatter has no field for that.
 - `output-styles/`: an optional native Claude Code style for direct, concise replies.
+- `skills/megapowers-doctor/scripts/doctor.go`: installation checks and recent
+  workspace skill-load counts from local session records.
 - `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: plugin
   metadata for each harness.
 
@@ -49,9 +51,21 @@ in your capability registry or instructions; otherwise it asks first. Read the
 [security policy](https://github.com/lawzava/megapowers/blob/main/SECURITY.md)
 before enabling external review.
 
-The guidance-only doctor skill asks the agent to use normal file tools to read
-the plugin manifest version, optional `skills/catalog.json`, each listed skill's
-`SKILL.md`, and the shipped agent registry template.
+The doctor reads plugin and marketplace manifests, the skill catalog, user and
+project Claude settings, the optional agent registry, and recent local Claude
+main/subagent transcripts in the workspace's project directory and Codex
+rollout headers under `~/.codex/sessions` from today and the previous 14 date
+directories (at most 2,000 headers and 500 transcripts across both harnesses).
+It parses only `outputStyle` from `~/.claude/settings.json`, project
+`.claude/settings.json`, and `.claude/settings.local.json`; environment
+overrides can select other local settings and session directories. It resolves
+the workspace root with `git rev-parse --show-toplevel`, counts successful
+skill loads in sessions modified in the last seven days, and prints summaries
+rather than transcript bodies. The directory edition omits the catalog and
+skips load counting. The script does not edit these inputs and has no network
+client. `go run` uses Go's build caches; with `GOTOOLCHAIN=auto`, Go may
+download a selected toolchain. Set `GOTOOLCHAIN=local` to require a suitable
+locally installed toolchain.
 
 ## Attribution
 

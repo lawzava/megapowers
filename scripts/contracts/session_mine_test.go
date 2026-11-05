@@ -1,16 +1,14 @@
 package contracts
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-const sessionMineTool = "./scripts/cmd/session-mine/main.go"
+const sessionMineTool = "./plugins/megapowers/skills/writing-agent-instructions/scripts/session-mine.go"
 
 type sessionMineExample struct {
 	Harness   string `json:"harness"`
@@ -215,7 +213,7 @@ func TestSessionMineCodexArchiveRoots(t *testing.T) {
 					if scan.explicitRoot != "" {
 						args = append(args, "--codex-root", scan.explicitRoot)
 					}
-					output, code := runClaudeCodexMine(t, root, env, tool, args...)
+					output, code := run(t, root, env, tool, args...)
 					var report sessionMineCorrections
 					if code != 0 || json.Unmarshal([]byte(output), &report) != nil {
 						t.Fatalf("corrections failed (%d): %s", code, output)
@@ -235,19 +233,10 @@ func TestSessionMineCorrections(t *testing.T) {
 	claudeRoot, codexRoot := sessionMineFixture(t)
 	base := []string{"corrections", "--workspace", "/work/demo.v2", "--claude-root", claudeRoot, "--codex-root", codexRoot}
 
-	cmd := exec.Command(tool, append(base, "--since", "2026-10-01", "--format", "json")...)
-	cmd.Dir = root
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	data, err := cmd.Output()
-	if err != nil {
-		t.Fatal(err, stderr.String())
+	output, code := run(t, root, nil, tool, append(base, "--since", "2026-10-01", "--format", "json")...)
+	if code != 0 {
+		t.Fatalf("corrections json failed (%d): %s", code, output)
 	}
-	output := string(data)
-	if stderr.Len() != 0 {
-		t.Fatalf("default both must scan without source warnings: %s", stderr.String())
-	}
-	var code int
 	var report sessionMineCorrections
 	if err := json.Unmarshal([]byte(output), &report); err != nil {
 		t.Fatalf("corrections json does not parse: %v\n%s", err, output)
@@ -282,7 +271,7 @@ func TestSessionMineCorrections(t *testing.T) {
 	}
 
 	// Without --since the September verification turn makes the class repeat.
-	output, code = runClaudeCodexMine(t, root, nil, tool, append(base, "--format", "json")...)
+	output, code = run(t, root, nil, tool, append(base, "--format", "json")...)
 	var all sessionMineCorrections
 	if code != 0 || json.Unmarshal([]byte(output), &all) != nil {
 		t.Fatalf("unfiltered run failed (%d): %s", code, output)
@@ -292,7 +281,7 @@ func TestSessionMineCorrections(t *testing.T) {
 	}
 
 	// Limit caps examples, not counts.
-	output, _ = runClaudeCodexMine(t, root, nil, tool, append(base, "--since", "2026-10-01", "--format", "json", "--limit", "1")...)
+	output, _ = run(t, root, nil, tool, append(base, "--since", "2026-10-01", "--format", "json", "--limit", "1")...)
 	var limited sessionMineCorrections
 	json.Unmarshal([]byte(output), &limited)
 	if stopped := findClass(limited.Classes, "stopped-unnecessarily"); stopped == nil || stopped.Count != 2 || len(stopped.Examples) != 1 {
@@ -300,7 +289,7 @@ func TestSessionMineCorrections(t *testing.T) {
 	}
 
 	// Harness filter.
-	output, _ = runClaudeCodexMine(t, root, nil, tool, append(base, "--since", "2026-10-01", "--format", "json", "--harness", "codex")...)
+	output, _ = run(t, root, nil, tool, append(base, "--since", "2026-10-01", "--format", "json", "--harness", "codex")...)
 	var codexOnly sessionMineCorrections
 	json.Unmarshal([]byte(output), &codexOnly)
 	if codexOnly.SessionsScanned != 2 || findClass(codexOnly.Classes, "stopped-unnecessarily") != nil {
@@ -308,7 +297,7 @@ func TestSessionMineCorrections(t *testing.T) {
 	}
 
 	// Text output names classes, one-offs, and the summary line.
-	output, code = runClaudeCodexMine(t, root, nil, tool, append(base, "--since", "2026-10-01")...)
+	output, code = run(t, root, nil, tool, append(base, "--since", "2026-10-01")...)
 	if code != 0 {
 		t.Fatalf("text output failed (%d): %s", code, output)
 	}
@@ -367,7 +356,7 @@ func TestSessionMineRedaction(t *testing.T) {
 	}
 	writeLines(t, filepath.Join(claudeRoot, "-work-redact", "r1.jsonl"), lines...)
 	homes := []string{"HOME=/srv/people/zed", "USERPROFILE=/srv/profiles/quinn"}
-	output, code := runClaudeCodexMine(t, root, homes, tool, "--workspace", "/work/redact", "--harness", "claude", "--claude-root", claudeRoot, "--limit", "50", "--format", "json")
+	output, code := run(t, root, homes, tool, "--workspace", "/work/redact", "--harness", "claude", "--claude-root", claudeRoot, "--limit", "50", "--format", "json")
 	if code != 0 {
 		t.Fatalf("redaction run failed (%d): %s", code, output)
 	}
@@ -409,7 +398,7 @@ func TestSessionMineRecall(t *testing.T) {
 	tool := buildSessionMine(t, root)
 	claudeRoot, codexRoot := sessionMineFixture(t)
 	base := []string{"recall", "--topic", "Retry FLAG", "--workspace", "/work/demo.v2", "--claude-root", claudeRoot, "--codex-root", codexRoot}
-	output, code := runClaudeCodexMine(t, root, nil, tool, append(base, "--format", "json")...)
+	output, code := run(t, root, nil, tool, append(base, "--format", "json")...)
 	if code != 0 {
 		t.Fatalf("recall failed (%d): %s", code, output)
 	}
@@ -427,7 +416,7 @@ func TestSessionMineRecall(t *testing.T) {
 	}
 	s1 := report.Sessions[2]
 	for _, format := range []string{"text", "json"} {
-		output, code := runClaudeCodexMine(t, root, nil, tool, "recall", "--topic", "Dev.Person@example.com", "--workspace", "/work/demo.v2", "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", format)
+		output, code := run(t, root, nil, tool, "recall", "--topic", "Dev.Person@example.com", "--workspace", "/work/demo.v2", "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", format)
 		if code != 0 || strings.Contains(strings.ToLower(output), "dev.person") || !strings.Contains(output, "<email>") {
 			t.Errorf("%s recall topic not redacted (%d): %s", format, code, output)
 		}
@@ -441,16 +430,16 @@ func TestSessionMineRecall(t *testing.T) {
 	if report.Sessions[0].FirstPrompt != "Summarize the cache layer." {
 		t.Errorf("codex first prompt kept injected block: %+v", report.Sessions[0])
 	}
-	output, _ = runClaudeCodexMine(t, root, nil, tool, append(base, "--limit", "1")...)
+	output, _ = run(t, root, nil, tool, append(base, "--limit", "1")...)
 	if !strings.Contains(output, "rollout-2026-10-03T10-00-00-aaa.jsonl") || strings.Contains(output, "s1.jsonl") {
 		t.Errorf("recall limit 1 wrong:\n%s", output)
 	}
-	output, _ = runClaudeCodexMine(t, root, nil, tool, "recall", "--topic", "retry nonexistentword", "--workspace", "/work/demo.v2", "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json")
+	output, _ = run(t, root, nil, tool, "recall", "--topic", "retry nonexistentword", "--workspace", "/work/demo.v2", "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json")
 	var none sessionMineRecall
 	if json.Unmarshal([]byte(output), &none) != nil || len(none.Sessions) != 0 {
 		t.Errorf("all topic words not required: %s", output)
 	}
-	output, _ = runClaudeCodexMine(t, root, nil, tool, "recall", "--topic", "retry flag", "--all-workspaces", "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json")
+	output, _ = run(t, root, nil, tool, "recall", "--topic", "retry flag", "--all-workspaces", "--claude-root", claudeRoot, "--codex-root", codexRoot, "--format", "json")
 	var everywhere sessionMineRecall
 	json.Unmarshal([]byte(output), &everywhere)
 	if len(everywhere.Sessions) != 5 {
@@ -469,7 +458,7 @@ func TestSessionMineScoping(t *testing.T) {
 	tmp := t.TempDir()
 	mine := func(claudeRoot, workspace string) (sessionMineCorrections, string) {
 		t.Helper()
-		output, code := runClaudeCodexMine(t, root, nil, tool, "--workspace", workspace, "--harness", "claude", "--claude-root", claudeRoot, "--format", "json")
+		output, code := run(t, root, nil, tool, "--workspace", workspace, "--harness", "claude", "--claude-root", claudeRoot, "--format", "json")
 		var report sessionMineCorrections
 		if code != 0 || json.Unmarshal([]byte(output), &report) != nil {
 			t.Fatalf("run failed (%d): %s", code, output)
@@ -502,7 +491,7 @@ func TestSessionMineScoping(t *testing.T) {
 		}
 		// The reminder-carrying turn is human but classifies as other; recall
 		// shows its excerpt as the first prompt.
-		output, _ = runClaudeCodexMine(t, root, nil, tool, "recall", "--topic", "status", "--workspace", "/work/a-b", "--harness", "claude", "--claude-root", claudeRoot, "--format", "json")
+		output, _ = run(t, root, nil, tool, "recall", "--topic", "status", "--workspace", "/work/a-b", "--harness", "claude", "--claude-root", claudeRoot, "--format", "json")
 		var recalled sessionMineRecall
 		if json.Unmarshal([]byte(output), &recalled) != nil || len(recalled.Sessions) != 1 || recalled.Sessions[0].FirstPrompt != "Status please" {
 			t.Errorf("embedded reminder not stripped from excerpt: %s", output)
@@ -554,8 +543,8 @@ func TestSessionMineUsage(t *testing.T) {
 	} {
 		full := append([]string{}, args...)
 		full = append(full, "--claude-root", tmp, "--codex-root", tmp)
-		output, code := runClaudeCodexMine(t, root, nil, tool, full...)
-		if code != 2 || !strings.Contains(output, "usage: go run ./scripts/cmd/session-mine ") {
+		output, code := run(t, root, nil, tool, full...)
+		if code != 2 || !strings.Contains(output, "usage:") {
 			t.Errorf("%v: want exit 2 with usage, got %d: %s", args, code, output)
 		}
 	}
@@ -565,24 +554,17 @@ func TestSessionMineUsage(t *testing.T) {
 // `go run` reports every non-zero exit as 1.
 func buildSessionMine(t *testing.T, root string) string {
 	t.Helper()
+	// Defaults include OpenCode now. Keep all contract tests isolated from a
+	// developer's running server unless a test supplies its own fixture CLI.
+	command, fixtures := fakeSessionMineOpenCode(t, map[string][]string{
+		"/api/session?limit=100&order=desc": {`{"data":[],"cursor":{}}`},
+	})
+	t.Setenv("SESSION_MINE_OPENCODE_CMD", command)
+	t.Setenv("SESSION_MINE_OPENCODE_TIMEOUT", "5m")
+	t.Setenv("MINE_FIXTURE", fixtures)
 	tool := filepath.Join(t.TempDir(), "session-mine")
 	if output, code := run(t, root, nil, "go", "build", "-o", tool, sessionMineTool); code != 0 {
 		t.Fatalf("build session-mine (%d): %s", code, output)
 	}
 	return tool
-}
-
-// These fixtures cover Claude and Codex; offline OpenCode/default selection
-// has its own contracts in opencode_export_test.go.
-func runClaudeCodexMine(t *testing.T, root string, env []string, tool string, args ...string) (string, int) {
-	selected := false
-	for _, arg := range args {
-		if arg == "--harness" || strings.HasPrefix(arg, "--harness=") {
-			selected = true
-		}
-	}
-	if !selected {
-		args = append(append([]string{}, args...), "--harness", "both")
-	}
-	return run(t, root, env, tool, args...)
 }

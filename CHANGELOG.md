@@ -5,6 +5,29 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.47.0 - 2026-11-05
+
+### Changed
+
+- Restores the shipped session-mine (with OpenCode support), the full doctor script and the mcp-setup skill removed in 0.46.1–0.46.7 during directory-review bisection; hooks stay removed.
+- Compared with 0.46.3–0.46.7, session-mine defaults to `--harness all`
+  again, accepts `opencode`, and restores `--opencode-cmd`,
+  `--opencode-timeout`, `SESSION_MINE_OPENCODE_CMD`, and
+  `SESSION_MINE_OPENCODE_TIMEOUT`. It drops `--opencode-export`; reports
+  regain skipped and partial source status.
+- The doctor restores its outputStyle check, skill-load counts,
+  marketplace-copy comparison, registry expiry warning, and harness
+  detection. The learning loop builds its own scorecard again.
+
+### Removed
+
+- Repository tools and docs added in 0.46.1–0.46.7:
+  `scripts/cmd/opencode-export`, `scripts/cmd/opencode-mine`,
+  `scripts/cmd/session-mine`, `scripts/cmd/doctor`,
+  `scripts/opencode-export.sh`, `docs/advanced/opencode-export.md`,
+  `docs/advanced/session-mining.md`, and `extras/`. The shipped skills cover
+  them again.
+
 ## 0.46.7 - 2026-11-05
 
 ### Removed
