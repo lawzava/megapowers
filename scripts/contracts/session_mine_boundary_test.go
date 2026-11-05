@@ -9,6 +9,14 @@ import (
 	"testing"
 )
 
+func TestSessionMineRepositoryOnly(t *testing.T) {
+	root := repoRoot(t)
+	if _, err := os.Stat(filepath.Join(root, "plugins/megapowers/skills/writing-agent-instructions/scripts/session-mine.go")); !os.IsNotExist(err) {
+		t.Fatalf("session miner must stay outside the plugin: %v", err)
+	}
+	buildSessionMine(t, root)
+}
+
 func TestSessionMineClaudeCodexBoundary(t *testing.T) {
 	root := repoRoot(t)
 	tool := buildSessionMine(t, root)

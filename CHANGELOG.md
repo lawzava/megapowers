@@ -5,6 +5,20 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.46.5 - 2026-11-05
+
+### Changed
+
+- session-mine moved from the plugin to the repository tool
+  `scripts/cmd/session-mine`.
+- Learning-loop review now needs a JSON scorecard from the repository tool
+  or the user.
+
+### Removed
+
+- The writing-agent-instructions skill's bundled session-mine script and
+  invocation instructions.
+
 ## 0.46.4 - 2026-11-05
 
 ### Changed

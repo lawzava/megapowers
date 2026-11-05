@@ -14,9 +14,9 @@ target.
 
 ## 1. Observe
 
-```bash
-go run "$SKILL_DIR/scripts/session-mine.go" scorecard --workspace "$PWD" --since 2026-10-01
-```
+See [session mining](session-mining.md) for repository commands or user-supplied
+reports.
+Use a project scorecard when available, or review the original sessions.
 
 The scorecard reads local transcripts and the project's
 `.megapowers/run/*/journal.jsonl`. It reports:
@@ -100,10 +100,12 @@ redundant, delete the prose rule.
 
 ## 5. Review and retire
 
-Run review monthly, or whenever the user asks what is working:
+Run review monthly, or whenever the user asks what is working. Obtain a
+project scorecard using `docs/advanced/session-mining.md` inside a megapowers
+checkout; otherwise ask the user for a JSON scorecard. Save its JSON report
+to `$TMPDIR/card.json` before running:
 
 ```bash
-go run "$SKILL_DIR/scripts/session-mine.go" scorecard --workspace "$PWD" --since <date> --format json > "$TMPDIR/card.json"
 go run "$SKILL_DIR/scripts/lessons.go" review --scorecard "$TMPDIR/card.json"
 go run "$SKILL_DIR/scripts/lessons.go" retire --id ID --why TEXT
 ```
@@ -125,20 +127,18 @@ only with their agreement.
 
 ## Upstream
 
-What leaves the machine goes through two sanitized outputs:
+Only a sanitized scorecard may leave the machine. Export a lesson with:
 
 ```bash
-go run "$SKILL_DIR/scripts/session-mine.go" scorecard --all-workspaces --sanitize --since <date> --format json
 go run "$SKILL_DIR/scripts/lessons.go" export --id ID
 ```
 
-`--sanitize` hashes workspace paths, drops run IDs, and folds every skill name
-outside `megapowers:` into `other`. `export` drops the project path, sources,
+`export` drops the project path, sources,
 and commit IDs, and replaces every check argument that contains `/` or `\`
 with `<path>`. It omits the free-text lesson unless `--include-text` is
 given, because free text can name a client in words no pattern catches; with
 it, path tokens become `<path>` and the user reads the text before sharing.
-It and adds an installed-ab case draft. Sanitizing keeps only
+It adds an installed-ab case draft. Sanitizing keeps only
 well-formed `megapowers:<skill>` names. Show both to the user
 before sharing; sharing is an outward effect under `safe-effects`. A
 maintainer who accepts a draft adds the case to
