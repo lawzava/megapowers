@@ -5,6 +5,22 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.46.4 - 2026-11-05
+
+### Changed
+
+- Doctor checks only the plugin's own files, including listed skill bodies
+  and the shipped agent registry template.
+
+### Removed
+
+- Claude settings `outputStyle` check.
+- Recent skill-load counts from local session records.
+- Local marketplace-copy version comparison.
+- Personal agent-registry expiry warning.
+- Harness detection from environment variables; `--harness` now labels the
+  report only.
+
 ## 0.46.3 - 2026-11-05
 
 ### Changed
