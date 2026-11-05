@@ -85,6 +85,62 @@ type scanStats struct {
 	unreadableFiles int
 }
 
+type sourceCounts struct {
+	SessionsScanned int `json:"sessions_scanned"`
+	HumanTurns      int `json:"human_turns"`
+	MachineTurns    int `json:"machine_turns"`
+	PromptTurns     int `json:"prompt_turns"`
+}
+type sourceSummary struct {
+	BySource map[string]*sourceCounts `json:"by_source"`
+	// Retain the aggregate fields for existing Claude/Codex report consumers.
+	SkippedSources       int `json:"skipped_sources"`
+	PartialSources       int `json:"partial_sources"`
+	SkippedSessions      int `json:"skipped_sessions"`
+	DeduplicatedSessions int `json:"deduplicated_sessions"`
+}
+
+func (opt options) includes(harness string) bool {
+	return opt.harness == harness || opt.harness == "both"
+}
+
+func summarizeSources(opt options, sessions []session) sourceSummary {
+	r := sourceSummary{BySource: map[string]*sourceCounts{}}
+	for _, name := range []string{"claude", "codex"} {
+		if opt.includes(name) {
+			r.BySource[name] = &sourceCounts{}
+		}
+	}
+	for _, s := range sessions {
+		c := r.BySource[s.harness]
+		if c == nil {
+			continue
+		}
+		c.SessionsScanned++
+		for _, msg := range s.msgs {
+			switch msg.role {
+			case "human":
+				c.HumanTurns++
+			case "machine":
+				c.MachineTurns++
+			case "prompt":
+				c.PromptTurns++
+			}
+		}
+	}
+
+	return r
+}
+
+func printSources(w io.Writer, r sourceSummary) {
+	for _, name := range []string{"claude", "codex"} {
+		if c := r.BySource[name]; c != nil {
+			fmt.Fprintf(w, "source %s: sessions scanned %d, human turns %d, machine turns %d, prompt turns %d\n", name, c.SessionsScanned, c.HumanTurns, c.MachineTurns, c.PromptTurns)
+		}
+	}
+	fmt.Fprintf(w, "sources: skipped %d, partial %d, skipped sessions %d, deduplicated sessions %d\n", r.SkippedSources, r.PartialSources, r.SkippedSessions, r.DeduplicatedSessions)
+}
+
 type example struct {
 	Harness   string `json:"harness"`
 	Session   string `json:"session"`
@@ -100,6 +156,7 @@ type classReport struct {
 }
 
 type correctionsReport struct {
+	sourceSummary
 	Note            string        `json:"note"`
 	SessionsScanned int           `json:"sessions_scanned"`
 	HumanTurns      int           `json:"human_turns"`
@@ -124,6 +181,7 @@ type recallItem struct {
 }
 
 type recallReport struct {
+	sourceSummary
 	Topic           string       `json:"topic"`
 	SessionsScanned int          `json:"sessions_scanned"`
 	SkippedLines    int          `json:"skipped_lines"`
@@ -376,7 +434,7 @@ func within(path, dir string) bool {
 
 func loadSessions(opt options, stats *scanStats) []session {
 	var sessions []session
-	if opt.harness != "codex" && opt.claudeRoot != "" {
+	if opt.includes("claude") && opt.claudeRoot != "" {
 		if root, err := filepath.EvalSymlinks(opt.claudeRoot); err == nil {
 			var dirs []string
 			if opt.all {
@@ -398,7 +456,7 @@ func loadSessions(opt options, stats *scanStats) []session {
 			}
 		}
 	}
-	if opt.harness != "claude" {
+	if opt.includes("codex") {
 		seen := map[string]bool{}
 		for _, dir := range opt.codexRoots {
 			root, err := filepath.EvalSymlinks(dir)
@@ -1060,6 +1118,7 @@ type turn struct {
 
 func corrections(opt options, sessions []session, stats scanStats) correctionsReport {
 	report := correctionsReport{
+		sourceSummary:   summarizeSources(opt, sessions),
 		Note:            "keyword classes are candidates; read each turn before treating it as a finding",
 		SessionsScanned: len(sessions),
 		SkippedLines:    stats.skippedLines,
@@ -1121,7 +1180,7 @@ func corrections(opt options, sessions []session, stats scanStats) correctionsRe
 }
 
 func recall(opt options, sessions []session, stats scanStats) recallReport {
-	report := recallReport{Topic: redact(strings.Join(opt.topic, " ")), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, SkippedFiles: stats.skippedFiles, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
+	report := recallReport{sourceSummary: summarizeSources(opt, sessions), Topic: redact(strings.Join(opt.topic, " ")), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, SkippedFiles: stats.skippedFiles, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
 	for _, s := range sessions {
 		matched := false
 		for _, msg := range s.msgs {
@@ -1195,6 +1254,7 @@ func printClass(w io.Writer, c classReport) {
 }
 
 func printCorrections(w io.Writer, r correctionsReport) {
+	defer printSources(w, r.sourceSummary)
 	fmt.Fprintf(w, "session-mine corrections: %s\n\n", r.Note)
 	if len(r.Classes) == 0 {
 		fmt.Fprintln(w, "no class occurred twice")
@@ -1219,6 +1279,7 @@ func printCorrections(w io.Writer, r correctionsReport) {
 }
 
 func printRecall(w io.Writer, r recallReport) {
+	defer printSources(w, r.sourceSummary)
 	fmt.Fprintf(w, "session-mine recall %q: %d matching session(s), most recent first\n", r.Topic, len(r.Sessions))
 	for _, item := range r.Sessions {
 		fmt.Fprintf(w, "\n%s %s %s .. %s\n  first prompt: %s\n  last reply:   %s\n", item.Harness, item.Session, item.FirstTimestamp, item.LastTimestamp, item.FirstPrompt, item.LastReply)
@@ -1264,6 +1325,7 @@ type workspaceScore struct {
 }
 
 type scorecardReport struct {
+	sourceSummary
 	Note            string         `json:"note"`
 	Scope           string         `json:"scope"`
 	Since           string         `json:"since,omitempty"`
@@ -1290,6 +1352,7 @@ type scorecardReport struct {
 // the skill caused it.
 func scorecard(opt options, sessions []session, stats scanStats) scorecardReport {
 	report := scorecardReport{
+		sourceSummary:   summarizeSources(opt, sessions),
 		Note:            "counts are candidates; read the sessions behind a number before acting on it",
 		Scope:           opt.workspace,
 		SessionsScanned: len(sessions),
@@ -1499,6 +1562,7 @@ func joinCounts(counts map[string]int) string {
 }
 
 func printScorecard(w io.Writer, r scorecardReport) {
+	defer printSources(w, r.sourceSummary)
 	fmt.Fprintf(w, "session-mine scorecard: %s; %s\n", r.Scope, r.Note)
 	if r.Since != "" {
 		fmt.Fprintf(w, "since: %s\n", r.Since)

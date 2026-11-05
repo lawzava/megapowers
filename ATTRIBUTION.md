@@ -9,8 +9,8 @@ The workflow core descends from
 planning, test-first, debugging, verification, worktree, and delegation methods
 were rewritten and consolidated into the current task-level skills.
 
-The independent-review prompt's reasonable-user standard for behavior a spec
-does not mention comes from the v6.4.1 reviewer guidance, reviewed at
+The former independent-review launcher's reasonable-user standard for behavior
+a spec does not mention came from the v6.4.1 reviewer guidance, reviewed at
 `8ca22dba9a94f28898bbce59f2537ff4d87c747d`.
 
 Upstream license: MIT, Copyright (c) 2025 Jesse Vincent.
@@ -67,10 +67,10 @@ take concepts from `diagnosing-bugs`, `tdd`, `to-tickets`, `handoff`, `retro`,
 - portable handoff notes and session retrospectives that prefer deterministic
   checks;
 - scope-creep review and a threshold for recording a decision;
-- stopping git commands that discard work.
+- stopping git commands that discard work (removed with the hooks in v0.46.0).
 
-The text is rewritten in repository style. The git check is a new Go
-implementation on the existing hook gate.
+The text is rewritten in repository style. The git check was a Go
+implementation on the existing hook gate; v0.46.0 removed it with the hooks.
 
 Adaptations reviewed at `b0618bc436ad893b3c5e84e55fba86586d34a404` add proof
 that a forced test failure actually changed the code, from `diagnosing-bugs`,
@@ -186,8 +186,8 @@ Upstream license: MIT, Copyright (c) 2026 Affaan Mustafa.
 
 The adversarial-review framing and structured review outcome concepts were
 informed by [codex-plugin-cc](https://github.com/openai/codex-plugin-cc) by
-OpenAI. The current review package, disclosure, and receipt implementation is a
-new Go standard-library tool with a narrower explicit-input contract.
+OpenAI. The former Go review package, disclosure, and receipt implementation
+was removed in 0.49.0; independent review now supplies guidance only.
 
 Upstream license: Apache-2.0. Upstream notice: Copyright 2026 OpenAI.
 

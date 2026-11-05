@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: A skill, hook, tool, eval, or doc behaves differently than documented
+about: A skill, tool, eval, or doc behaves differently than documented
 labels: bug
 ---
 
@@ -14,6 +14,6 @@ labels: bug
 
 **Minimal reproduction**
 
-**Evidence**: command output, hook input JSON, or result row, with secrets removed
+**Evidence**: command output or result row, with secrets removed
 
 **`scripts/validate.sh`**: pass / fail / not run

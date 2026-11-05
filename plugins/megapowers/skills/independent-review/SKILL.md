@@ -1,67 +1,56 @@
 ---
 name: independent-review
-description: Use when security, auth, billing, concurrency, data integrity, or another high-stakes artifact needs adversarial review by a provider other than its author.
+description: Use when security, auth, billing, concurrency, data integrity, or another high-stakes artifact needs an independent opinion from another model.
 when_to_use: "Trigger phrases: get a second opinion from another model, external review, have another vendor review this, adversarial review of auth, billing, or migration code before merge."
 metadata:
-  short-description: Cross-provider adversarial review of a high-stakes artifact
+  short-description: Independent model review of a high-stakes artifact
 ---
 
 # Independent Review
 
-Use model review for residual uncertainty after executable checks. Same-provider
-review gives only context separation, not independence. The lead owns
-remediation and reruns the oracle.
+Use another model for residual uncertainty after executable checks when the
+stakes warrant it. The lead owns remediation and reruns the oracle.
 
-## Trusted review path
+## Choose the review route
 
-Take the reviewer family and exact command from the capability registry or user
-instruction; never guess. Set `review_tool` to the installed
-`scripts/megapowers-review.go` beside this `SKILL.md`, not a project copy.
+Follow the user's global instructions (CLAUDE.md or AGENTS.md) for what counts
+as independent and which reviewer to use, including any local reviewer binding.
+Otherwise choose from what is actually available: native subagents with a
+different model or the harness's native review.
+Cross-vendor review is preferred but optional, depending on installed options.
+Do not assume a provider or model is available. Report unavailable required
+review without silently replacing the user's choice.
 
-Dispatch a pre-approved reviewer in one step with
-`--approve-external configured` or inspect first and pass the emitted
-`approval_token`:
-
-```bash
-reviewer_cmd='<reviewer CLI and arguments>'   # {prompt_file} and {scratch_dir} expand
-intent='<intended behavior and acceptance boundary>'
-go run "$review_tool" review --file path/to/file --intent "$intent" \
-  --provider <reviewer-family> --provider-command "$reviewer_cmd" \
-  --author <author-family> --approve-external configured
-```
-
-When an instruction requires human inspection before dispatch or no configured
-reviewer exists, run `inspect` first (`--file path/to/file` or
-`--base <base-revision> --head <head-revision>`), check the disclosed intent,
-binary hash, command, and chunk package hashes, and pass the emitted token to
-`review --approve-external "$approval_token"`. Any file, intent, binary, or
-command change requires a new inspection and token.
-
-Author and provider labels must differ and name real vendor families. `--file` takes a file in the
-repository, in the current directory outside Git, or under `$TMPDIR`; keep
-review packages and receipts under `$TMPDIR`, never in the deliverable.
-The tool forwards no credentials; reviewer CLIs sign in themselves.
-The reviewer process gets only `PATH` and `HOME`.
-`--preflight` probes liveness before bytes leave. Without Go or a shell, send
-nothing: the secret scan lives in the tool. Tell the user.
+This skill supplies guidance only. Use the selected system's existing review
+interface and permissions. Give the reviewer artifact identity, requirements,
+acceptance boundary, scope, and check evidence. Keep review access read-only.
 
 ## Dispatch authority
 
-External dispatch sends artifact bytes to another vendor. A reviewer bound to
-`independent-review` in the capability registry, or named by a user or
-repository instruction, is pre-approved: decide when to review and dispatch
-without asking. Ask first only when no configured reviewer exists, the
-disclosure exceeds the intended scope or holds content an instruction keeps
-local, or an instruction requires approval. Never silently substitute a
-same-provider review. If the harness's own reviewer denies the send, report its
-reason and stop. Surface a permission prompt or provider stall.
+Check briefs and accessible files for secrets and disclosure scope before
+sending anything off-machine, including through native review. Exclude secrets
+and unrelated local content. Follow user instructions and existing permission
+rules for sending to the selected reviewer. A bound or instruction-named
+reviewer is pre-approved within its stated scope. Dispatch without asking
+again when that authority covers the review. Ask when required authority is
+missing or disclosure exceeds the approved scope. Honor denials and report
+permission or provider stalls.
 
-Receipts are advisory, not an approval gate; `--out` must be an existing
-absolute directory outside the review root. If the tool fails, report
-its error; a direct provider call skips its secret scan. Use
-`--retain-transcript` only after a sensitive-data decision. Treat the review
-verdict as a claim. Record credible findings and explain dismissals against the
-artifact intent. Bound correction rounds: re-review only
+## Reviewer contract
+
+Require `verdict`, `scope.creep` (unrequested changes, drive-by refactors, new
+dependencies), `scope.shrink` (stubs, TODOs, weakened, skipped or deleted tests,
+loosened assertions, unconfirmed acceptance items), and `findings`. Each finding
+has severity (`blocker`, `major`, or `nit`), file, line, claim, and evidence.
+Use explicit empty lists and state verification limits.
+
+The lead computes **fail** when any blocker, major, scope.creep or scope.shrink
+exists, regardless of the stated verdict. Nits never fail. Verify findings;
+record disproof for false positives and resolve failures before approval.
+Missing fields or results are gaps, never a pass.
+
+Set the round cap before dispatch; re-review only
 [fixes since the prior round](references/correction-rounds.md), affected
-boundaries, and new evidence. Join every requested review before completion;
-approval cannot settle a queued review.
+boundaries, and new evidence. Exhaustion leaves unresolved findings open for
+the user. Join every review before completion; approval cannot settle a queued
+review.

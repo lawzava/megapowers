@@ -1083,8 +1083,7 @@ func stagePluginTree(source, destination string) (string, error) {
 		if err != nil {
 			return err
 		}
-		// Hooks run the launcher directly, so the executable bit is part of
-		// the staged plugin and of its hash.
+		// Preserve executable entrypoints in the staged plugin and its hash.
 		mode := os.FileMode(0o600)
 		if info.Mode().Perm()&0o100 != 0 {
 			mode = 0o700

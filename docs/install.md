@@ -10,9 +10,9 @@ unreleased `main`.
 
 - A current Claude Code or Codex CLI, already authenticated.
 - Git, for marketplace snapshots.
-- Go 1.25 or newer, for hooks and the plugin's Go tools. Hooks compile once
-  into a local cache outside the installed plugin, and later calls reuse that
-  executable. Missing Go or an unusable cache produces an explicit hook error.
+- Optional repository helpers in `extras/scripts` require Go 1.25 or newer.
+  The installed plugin contains no executable code.
+  Loading skill guidance alone does not require Go.
 
 ## Claude Code
 
@@ -57,16 +57,9 @@ codex plugin marketplace list --json
 codex plugin list --json
 ```
 
-Start a fresh session, then review and trust the plugin hooks when Codex asks.
-Codex skips every plugin hook until it is trusted, and records trust against
-the hook's current hash, so a release that changes the hooks asks again. Once
-trusted, the startup hook applies the shared direct, concise style as developer
-context without editing user config. Set `MEGAPOWERS_OUTPUT_STYLE=off` in the
-environment before launching Codex to omit the startup style while keeping the
-destructive-command guard and the skill reminders enabled.
-
-Ask Codex to load `humanizing-prose` and summarize its preservation rules. This
-checks skill discovery separately from the startup style.
+Start a fresh session. Ask Codex to load `humanizing-prose` and summarize its
+preservation rules. This checks skill discovery. The plugin does not apply a
+session-wide Codex output style.
 
 ## Developing this repository
 
@@ -89,8 +82,7 @@ codex plugin add megapowers@megapowers
 ```
 
 The local marketplace is `.agents/plugins/marketplace.json`. The new home
-needs its own `codex login`. Trust the hooks when Codex asks, and confirm with
-`hooks/list`.
+needs its own `codex login`.
 
 ## Directory edition
 
@@ -106,24 +98,18 @@ The command writes `megapowers-<version>.zip` and prints its size and sha256.
 The same input gives the same bytes. `--check` builds and validates without
 keeping the output, and `scripts/validate.sh` runs it.
 
-The edition ships the skills, an icon, and a `.codex-plugin/plugin.json` for
-the directory listing. It does not ship:
-
-- the destructive-command guard and the completion and effect gates (hooks);
-- the startup skill reminder and the Codex startup style (hooks);
-- the Claude Code output style;
-- the doctor runner. `megapowers-doctor` reports the directory edition and
-  checks the skill and version only.
+The edition ships guidance-only skills, an icon, and a
+`.codex-plugin/plugin.json` for the directory listing. It omits the Claude Code
+output style and manifest, the source README, and `skills/catalog.json`.
 
 Each packaged `SKILL.md` ends with one line that ranks explicit user
-instructions above skill guidance. Skills that run bundled Go scripts need a
-local shell and Go; without them each skill states a manual fallback or
-stops without sending anything. The skill `upgrading-megapowers` drives the
+instructions above skill guidance. Skills use normal agent tools for their
+manual procedures. Optional helpers live in the repository's extras folder.
+The skill `upgrading-megapowers` drives the
 Claude Code and Codex plugin CLIs and does not apply to directory installs.
 
-Install the full plugin from the self-hosted marketplace to get the guard,
-the gates, and the style. Submission to the directory is a manual step in
-the OpenAI portal.
+Install from the self-hosted marketplace for Claude Code's optional native
+output style. Submission to the directory is a manual step in the OpenAI portal.
 
 ## Pin a release
 
@@ -166,6 +152,8 @@ Two rules from it apply to any manual update:
 - After a marketplace refresh, require the reported `HEAD` to equal the
   approved release commit before registering the new snapshot.
 
+After upgrading from v0.45.x and closing old sessions, the compiled runner cache under `<user cache dir>/megapowers-hooks` and Codex hook-trust entries are unused and safe to delete.
+
 Restart before expecting new guidance. Do not delete an older cache while a
 live session may still use it. A pinned local checkout changes only when you
 deliberately replace or update that checkout.
@@ -205,8 +193,8 @@ measure agent behavior. Optional behavioral studies are described in
 ## Diagnose an install
 
 Ask for `megapowers-doctor` (`/megapowers:megapowers-doctor` on Claude Code, or
-the skill name after `$` as the Codex skills list shows it). It runs the
-plugin's `doctor` command and reports the plugin version and root, the
-harness, the Go toolchain version against the cached runner, the Claude
-`outputStyle` value in effect, whether the hooks are registered, and how to
-check your transcripts for skill loads.
+the skill name after `$` as the Codex skills list shows it). Follow its manual
+checks using normal file and session tools. Inspect the plugin version, root,
+harness, discovery, marketplace copy, applicable style, recent skill loads and
+optional registry. Report summaries and unchecked inputs. Optional repository
+helpers have separate [SECURITY.md](../SECURITY.md) read and execution boundaries.

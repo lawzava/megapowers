@@ -19,7 +19,7 @@ bash evals/run-all.sh --json results.jsonl
 go run evals/score.go --strict results.jsonl
 ```
 
-These commands validate local schemas, runners, hooks, and tools. Strict
+These commands validate local schemas, runners, and tools. Strict
 scoring rejects malformed, duplicated, incomparable, incomplete,
 indeterminate, timed-out, or harness-error data. Passing them proves repository
 mechanics only.

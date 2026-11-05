@@ -1,131 +1,35 @@
 # Independent review
 
-Independent review sends a disclosed package of source to a reviewer from
-another vendor when tests and measurements leave residual risk in security,
-authentication, billing, concurrency, data integrity, and similar work. It
-supplements those tests; it does not replace them.
+Get an independent opinion from another model when executable checks leave
+material uncertainty in security, authentication, billing, concurrency, data
+integrity, or similar work. The skill supplies guidance only, with no provider
+launcher or credential handling.
 
-The tool is vendor-neutral. It runs whatever reviewer command the operator
-names, verifies that binary, and ties approval to the exact package, binary,
-and command. megapowers ships no provider list, model choice, or credential
-handling; those live in the operator's registry and instructions.
+Follow the user's global CLAUDE.md or AGENTS.md for the definition of
+independence and reviewer choice. Otherwise choose an available native
+subagent with a different model or the harness's native
+review. Prefer cross-vendor review when available; it is optional unless the
+user requires it. Report an unavailable required reviewer without silently
+replacing it. No reviewer binding ships with the plugin.
 
-## Requirements
+Give the reviewer artifact identity, requirements, acceptance boundary, scope,
+and check evidence. Keep access read-only. Inspect the brief and accessible
+files for secrets and disclosure scope before sending anything off-machine,
+including through native review. Follow existing authorization and permission
+rules. The skill provides no automated secret scan or sandbox.
 
-- Run inside the Git repository that owns the artifact.
-- Go 1.25 or newer available for `go run` and rooted receipt writes.
-- A reviewer CLI installed and authenticated, from a vendor family different
-  from the artifact author's.
-- Approval for the disclosed package. A reviewer bound to `independent-review`
-  in the capability registry, or named in user or repository instructions, is
-  standing approval, so the agent dispatches without asking. Any other
-  destination needs human approval.
+Require `verdict`, `scope.creep`, `scope.shrink`, and `findings`. Each finding
+names severity (blocker, major, or nit), file, line, claim, and evidence. Require
+explicit empty lists and verification limits. The lead computes fail when any
+blocker, major, creep, or shrink exists, regardless of the stated verdict.
+Nits never fail. Missing fields or results are gaps, never passes. Verify each
+finding, record disproof for false positives, fix real failures, and rerun the
+acceptance oracle.
 
-Resolve the tool from the installed skill, not from the project being reviewed:
-
-```bash
-review_tool=/absolute/path/to/installed/independent-review/scripts/megapowers-review.go
-```
-
-## Name the reviewer
-
-`--provider` is an opaque family label such as `anthropic`, `openai`, `google`,
-or `zai`. `--provider-command` is the reviewer command as one quoted string; it
-is split into arguments without a shell. `{prompt_file}` expands to a private
-prompt file and `{scratch_dir}` to the private scratch directory; without
-`{prompt_file}` the prompt arrives on stdin. Reviewer CLIs authenticate through their own
-sign-in; the tool forwards no credential variables. It passes the reviewer process only `PATH` and `HOME`; there
-is no flag to add variables. Example shapes, to be replaced by whatever the
-operator runs:
-
-```bash
-reviewer_cmd='claude -p --safe-mode --no-session-persistence --permission-mode plan --tools ""'
-reviewer_cmd='codex exec --ephemeral --ignore-user-config --skip-git-repo-check -C {scratch_dir} --sandbox read-only -'
-reviewer_cmd='gemini -p "Review the stdin package against its intent." --approval-mode plan'
-reviewer_cmd='<reviewer-cli> --model <model-id> --prompt-file {prompt_file}'
-```
-
-## Inspect first
-
-State what the change must do and must not break. The reviewer judges the
-change against this intent instead of disputing it:
-
-```bash
-intent='<intended behavior and acceptance boundary>'
-```
-
-Review one repository file, or a `.diff` or `.patch` file under `$TMPDIR` (the
-command still runs inside a Git repository):
-
-```bash
-go run "$review_tool" inspect --file path/to/file --intent "$intent" \
-  --provider <reviewer-family> --provider-command "$reviewer_cmd"
-```
-
-Or review an immutable commit range:
-
-```bash
-go run "$review_tool" inspect --base <base-revision> --head <head-revision> \
-  --intent "$intent" --provider <reviewer-family> --provider-command "$reviewer_cmd"
-```
-
-The disclosure shows source identity, per-chunk paths, bytes, and package
-hashes, the intent, the resolved binary path and hash, the command, and an
-`approval_token`. Stop if a path, byte count, intent, provider, binary, or
-command is not the one intended. Copy the token only after reviewing those fields:
-
-```bash
-approval_token='<approval_token from the inspected JSON>'
-```
-
-## Approve and dispatch
-
-```bash
-go run "$review_tool" review --file path/to/file --intent "$intent" \
-  --provider <reviewer-family> --provider-command "$reviewer_cmd" \
-  --author <author-family> --approve-external "$approval_token"
-```
-
-For a pre-approved reviewer bound to `independent-review` in the capability
-registry or named in user or repository instructions, `--approve-external
-configured` runs the disclosure check and dispatches in one step while still
-enforcing the secret scan, path checks, and binary verification.
-
-The tool refuses matching author and reviewer labels. It also refuses
-project-selected binaries, shell metacharacters in the command, symlinks,
-submodules, binary data, oversized packages, secret-like paths, and common
-secret patterns. A secret rejection names the file and line, never the value.
-Commit ranges use immutable revisions and exclude unrelated
-worktree changes. Reviewer processes receive only `PATH` and `HOME`.
-
-Review recaptures the source and resolves the reviewer again before dispatch.
-Any change to the package, intent, binary, or command invalidates an
-`inspect` token and requires a new inspection. Native binaries are copied into a private
-read-only execution path; script launchers outside the repository (such as
-Node/npm CLI shims) run from their installed path so relative runtime imports
-resolve, and their SHA-256 is verified before and after execution.
-
-## Receipts and transcripts
-
-Receipts are private advisory records. They bind the source identity, package
-hash, provider label, command, author, and command outcome. A range above one
-package splits into up to 16 directory-grouped chunks under one approval
-token; an index `receipt.json` lists one `chunk-NN/receipt.json` per dispatched
-package. When `--preflight` is passed, a liveness probe fails fast before any
-artifact bytes leave the machine if the reviewer reports a login or usage limit
-or stalls past `--preflight-timeout`. Receipts are not tamper-proof attestations
-and do not gate a release by themselves.
-
-Raw prompts and reviewer output are not retained by default. Use
-`--retain-transcript` only after deciding that storing the disclosed content and
-review response is acceptable. An explicit `--out` must already exist as an
-absolute, canonical directory outside the repository and may not contain it.
-Writes are anchored to an opened directory handle. Otherwise the default stays
-under private Git metadata.
-
-## Interpret the result
-
-A model verdict is a claim. The lead evaluates each finding, makes any change as
-the single writer, and reruns the artifact's acceptance tests. If the reviewer
-is unavailable or the disclosure cannot be approved, report that independent
-review did not run.
+Set the round cap before dispatch. Use a fresh reviewer for each correction
+round without resetting the cap. Supply the original brief and later
+directives, then review only fixes since the prior reviewed artifact,
+affected boundaries, and new evidence. Preserve artifact identities and
+relevant uncommitted content so the delta is reliable. Inspect each correction
+brief for secrets and disclosure scope. Exhaustion leaves unresolved findings
+open for the user. Join every review before completion.

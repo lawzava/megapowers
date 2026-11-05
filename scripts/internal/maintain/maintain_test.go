@@ -89,47 +89,6 @@ func TestResultsRequirePassAndRejectFailureOrStrictSkip(t *testing.T) {
 	}
 }
 
-func TestInstalledHookSmokeRunsColdWarmAndDenies(t *testing.T) {
-	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
-	if err != nil {
-		t.Fatal(err)
-	}
-	installed := filepath.Join(t.TempDir(), "plugin")
-	hooks := filepath.Join(installed, "hooks")
-	if err := os.MkdirAll(hooks, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"run-hook.cmd", "hook_runner.go", "deny_destructive.go", "output_style.go", "gate_context.go", "doctor.go"} {
-		data, err := os.ReadFile(filepath.Join(repo, "plugins", "megapowers", "hooks", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		mode := os.FileMode(0o644)
-		if name == "run-hook.cmd" {
-			mode = 0o755
-		}
-		if err := os.WriteFile(filepath.Join(hooks, name), data, mode); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := verifyInstalledHookRuntime(context.Background(), t.TempDir(), installed); err == nil || !strings.Contains(err.Error(), "installed Codex session-start") {
-		t.Fatalf("missing installed style must fail the runtime probe: %v", err)
-	}
-	style, err := os.ReadFile(filepath.Join(repo, "plugins", "megapowers", "output-styles", "megapowers.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(filepath.Join(installed, "output-styles"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(installed, "output-styles", "megapowers.md"), style, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := verifyInstalledHookRuntime(context.Background(), t.TempDir(), installed); err != nil {
-		t.Fatalf("installed hook runtime: %v", err)
-	}
-}
-
 func TestMemorySkillPolicySelectsInstalledExplicitOnlyEntry(t *testing.T) {
 	installed := filepath.Join(t.TempDir(), "plugin")
 	inside := filepath.Join(installed, "skills", "grill-me", "SKILL.md")
@@ -237,43 +196,6 @@ func TestDeclaredExplicitOnlyPolicy(t *testing.T) {
 		os.WriteFile(path, []byte(tt.body), 0o644)
 		if err := verifyDeclaredExplicitOnly(path); (err == nil) != tt.ok {
 			t.Errorf("verifyDeclaredExplicitOnly(%q) error=%v, want ok=%v", tt.body, err, tt.ok)
-		}
-	}
-}
-
-func TestCachedRunnerExecutableCheckIsPlatformAware(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name string, mode os.FileMode) os.FileInfo {
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte("x"), mode); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(path, mode); err != nil {
-			t.Fatal(err)
-		}
-		info, err := os.Lstat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return info
-	}
-	windowsExe := write("megapowers-hook-x-windows-AMD64-go1.25.exe", 0o644)
-	windowsBare := write("megapowers-hook-x-windows-AMD64-go1.25", 0o644)
-	unixPlain := write("megapowers-hook-x-Linux", 0o644)
-	unixExec := write("megapowers-hook-x-Linux-exec", 0o755)
-	for _, tc := range []struct {
-		name string
-		info os.FileInfo
-		goos string
-		want bool
-	}{
-		{"windows exe without POSIX bits", windowsExe, "windows", true},
-		{"windows file without .exe", windowsBare, "windows", false},
-		{"unix file without execute bit", unixPlain, "linux", false},
-		{"unix executable", unixExec, "linux", true},
-	} {
-		if got := isExecutableRunner(tc.info, tc.goos); got != tc.want {
-			t.Errorf("%s: isExecutableRunner = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }
