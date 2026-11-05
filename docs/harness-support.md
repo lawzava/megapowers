@@ -13,7 +13,7 @@ environments.
 | Plugin manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
 | Task skills | Supported | Supported |
 | Communication style | Selectable plugin output style (`megapowers:Megapowers`) | No session-wide plugin style; `humanizing-prose` available on demand |
-| Self-diagnosis | `megapowers-doctor` skill over the Go `doctor` command | Same |
+| Self-diagnosis | `megapowers-doctor` skill over the standalone Go script | Same |
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |

@@ -5,6 +5,12 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.46.0 - 2026-11-05
+
+### Changed
+
+- Upgrading from 0.45.x leaves a compiled hook-runner cache (`megapowers-hooks` in the user cache directory) and Codex hook-trust entries for megapowers; both are safe to delete.
+
 ## 0.45.2 - 2026-11-05
 
 ### Changed
