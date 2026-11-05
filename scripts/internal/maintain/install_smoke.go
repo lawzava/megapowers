@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -474,162 +472,7 @@ func verifyInstalledBytes(ctx context.Context, repo, harness, home, installedPat
 		recorder.note(harness, "FAIL", "cached plugin tree differs in paths, modes, or bytes")
 		return false
 	}
-	if !hookCommandsUseWrapper(filepath.Join(absoluteInstall, "hooks/hooks.json")) {
-		recorder.note(harness, "FAIL", "cached hook commands do not use the shared wrapper")
-		return false
-	}
-	if err := verifyInstalledHookRuntime(ctx, absoluteHome, absoluteInstall); err != nil {
-		recorder.note(harness, "FAIL", "cached hook runtime: "+err.Error())
-		return false
-	}
-	recorder.note(harness, "PASS", fmt.Sprintf("registered megapowers %s with exact cached tree and executable hooks", version))
-	return true
-}
-
-func verifyInstalledHookRuntime(parent context.Context, home, installedRoot string) error {
-	launcher := filepath.Join(installedRoot, "hooks", "run-hook.cmd")
-	cacheBase := filepath.Join(home, "hook-cache")
-	goCache := filepath.Join(home, "go-cache")
-	for _, dir := range []string{cacheBase, goCache} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return errors.New("cannot create private hook cache")
-		}
-	}
-	env := mergedEnv([]string{
-		"HOME=" + home,
-		"MEGAPOWERS_HOOK_CACHE=" + cacheBase,
-		"GOCACHE=" + goCache,
-		"MEGAPOWERS_OUTPUT_STYLE=off",
-	})
-	run := func(hook, input string, overrides ...string) ([]byte, []byte, error) {
-		ctx, cancel := deadline(parent, 2*time.Minute)
-		defer cancel()
-		var name string
-		var args []string
-		if runtime.GOOS == "windows" {
-			name, args = "cmd.exe", []string{"/c", launcher, hook}
-		} else {
-			name, args = "bash", []string{launcher, hook}
-		}
-		cmd := exec.CommandContext(ctx, name, args...)
-		cmd.Dir = installedRoot
-		cmd.Env = append(append([]string(nil), env...), overrides...)
-		cmd.Stdin = strings.NewReader(input)
-		stdout := cappedBuffer{limit: 1 << 20}
-		stderr := cappedBuffer{limit: 1 << 20}
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		cmd.WaitDelay = 5 * time.Second
-		err := cmd.Run()
-		if ctx.Err() != nil {
-			return nil, nil, errors.New("hook execution timed out")
-		}
-		if stdout.overflow || stderr.overflow {
-			return nil, nil, errors.New("hook output exceeded 1 MiB")
-		}
-		return stdout.Bytes(), stderr.Bytes(), err
-	}
-
-	safe := `{"tool_name":"Bash","tool_input":{"command":"git status --short"}}`
-	stdout, stderr, err := run("deny-destructive", safe)
-	if err != nil || len(stdout) != 0 || len(stderr) != 0 {
-		return errors.New("safe command did not produce silent success")
-	}
-	runners, err := filepath.Glob(filepath.Join(cacheBase, "megapowers-hooks", "megapowers-hook-*"))
-	if err != nil || len(runners) != 1 {
-		return errors.New("cold hook call did not create exactly one cached runner")
-	}
-	info, err := os.Lstat(runners[0])
-	if err != nil || !isExecutableRunner(info, runtime.GOOS) {
-		return errors.New("cached hook runner is not a regular executable")
-	}
-	firstBytes, err := os.ReadFile(runners[0])
-	if err != nil {
-		return errors.New("cannot read cached hook runner")
-	}
-	firstHash := sha256.Sum256(firstBytes)
-	firstModTime := info.ModTime()
-
-	destructive := `{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}`
-	stdout, stderr, err = run("deny-destructive", destructive)
-	if err != nil || len(stderr) != 0 {
-		return errors.New("destructive command probe failed")
-	}
-	var decision struct {
-		HookSpecificOutput struct {
-			HookEventName            string `json:"hookEventName"`
-			PermissionDecision       string `json:"permissionDecision"`
-			PermissionDecisionReason string `json:"permissionDecisionReason"`
-		} `json:"hookSpecificOutput"`
-	}
-	if json.Unmarshal(stdout, &decision) != nil ||
-		decision.HookSpecificOutput.HookEventName != "PreToolUse" ||
-		decision.HookSpecificOutput.PermissionDecision != "deny" ||
-		decision.HookSpecificOutput.PermissionDecisionReason == "" {
-		return errors.New("destructive command probe was not denied")
-	}
-	stdout, stderr, err = run("output-style", `{}`)
-	if err != nil || len(stdout) != 0 || len(stderr) != 0 {
-		return errors.New("output-style opt-out did not produce silent success")
-	}
-	stdout, stderr, err = run("session-start", `{"hook_event_name":"SessionStart","source":"startup"}`)
-	if err != nil || len(stderr) != 0 || !bytes.Contains(stdout, []byte("A skill counts as used only when its file was loaded.")) || bytes.Contains(stdout, []byte("ASD-STE100-inspired")) {
-		return errors.New("session-start must retain workflow guidance with style disabled")
-	}
-	stdout, stderr, err = run("session-start", `{}`, "MEGAPOWERS_HARNESS=codex", "MEGAPOWERS_OUTPUT_STYLE=")
-	if err != nil || len(stderr) != 0 || bytes.Count(stdout, []byte("A skill counts as used only when its file was loaded.")) != 1 || !bytes.Contains(stdout, []byte("ASD-STE100-inspired")) {
-		return errors.New("installed Codex session-start must load style and one workflow reminder")
-	}
-	info, err = os.Lstat(runners[0])
-	if err != nil || !info.ModTime().Equal(firstModTime) {
-		return errors.New("warm hook call rebuilt the cached runner")
-	}
-	warmBytes, err := os.ReadFile(runners[0])
-	if err != nil || sha256.Sum256(warmBytes) != firstHash {
-		return errors.New("warm hook call changed cached runner bytes")
-	}
-	return nil
-}
-
-func hookCommandsUseWrapper(path string) bool {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	var value any
-	if json.Unmarshal(data, &value) != nil {
-		return false
-	}
-	var commands []string
-	var walk func(any)
-	walk = func(v any) {
-		switch typed := v.(type) {
-		case map[string]any:
-			for key, child := range typed {
-				if key == "command" {
-					if command, ok := child.(string); ok {
-						commands = append(commands, command)
-					}
-				}
-				walk(child)
-			}
-		case []any:
-			for _, child := range typed {
-				walk(child)
-			}
-		}
-	}
-	walk(value)
-	// The cached tree is byte-compared with the source first, so this check
-	// only proves every hook goes through the wrapper, not how many exist.
-	if len(commands) == 0 {
-		return false
-	}
-	for _, cmd := range commands {
-		if !strings.HasPrefix(cmd, `"${CLAUDE_PLUGIN_ROOT}"/hooks/run-hook.cmd `) {
-			return false
-		}
-	}
+	recorder.note(harness, "PASS", fmt.Sprintf("registered megapowers %s with exact cached tree", version))
 	return true
 }
 
@@ -837,17 +680,4 @@ func runCodexInstallSmoke(ctx context.Context, root string, args []string, stdou
 		return 1
 	}
 	return 0
-}
-
-// isExecutableRunner accepts a regular, non-symlink runner. Windows reports no
-// POSIX execute bits (regular files read as 0666 or 0444), so there the .exe
-// name the launcher builds is the executable signal.
-func isExecutableRunner(info os.FileInfo, goos string) bool {
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return false
-	}
-	if goos == "windows" {
-		return strings.EqualFold(filepath.Ext(info.Name()), ".exe")
-	}
-	return info.Mode().Perm()&0o111 != 0
 }

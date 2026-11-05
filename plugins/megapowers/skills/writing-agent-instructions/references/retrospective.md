@@ -14,7 +14,8 @@ When the user asks about a period or a pattern rather than one session, run
 corrected the agent, grouped into candidate classes across sessions. Read each
 example before counting it, and cite sessions by file and time. For one
 project, also read its scorecard from the [learning loop](learning-loop.md):
-gate blocks, sleep calls, and corrections that followed a skill load show
+historical gate blocks from versions before v0.46.0, sleep calls, and
+corrections that followed a skill load show
 where time went even when the user never typed a correction.
 
 Look for candidates in these categories:

@@ -1,7 +1,7 @@
 # Security
 
-megapowers is not a security boundary. It installs model instructions, Go
-hooks, and an optional external-review tool into the agent's permission context.
+megapowers is not a security boundary. It installs model instructions, bundled Go
+tools, and an optional external-review tool into the agent's permission context.
 Review the exact revision before installing it.
 
 ## Installed capabilities
@@ -9,14 +9,32 @@ Review the exact revision before installing it.
 | Component | Reads | Writes | Network |
 |---|---|---|---|
 | Skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
-| Session and subagent start hooks | Bundled static style and reminder text | Developer context on standard output | None |
-| Destructive-command hook | Proposed shell command from hook input | Hook decision, or non-blocking reminder context, on standard output | None |
-| Doctor command | Plugin manifest, hook registration, Go version, the Claude `outputStyle` setting value | Standard output only | None |
+| Doctor script | Plugin manifests and catalog, local marketplace manifests, Claude settings, optional agent registry, workspace Git root, local Claude and Codex session records | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
 | Memory-audit tool | One explicit audit manifest | Standard output only | None |
 | Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | One operator-named reviewer command after token approval |
 
 There is no daemon, model router, formatter, status line, or background
 scheduler.
+
+The doctor reads `~/.claude/settings.json` and project `.claude/settings.json`
+and `.claude/settings.local.json` (parsing only `outputStyle`), the optional
+agent registry to check its expiry, and local marketplace manifests to compare
+versions. With a skill catalog, it reads recent local Claude transcripts in
+the workspace's project directory, including subagents. Under
+`~/.codex/sessions`, it scans rollout headers from today and the previous 14
+date directories, examining at most 2,000 headers and collecting at most 500
+transcripts across both harnesses. Environment overrides can select other
+local settings and session directories. It counts sessions modified in the
+last seven days that contain a successful skill-body load and prints counts,
+paths, versions, style values, and warnings; it does not print transcript
+bodies. The directory edition omits the catalog, so it skips load counting. It
+runs `git rev-parse --show-toplevel` locally to resolve the workspace root.
+
+The script does not edit settings or transcripts and has no network client.
+Running it with `go run` uses Go's build caches; with `GOTOOLCHAIN=auto`, Go
+may download a newer toolchain when selected by the active module or
+workspace. Use `GOTOOLCHAIN=local` with an installed suitable Go version when
+a local toolchain is required.
 
 The memory-audit tool checks provenance, dates, retention decisions, and
 common credential patterns. It rejects symlink inputs and never edits provider
@@ -26,94 +44,11 @@ the source and one exact approval. After approval, the active agent applies
 that patch through the harness memory boundary and reads every target back to
 verify it.
 
-## Destructive-command guard
+## Enforcement boundary
 
-The hook catches a narrow set of obvious catastrophic commands. Its
-command-string parsing aims at precision, not evasion resistance. The parser
-looks through compound shapes an agent writes by accident, such as a subshell,
-a brace group, an `if` or function body, and wrappers named by absolute path
-(`/usr/bin/env rm`, `/usr/bin/sudo rm`). It does not deny a read-only `wipefs`
-(no `-a`, or `-n`/`--no-act`), a `blkdiscard --dry-run`, or a `find` under
-home that carries a name or path filter before `-delete`.
-
-Git commands that discard uncommitted, stashed, or unmerged work are not
-denied. The first run of each distinct such command in a session stops once
-with a reminder to check `git status` and `git stash list`; the identical retry
-runs. Without a session ID or a writable hook cache, the hook only adds that
-reminder. Deleting a branch that is already an ancestor of `HEAD` does not
-stop; the hook checks this with a local `git merge-base --is-ancestor` call
-bounded to two seconds, and keeps the stop on any error.
-
-A second matcher sends MCP tool calls to the same runner. It reads only the
-tool name: a name whose action word creates, updates, deletes, sends, or posts
-gets the once-per-session `safe-effects` stop, and other MCP calls pass
-silently. Tool arguments are not inspected, so this is a reminder gate, not a
-policy on what MCP servers may do.
-
-The HTTP write check reads command words only. It does not see a body piped
-into HTTPie, a target URL held only in a variable, or `wrangler secret put`.
-
-One matcher covers the Bash and PowerShell tools, and both receive the same
-high-confidence denials. PowerShell hands over the
-same `tool_input.command` field, so `Remove-Item -Recurse /` and the cmd.exe
-`rd /s /q C:\` classify under the same rules as `rm -rf /`.
-
-Claude Code applies a matching PreToolUse `deny` decision before the call runs,
-so denials survive `bypassPermissions` and `--dangerously-skip-permissions`.
-Bypass mode removes permission prompts, not hook evaluation. PreToolUse fires
-on every tool call, and a `deny` cancels the call, including in modes that skip
-other prompts.
-
-- Claude Code and Codex receive the same high-confidence denials.
-- Reversible risk stays with each harness's native permission system.
-- A hook evaluation error is visible and nonzero. Do not treat a broken hook as
-  protection.
-
-### Allowed by design
-
-The guard is a tripwire for plausible accidents, not an obfuscation filter.
-Everything below is deliberate.
-
-Allowed (reversible, scoped, or owned by the harness permission system):
-
-- Scoped deletes and cleanup: `rm -rf ./dist`, `/tmp/app/*`,
-  `/etc/nginx/conf.d/*`, `~/.cache/foo`, `~alice/Code/build`, and filtered
-  finds such as `find ~ -name '*.pyc' -delete`.
-- Read-only disk inspection: `wipefs /dev/sda`, `wipefs -n /dev/sda`,
-  `blkdiscard --dry-run /dev/sda`.
-- Reversible version-control operations (`git reset --hard`, `git clean -fdx`,
-  `git push --force`), cloud and cluster deletions (`terraform destroy`,
-  `kubectl delete pods --all`, `aws s3 rb`), and container cleanup
-  (`docker system prune`).
-- Device-gated uses against plain files (`mkfs.ext4 disk.img`,
-  `shred secret.txt`, `truncate -s 0 disk.img`), reads from devices, and
-  writes to character devices (`dd of=/dev/null`, `cp /dev/sda ./backup.img`).
-- Account and access-control changes (`userdel`, `useradd -G sudo`,
-  `setfacl`, `visudo`), locally or over ssh, and other remote effects.
-
-Known bypasses, left uncovered on purpose because more regex would not close
-them:
-
-- Obfuscated spellings: encoded, aliased, or escaped commands, command
-  substitution, heredoc-fed shells, double-nested `bash -c` with escaped
-  inner quotes.
-- Variable indirection: the guard never expands variables, so
-  `DEV=/dev/sda; dd of=$DEV` is invisible to it.
-- Wrapper option-values it does not model, such as long-form options with a
-  separate value (`xargs --replace X rm -rf /home`), and payloads assembled at
-  runtime.
-- Windows paths below a drive root: `Remove-Item -Recurse C:\Users` and named
-  Windows system directories stay unclassified. Only a recursive flag plus a
-  POSIX root, home, or system target, or a bare drive root (`C:\`), denies.
-- The brace-default spelling of a home parent (`rm -rf "${HOME:-/}/.."`) and
-  a named path under a home parent (`rm -rf $HOME/../foo`).
-- Payloads handed to non-shell interpreters (`find . -exec python3 -c ...`)
-  and destroyers the find tier does not name.
-
-The guard can miss obfuscated, aliased, encoded, generated, or indirect
-commands. It can also reject harmless text that resembles a destructive
-command. Use the harness sandbox, OS permissions, least-privilege credentials,
-backups, and explicit review as the real controls.
+The plugin supplies no destructive-command guard or command gates. Use the
+harness sandbox, OS permissions, least-privilege credentials, backups, and
+explicit review as the controls.
 
 `safe-effects` covers deploys, messages, charges, migrations, destructive
 queries, DNS changes, and other changes outside the machine. It is model
@@ -157,7 +92,7 @@ for the exact workflow.
 
 ## Prompt injection and supply chain
 
-Every `SKILL.md`, reference, hook, and repository instruction is an instruction
+Every `SKILL.md`, reference, and repository instruction is an instruction
 channel. A malicious repository or dependency can place text in the agent's
 context. Treat installed plugin revisions, reviewed repositories, browser
 content, issue text, and generated artifacts as untrusted input.
@@ -170,7 +105,7 @@ it does not prove an instruction safe.
 
 Before installation:
 
-1. Inspect both plugin manifests and `plugins/megapowers/hooks/`.
+1. Inspect both plugin manifests and bundled scripts.
 2. Read every skill likely to run in your environment.
 3. Run `scripts/security-lint.sh` and `scripts/validate.sh`.
 4. Verify the selected Git revision and use a pinned checkout when update
@@ -196,10 +131,9 @@ manifests, or review receipts.
 
 ## Report a vulnerability
 
-Use GitHub Private Vulnerability Reporting for a command that can bypass a
-high-confidence denial, a secret disclosure, unsafe package capture, or another
-finding with real blast radius. A public issue is appropriate for a harmless
-false positive or documentation defect.
+Use GitHub Private Vulnerability Reporting for a secret disclosure, unsafe
+package capture, or another finding with real blast radius. A public issue is
+appropriate for a documentation defect.
 
 Include the exact revision, Claude Code or Codex version, input, expected
 decision, actual decision, and the smallest safe reproduction.

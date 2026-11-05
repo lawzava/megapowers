@@ -569,24 +569,6 @@ func TestDirectoryValidateAcceptsReferenceShapes(t *testing.T) {
 	}
 }
 
-func TestDirectoryValidateNotesRunHookMentions(t *testing.T) {
-	pkg := fixturePackage(t)
-	setFile(pkg, "skills/beta/SKILL.md", "---\nname: beta\ndescription: d\n---\n```sh\ntest -f \"<plugin root>/hooks/run-hook.cmd\"\n```\n")
-	report := validateDirectoryPackage(pkg)
-	if len(report.Errors) != 0 {
-		t.Fatalf("run-hook placeholder must not be an error: %v", report.Errors)
-	}
-	var hook []dirIssue
-	for _, n := range report.Notes {
-		if n.Code == "reference_run_hook" {
-			hook = append(hook, n)
-		}
-	}
-	if len(hook) != 1 || hook[0].Path != "skills/beta/SKILL.md" || !strings.Contains(hook[0].Message, "hooks/run-hook.cmd") {
-		t.Fatalf("notes = %v", report.Notes)
-	}
-}
-
 func TestDirectoryValidateNotesMetadataIgnored(t *testing.T) {
 	report := validateDirectoryPackage(fixturePackage(t))
 	var found bool

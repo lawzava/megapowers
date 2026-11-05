@@ -75,11 +75,11 @@ var requiredSkillFacts = map[string][]string{
 		"user action",
 	},
 	"megapowers-doctor": {
-		"run-hook.cmd",
+		"scripts/doctor.go",
 		"doctor",
 		"WARN",
 		"references/fixes.md",
-		"skill loads",
+		"marketplace",
 	},
 	"orchestrating": {
 		"native agents are the default",

@@ -47,7 +47,7 @@ condition, or measurement.
   optionally `disable-model-invocation`. Codex honors `name`, `description`,
   and `metadata.short-description`; explicit-only Codex policy belongs in
   `agents/openai.yaml`. Quote YAML values containing colons. Components remain at
-  plugin root under `skills/` and `hooks/`.
+  plugin root under `skills/` and `output-styles/`.
 - Keep judgment in skills and deterministic policy in tests or tools. Required
   references are linked directly; optional details load only when relevant.
 - Do not commit generated agent workspaces or planning artifacts under
@@ -57,7 +57,7 @@ condition, or measurement.
 ## Tooling and Git
 
 - New repository glue is Go. Application code follows its project language;
-  harness-required hook entrypoints may remain shell.
+  shell entrypoints launch Go commands.
 - Commit only when the user directs. Use focused conventional commits, stage
   explicit paths, never bypass hooks or ignored-path policy, and never rewrite
   shared history without explicit approval.
@@ -66,15 +66,9 @@ condition, or measurement.
 
 ## Verification
 
-After editing a non-test Go file in `plugins/megapowers/hooks/`, run
-`go run ./scripts/cmd/maintainer hook-hash --write` to refresh the launcher
-cache key instead of editing `run-hook.cmd` by hand.
-
-Hook tests live in `tests/_hooks/`, not in the plugin folder. Run them with
-`go run ./scripts/cmd/maintainer test-hooks [go test flags]`; plain
-`go test ./...` skips them and `scripts/validate.sh` runs them. Native eval
-cases live in `evals/native/`. Never add a `*_test.go`, `testdata/`, or `evals/`
-path under `plugins/megapowers/`.
+Native eval cases live in `evals/native/`. Keep tests outside the shipped
+plugin folder: never add a `*_test.go`, `testdata/`, or `evals/` path under
+`plugins/megapowers/`.
 
 Run `scripts/validate.sh` after meaningful changes. When installed, also run:
 

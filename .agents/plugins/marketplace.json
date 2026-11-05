@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "megapowers",
-      "description": "Task-level workflow skills, a concise default output style, and a high-confidence destructive-command guard.",
+      "description": "Task-level workflow skills, an optional Claude Code output style, and installation diagnostics.",
       "source": {
         "source": "local",
         "path": "./plugins/megapowers"

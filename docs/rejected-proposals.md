@@ -4,6 +4,10 @@ Ideas reviewed for Megapowers and not adopted, with the reason, so later
 reviews do not reopen them without new evidence. Add an entry when a proposal
 is declined; remove one only when new evidence reverses it.
 
+2026-11-05: v0.46.0 removed all plugin hooks. References below to completion
+and effect gates describe the implementation when those proposals were
+decided; those gates no longer ship.
+
 | Proposal | Source | Decided | Reason |
 |---|---|---|---|
 | Anti-rationalization tables and red-flag sections in each skill | addyosmani/agent-skills skill anatomy | 2026-10-21 | Loaded skill text already binds; the 425-word body cap keeps activation cheap, and upstream reports no measured gain from the longer form. |
