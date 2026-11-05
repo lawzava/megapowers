@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "megapowers",
     "shortDescription": "Native-first workflow skills and self-diagnosis.",
-    "longDescription": "Task-level skills for orchestration, structured interviews, evidence research, design, test-first implementation, debugging, verification, real-world effects, autonomous work, independent cross-provider review, memory hygiene, MCP setup, prose, instruction authoring, safe upgrades, and self-diagnosis, with an optional concise output style on Claude Code. Uses native agents, goals, and permissions.",
+    "longDescription": "Task-level skills for orchestration, structured interviews, evidence research, design, test-first implementation, debugging, verification, real-world effects, autonomous work, independent cross-provider review, memory hygiene, prose, instruction authoring, safe upgrades, and self-diagnosis, with an optional concise output style on Claude Code. Uses native agents, goals, and permissions.",
     "developerName": "lawzava",
     "category": "Developer Tools",
     "capabilities": [

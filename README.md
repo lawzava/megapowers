@@ -152,7 +152,6 @@ only when your request matches. The *experimental* labels come from
 |---|---|
 | `megapowers-doctor` *(experimental)* | A skill did not fire, the Claude Code style looks off, or the install needs checking |
 | `upgrading-megapowers` | You want to update, reinstall, or repair the plugin |
-| `mcp-setup` *(experimental)* | An MCP server needs installing or fixing, or its tools are missing |
 
 [docs/orchestration.md](./docs/orchestration.md) explains which kinds of task
 go to which skill.
@@ -251,7 +250,7 @@ longer shipped and do not describe this version.
 <details>
 <summary>Exactly what installs</summary>
 
-- 16 skills under `skills/`, listed in `skills/catalog.json`.
+- 15 skills under `skills/`, listed in `skills/catalog.json`.
 - One optional Claude Code output style, `output-styles/megapowers.md`.
 - Four Go standard-library tools that load only with their skill: the review
   packager for `independent-review`, a run receipt for `verify-and-finish`
