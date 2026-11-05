@@ -259,8 +259,8 @@ longer shipped and do not describe this version.
   and the session miner and memory-audit validator for
   `writing-agent-instructions`.
 - A standalone Go doctor script behind `megapowers-doctor`, which reports
-  the version, Claude Code style setting, local marketplace copy, and optional
-  agent registry.
+  the version, Claude Code style setting, local marketplace copy, optional
+  agent registry, and recent workspace skill-load counts.
 
 The plugin does not edit global user configuration and supplies no model,
 provider, or agent configuration. For non-trivial delegation, `orchestrating`
@@ -273,10 +273,26 @@ access.
 ## Troubleshooting
 
 Start with the doctor: `/megapowers:megapowers-doctor` on Claude Code, or the
-skill name after `$` as it appears in the Codex skills list. It runs
-the standalone Go doctor script and reports the plugin version and root,
-which tool is running, the Claude `outputStyle` value in effect, the local
-marketplace copy, and the optional agent registry.
+skill name after `$` as it appears in the Codex skills list. It runs the
+standalone Go doctor script and reports the plugin version and root, which
+tool is running, the Claude `outputStyle` value in effect, the local
+marketplace copy, optional agent registry, and recent workspace skill-load
+counts. It reads plugin manifests and the skill catalog, local marketplace
+manifests, and the optional registry. It parses only `outputStyle` from
+`~/.claude/settings.json` and project `.claude/settings.json` and
+`.claude/settings.local.json`, and runs `git rev-parse --show-toplevel`
+locally. It reads recent Claude transcripts in the workspace's project
+directory, including subagents, and Codex rollout headers under
+`~/.codex/sessions` from today and the previous 14 date directories, examining
+at most 2,000 headers and collecting at most 500 transcripts across both
+harnesses. Environment overrides can select other local settings and session
+directories. It counts sessions modified in the last seven days that contain a
+successful load. It prints summaries rather than transcript bodies. The
+directory edition omits the catalog and skips load counting. Running the
+script uses Go's build caches; with `GOTOOLCHAIN=auto`, Go may download a
+selected toolchain. Set `GOTOOLCHAIN=local` to require a suitable locally
+installed toolchain. See [SECURITY.md](./SECURITY.md) for the read and
+execution boundaries.
 
 | Symptom | Fix |
 |---|---|

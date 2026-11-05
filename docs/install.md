@@ -151,6 +151,8 @@ Two rules from it apply to any manual update:
 - After a marketplace refresh, require the reported `HEAD` to equal the
   approved release commit before registering the new snapshot.
 
+After upgrading from v0.45.x and closing old sessions, the compiled runner cache under `<user cache dir>/megapowers-hooks` and Codex hook-trust entries are unused and safe to delete.
+
 Restart before expecting new guidance. Do not delete an older cache while a
 live session may still use it. A pinned local checkout changes only when you
 deliberately replace or update that checkout.
@@ -191,6 +193,9 @@ measure agent behavior. Optional behavioral studies are described in
 
 Ask for `megapowers-doctor` (`/megapowers:megapowers-doctor` on Claude Code, or
 the skill name after `$` as the Codex skills list shows it). It runs the
-plugin's `doctor` command and reports the plugin version and root, the
+plugin's standalone `skills/megapowers-doctor/scripts/doctor.go` script and reports the plugin version and root, the
 harness, the Claude `outputStyle` value in effect, the local marketplace copy,
-recent skill loads, and the optional agent registry.
+recent workspace skill-load counts, and the optional agent registry. The
+directory edition omits the catalog and skips load counting. The doctor reads
+local settings and session records; see [SECURITY.md](../SECURITY.md) for its
+read and execution boundaries.

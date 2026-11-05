@@ -1,7 +1,8 @@
 # Manual checks
 
 Use these checks when the local shell or Go is unavailable. The directory
-edition bundles the same doctor script; missing launcher files are expected.
+edition bundles the same doctor script. Neither edition has a hook launcher;
+its absence does not identify the edition or indicate a fault.
 Never claim a command ran when it did not.
 
 1. This skill loaded, so discovery works for this skill.

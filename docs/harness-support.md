@@ -59,8 +59,8 @@ harness. Verify current support against the exact CLI and plugin revision.
 
 ## Communication style
 
-Both harness adapters use `output-styles/megapowers.md` as the source of truth.
-Claude Code offers it through the `/config` output-style picker and the
+Claude Code uses `output-styles/megapowers.md` as its output-style source.
+It offers it through the `/config` output-style picker and the
 `/output-style` command with `force-for-plugin: false`, so it is off until
 selected. The value that resolves is the plugin-qualified name
 `megapowers:Megapowers`; the bare `Megapowers` does not resolve, and sessions

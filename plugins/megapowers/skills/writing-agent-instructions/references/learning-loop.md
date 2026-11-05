@@ -27,7 +27,7 @@ access, deduplication, and role limits. It reports:
 - correction classes;
 - each skill's loads, the sessions that loaded it, and the corrections that
   followed a load before the next human turn;
-- megapowers gate blocks;
+- historical megapowers gate blocks from versions before v0.46.0;
 - `VERIFIED` and `NOT VERIFIED` reports;
 - foreground `sleep` calls;
 - per-run oracle, continuation, blocked, holdout, and high-risk decision
@@ -61,7 +61,7 @@ go run "$SKILL_DIR/scripts/lessons.go" add --id ID --class CLASS --lesson TEXT \
 
 `--evidence` accepts only `direct-statement`, `direct-observation`,
 `source-backed`, or `history-entry-only`. `--class` is a correction class,
-`sleep`, or `gate:<skill>`, so review can count recurrences. The store
+`sleep`, or `gate:<skill>` for historical gate blocks, so review can count recurrences. The store
 defaults to `$MEGAPOWERS_LESSONS_DIR`, else
 `${XDG_STATE_HOME:-~/.local/state}/megapowers/lessons`. It must sit outside
 the repository, like a holdout set, so implementing agents do not read the

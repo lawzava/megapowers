@@ -67,10 +67,10 @@ take concepts from `diagnosing-bugs`, `tdd`, `to-tickets`, `handoff`, `retro`,
 - portable handoff notes and session retrospectives that prefer deterministic
   checks;
 - scope-creep review and a threshold for recording a decision;
-- stopping git commands that discard work.
+- stopping git commands that discard work (removed with the hooks in v0.46.0).
 
-The text is rewritten in repository style. The git check is a new Go
-implementation on the existing hook gate.
+The text is rewritten in repository style. The git check was a Go
+implementation on the existing hook gate; v0.46.0 removed it with the hooks.
 
 Adaptations reviewed at `b0618bc436ad893b3c5e84e55fba86586d34a404` add proof
 that a forced test failure actually changed the code, from `diagnosing-bugs`,
