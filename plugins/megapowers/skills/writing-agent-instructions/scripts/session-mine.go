@@ -7,16 +7,13 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -29,8 +26,7 @@ import (
 
 const usageText = `usage: go run session-mine.go [corrections|recall|scorecard] (--workspace DIR | --all-workspaces)
   [--since YYYY-MM-DD] [--harness claude|codex|opencode|both|all] [--claude-root DIR]
-  [--codex-root DIR] [--opencode-cmd FILE] [--format text|json] [--limit N] [--topic "WORDS" (recall only)]
-  [--opencode-timeout DURATION (default 5m)]
+  [--codex-root DIR] [--opencode-export PATH] [--format text|json] [--limit N] [--topic "WORDS" (recall only)]
   [--sanitize (scorecard only)]`
 
 const (
@@ -39,20 +35,19 @@ const (
 )
 
 type options struct {
-	mode            string
-	workspace       string
-	all             bool
-	since           time.Time
-	hasSince        bool
-	harness         string
-	claudeRoot      string
-	codexRoots      []string
-	opencodeCmd     string
-	opencodeTimeout time.Duration
-	format          string
-	limit           int
-	topic           []string
-	sanitize        bool
+	mode           string
+	workspace      string
+	all            bool
+	since          time.Time
+	hasSince       bool
+	harness        string
+	claudeRoot     string
+	codexRoots     []string
+	opencodeExport string
+	format         string
+	limit          int
+	topic          []string
+	sanitize       bool
 }
 
 // A message is one kept text record. Role is "human" (a person typed it),
@@ -313,10 +308,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func parseOptions(args []string) (options, error) {
-	opt := options{mode: "corrections", harness: "all", format: "text", limit: -1, opencodeCmd: os.Getenv("SESSION_MINE_OPENCODE_CMD")}
-	if opt.opencodeCmd == "" {
-		opt.opencodeCmd = "opencode"
-	}
+	opt := options{mode: "corrections", harness: "all", format: "text", limit: -1}
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		opt.mode = args[0]
 		args = args[1:]
@@ -326,10 +318,6 @@ func parseOptions(args []string) (options, error) {
 	}
 	seen := map[string]bool{}
 	var topic string
-	opencodeTimeout := os.Getenv("SESSION_MINE_OPENCODE_TIMEOUT")
-	if opencodeTimeout == "" {
-		opencodeTimeout = "5m"
-	}
 	for i := 0; i < len(args); i++ {
 		name, value, hasValue := strings.Cut(args[i], "=")
 		if seen[name] {
@@ -345,7 +333,7 @@ func parseOptions(args []string) (options, error) {
 			continue
 		}
 		switch name {
-		case "--workspace", "--since", "--harness", "--claude-root", "--codex-root", "--opencode-cmd", "--opencode-timeout", "--format", "--limit", "--topic":
+		case "--workspace", "--since", "--harness", "--claude-root", "--codex-root", "--opencode-export", "--format", "--limit", "--topic":
 		default:
 			return opt, fmt.Errorf("unknown argument %q", args[i])
 		}
@@ -369,13 +357,11 @@ func parseOptions(args []string) (options, error) {
 			opt.harness = value
 		case "--claude-root":
 			opt.claudeRoot = value
-		case "--opencode-cmd":
+		case "--opencode-export":
 			if strings.TrimSpace(value) == "" {
-				return opt, fmt.Errorf("--opencode-cmd requires an executable")
+				return opt, fmt.Errorf("--opencode-export requires a path")
 			}
-			opt.opencodeCmd = value
-		case "--opencode-timeout":
-			opencodeTimeout = value
+			opt.opencodeExport = value
 		case "--codex-root":
 			if value != "" {
 				opt.codexRoots = []string{value}
@@ -391,11 +377,6 @@ func parseOptions(args []string) (options, error) {
 		case "--topic":
 			topic = value
 		}
-	}
-	var timeoutErr error
-	opt.opencodeTimeout, timeoutErr = time.ParseDuration(opencodeTimeout)
-	if timeoutErr != nil || opt.opencodeTimeout <= 0 {
-		return opt, fmt.Errorf("--opencode-timeout / SESSION_MINE_OPENCODE_TIMEOUT must be a positive duration")
 	}
 	if opt.harness != "claude" && opt.harness != "codex" && opt.harness != "opencode" && opt.harness != "both" && opt.harness != "all" {
 		return opt, fmt.Errorf("--harness must be claude, codex, opencode, both, or all")
@@ -563,124 +544,6 @@ type openCodeMessage struct {
 	} `json:"content"`
 }
 
-// openCodeGET uses only the CLI's public GET interface and existing configuration.
-// A regular file, not a pipe, avoids CLI stdout truncation on large exports.
-// This program opens no OpenCode files directly.
-func openCodeGET(parent context.Context, opt options, env []string, route string, result any) error {
-	file, err := os.CreateTemp("", "session-mine-opencode-*.json")
-	if err != nil {
-		return fmt.Errorf("cannot create temporary API output")
-	}
-	defer os.Remove(file.Name())
-	defer file.Close()
-	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, opt.opencodeCmd, "api", "get", route)
-	cmd.Env, cmd.WaitDelay = env, time.Second
-	cmd.Stdout = file
-	// CLI diagnostics can include unredacted content. Report the failed
-	// operation, not raw stdout/stderr, and leave diagnosis to a separate run.
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			return fmt.Errorf("API GET timed out: %w", ctx.Err())
-		}
-		if errors.Is(err, exec.ErrWaitDelay) {
-			return fmt.Errorf("API GET pipe wait timed out: %w", exec.ErrWaitDelay)
-		}
-		return fmt.Errorf("API GET failed (check service status and command environment)")
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("cannot read temporary API output")
-	}
-	decoder := json.NewDecoder(openCodeReader{ctx, file})
-	if err := decoder.Decode(result); err != nil {
-		if ctx.Err() != nil {
-			return fmt.Errorf("API decode timed out: %w", ctx.Err())
-		}
-		return fmt.Errorf("invalid or truncated API JSON")
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if ctx.Err() != nil {
-			return fmt.Errorf("API decode timed out: %w", ctx.Err())
-		}
-		return fmt.Errorf("extra API output after JSON")
-	}
-	return nil
-}
-
-type openCodeReader struct {
-	ctx    context.Context
-	reader io.Reader
-}
-
-func (r openCodeReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return r.reader.Read(p)
-}
-
-func openCodeTimedOut(err error) bool {
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, exec.ErrWaitDelay)
-}
-
-func openCodeStatus(parent context.Context, opt options, env []string) (bool, error) {
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, opt.opencodeCmd, "service", "status")
-	cmd.Env, cmd.WaitDelay = env, time.Second
-	status, err := cmd.Output()
-	if ctx.Err() != nil {
-		return false, fmt.Errorf("service status timed out: %w", ctx.Err())
-	}
-	if errors.Is(err, exec.ErrWaitDelay) {
-		return false, fmt.Errorf("service status pipe wait timed out: %w", exec.ErrWaitDelay)
-	}
-	if err != nil {
-		return false, fmt.Errorf("CLI unavailable or service status failed")
-	}
-	server, err := url.Parse(strings.TrimSpace(string(status)))
-	return err == nil && server.Host != "" && (server.Scheme == "http" || server.Scheme == "https"), nil
-}
-
-// Retry malformed/empty responses once, but retain a valid empty snapshot if
-// warm-up's retry fails. A timeout is terminal even when an empty snapshot exists.
-func openCodeRead[T any](ctx context.Context, opt options, env []string, route string, check func(T) (valid, empty bool)) (T, error) {
-	var kept T
-	var err error
-	haveValid := false
-	for attempt := 0; attempt < 2; attempt++ {
-		var candidate T
-		err = openCodeGET(ctx, opt, env, route, &candidate)
-		if err == nil {
-			valid, empty := check(candidate)
-			if valid {
-				kept, haveValid = candidate, true
-				if !empty {
-					return kept, nil
-				}
-			} else {
-				err = fmt.Errorf("missing or invalid API data")
-			}
-		}
-		if openCodeTimedOut(err) {
-			return kept, err
-		}
-	}
-	if haveValid {
-		return kept, nil
-	}
-	return kept, err
-}
-
-type openCodePage struct {
-	Data   *[]openCodeInfo `json:"data"`
-	Cursor struct {
-		Next string `json:"next"`
-	} `json:"cursor"`
-}
-
 type openCodeExport struct {
 	Data *struct {
 		Info     openCodeInfo       `json:"info"`
@@ -690,163 +553,100 @@ type openCodeExport struct {
 
 func loadOpenCode(opt options, stats *scanStats) []session {
 	var sessions []session
-	ctx, cancel := context.WithTimeout(context.Background(), opt.opencodeTimeout)
-	defer cancel()
-	stats.opencodeStatus, stats.opencodeEnvironment = "complete", "inherited"
+	stats.opencodeStatus, stats.opencodeEnvironment = "complete", "offline"
 	problem := func(reason string, partial bool) {
-		status := "skipped"
-		if partial || len(sessions) > 0 || ctx.Err() != nil {
-			status = "partial"
-		}
 		if stats.opencodeStatus == "complete" {
-			if status == "partial" {
+			if partial {
 				stats.partialSources++
+				stats.opencodeStatus = "partial"
 			} else {
 				stats.skippedSources++
-			}
-			stats.opencodeStatus = status
-		}
-		stats.notes = append(stats.notes, "opencode source "+status+": "+reason+"; check service status and --opencode-cmd environment")
-	}
-	// Do not ask the CLI to discover/start a service when none is running.
-	// The CLI needs only executable discovery and local directory selection.
-	env := []string{}
-	for _, name := range []string{
-		"PATH", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
-		"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
-		"XDG_RUNTIME_DIR", "TMPDIR",
-	} {
-		if value, ok := os.LookupEnv(name); ok {
-			env = append(env, name+"="+value)
-		}
-	}
-	running, err := openCodeStatus(ctx, opt, env)
-	if !running && err == nil && os.Getenv("XDG_STATE_HOME") != "" {
-		fallback := make([]string, 0, len(env))
-		for _, value := range env {
-			if key, _, _ := strings.Cut(value, "="); key != "XDG_STATE_HOME" {
-				fallback = append(fallback, value)
+				stats.opencodeStatus = "skipped"
 			}
 		}
-		env = fallback
-		stats.opencodeEnvironment = "without_xdg_state_home"
-		stats.notes = append(stats.notes, "opencode environment: retrying without XDG_STATE_HOME after no running service in inherited environment")
-		running, err = openCodeStatus(ctx, opt, env)
+		stats.notes = append(stats.notes, "opencode source "+stats.opencodeStatus+": "+reason)
 	}
-	if !running || err != nil {
-		reason := "no running service in this environment"
-		if err != nil {
-			reason = err.Error()
-		}
-		problem(reason, false)
+	if opt.opencodeExport == "" {
+		problem("not read; supply --opencode-export PATH", false)
 		return sessions
 	}
-	query := url.Values{"limit": {"100"}, "order": {"desc"}}
-	seenCursors, seenIDs := map[string]bool{}, map[string]bool{}
-	for {
-		// Some servers return an empty first result while warming a location.
-		// Retry once, immediately, rather than silently trusting that result.
-		page, err := openCodeRead(ctx, opt, env, "/api/session?"+query.Encode(), func(page openCodePage) (bool, bool) {
-			return page.Data != nil, page.Data != nil && len(*page.Data) == 0
-		})
+	files := []string{opt.opencodeExport}
+	stat, err := os.Stat(opt.opencodeExport)
+	if err != nil {
+		problem("cannot read export path", false)
+		return sessions
+	}
+	if stat.IsDir() {
+		entries, err := os.ReadDir(opt.opencodeExport)
 		if err != nil {
-			problem(err.Error(), len(seenCursors) > 0)
-			break
+			problem("cannot read export directory", false)
+			return sessions
 		}
-		for _, info := range *page.Data {
-			if ctx.Err() != nil {
-				problem("overall source deadline exceeded", true)
-				return sessions
+		files = nil
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+				files = append(files, filepath.Join(opt.opencodeExport, entry.Name()))
 			}
-			if info.ID == "" {
-				stats.skippedSessions++
-				problem("session missing ID", true)
+		}
+	}
+	seen := map[string]bool{}
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		var exported openCodeExport
+		if err != nil || json.Unmarshal(data, &exported) != nil || exported.Data == nil || exported.Data.Messages == nil || exported.Data.Info.ID == "" {
+			stats.skippedSessions++
+			problem("invalid or unreadable session export", true)
+			continue
+		}
+		if seen[exported.Data.Info.ID] {
+			continue
+		}
+		seen[exported.Data.Info.ID] = true
+		// Attribute sessions to the directory recorded in the export.
+		info := exported.Data.Info
+		if info.Location.Directory == "" || (!opt.all && filepath.Clean(info.Location.Directory) != opt.workspace) {
+			continue
+		}
+		s := session{harness: "opencode", base: info.ID, cwd: filepath.Clean(info.Location.Directory)}
+		ids := map[string]bool{}
+		for _, raw := range *exported.Data.Messages {
+			var msg openCodeMessage
+			if json.Unmarshal(raw, &msg) != nil || msg.Type == "" {
+				stats.skippedLines++
 				continue
 			}
-			if seenIDs[info.ID] {
-				continue
-			}
-			seenIDs[info.ID] = true
-			// A session belongs to its current directory, not the CLI's cwd or
-			// every worktree sharing its project ID. Include root and child sessions.
-			if info.Location.Directory == "" || (!opt.all && filepath.Clean(info.Location.Directory) != opt.workspace) {
-				continue
-			}
-			if opt.hasSince && info.Time.Updated > 0 && time.UnixMilli(info.Time.Updated).Before(opt.since) {
-				continue
-			}
-			exported, err := openCodeRead(ctx, opt, env, "/api/experimental/session/"+url.PathEscape(info.ID)+"/export", func(exported openCodeExport) (bool, bool) {
-				valid := exported.Data != nil && exported.Data.Messages != nil && exported.Data.Info.ID == info.ID
-				return valid, valid && len(*exported.Data.Messages) == 0
-			})
-			if err != nil {
-				stats.skippedSessions++
-				problem("session export unavailable: "+err.Error(), true)
-				if openCodeTimedOut(err) {
-					return sessions
-				}
-				continue
-			}
-			// Recheck the export's scope in case the session moved during listing.
-			info = exported.Data.Info
-			if info.Location.Directory == "" || (!opt.all && filepath.Clean(info.Location.Directory) != opt.workspace) {
-				continue
-			}
-			s := session{harness: "opencode", base: info.ID, cwd: filepath.Clean(info.Location.Directory)}
-			ids := map[string]bool{}
-			for _, raw := range *exported.Data.Messages {
-				if ctx.Err() != nil {
-					problem("overall source deadline exceeded", true)
-					return sessions
-				}
-				var msg openCodeMessage
-				if json.Unmarshal(raw, &msg) != nil || msg.Type == "" {
-					stats.skippedLines++
-					continue
-				}
-				// Claude Agent's content-native ID is the SDK transcript's
-				// sessionId. No sdk-ts, title, timing, or text heuristics.
-				if msg.Type == "assistant" && msg.Model.ProviderID == "claude-agent" {
-					for _, block := range msg.Content {
-						if block.Native.SessionID != "" {
-							ids[block.Native.SessionID] = true
-						}
+			// Claude Agent's content-native ID is the SDK transcript's
+			// sessionId. No sdk-ts, title, timing, or text heuristics.
+			if msg.Type == "assistant" && msg.Model.ProviderID == "claude-agent" {
+				for _, block := range msg.Content {
+					if block.Native.SessionID != "" {
+						ids[block.Native.SessionID] = true
 					}
 				}
-				ts := time.Time{}
-				if msg.Time.Created > 0 {
-					ts = time.UnixMilli(msg.Time.Created).UTC()
-				}
-				if opt.hasSince && (ts.IsZero() || ts.Before(opt.since)) {
-					continue
-				}
-				msgs, events := parseOpenCode(msg, info.ParentID != "", ts)
-				for _, m := range msgs {
-					m.cwd = s.cwd
-					s.msgs = append(s.msgs, m)
-				}
-				for _, ev := range events {
-					ev.cwd, ev.after = s.cwd, len(s.msgs)
-					s.events = append(s.events, ev)
-				}
 			}
-			if len(s.msgs) > 0 {
-				sessions = append(sessions, s)
-				for id := range ids {
-					stats.claudeIDs[id] = true
-				}
+			ts := time.Time{}
+			if msg.Time.Created > 0 {
+				ts = time.UnixMilli(msg.Time.Created).UTC()
+			}
+			if opt.hasSince && (ts.IsZero() || ts.Before(opt.since)) {
+				continue
+			}
+			msgs, events := parseOpenCode(msg, info.ParentID != "", ts)
+			for _, m := range msgs {
+				m.cwd = s.cwd
+				s.msgs = append(s.msgs, m)
+			}
+			for _, ev := range events {
+				ev.cwd, ev.after = s.cwd, len(s.msgs)
+				s.events = append(s.events, ev)
 			}
 		}
-		next := page.Cursor.Next
-		if next == "" {
-			break
+		if len(s.msgs) > 0 {
+			sessions = append(sessions, s)
+			for id := range ids {
+				stats.claudeIDs[id] = true
+			}
 		}
-		if seenCursors[next] {
-			problem("repeated pagination cursor", true)
-			break
-		}
-		seenCursors[next] = true
-		query.Set("cursor", next)
 	}
 	return sessions
 }
