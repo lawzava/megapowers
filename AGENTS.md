@@ -4,8 +4,9 @@
 
 This repository publishes one optional `megapowers` plugin for current Claude
 Code and Codex. Skill Markdown may load elsewhere, but no other harness is a
-supported or tested install target. The read-only `session-mine` tool also
-reads OpenCode sessions from offline exports. Keep every shipped artifact public-safe: no
+supported or tested install target. The read-only `session-mine` tool reads
+Claude Code and Codex transcripts. Repository tools outside the plugin handle
+OpenCode exports. Keep every shipped artifact public-safe: no
 personal secrets, machine-specific paths, or undeclared private services.
 
 ## Authority

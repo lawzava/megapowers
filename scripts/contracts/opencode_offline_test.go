@@ -12,7 +12,7 @@ import (
 // These files are handwritten API-shaped inputs; no exporter or report rewrite.
 func TestOpenCodeMinerFilesAndManifest(t *testing.T) {
 	root := repoRoot(t)
-	tool := buildSessionMine(t, root)
+	tool := buildOpenCodeMine(t, root)
 	const valid = `{"data":{"info":{"id":"one","location":{"directory":"/work/demo"}},"messages":[{"type":"user","text":"Did you test it?"}]}}`
 	for _, tc := range []struct {
 		name, manifest, status, environment        string

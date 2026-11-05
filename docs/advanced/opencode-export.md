@@ -1,10 +1,10 @@
 # OpenCode session export
 
-The repository tool creates offline JSON files for the installed session miner:
+The repository tools export and mine OpenCode sessions outside the shipped plugin:
 
 ```sh
 go run ./scripts/cmd/opencode-export --all-workspaces --output /path/to/exports
-go run "$SKILL_DIR/scripts/session-mine.go" corrections --workspace "$PWD" --opencode-export /path/to/exports
+go run ./scripts/cmd/opencode-mine corrections --workspace "$PWD" --opencode-export /path/to/exports
 ```
 
 Run the exporter from a repository checkout. It is outside the shipped plugin.
@@ -51,3 +51,27 @@ variable. If status reports no running service and XDG_STATE_HOME is set,
 the tool retries without that variable and uses the same environment for API
 calls. Its summary reports `environment: without_xdg_state_home`; otherwise
 it reports `inherited`. The parent environment is unchanged.
+
+The repository miner defaults to `--harness opencode`. It accepts the same
+corrections, recall, scorecard, format, topic, limit, since, and sanitize options
+as session-mine. It prints the existing per-source report fields, including
+by_source, status, environment, skipped_sources, partial_sources,
+skipped_sessions, and deduplicated_sessions. It reads offline files only.
+
+To combine sources, run the repository miner with `--harness all` and the same
+workspace/date filters used for session-mine. This also reads Claude Code and
+Codex transcripts (with optional --claude-root and --codex-root overrides), and
+omits Claude transcripts linked by a claude-agent export's native.sessionID
+only when the export contributes in-range messages. Other providers' native IDs
+do not link Claude transcripts. Without this link, no heuristic deduplication
+is attempted.
+Use this combined report instead of adding its counts to session-mine totals.
+Separate OpenCode-only and session-mine reports can overlap; do not sum them
+as unique activity without checking the linked sessions.
+
+OpenCode user messages count as human unless a machine-text anchor matches;
+synthetic messages count as machine. Child-session user and synthetic messages
+count as subagent prompts. Unmarked scripted root prompts cannot be distinguished
+from typed prompts. Assistant text, skill loads, and shell/read/error tool events
+feed the reports; reasoning, system text, and tool outputs are not excerpts.
+Workspace matching uses location.directory; --since filters message timestamps.

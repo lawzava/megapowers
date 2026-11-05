@@ -1,4 +1,4 @@
-// session-mine reads Claude Code, Codex, and OpenCode transcripts, read-only, and
+// session-mine reads local Claude Code and Codex transcripts, read-only, and
 // reports where the human corrected the agent (corrections), which earlier
 // sessions discussed a topic (recall), or per-project outcome signals
 // (scorecard). Every excerpt is redacted.
@@ -25,8 +25,8 @@ import (
 )
 
 const usageText = `usage: go run session-mine.go [corrections|recall|scorecard] (--workspace DIR | --all-workspaces)
-  [--since YYYY-MM-DD] [--harness claude|codex|opencode|both|all] [--claude-root DIR]
-  [--codex-root DIR] [--opencode-export PATH] [--format text|json] [--limit N] [--topic "WORDS" (recall only)]
+  [--since YYYY-MM-DD] [--harness claude|codex|both] [--claude-root DIR]
+  [--codex-root DIR] [--format text|json] [--limit N] [--topic "WORDS" (recall only)]
   [--sanitize (scorecard only)]`
 
 const (
@@ -35,19 +35,18 @@ const (
 )
 
 type options struct {
-	mode           string
-	workspace      string
-	all            bool
-	since          time.Time
-	hasSince       bool
-	harness        string
-	claudeRoot     string
-	codexRoots     []string
-	opencodeExport string
-	format         string
-	limit          int
-	topic          []string
-	sanitize       bool
+	mode       string
+	workspace  string
+	all        bool
+	since      time.Time
+	hasSince   bool
+	harness    string
+	claudeRoot string
+	codexRoots []string
+	format     string
+	limit      int
+	topic      []string
+	sanitize   bool
 }
 
 // A message is one kept text record. Role is "human" (a person typed it),
@@ -81,49 +80,37 @@ type event struct {
 }
 
 type scanStats struct {
-	skippedLines         int
-	skippedFiles         int
-	unreadableFiles      int
-	skippedSources       int
-	partialSources       int
-	opencodeStatus       string
-	opencodeEnvironment  string
-	skippedSessions      int
-	deduplicatedSessions int
-	claudeIDs            map[string]bool
-	notes                []string
+	skippedLines    int
+	skippedFiles    int
+	unreadableFiles int
 }
 
 type sourceCounts struct {
-	Status          string `json:"status,omitempty"`
-	Environment     string `json:"environment,omitempty"`
-	SessionsScanned int    `json:"sessions_scanned"`
-	HumanTurns      int    `json:"human_turns"`
-	MachineTurns    int    `json:"machine_turns"`
-	PromptTurns     int    `json:"prompt_turns"`
+	SessionsScanned int `json:"sessions_scanned"`
+	HumanTurns      int `json:"human_turns"`
+	MachineTurns    int `json:"machine_turns"`
+	PromptTurns     int `json:"prompt_turns"`
 }
-
 type sourceSummary struct {
-	BySource             map[string]*sourceCounts `json:"by_source"`
-	SkippedSources       int                      `json:"skipped_sources"`
-	PartialSources       int                      `json:"partial_sources"`
-	SkippedSessions      int                      `json:"skipped_sessions"`
-	DeduplicatedSessions int                      `json:"deduplicated_sessions"`
+	BySource map[string]*sourceCounts `json:"by_source"`
 }
 
 func (opt options) includes(harness string) bool {
-	return opt.harness == harness || opt.harness == "all" || opt.harness == "both" && harness != "opencode"
+	return opt.harness == harness || opt.harness == "both"
 }
 
-func summarizeSources(opt options, sessions []session, stats scanStats) sourceSummary {
-	r := sourceSummary{BySource: map[string]*sourceCounts{}, SkippedSources: stats.skippedSources, PartialSources: stats.partialSources, SkippedSessions: stats.skippedSessions, DeduplicatedSessions: stats.deduplicatedSessions}
-	for _, name := range []string{"claude", "codex", "opencode"} {
+func summarizeSources(opt options, sessions []session) sourceSummary {
+	r := sourceSummary{BySource: map[string]*sourceCounts{}}
+	for _, name := range []string{"claude", "codex"} {
 		if opt.includes(name) {
 			r.BySource[name] = &sourceCounts{}
 		}
 	}
 	for _, s := range sessions {
 		c := r.BySource[s.harness]
+		if c == nil {
+			continue
+		}
 		c.SessionsScanned++
 		for _, msg := range s.msgs {
 			switch msg.role {
@@ -136,22 +123,16 @@ func summarizeSources(opt options, sessions []session, stats scanStats) sourceSu
 			}
 		}
 	}
-	if c := r.BySource["opencode"]; c != nil {
-		c.Status, c.Environment = stats.opencodeStatus, stats.opencodeEnvironment
-	}
+
 	return r
 }
 
 func printSources(w io.Writer, r sourceSummary) {
-	for _, name := range []string{"claude", "codex", "opencode"} {
+	for _, name := range []string{"claude", "codex"} {
 		if c := r.BySource[name]; c != nil {
 			fmt.Fprintf(w, "source %s: sessions scanned %d, human turns %d, machine turns %d, prompt turns %d\n", name, c.SessionsScanned, c.HumanTurns, c.MachineTurns, c.PromptTurns)
-			if c.Status != "" {
-				fmt.Fprintf(w, "  status %s, environment %s\n", c.Status, c.Environment)
-			}
 		}
 	}
-	fmt.Fprintf(w, "sources: skipped %d, partial %d, skipped sessions %d, deduplicated sessions %d\n", r.SkippedSources, r.PartialSources, r.SkippedSessions, r.DeduplicatedSessions)
 }
 
 type example struct {
@@ -274,9 +255,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	var stats scanStats
 	sessions := loadSessions(opt, &stats)
-	for _, note := range stats.notes {
-		fmt.Fprintf(stderr, "session-mine: %s\n", note)
-	}
 	var report any
 	switch opt.mode {
 	case "recall":
@@ -308,7 +286,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func parseOptions(args []string) (options, error) {
-	opt := options{mode: "corrections", harness: "all", format: "text", limit: -1}
+	opt := options{mode: "corrections", harness: "both", format: "text", limit: -1}
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		opt.mode = args[0]
 		args = args[1:]
@@ -333,7 +311,7 @@ func parseOptions(args []string) (options, error) {
 			continue
 		}
 		switch name {
-		case "--workspace", "--since", "--harness", "--claude-root", "--codex-root", "--opencode-export", "--format", "--limit", "--topic":
+		case "--workspace", "--since", "--harness", "--claude-root", "--codex-root", "--format", "--limit", "--topic":
 		default:
 			return opt, fmt.Errorf("unknown argument %q", args[i])
 		}
@@ -357,11 +335,6 @@ func parseOptions(args []string) (options, error) {
 			opt.harness = value
 		case "--claude-root":
 			opt.claudeRoot = value
-		case "--opencode-export":
-			if strings.TrimSpace(value) == "" {
-				return opt, fmt.Errorf("--opencode-export requires a path")
-			}
-			opt.opencodeExport = value
 		case "--codex-root":
 			if value != "" {
 				opt.codexRoots = []string{value}
@@ -378,8 +351,8 @@ func parseOptions(args []string) (options, error) {
 			topic = value
 		}
 	}
-	if opt.harness != "claude" && opt.harness != "codex" && opt.harness != "opencode" && opt.harness != "both" && opt.harness != "all" {
-		return opt, fmt.Errorf("--harness must be claude, codex, opencode, both, or all")
+	if opt.harness != "claude" && opt.harness != "codex" && opt.harness != "both" {
+		return opt, fmt.Errorf("--harness must be claude, codex, or both")
 	}
 	if opt.format != "text" && opt.format != "json" {
 		return opt, fmt.Errorf("--format must be text or json")
@@ -455,10 +428,6 @@ func within(path, dir string) bool {
 
 func loadSessions(opt options, stats *scanStats) []session {
 	var sessions []session
-	stats.claudeIDs = map[string]bool{}
-	if opt.includes("opencode") {
-		sessions = append(sessions, loadOpenCode(opt, stats)...)
-	}
 	if opt.includes("claude") && opt.claudeRoot != "" {
 		if root, err := filepath.EvalSymlinks(opt.claudeRoot); err == nil {
 			var dirs []string
@@ -505,262 +474,6 @@ func loadSessions(opt options, stats *scanStats) []session {
 	return sessions
 }
 
-type openCodeInfo struct {
-	ID       string `json:"id"`
-	ParentID string `json:"parentID"`
-	Location struct {
-		Directory string `json:"directory"`
-	} `json:"location"`
-	Time struct {
-		Updated int64 `json:"updated"`
-	} `json:"time"`
-}
-
-type openCodeMessage struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-	Name string `json:"name"`
-	Time struct {
-		Created int64 `json:"created"`
-	} `json:"time"`
-	Model struct {
-		ProviderID string `json:"providerID"`
-	} `json:"model"`
-	Content []struct {
-		Type   string `json:"type"`
-		Text   string `json:"text"`
-		Name   string `json:"name"`
-		Native struct {
-			SessionID string `json:"sessionID"`
-		} `json:"native"`
-		State struct {
-			Status  string          `json:"status"`
-			Input   json.RawMessage `json:"input"`
-			Content []contentBlock  `json:"content"`
-			Error   struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		} `json:"state"`
-	} `json:"content"`
-}
-
-type openCodeExport struct {
-	Data *struct {
-		Info     openCodeInfo       `json:"info"`
-		Messages *[]json.RawMessage `json:"messages"`
-	} `json:"data"`
-}
-
-func loadOpenCode(opt options, stats *scanStats) []session {
-	var sessions []session
-	stats.opencodeStatus, stats.opencodeEnvironment = "complete", "offline"
-	problem := func(reason string, partial bool) {
-		if stats.opencodeStatus == "complete" {
-			if partial {
-				stats.partialSources++
-				stats.opencodeStatus = "partial"
-			} else {
-				stats.skippedSources++
-				stats.opencodeStatus = "skipped"
-			}
-		}
-		stats.notes = append(stats.notes, "opencode source "+stats.opencodeStatus+": "+reason)
-	}
-	if opt.opencodeExport == "" {
-		problem("not read; supply --opencode-export PATH", false)
-		return sessions
-	}
-	files := []string{opt.opencodeExport}
-	stat, err := os.Stat(opt.opencodeExport)
-	if err != nil {
-		problem("cannot read export path", false)
-		return sessions
-	}
-	if stat.IsDir() {
-		entries, err := os.ReadDir(opt.opencodeExport)
-		if err != nil {
-			problem("cannot read export directory", false)
-			return sessions
-		}
-		files = nil
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
-				files = append(files, filepath.Join(opt.opencodeExport, entry.Name()))
-			}
-		}
-	}
-	statusDir := opt.opencodeExport
-	if !stat.IsDir() {
-		statusDir = filepath.Dir(statusDir)
-	}
-	statusData, statusErr := os.ReadFile(filepath.Join(statusDir, "export-status"))
-	if statusErr == nil {
-		var manifest struct {
-			Status      string `json:"status"`
-			Skipped     *int   `json:"skipped_sessions"`
-			Environment string `json:"environment"`
-		}
-		if json.Unmarshal(statusData, &manifest) != nil || manifest.Skipped == nil || *manifest.Skipped < 0 ||
-			(manifest.Status != "complete" && manifest.Status != "partial" && manifest.Status != "skipped") ||
-			(manifest.Environment != "offline" && manifest.Environment != "inherited" && manifest.Environment != "without_xdg_state_home") {
-			problem("invalid export-status manifest", true)
-		} else {
-			stats.opencodeEnvironment = manifest.Environment
-			stats.skippedSessions += *manifest.Skipped
-			if manifest.Status != "complete" {
-				problem("export-status reports "+manifest.Status, manifest.Status == "partial")
-			}
-		}
-	} else if !os.IsNotExist(statusErr) {
-		problem("cannot read export-status manifest", true)
-	}
-	seen := map[string]bool{}
-	for _, file := range files {
-		data, err := os.ReadFile(file)
-		var exported openCodeExport
-		if err != nil || json.Unmarshal(data, &exported) != nil || exported.Data == nil || exported.Data.Messages == nil || exported.Data.Info.ID == "" {
-			stats.skippedSessions++
-			problem("invalid or unreadable session export", true)
-			continue
-		}
-		if seen[exported.Data.Info.ID] {
-			continue
-		}
-		seen[exported.Data.Info.ID] = true
-		// Attribute sessions to the directory recorded in the export.
-		info := exported.Data.Info
-		if info.Location.Directory == "" || (!opt.all && filepath.Clean(info.Location.Directory) != opt.workspace) {
-			continue
-		}
-		s := session{harness: "opencode", base: info.ID, cwd: filepath.Clean(info.Location.Directory)}
-		ids := map[string]bool{}
-		for _, raw := range *exported.Data.Messages {
-			var msg openCodeMessage
-			if json.Unmarshal(raw, &msg) != nil || msg.Type == "" {
-				stats.skippedLines++
-				continue
-			}
-			// Claude Agent's content-native ID is the SDK transcript's
-			// sessionId. No sdk-ts, title, timing, or text heuristics.
-			if msg.Type == "assistant" && msg.Model.ProviderID == "claude-agent" {
-				for _, block := range msg.Content {
-					if block.Native.SessionID != "" {
-						ids[block.Native.SessionID] = true
-					}
-				}
-			}
-			ts := time.Time{}
-			if msg.Time.Created > 0 {
-				ts = time.UnixMilli(msg.Time.Created).UTC()
-			}
-			if opt.hasSince && (ts.IsZero() || ts.Before(opt.since)) {
-				continue
-			}
-			msgs, events := parseOpenCode(msg, info.ParentID != "", ts)
-			for _, m := range msgs {
-				m.cwd = s.cwd
-				s.msgs = append(s.msgs, m)
-			}
-			for _, ev := range events {
-				ev.cwd, ev.after = s.cwd, len(s.msgs)
-				s.events = append(s.events, ev)
-			}
-		}
-		if len(s.msgs) > 0 {
-			sessions = append(sessions, s)
-			for id := range ids {
-				stats.claudeIDs[id] = true
-			}
-		}
-	}
-	return sessions
-}
-
-func parseOpenCode(record openCodeMessage, child bool, ts time.Time) ([]message, []event) {
-	var texts []string
-	var events []event
-	role := ""
-	switch record.Type {
-	case "user":
-		if text, ok := humanText(record.Text); ok {
-			texts = append(texts, text)
-			role = "human"
-			if child {
-				role = "prompt"
-			} else if machineText(text) {
-				role = "machine"
-			}
-		}
-	case "synthetic":
-		role = "machine"
-		if child {
-			role = "prompt"
-		}
-		if strings.TrimSpace(record.Text) != "" {
-			texts = append(texts, record.Text)
-		}
-	case "skill":
-		if record.Name != "" {
-			events = append(events, event{kind: "skill", name: record.Name, ts: ts})
-		}
-	case "assistant":
-		role = "assistant"
-		for _, block := range record.Content {
-			switch block.Type {
-			case "text":
-				if strings.TrimSpace(block.Text) != "" {
-					texts = append(texts, block.Text)
-				}
-			case "tool":
-				// Streaming calls have no structured input and have not run.
-				if block.State.Status == "streaming" {
-					continue
-				}
-				var input struct {
-					ID              string `json:"id"`
-					Skill           string `json:"skill"`
-					Path            string `json:"path"`
-					Command         string `json:"command"`
-					Background      bool   `json:"background"`
-					RunInBackground bool   `json:"run_in_background"`
-				}
-				_ = json.Unmarshal(block.State.Input, &input)
-				switch block.Name {
-				case "skill":
-					name := input.ID
-					if name == "" {
-						name = input.Skill
-					}
-					if name != "" {
-						events = append(events, event{kind: "skill", name: name, ts: ts})
-					}
-				case "read":
-					events = append(events, skillReads(input.Path, ts)...)
-				case "shell", "bash":
-					var commands []string
-					if !input.Background && !input.RunInBackground {
-						commands = []string{input.Command}
-					}
-					events = append(events, callEvents(input.Command, commands, ts)...)
-				}
-				if block.State.Status == "error" {
-					denial := outputEvents(block.State.Error.Message, ts)
-					for _, content := range block.State.Content {
-						if len(denial) == 0 && content.Type == "text" {
-							denial = outputEvents(content.Text, ts)
-						}
-					}
-					events = append(events, denial...)
-				}
-			}
-		}
-	}
-	if len(texts) == 0 {
-		return nil, events
-	}
-	return []message{{role: role, text: strings.Join(texts, "\n"), ts: ts}}, events
-}
-
 // readFile returns a session with at least one in-range message. A file whose
 // real path leaves the resolved store root, or is not a regular file, is
 // skipped and counted.
@@ -788,7 +501,6 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 	reader := bufio.NewReaderSize(file, 1<<20)
 	codexScoped, codexSubagent, codexExec := false, false, false
 	origin := ""
-	linkedClaude := false
 	for {
 		line, readErr := reader.ReadBytes('\n')
 		line = bytes.TrimSpace(line)
@@ -806,16 +518,6 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 					if !opt.all && !within(origin, opt.workspace) {
 						return s, false
 					}
-				}
-				var id struct {
-					SessionID string `json:"sessionId"`
-				}
-				linkedClaude = linkedClaude || json.Unmarshal(line, &id) == nil && stats.claudeIDs[id.SessionID]
-				// Metadata may carry an ID before the first cwd. Establish the
-				// file's workspace before counting it as a duplicate.
-				if linkedClaude && (opt.all || origin != "") {
-					stats.deduplicatedSessions++
-					return s, false
 				}
 			} else {
 				var meta *codexMeta
@@ -851,11 +553,6 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 			}
 			break
 		}
-	}
-	if linkedClaude {
-		// A Claude file without a recorded cwd is scoped by its project slug.
-		stats.deduplicatedSessions++
-		return s, false
 	}
 	if harness == "codex" && !codexScoped && !opt.all {
 		return s, false
@@ -1415,7 +1112,7 @@ type turn struct {
 
 func corrections(opt options, sessions []session, stats scanStats) correctionsReport {
 	report := correctionsReport{
-		sourceSummary:   summarizeSources(opt, sessions, stats),
+		sourceSummary:   summarizeSources(opt, sessions),
 		Note:            "keyword classes are candidates; read each turn before treating it as a finding",
 		SessionsScanned: len(sessions),
 		SkippedLines:    stats.skippedLines,
@@ -1477,7 +1174,7 @@ func corrections(opt options, sessions []session, stats scanStats) correctionsRe
 }
 
 func recall(opt options, sessions []session, stats scanStats) recallReport {
-	report := recallReport{sourceSummary: summarizeSources(opt, sessions, stats), Topic: redact(strings.Join(opt.topic, " ")), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, SkippedFiles: stats.skippedFiles, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
+	report := recallReport{sourceSummary: summarizeSources(opt, sessions), Topic: redact(strings.Join(opt.topic, " ")), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, SkippedFiles: stats.skippedFiles, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
 	for _, s := range sessions {
 		matched := false
 		for _, msg := range s.msgs {
@@ -1649,7 +1346,7 @@ type scorecardReport struct {
 // the skill caused it.
 func scorecard(opt options, sessions []session, stats scanStats) scorecardReport {
 	report := scorecardReport{
-		sourceSummary:   summarizeSources(opt, sessions, stats),
+		sourceSummary:   summarizeSources(opt, sessions),
 		Note:            "counts are candidates; read the sessions behind a number before acting on it",
 		Scope:           opt.workspace,
 		SessionsScanned: len(sessions),

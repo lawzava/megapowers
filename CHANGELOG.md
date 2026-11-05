@@ -5,6 +5,19 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.46.3 - 2026-11-05
+
+### Changed
+
+- Shipped session-mine reads only Claude Code and Codex transcripts again, with default harness both. Claude/Codex per-source counts remain available.
+- Repository tools handle OpenCode exports: opencode-export fetches them and opencode-mine reports corrections, recall, and scorecards. The repository miner can combine sources and deduplicate linked Claude transcripts; see docs/advanced/opencode-export.md.
+
+### Removed
+
+- session-mine reports no longer include `skipped_sources`, `partial_sources`, `skipped_sessions`, `deduplicated_sessions`, per-source `status`/`environment`, the `sources: skipped` text line, or OpenCode stderr notes. These remain available in repository opencode-mine reports.
+
+- Removed `--opencode-export` from shipped session-mine, along with the `--harness opencode` and `--harness all` values. OpenCode parsing, export-status handling, and linked-Claude deduplication now live outside the plugin.
+
 ## 0.46.2 - 2026-11-05
 
 ### Changed

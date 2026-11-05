@@ -1,4 +1,4 @@
-// opencode-export creates offline session exports for session-mine. Repository tool only.
+// opencode-export creates offline session exports for opencode-mine. Repository tool only.
 package main
 
 import (
