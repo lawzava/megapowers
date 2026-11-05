@@ -325,7 +325,7 @@ func discoverShellFiles(root string) ([]string, error) {
 
 func discoverGoFiles(root string) ([]string, error) {
 	var files []string
-	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers", "tests"} {
+	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers"} {
 		paths, err := regularFiles(filepath.Join(root, filepath.FromSlash(rel)), ".go")
 		if err != nil {
 			return nil, err
