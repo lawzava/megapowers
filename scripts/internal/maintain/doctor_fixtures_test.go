@@ -52,7 +52,7 @@ func doctorPluginRoot(t *testing.T) string {
 func doctorOutput(t *testing.T, values map[string]string) string { return doctorArgs(t, values) }
 func doctorArgs(t *testing.T, values map[string]string, args ...string) string {
 	t.Helper()
-	script := filepath.Join(doctorPluginRoot(t), "../../extras/scripts/megapowers-doctor/doctor.go")
+	script := filepath.Join(doctorPluginRoot(t), "skills/megapowers-doctor/scripts/doctor.go")
 	data, err := json.Marshal(values)
 	if err != nil {
 		t.Fatal(err)

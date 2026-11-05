@@ -46,7 +46,7 @@ Native isolation is a separate capability, not implied by spawning a child.
 Confirm the worker's root and base revision before it writes. For example,
 native worktrees can start from a default branch rather than the lead's HEAD.
 Use only isolation fields actually exposed by the active schema; otherwise
-assign an existing isolated checkout or create an isolated Git worktree below. Disable automatic
+assign an existing isolated checkout or use `lanes.go` below. Disable automatic
 integration where the harness permits it until fence and leak checks pass.
 
 Background defaults depend on the harness and mode. In a non-interactive
@@ -70,14 +70,29 @@ needs the lead's effort.
   is stalled until shown otherwise.
 - Give each parallel writing lane its own worktree. Use the harness's native
   isolation when it works. When it is missing or refuses the repository, use
-  normal Git worktree tools. Record the immutable base and worker root in
-  the brief. The lane edits only there and never pushes or touches the lead
-  branch. Check each patch for conflicts and overlapping ownership before
-  applying it. Include commits and untracked files in the review. The lead
-  applies one reviewed patch at a time, then reruns the real check. Preserve
-  unapplied and ignored work until explicitly discarded. Worktrees start from
-  commits, so uncommitted lead changes are absent. If isolation is unavailable,
-  run writing lanes sequentially.
+  the lane tool:
+
+  ```bash
+  go run <skill-dir>/scripts/lanes.go add --name NAME [--base REF]
+  go run <skill-dir>/scripts/lanes.go check
+  go run <skill-dir>/scripts/lanes.go apply --name NAME
+  go run <skill-dir>/scripts/lanes.go remove --name NAME [--discard]
+  ```
+
+  `add` creates a detached worktree under
+  `$TMPDIR/megapowers-lanes/<repo>-<hash>/NAME` and prints its path for the
+  brief. The lane edits only there. It may commit, but it never pushes or
+  touches the lead branch. `check` reports each lane as `clean`, `applied`,
+  `empty`, or `conflicts` against the lead worktree. It exits 3 on a conflict
+  or when two unapplied lanes touch one file, which breaks disjoint ownership.
+  `apply` writes one lane's patch, including its commits and untracked files,
+  into the lead worktree without committing; the lead then reruns the real
+  check. `remove` refuses unapplied work and ignored files, which the patch
+  never carries, unless `--discard` is given.
+  `diff --name NAME` prints the patch, and `list` shows every lane. A lane
+  starts from a commit, so lead changes that are not yet committed are absent.
+  If Go or a shell is not available, run writing lanes one at a time, so no two
+  lanes edit the same file.
 - Worktree lanes multiply build output. Share build caches across worktrees
   where the toolchain allows it, such as a common `CARGO_TARGET_DIR` or the
   default Go cache, and check free disk before fanning out builds.

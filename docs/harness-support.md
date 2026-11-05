@@ -14,7 +14,7 @@ native agent/reviewer bindings, isolation, permissions and any hooks locally.
 | Plugin manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
 | Task skills | Supported | Supported |
 | Communication style | Selectable plugin output style (`megapowers:Megapowers`) | No session-wide plugin style; `humanizing-prose` available on demand |
-| Self-diagnosis | `megapowers-doctor` manual checks | Same |
+| Self-diagnosis | `megapowers-doctor` skill over the standalone Go script | Same |
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
@@ -89,10 +89,10 @@ what exists and what is authorized.
 
 ## Installation diagnostics
 
-The `megapowers-doctor` skill uses normal file and session tools to check
-version, root, discovery, applicable style, marketplace copy, recent loads and
-the optional registry. The optional Go doctor lives in `extras/scripts` and
-requires Go 1.25 or newer; it is not installed with either plugin edition.
+The standalone Go doctor reports plugin version, root, harness, Claude Code
+output-style settings, local marketplace versions, recent skill loads, and the optional agent
+registry. `megapowers-doctor` interprets its report. It runs only when invoked
+and needs Go 1.25 or newer.
 
 The plugin supplies no destructive-command guard, completion gate, effect
 gate, or git discard gate. Harness permissions and OS controls remain the

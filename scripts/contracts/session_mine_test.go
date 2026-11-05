@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const sessionMineTool = "./extras/scripts/writing-agent-instructions/session-mine.go"
+const sessionMineTool = "./plugins/megapowers/skills/writing-agent-instructions/scripts/session-mine.go"
 
 type sessionMineExample struct {
 	Harness   string `json:"harness"`

@@ -1,10 +1,5 @@
 # Resume proof
 
-Applicability: this study grades the pre-v0.51.0 bundled run-state command
-report. It does not grade the v0.51.0 manual resume procedure. Its selftest
-remains a historical grader mechanics check, not current skill evidence.
-Do not use its installed-plugin verdict for the script-free probe.
-
 This study checks that an approved `autonomous-run` survives the two ways a
 run loses its context. Each repetition builds a three-criterion Go fixture.
 Session 1 starts the run and stops after C1. Then one of two paths runs:

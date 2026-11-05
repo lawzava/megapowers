@@ -13,7 +13,7 @@ import (
 func TestFenceCheckoutAndLeakContract(t *testing.T) {
 	root, tmp := repoRoot(t), t.TempDir()
 	tool := filepath.Join(tmp, "fence-check")
-	if out, code := run(t, root, nil, "go", "build", "-o", tool, "./extras/scripts/orchestrating/fence-check/fence.go"); code != 0 {
+	if out, code := run(t, root, nil, "go", "build", "-o", tool, "./plugins/megapowers/skills/orchestrating/scripts/fence-check/fence.go"); code != 0 {
 		t.Fatalf("build fence-check (%d): %s", code, out)
 	}
 	env := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid"}

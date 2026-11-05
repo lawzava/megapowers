@@ -13,6 +13,7 @@ installed-plugin-ab	systematic-debugging	behavioral
 installed-plugin-ab	upgrading-megapowers	behavioral
 installed-plugin-ab	verify-and-finish	behavioral
 installed-plugin-ab	writing-agent-instructions	behavioral
+installed-plugin-ab	mcp-setup	behavioral
 installed-plugin-ab	grill-me	behavioral
 installed-plugin-ab	megapowers-doctor	behavioral
 install-smoke	evidence-research	delivery
@@ -23,6 +24,7 @@ trigger-recall	evidence-research	activation
 trigger-recall	grill-me	activation
 trigger-recall	humanizing-prose	activation
 trigger-recall	independent-review	activation
+trigger-recall	mcp-setup	activation
 trigger-recall	megapowers-doctor	activation
 trigger-recall	orchestrating	activation
 trigger-recall	safe-effects	activation
