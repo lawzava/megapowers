@@ -14,26 +14,30 @@ dependency path inline. Scan dependencies, boundaries, ownership, and oracle
 before dispatch.
 
 Native agents are the default for matching lanes. Use one to three direct
-children with fresh, bounded context. For independent lanes whose results
-cannot reshape one another, issue spawn calls consecutively without intervening
-waits, continue independent lead work, and join every returned identity until
-completion, failure, or confirmed cancellation. For a plan with recorded
-prerequisites, start each task once its prerequisites have passed their oracle
-and its ownership is disjoint from running lanes; do not wait for a whole wave.
+children with fresh, bounded context. Dispatch independent lanes before waiting,
+continue independent lead work, and join every identity through completion,
+failure, or confirmed cancellation. Start a planned task once its prerequisites
+have passed their oracle and ownership is disjoint from running lanes; do not
+wait for a whole wave.
 
 Before dispatch, read
 [native dispatch and lane lifecycle](references/native-dispatch.md) and use
-only the active harness's call shape. One bounded output-only lane may use one
+the harness's native subagent tool and isolation, with sequential fallback.
+One bounded output-only lane may use one
 fresh-context child returning `verdict`, `evidence`, `uncertainty`, and `next`.
-Keep bulky raw payloads in an artifact. Run verbose checks through the
-[run receipt tool](../verify-and-finish/references/run-receipt.md) and report
-command, exit status, result counts, and log path.
+Keep bulky payloads in artifacts. For verbose checks use
+[run receipts](../verify-and-finish/references/run-receipt.md).
 
 Preflight tools, authentication, permissions, and write authority. Brief the
 outcome, disjoint ownership, constraints, oracle, prohibited scope, return
 condition, nested-delegation limit, and an advisory time budget; keep a hard
 timeout where needed. Shared guidance has one writer; shared writes and Git
 stay lead-owned.
+
+Give each writer a repo-relative fence and an out-of-scope line. Run the
+[fence and lead-leak checks](references/fences.md) on the actual worker checkout
+before integration. A fence violation is an automatic kickback before review.
+Reconcile lead drift against the baseline without overwriting existing work.
 
 Honor an operator-selected route before native ranking. Otherwise, when
 `~/.config/megapowers/agent-capabilities.md`
@@ -44,7 +48,10 @@ permissions, writes, or effects.
 
 Before review dispatch, set its scope and correction-round budget. A spent
 budget leaves unresolved findings open; it never converts them into approval.
-Give related failures to one lane so it sees their shared cause. Join all
+Use the [reviewer contract](references/review-contract.md). Start a fresh agent
+per correction round with the original brief and every later directive; see
+[correction-round guidance](../independent-review/references/correction-rounds.md).
+Group related failures in one lane. Join all
 identities before synthesis; a missing or silent result is a gap, never a pass.
 Treat each report as a claim and check its evidence before using it: re-run
 load-bearing claims yourself and sample the rest. Ordinary handoffs use inline

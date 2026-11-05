@@ -1320,7 +1320,7 @@ func approvalTokenMatches(provided string, binary providerExecutable, packageSHA
 
 func makePrompt(pkg []byte, chunk chunkInfo, intent string) ([]byte, error) {
 	var prompt bytes.Buffer
-	prompt.WriteString("<task>Adversarially review the supplied static change. Report only defects you would block the merge for, such as correctness, security, or data-integrity failures. Judge behavior the request or spec does not mention by what a reasonable user of the change would expect. For each finding, give the path and line, why it is wrong, and the input or sequence that shows it fails. Give a clear approve or needs-attention verdict.</task>\n")
+	prompt.WriteString("<task>Adversarially review the supplied static change. Prioritize defects that block the merge, such as correctness, security, or data-integrity failures. Judge behavior the request or spec does not mention by what a reasonable user of the change would expect. Return verdict (pass or fail), scope.creep (unrequested changes, drive-by refactors, new dependencies), scope.shrink (stubs, TODOs, weakened/skipped/deleted tests, loosened assertions, unconfirmed acceptance items), and findings. Use explicit empty lists when nothing was found. Each finding needs severity (blocker, major, or nit), file, line, claim and evidence: give the path and line, why it is wrong, and the input or sequence that shows it fails. The lead computes fail on any blocker, major, scope.creep or scope.shrink regardless of the stated verdict; nits never fail. State verification limits.</task>\n")
 	if intent != "" {
 		// JSON encoding escapes angle brackets, so the intent cannot open or
 		// close prompt markup.

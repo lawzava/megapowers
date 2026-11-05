@@ -2,9 +2,11 @@
 
 ## Scope
 
-This repository publishes one optional `megapowers` plugin for current Claude
-Code and Codex. Skill Markdown may load elsewhere, but no other harness is a
-supported or tested install target. The read-only `session-mine` tool also
+This repository publishes harness-neutral Agent Skills in one optional
+`megapowers` plugin. Claude Code and Codex remain the tested install targets;
+the skills and their supporting files may be copied into other skill-loading
+harnesses. Harness-specific bindings and hooks belong in the user's local
+setup, not in the shared skill bodies. The read-only `session-mine` tool also
 reads OpenCode sessions. Keep every shipped artifact public-safe: no
 personal secrets, machine-specific paths, or undeclared private services.
 
