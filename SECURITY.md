@@ -11,6 +11,7 @@ Review the exact revision before installing it.
 | Skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
 | Doctor script | Plugin manifests and catalog, local marketplace manifests, Claude settings, optional agent registry, workspace Git root, local Claude and Codex session records | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
 | Memory-audit tool | One explicit audit manifest | Standard output only | None |
+| Session miner | Local Claude Code and Codex transcripts, project run journals | Redacted reports on standard output | None |
 | Independent-review guidance | Context selected by the active agent | Review brief and findings through existing harness tools | Selected review route under user permissions; no bundled launcher |
 
 There is no daemon, model router, formatter, status line, or background
@@ -58,8 +59,7 @@ guidance, not enforcement.
 
 Independent review is guidance only. No bundled review script launches provider
 CLIs or accesses their saved logins. The active agent chooses another available
-model through existing harness review, native subagents, or installed agent
-CLIs. Cross-vendor review is preferred but optional. The user's global
+model through existing harness review or native subagents. Cross-vendor review is preferred but optional. The user's global
 CLAUDE.md or AGENTS.md defines independence and reviewer preferences.
 
 Before sending anything off-machine, inspect the brief and accessible files

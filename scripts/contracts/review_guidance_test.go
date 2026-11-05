@@ -18,7 +18,7 @@ func TestReviewIsGuidanceOnly(t *testing.T) {
 		t.Fatal("independent review must not ship a provider launcher")
 	}
 	body := normalized(read(t, root, "plugins/megapowers/skills/independent-review/SKILL.md"))
-	for _, fact := range []string{"another model", "claude.md", "agents.md", "preferred", "optional", "installed agent clis", "native review", "secrets", "disclosure scope", "round cap"} {
+	for _, fact := range []string{"another model", "claude.md", "agents.md", "preferred", "optional", "native subagents", "native review", "secrets", "disclosure scope", "round cap"} {
 		if !strings.Contains(body, fact) {
 			t.Errorf("review guidance missing %q", fact)
 		}

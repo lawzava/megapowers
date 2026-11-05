@@ -41,7 +41,7 @@ harness's own policy and tests explicit invocation separately.
 
 `SKILL.md` bodies do not depend on which harness is running.
 `independent-review` supplies guidance for another available model, using
-native subagents, installed agent CLIs, or native review. Cross-vendor review
+native subagents or native review. Cross-vendor review
 is preferred but optional. Global CLAUDE.md or AGENTS.md instructions define
 independence and reviewer choice. Inspect secrets and disclosure scope before
 sending off-machine. No review launcher ships with the skill.

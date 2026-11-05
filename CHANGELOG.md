@@ -5,6 +5,24 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.50.0 - 2026-11-05
+
+### Removed
+
+- OpenCode session mining, its CLI/API calls, command and timeout options,
+  environment forwarding, parser and source status fields. No replacement
+  OpenCode mining tool is included.
+- Instructions to use saved-login agent CLIs for session mining, review or
+  instruction validation.
+
+### Changed
+
+- Session mining reads only local Claude Code and Codex transcripts.
+  The default harness is `both`; supported values are `both|claude|codex`.
+  The removed `all` and `opencode` harness values now exit with code 2.
+  Existing Claude/Codex report fields remain compatible.
+- Contract checks reject removed OpenCode options and shipped agent CLI calls.
+
 ## 0.49.0 - 2026-11-05
 
 ### Removed

@@ -63,7 +63,7 @@ fallbacks:
 - An `independent-review` binding is your standing approval to send review
   material to that reviewer within the stated scope. Check briefs and accessible
   files for secrets and disclosure scope before sending anything off-machine.
-  Use existing native subagents, installed agent CLIs, or native review. The
+  Use existing native subagents or native review. The
   plugin supplies no review launcher or automated disclosure checks.
 - An unavailable binding is reported, not replaced. Use a `fallbacks` entry
   only when access, disclosure, and permissions for it already exist.
