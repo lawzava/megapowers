@@ -3,9 +3,10 @@
 Last reviewed: 2026-10-08 (UTC), against Claude Code 2.1.295 and Codex
 0.162.0.
 
-Current stable Claude Code and Codex are the only supported harnesses. Portable
-skills may load elsewhere, but this repository does not test or document those
-environments.
+Current stable Claude Code and Codex remain the tested plugin install targets.
+The harness-neutral skills and their supporting files may be copied into other
+Agent Skills harnesses; that is not a tested plugin installation. Configure
+native agent/reviewer bindings, isolation, permissions and any hooks locally.
 
 | Capability | Claude Code | Codex |
 |---|---|---|
@@ -17,7 +18,7 @@ environments.
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
-| Independent review provider | Any operator-named reviewer CLI, different vendor family from author | Any operator-named reviewer CLI, different vendor family from author |
+| Independent review provider | Native different-vendor subagent or operator-named reviewer CLI | Native different-vendor subagent or operator-named reviewer CLI |
 | Credentialed installed A/B | Optional diagnostic | Optional diagnostic |
 | Exact-tag install smoke | Post-publish check | Post-publish check |
 
@@ -39,8 +40,9 @@ Codex's explicit-only policy lives in each such skill's `agents/openai.yaml` as
 harness's own policy and tests explicit invocation separately.
 
 `SKILL.md` bodies do not depend on which harness is running.
-`independent-review` runs whichever reviewer command the operator names and
-forces no vendor. Channel-specific upgrade commands live in a linked reference
+`independent-review` uses a configured native reviewer from another vendor or an
+operator-named external command with secret-scan and disclosure checks. It ships
+no model bindings. Channel-specific upgrade commands live in a linked reference
 loaded only after the install channel is detected.
 
 Install smoke verifies the cached invocation-policy file and native skill

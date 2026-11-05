@@ -5,6 +5,14 @@ another vendor when tests and measurements leave residual risk in security,
 authentication, billing, concurrency, data integrity, and similar work. It
 supplements those tests; it does not replace them.
 
+The configured reviewer may be a native read-only subagent from another vendor.
+Inspect its brief, accessible files and actual provider binding before dispatch;
+native review does not run the external tool's scanner, binary verification,
+environment filtering or package-hash checks, and is not a filesystem sandbox.
+Provider authentication stays with the harness. The standing-approval and
+disclosure boundaries below apply to both routes. No reviewer binding ships
+with the plugin. The remaining CLI instructions describe the external adapter.
+
 The tool is vendor-neutral. It runs whatever reviewer command the operator
 names, verifies that binary, and ties approval to the exact package, binary,
 and command. megapowers ships no provider list, model choice, or credential
@@ -129,3 +137,13 @@ A model verdict is a claim. The lead evaluates each finding, makes any change as
 the single writer, and reruns the artifact's acceptance tests. If the reviewer
 is unavailable or the disclosure cannot be approved, report that independent
 review did not run.
+
+Require `verdict`, `scope.creep`, `scope.shrink`, and findings with severity
+(`blocker`, `major`, `nit`), file, line, claim and evidence. Creep includes
+unrequested refactors and new dependencies; shrink includes stubs, TODOs,
+weakened/skipped/deleted tests, loosened assertions and unconfirmed acceptance.
+The lead computes fail on any blocker, major, creep or shrink, regardless of
+the stated verdict. Nits never fail. Missing results or fields are gaps, not
+passes. The external tool reports execution; it does not parse or enforce this
+acceptance decision. Use fresh agents for correction rounds without resetting
+the original cap, and review only deltas, affected boundaries and new evidence.

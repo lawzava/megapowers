@@ -13,6 +13,10 @@ authority. Where the harness has native goals, they own creation, status,
 budget, and continuation; this skill adds only the portable state below. Native
 goal state does not transfer across harnesses.
 
+Use native workers/reviewers through `orchestrating`/`independent-review`.
+Without native scheduling, checkpoints support manual continuation, not an
+unattended runtime; see the run-state manual fallback.
+
 Keep state in `.megapowers/run/<id>/` with the
 [run state tool](references/run-state.md), which adds `.megapowers/` to
 `.git/info/exclude`: `charter.md` (objective, done criteria, scope, authority,

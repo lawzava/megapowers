@@ -61,8 +61,10 @@ var requiredSkillFacts = map[string][]string{
 	},
 	"independent-review": {
 		"gives only context separation, not independence",
+		"native subagent",
+		"different vendor",
 		"--approve-external",
-		"author and provider labels must differ",
+		"references/external-review.md",
 		"pre-approved",
 		"ask first only when",
 		"secret scan",

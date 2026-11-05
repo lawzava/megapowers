@@ -29,7 +29,11 @@ second look. megapowers gives Claude Code and Codex a skill (a short
 playbook) for each of those moments. When your request matches one, the agent
 can load it and follow it.
 
-It is exactly one plugin for Claude Code and Codex. It uses each tool's own
+It is exactly one plugin, with tested installs for Claude Code and Codex.
+The harness-neutral skills and their supporting files may also be copied into
+other Agent Skills harnesses. Local agent bindings and hooks stay in the user's
+setup; copying skills does not install a plugin or its optional output style.
+It uses each tool's own
 agents, permissions, worktrees, and memory, and ships no daemon, scheduler,
 model router, formatter, or status line.
 

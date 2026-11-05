@@ -12,56 +12,50 @@ Use model review for residual uncertainty after executable checks. Same-provider
 review gives only context separation, not independence. The lead owns
 remediation and reruns the oracle.
 
-## Trusted review path
+## Choose the review route
 
-Take the reviewer family and exact command from the capability registry or user
-instruction; never guess. Set `review_tool` to the installed
-`scripts/megapowers-review.go` beside this `SKILL.md`, not a project copy.
+Read the reviewer binding from the capability registry or user instruction.
+Use a different vendor from each portion's author. Unavailable review remains
+pending, not permission to switch providers.
 
-Dispatch a pre-approved reviewer in one step with
-`--approve-external configured` or inspect first and pass the emitted
-`approval_token`:
-
-```bash
-reviewer_cmd='<reviewer CLI and arguments>'   # {prompt_file} and {scratch_dir} expand
-intent='<intended behavior and acceptance boundary>'
-go run "$review_tool" review --file path/to/file --intent "$intent" \
-  --provider <reviewer-family> --provider-command "$reviewer_cmd" \
-  --author <author-family> --approve-external configured
-```
-
-When an instruction requires human inspection before dispatch or no configured
-reviewer exists, run `inspect` first (`--file path/to/file` or
-`--base <base-revision> --head <head-revision>`), check the disclosed intent,
-binary hash, command, and chunk package hashes, and pass the emitted token to
-`review --approve-external "$approval_token"`. Any file, intent, binary, or
-command change requires a new inspection and token.
-
-Author and provider labels must differ and name real vendor families. `--file` takes a file in the
-repository, in the current directory outside Git, or under `$TMPDIR`; keep
-review packages and receipts under `$TMPDIR`, never in the deliverable.
-The tool forwards no credentials; reviewer CLIs sign in themselves.
-The reviewer process gets only `PATH` and `HOME`.
-`--preflight` probes liveness before bytes leave. Without Go or a shell, send
-nothing: the secret scan lives in the tool. Tell the user.
+- **Native subagent:** use the harness's native tool with the bound read-only
+  reviewer. Supply artifact identity, requirements, acceptance boundary, scope
+  and check evidence, not unrelated history. Inspect the brief and accessible
+  files for secrets and disclosure scope. This route forwards no credentials
+  in the brief; authentication stays with the harness. It does not run the
+  external tool's secret scan, binary verification, environment filtering or
+  package-hash checks, nor sandbox filesystem access. Confirm the actual vendor
+  and permissions; native review can send bytes off-machine.
+- **Outside the harness:** use the installed tool's secret scan and disclosure
+  inspection for every package. Read
+  [external review](references/external-review.md) for command shapes,
+  `--approve-external`, `--intent`, and approval-token handling. The tool
+  forwards no credentials. Without Go or a shell, send nothing through this
+  route and report the limitation.
 
 ## Dispatch authority
 
-External dispatch sends artifact bytes to another vendor. A reviewer bound to
-`independent-review` in the capability registry, or named by a user or
-repository instruction, is pre-approved: decide when to review and dispatch
-without asking. Ask first only when no configured reviewer exists, the
-disclosure exceeds the intended scope or holds content an instruction keeps
-local, or an instruction requires approval. Never silently substitute a
-same-provider review. If the harness's own reviewer denies the send, report its
-reason and stop. Surface a permission prompt or provider stall.
+A bound or instruction-named reviewer is pre-approved within the intended
+scope. Ask first only when no reviewer is configured, disclosure exceeds that
+scope or includes local-only content, or instructions require approval or
+inspection. Both routes honor denials and report permission/provider stalls;
+never bypass a failed scan with a direct send.
 
-Receipts are advisory, not an approval gate; `--out` must be an existing
-absolute directory outside the review root. If the tool fails, report
-its error; a direct provider call skips its secret scan. Use
-`--retain-transcript` only after a sensitive-data decision. Treat the review
-verdict as a claim. Record credible findings and explain dismissals against the
-artifact intent. Bound correction rounds: re-review only
+## Reviewer contract
+
+Require `verdict`, `scope.creep` (unrequested changes, drive-by refactors, new
+dependencies), `scope.shrink` (stubs, TODOs, weakened, skipped or deleted tests,
+loosened assertions, unconfirmed acceptance items), and `findings`. Each finding
+has severity (`blocker`, `major`, or `nit`), file, line, claim, and evidence.
+Use explicit empty lists and state verification limits.
+
+The lead computes **fail** when any blocker, major, scope.creep or scope.shrink
+exists, regardless of the stated verdict. Nits never fail. Verify findings;
+record disproof for false positives and resolve failures before approval.
+Missing fields or results are gaps, never a pass.
+
+Set the round cap before dispatch; re-review only
 [fixes since the prior round](references/correction-rounds.md), affected
-boundaries, and new evidence. Join every requested review before completion;
-approval cannot settle a queued review.
+boundaries, and new evidence. Exhaustion leaves unresolved findings open for
+the user. Join every review before completion; approval cannot settle a queued
+review. Receipts record execution, not acceptance.

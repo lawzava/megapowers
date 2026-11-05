@@ -500,6 +500,11 @@ func TestReviewPromptAsksForMergeBlockingFindings(t *testing.T) {
 			t.Errorf("reviewer prompt lacks %q:\n%s", needle, input)
 		}
 	}
+	for _, needle := range []string{"verdict", "scope.creep", "scope.shrink", "blocker", "major", "nit", "file", "line", "claim", "evidence", "new dependencies", "loosened assertions", "lead computes", "nits never fail"} {
+		if !strings.Contains(input, needle) {
+			t.Errorf("reviewer prompt lacks pipeline contract %q:\n%s", needle, input)
+		}
+	}
 	if strings.Contains(input, "maintainability") {
 		t.Errorf("reviewer prompt still invites maintainability findings:\n%s", input)
 	}

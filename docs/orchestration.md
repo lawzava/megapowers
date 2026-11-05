@@ -65,10 +65,14 @@ registry. `megapowers-doctor` warns when the file is expired or has no
 readable `expires_at`.
 
 `manual` describes something the operator can run; `approved-external` still
-requires the explicit disclosure workflow. Neither is a native agent. The
+requires the explicit disclosure workflow. Neither is a native agent. An
+`access: native` independent-review binding selects a user-configured native
+reviewer role from another vendor; it does not run the external tool's scanner
+or binary/package verification. Inspect its disclosure scope and actual tool
+permissions before dispatch. The
 registry is advisory, with one exception: an `independent-review` binding is
 the operator's standing approval to send review packages to that reviewer
-through the independent-review tool, so the agent reviews without asking. It
+through the configured route, so the agent reviews without asking. It
 cannot grant permissions or approve writes and side effects. Do not put
 credentials, account identifiers, command lines, or private source paths in it.
 
@@ -107,6 +111,12 @@ Parallel ownership must be disjoint. Keep shared interfaces and dependent tasks
 sequential. The lead remains the single writer for integration and Git, reads
 the returned artifacts, resolves conflicts, and reruns the real check.
 
+Give each writer a path fence and check the actual worker checkout with the
+[fence checker](../plugins/megapowers/skills/orchestrating/references/fences.md).
+A fence violation is an automatic kickback before review. Capture lead state
+before dispatch and reconcile any lead drift before integration; drift alone
+does not identify its author.
+
 Continue lead work while agents run. Then prefer completion events or
 asynchronous waits within tool deadlines and the required update cadence;
 avoid repeated reads of unchanged status and keep a final readback. Batch
@@ -122,6 +132,11 @@ and running review requests until completion or confirmed cancellation. Target
 follow-up reviews at fixes and affected boundaries. Repeat a full review only
 when new evidence or changes justify it. A budget limit leaves unresolved
 findings open; an approval does not settle another pending review.
+Require the [reviewer contract](../plugins/megapowers/skills/orchestrating/references/review-contract.md):
+`verdict`, `scope.creep`, `scope.shrink`, and located, evidenced findings with
+severity. The lead fails any blocker, major, creep or shrink regardless of the
+stated verdict; nits never fail. Use a fresh agent for each correction round,
+carrying the original brief and all later directives without resetting the cap.
 
 ## Keep durable runs small
 

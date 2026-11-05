@@ -43,11 +43,11 @@ bindings:
       access: native
       rankable: true
     independent-review:
-      provider: <other-harness>
+      agent_type: <native-reviewer-role>  # role configured by the user, not shipped
       model: <model-id>
       effort: high
       family: <different-vendor-family>  # e.g. anthropic, openai, or google
-      access: manual
+      access: native
       status: operator-selected
       rankable: false
 
@@ -58,9 +58,15 @@ fallbacks:
 ## Rules
 
 - An `independent-review` binding is your standing approval to send review
-  packages to that reviewer through the independent-review tool. The agent
-  decides when to review and dispatches without asking; the tool's secret
-  scan still applies. Delete the binding to require approval again.
+  material to that reviewer within the intended scope. With `access: native`,
+  the harness's native subagent tool selects `agent_type`; verify that its
+  configured vendor really differs from the author and keep tools read-only.
+  This route does not run the external tool's secret scan or hash checks.
+  For an external reviewer, use `access: approved-external` and a `provider`
+  label; supply the exact command in separate user instructions. The agent
+  decides when to review and dispatches without asking, but the external tool's
+  secret scan and disclosure inspection still apply. Delete the binding to
+  require approval again. Neither route widens the approved disclosure scope.
 - An unavailable binding is reported, not replaced. Use a `fallbacks` entry
   only when access, disclosure, and permissions for it already exist.
 - A failed task oracle calls for diagnosis, not a provider switch.
