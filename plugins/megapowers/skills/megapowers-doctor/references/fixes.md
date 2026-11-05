@@ -1,6 +1,6 @@
 # Fixes by check
 
-- Version or root mismatch: use `upgrading-megapowers`.
+- Manifest versions differ, or version unexpected: use `upgrading-megapowers`.
 - Unreadable manifest, catalog, skill body, or registry template: confirm the
   installed plugin directory is complete. Use `upgrading-megapowers` to repair it.
 

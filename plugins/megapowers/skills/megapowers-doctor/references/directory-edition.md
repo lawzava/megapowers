@@ -5,9 +5,9 @@ its absence does not identify the edition or indicate a fault.
 Never claim a command ran when it did not.
 
 1. This skill loaded, so discovery works for this skill.
-2. Read `version` from `<plugin root>/.claude-plugin/plugin.json`, falling back
-   to `<plugin root>/.codex-plugin/plugin.json`. If neither is readable,
-   report the version as unknown.
+2. Read `version` from both `<plugin root>/.claude-plugin/plugin.json` and
+   `<plugin root>/.codex-plugin/plugin.json` when present. Report any version
+   difference. If neither is readable, report the version as unknown.
 3. Read `<plugin root>/skills/catalog.json` and confirm each listed skill has
    a readable `<plugin root>/skills/<name>/SKILL.md`. The directory edition
    omits the catalog; list sibling skill directories instead. Name any directory

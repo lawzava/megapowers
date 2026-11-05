@@ -14,10 +14,10 @@ plugin manifest version, `skills/catalog.json` and each listed skill's
 `SKILL.md`, and the shipped agent registry template. Report missing or unreadable
 files and give one fix per finding from [fixes by check](references/fixes.md).
 
-Check the optional output style with `/config` or ask the user which style
+On Claude Code, check the optional output style with `/config` or ask the user which style
 is selected. Report checks you could not perform as skipped.
 
-Maintainers can use the repository doctor tool with `--root`.
+From a megapowers checkout, maintainers can run `go run ./scripts/cmd/doctor --root <plugin-root>`.
 
 ## Did a skill fire?
 

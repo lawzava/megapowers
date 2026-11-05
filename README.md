@@ -290,7 +290,7 @@ See [SECURITY.md](./SECURITY.md) for the read and execution boundaries.
 | Symptom | Fix |
 |---|---|
 | Style not applied on Claude Code | The setting must read `megapowers:Megapowers`, not `Megapowers` |
-| Doctor error mentioning Go | Install Go 1.25 or newer |
+| Skill script error mentioning Go | Install Go 1.25 or newer |
 | Wrong version after an upgrade | Use `upgrading-megapowers`, which compares the marketplace head with the approved release tag before writing |
 
 ## Limits

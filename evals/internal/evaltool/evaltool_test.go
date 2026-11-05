@@ -25,6 +25,20 @@ func TestPortableSkillBody(t *testing.T) {
 	}
 }
 
+func TestDoctorOutputStyleHarnessScope(t *testing.T) {
+	const rel = "plugins/megapowers/skills/megapowers-doctor/SKILL.md"
+	const body = "On Claude Code, check the optional output style with `/config` or ask the user which style\nis selected."
+	if hits := portabilityHitsFor(rel, body); len(hits) != 0 {
+		t.Fatalf("doctor output-style scope flagged: %v", hits)
+	}
+	if hits := portabilityHitsFor(rel, body+"\nUse Codex agents."); len(hits) != 1 || hits[0] != 3 {
+		t.Fatalf("other harness guidance must still be flagged: %v", hits)
+	}
+	if hits := portabilityHitsFor("plugins/megapowers/skills/example/SKILL.md", body); len(hits) == 0 {
+		t.Fatal("doctor exception applied to another skill")
+	}
+}
+
 func TestCoverageInventoryDiscoversSkillsDynamically(t *testing.T) {
 	root := t.TempDir()
 	for _, name := range []string{"zeta", "alpha"} {

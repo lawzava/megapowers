@@ -33,7 +33,7 @@ Codex manifests, the optional skill catalog and listed skill bodies, and the
 shipped agent registry template. It prints versions, catalog counts, paths, and
 warnings. Root environment variables only locate that tree.
 
-The script has no network client. `go run` uses Go's build caches; with
+The tool has no network client. `go run` uses Go's build caches; with
 `GOTOOLCHAIN=auto`, Go may download a selected toolchain. Set
 `GOTOOLCHAIN=local` to require a suitable locally installed toolchain.
 
