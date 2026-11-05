@@ -40,7 +40,9 @@ OpenCode is noted as not read. `both` always means Claude Code + Codex.
 Each report includes `by_source` counts, `skipped_sources`,
 `partial_sources`, `skipped_sessions`, and `deduplicated_sessions`.
 Invalid export files make the source partial, retaining valid sessions.
-The source's `environment` is `offline`; its status is `complete`,
+Exports with an `export-status` manifest retain the exporter's status,
+skipped-session count, and environment. Without a manifest, `environment` is
+`offline`; status is `complete`,
 `partial`, or `skipped`.
 
 ### OpenCode exports
@@ -49,7 +51,7 @@ First create exports with the repository maintainer tool, outside the installed
 plugin. Set `MEGAPOWERS_REPO` to the absolute path of a megapowers repository checkout:
 
 ```bash
-go -C "$MEGAPOWERS_REPO" run github.com/lawzava/megapowers/scripts/cmd/opencode-export --output /path/to/exports
+go -C "$MEGAPOWERS_REPO" run github.com/lawzava/megapowers/scripts/cmd/opencode-export --all-workspaces --output /path/to/exports
 ```
 
 Then read the exports with the installed skill:
@@ -64,7 +66,9 @@ counted once. `--workspace` matches the export's current `location.directory`,
 including child sessions; `--since` filters message timestamps.
 
 The repository tool uses an already-running OpenCode service, paginates the
-session list, and writes private export files into a new or empty directory.
+session list, and writes private export files into a new or empty directory at an absolute path outside the checkout.
+Exporter exit 1 means a partial result; its manifest distinguishes partial
+from skipped exports.
 Its CLI options and retry/deadline behavior are documented in the repository's
 [export tool reference](https://github.com/lawzava/megapowers/blob/main/docs/advanced/opencode-export.md).
 The installed miner reads only the supplied files.

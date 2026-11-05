@@ -3,16 +3,36 @@
 The repository tool creates offline JSON files for the installed session miner:
 
 ```sh
-go run ./scripts/cmd/opencode-export --output /path/to/exports
+go run ./scripts/cmd/opencode-export --all-workspaces --output /path/to/exports
 go run "$SKILL_DIR/scripts/session-mine.go" corrections --workspace "$PWD" --opencode-export /path/to/exports
 ```
 
 Run the exporter from a repository checkout. It is outside the shipped plugin.
-The output directory must be new or empty to avoid mixing snapshots. Files use
+The output directory must be an absolute path outside the checkout, new or empty to avoid mixing snapshots. Files use
 mode 0600 and contain unredacted transcripts; the miner redacts report excerpts.
-The exporter writes a JSON summary to stdout, diagnostics to stderr, and exits
-1 for an incomplete export (retaining files already written), or 2 for invalid
-options. An empty, complete snapshot exits 0.
+After accepting the output directory, the exporter writes `export-status`
+(JSON in a non-.json file) with status, skipped_sessions, and environment.
+An initial partial marker survives interruption; the final manifest records
+complete, partial, or skipped. The miner reads this manifest for directory
+inputs and for individual files beside it. Handwritten exports without a
+manifest remain supported and report environment offline.
+
+Exporter exit 1 = partial result: retain files already written and inspect
+export-status to distinguish partial from skipped. Exit 2 means invalid
+options. A complete snapshot, including an empty one, exits 0. The JSON stdout
+summary is printed after export and manifest completion; option, directory,
+or manifest-write failures may return without a summary. Diagnostics use stderr.
+
+Select exactly one of --workspace DIR and --all-workspaces. --since YYYY-MM-DD
+skips sessions whose list-data update time precedes the date before fetching
+exports. The miner still applies its own message-time filter.
+
+The shell entrypoint is equivalent to the Go command. Invoke its absolute path
+when running from another directory:
+
+```sh
+scripts/opencode-export.sh --all-workspaces --output /path/to/exports
+```
 
 The tool checks service status, paginates `/api/session`, and fetches
 `/api/experimental/session/{id}/export` using the configured OpenCode CLI.

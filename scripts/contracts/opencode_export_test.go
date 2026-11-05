@@ -96,7 +96,7 @@ func runSessionMineStreams(t *testing.T, root string, env []string, tool string,
 		}
 	}
 	// Exercise the repository exporter first, then the shipped offline miner.
-	// Combine source health here only to retain the old pipeline assertions.
+	// Reports below are the miner's own output, including export-status health.
 	exportTool := filepath.Join(t.TempDir(), "opencode-export")
 	if out, code := run(t, root, nil, "go", "build", "-o", exportTool, "./scripts/cmd/opencode-export"); code != 0 {
 		t.Fatalf("build exporter: %s", out)
@@ -114,18 +114,42 @@ func runSessionMineStreams(t *testing.T, root string, env []string, tool string,
 		if args[i] == "--harness" && i+1 < len(args) && args[i+1] == "both" {
 			both = true
 		}
+		if args[i] == "--workspace" || args[i] == "--since" {
+			exportArgs = append(exportArgs, args[i], args[i+1])
+		}
+		if args[i] == "--all-workspaces" {
+			exportArgs = append(exportArgs, args[i])
+		}
 		mineArgs = append(mineArgs, args[i])
 	}
-	var health map[string]any
 	exportStderr := ""
+	selected := false
+	for _, arg := range exportArgs {
+		if arg == "--workspace" || arg == "--all-workspaces" {
+			selected = true
+		}
+	}
+	if !selected {
+		exportArgs = append(exportArgs, "--all-workspaces")
+	}
 	if !both {
 		cmd := exec.Command(exportTool, exportArgs...)
 		cmd.Dir, cmd.Env = root, append(os.Environ(), env...)
 		var out, errout bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &errout
-		_ = cmd.Run()
+		err := cmd.Run()
+		var health struct {
+			Status string `json:"status"`
+		}
 		if json.Unmarshal(out.Bytes(), &health) != nil {
 			t.Fatalf("export report: %s %s", out.String(), errout.String())
+		}
+		wantCode := 0
+		if health.Status != "complete" {
+			wantCode = 1
+		}
+		if cmd.ProcessState == nil || cmd.ProcessState.ExitCode() != wantCode {
+			t.Fatalf("exporter exit: %v; %s %s", err, out.String(), errout.String())
 		}
 		exportStderr = errout.String()
 		mineArgs = append(mineArgs, "--opencode-export", exportDir)
@@ -137,26 +161,7 @@ func runSessionMineStreams(t *testing.T, root string, env []string, tool string,
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("session-mine: %v %s %s", err, stdout.String(), stderr.String())
 	}
-	if health != nil {
-		var report map[string]any
-		if json.Unmarshal(stdout.Bytes(), &report) != nil {
-			t.Fatal(stdout.String())
-		}
-		for _, key := range []string{"partial_sources", "skipped_sources", "skipped_sessions"} {
-			report[key] = report[key].(float64) + health[key].(float64)
-		}
-		source := report["by_source"].(map[string]any)["opencode"].(map[string]any)
-		source["status"], source["environment"] = health["status"], health["environment"]
-		var data bytes.Buffer
-		encoder := json.NewEncoder(&data)
-		encoder.SetEscapeHTML(false)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(report); err != nil {
-			t.Fatal(err)
-		}
-		return data.String(), exportStderr + stderr.String()
-	}
-	return stdout.String(), stderr.String()
+	return stdout.String(), exportStderr + stderr.String()
 }
 
 func TestSessionMineOpenCode(t *testing.T) {
@@ -240,7 +245,19 @@ func TestSessionMineOpenCode(t *testing.T) {
 		t.Errorf("all-workspaces: %s", output)
 	}
 	beforeBoth, _ := os.ReadFile(filepath.Join(fixtures, "calls"))
-	output, _ = runSessionMineStreams(t, root, env, tool, append([]string{"corrections", "--harness", "both"}, base...)...)
+	ignored := filepath.Join(t.TempDir(), "ignored.json")
+	if err := os.WriteFile(ignored, []byte(openCodeExport(other, openCodeMessage("user", "Must ignore this"))), 0600); err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"corrections", "--harness", "both", "--opencode-export", ignored}, base...)
+	cmd := exec.Command(tool, args...)
+	cmd.Env = append(os.Environ(), env...)
+	cmd.Dir = root
+	data, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output = string(data)
 	if json.Unmarshal([]byte(output), &report) != nil || report.SessionsScanned != 2 || report.Deduplicated != 0 {
 		t.Errorf("both compatibility: %s", output)
 	}
@@ -502,12 +519,12 @@ func TestSessionMineOpenCodeTimeoutOptions(t *testing.T) {
 	if out, code := run(t, root, nil, "go", "build", "-o", tool, "./scripts/cmd/opencode-export"); code != 0 {
 		t.Fatal(out)
 	}
-	output, code := run(t, root, []string{"SESSION_MINE_OPENCODE_TIMEOUT=invalid"}, tool, "--output", filepath.Join(t.TempDir(), "exports"), "--opencode-timeout", "2s")
-	if code == 2 {
+	output, code := run(t, root, []string{"SESSION_MINE_OPENCODE_TIMEOUT=invalid"}, tool, "--all-workspaces", "--output", filepath.Join(t.TempDir(), "exports"), "--opencode-timeout", "2s")
+	if code != 0 {
 		t.Fatalf("timeout flag must override env (%d): %s", code, output)
 	}
 	for _, value := range []string{"invalid", "0s", "-1s"} {
-		output, code = run(t, root, []string{"SESSION_MINE_OPENCODE_TIMEOUT=" + value}, tool, "--output", filepath.Join(t.TempDir(), "exports"))
+		output, code = run(t, root, []string{"SESSION_MINE_OPENCODE_TIMEOUT=" + value}, tool, "--all-workspaces", "--output", filepath.Join(t.TempDir(), "exports"))
 		if code != 2 || !strings.Contains(output, "positive duration") {
 			t.Errorf("invalid timeout %q (%d): %s", value, code, output)
 		}
@@ -546,13 +563,13 @@ func TestSessionMineInstalledSingleFile(t *testing.T) {
 	cmd := exec.Command("go", "run", installed, "corrections", "--harness", "opencode", "--all-workspaces", "--format", "json")
 	cmd.Dir = dir
 	data, err := cmd.Output()
-	output, code := string(data), 0
+	output := string(data)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var report sessionMineCorrections
-	if code != 0 || json.Unmarshal([]byte(output), &report) != nil || report.SessionsScanned != 0 {
-		t.Fatalf("standalone installed copy (%d): %s", code, output)
+	if json.Unmarshal([]byte(output), &report) != nil || report.SessionsScanned != 0 {
+		t.Fatalf("standalone installed copy: %s", output)
 	}
 }
 

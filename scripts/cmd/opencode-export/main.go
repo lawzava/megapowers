@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -21,6 +22,9 @@ type options struct {
 	opencodeCmd     string
 	opencodeTimeout time.Duration
 	output          string
+	workspace       string
+	all             bool
+	since           time.Time
 }
 type scanStats struct {
 	opencodeStatus      string
@@ -245,6 +249,12 @@ func exportOpenCode(opt options, stats *scanStats) int {
 				continue
 			}
 			seenIDs[info.ID] = true
+			if info.Location.Directory == "" || (!opt.all && filepath.Clean(info.Location.Directory) != opt.workspace) {
+				continue
+			}
+			if !opt.since.IsZero() && info.Time.Updated > 0 && time.UnixMilli(info.Time.Updated).Before(opt.since) {
+				continue
+			}
 			exported, err := openCodeRead(ctx, opt, env, "/api/experimental/session/"+url.PathEscape(info.ID)+"/export", func(exported openCodeExport) (bool, bool) {
 				valid := exported.Data != nil && exported.Data.Messages != nil && exported.Data.Info.ID == info.ID
 				return valid, valid && len(*exported.Data.Messages) == 0
@@ -255,6 +265,10 @@ func exportOpenCode(opt options, stats *scanStats) int {
 				if openCodeTimedOut(err) {
 					return written
 				}
+				continue
+			}
+			// The session may have moved since listing; recheck the export's scope.
+			if exported.Data.Info.Location.Directory == "" || (!opt.all && filepath.Clean(exported.Data.Info.Location.Directory) != opt.workspace) {
 				continue
 			}
 			data, err := json.Marshal(exported)
@@ -299,6 +313,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&opt.opencodeCmd, "opencode-cmd", command, "OpenCode executable")
 	fs.StringVar(&timeout, "opencode-timeout", timeout, "overall deadline (positive Go duration)")
 	fs.StringVar(&opt.output, "output", "", "new or empty export directory (required)")
+	fs.StringVar(&opt.workspace, "workspace", "", "session directory to export")
+	fs.BoolVar(&opt.all, "all-workspaces", false, "export all directories")
+	var since string
+	fs.StringVar(&since, "since", "", "skip sessions updated before YYYY-MM-DD")
 	if fs.Parse(args) != nil {
 		return 2
 	}
@@ -309,7 +327,29 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if opt.output == "" || strings.TrimSpace(opt.opencodeCmd) == "" || fs.NArg() != 0 {
-		fmt.Fprintln(stderr, "usage: opencode-export --output DIR [--opencode-cmd FILE] [--opencode-timeout 5m]")
+		fmt.Fprintln(stderr, "usage: opencode-export --output DIR (--workspace DIR | --all-workspaces) [--since YYYY-MM-DD] [--opencode-cmd FILE] [--opencode-timeout 5m]")
+		return 2
+	}
+	if (opt.workspace == "" && !opt.all) || (opt.workspace != "" && opt.all) {
+		fmt.Fprintln(stderr, "select --workspace DIR or --all-workspaces")
+		return 2
+	}
+	if opt.workspace != "" {
+		opt.workspace, err = filepath.Abs(opt.workspace)
+		if err != nil {
+			fmt.Fprintln(stderr, "cannot resolve workspace")
+			return 2
+		}
+	}
+	if since != "" {
+		opt.since, err = time.Parse("2006-01-02", since)
+		if err != nil {
+			fmt.Fprintln(stderr, "--since must use YYYY-MM-DD")
+			return 2
+		}
+	}
+	if err := validateOutput(opt.output); err != nil {
+		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	if err = os.MkdirAll(opt.output, 0700); err != nil {
@@ -322,13 +362,82 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	stats := &scanStats{}
+	// An interrupted export must never look like a complete empty snapshot.
+	if err := writeStatus(opt.output, "partial", 0, "inherited"); err != nil {
+		fmt.Fprintln(stderr, "cannot write export-status")
+		return 1
+	}
 	written := exportOpenCode(opt, stats)
 	for _, note := range stats.notes {
 		fmt.Fprintln(stderr, note)
+	}
+	if err := writeStatus(opt.output, stats.opencodeStatus, stats.skippedSessions, stats.opencodeEnvironment); err != nil {
+		fmt.Fprintln(stderr, "cannot write export-status")
+		return 1
 	}
 	json.NewEncoder(stdout).Encode(map[string]any{"exports_written": written, "status": stats.opencodeStatus, "environment": stats.opencodeEnvironment, "partial_sources": stats.partialSources, "skipped_sources": stats.skippedSources, "skipped_sessions": stats.skippedSessions})
 	if stats.opencodeStatus != "complete" {
 		return 1
 	}
 	return 0
+}
+
+func writeStatus(dir, status string, skipped int, environment string) error {
+	data, err := json.Marshal(map[string]any{"status": status, "skipped_sessions": skipped, "environment": environment})
+	if err != nil {
+		return err
+	}
+	// Replace the initial partial marker atomically so readers never see truncated JSON.
+	file, err := os.CreateTemp(dir, ".export-status-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), filepath.Join(dir, "export-status"))
+}
+
+func validateOutput(output string) error {
+	if !filepath.IsAbs(output) {
+		return fmt.Errorf("--output must be an absolute path outside the checkout")
+	}
+	// The tool is built from this module; use its source location rather than
+	// the caller's cwd, which can be elsewhere when running the compiled binary.
+	_, source, _, ok := runtime.Caller(0)
+	if !ok || !filepath.IsAbs(source) {
+		return fmt.Errorf("cannot determine exporter module root")
+	}
+	root, err := filepath.EvalSymlinks(filepath.Join(filepath.Dir(source), "..", "..", ".."))
+	if err != nil {
+		return fmt.Errorf("cannot resolve exporter module root")
+	}
+	// Resolve existing ancestors too, so a symlink cannot hide an in-checkout output.
+	resolved := filepath.Clean(output)
+	var suffix []string
+	for {
+		canonical, err := filepath.EvalSymlinks(resolved)
+		if err == nil {
+			resolved = canonical
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			break
+		}
+		if !os.IsNotExist(err) || filepath.Dir(resolved) == resolved {
+			return fmt.Errorf("cannot resolve output directory")
+		}
+		suffix = append(suffix, filepath.Base(resolved))
+		resolved = filepath.Dir(resolved)
+	}
+	rel, err := filepath.Rel(root, resolved)
+	if err != nil || rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+		return fmt.Errorf("--output must be outside the checkout")
+	}
+	return nil
 }

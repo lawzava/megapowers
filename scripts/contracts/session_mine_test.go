@@ -1,8 +1,10 @@
 package contracts
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -233,10 +235,19 @@ func TestSessionMineCorrections(t *testing.T) {
 	claudeRoot, codexRoot := sessionMineFixture(t)
 	base := []string{"corrections", "--workspace", "/work/demo.v2", "--claude-root", claudeRoot, "--codex-root", codexRoot}
 
-	output, code := runClaudeCodexMine(t, root, nil, tool, append(base, "--since", "2026-10-01", "--format", "json")...)
-	if code != 0 {
-		t.Fatalf("corrections json failed (%d): %s", code, output)
+	cmd := exec.Command(tool, append(base, "--since", "2026-10-01", "--format", "json")...)
+	cmd.Dir = root
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	data, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err, stderr.String())
 	}
+	output := string(data)
+	if !strings.Contains(stderr.String(), "not read") {
+		t.Fatalf("default all must note missing OpenCode exports: %s", stderr.String())
+	}
+	var code int
 	var report sessionMineCorrections
 	if err := json.Unmarshal([]byte(output), &report); err != nil {
 		t.Fatalf("corrections json does not parse: %v\n%s", err, output)

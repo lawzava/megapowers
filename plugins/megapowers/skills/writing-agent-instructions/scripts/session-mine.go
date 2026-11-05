@@ -589,6 +589,31 @@ func loadOpenCode(opt options, stats *scanStats) []session {
 			}
 		}
 	}
+	statusDir := opt.opencodeExport
+	if !stat.IsDir() {
+		statusDir = filepath.Dir(statusDir)
+	}
+	statusData, statusErr := os.ReadFile(filepath.Join(statusDir, "export-status"))
+	if statusErr == nil {
+		var manifest struct {
+			Status      string `json:"status"`
+			Skipped     *int   `json:"skipped_sessions"`
+			Environment string `json:"environment"`
+		}
+		if json.Unmarshal(statusData, &manifest) != nil || manifest.Skipped == nil || *manifest.Skipped < 0 ||
+			(manifest.Status != "complete" && manifest.Status != "partial" && manifest.Status != "skipped") ||
+			(manifest.Environment != "offline" && manifest.Environment != "inherited" && manifest.Environment != "without_xdg_state_home") {
+			problem("invalid export-status manifest", true)
+		} else {
+			stats.opencodeEnvironment = manifest.Environment
+			stats.skippedSessions += *manifest.Skipped
+			if manifest.Status != "complete" {
+				problem("export-status reports "+manifest.Status, manifest.Status == "partial")
+			}
+		}
+	} else if !os.IsNotExist(statusErr) {
+		problem("cannot read export-status manifest", true)
+	}
 	seen := map[string]bool{}
 	for _, file := range files {
 		data, err := os.ReadFile(file)
