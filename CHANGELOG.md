@@ -5,6 +5,12 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.46.2 - 2026-11-05
+
+### Changed
+
+- session-mining reference no longer describes how OpenCode exports are fetched; see `docs/advanced/opencode-export.md`. It also corrects the privacy note: the miner writes no files.
+
 ## 0.46.1 - 2026-11-05
 
 ### Changed
