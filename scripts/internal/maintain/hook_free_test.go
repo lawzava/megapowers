@@ -1,6 +1,7 @@
 package maintain
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,19 @@ func TestHookFreePlugin(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "plugins", "megapowers")
 	if _, err := os.Stat(filepath.Join(root, "hooks")); !os.IsNotExist(err) {
 		t.Fatal("plugin still ships hooks")
+	}
+	for _, name := range []string{".claude-plugin/plugin.json", ".codex-plugin/plugin.json"} {
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var manifest map[string]json.RawMessage
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := manifest["hooks"]; ok {
+			t.Errorf("%s declares hooks", name)
+		}
 	}
 }
 
@@ -60,6 +74,8 @@ func TestDoctorInstallationDiagnostics(t *testing.T) {
 	write(root, ".claude-plugin/plugin.json", `{"version":"1.2.3"}`)
 	write(root, ".codex-plugin/plugin.json", `{"version":"1.2.4"}`)
 	write(root, "skills/catalog.json", `{"skills":[{"name":"verify-and-finish"}]}`)
+	project := claudeProjectSlug.ReplaceAllString(workspace, "-")
+	write(home, filepath.Join(".claude/projects", project, "s.jsonl"), strings.Join(skillReadTrace(t, "Skill", `{"skill":"megapowers:verify-and-finish"}`, "Launching skill", false), "\n")+"\n")
 	write(home, ".claude/settings.json", `{"outputStyle":"Other"}`)
 	write(workspace, ".claude/settings.json", `{"outputStyle":"megapowers:Megapowers"}`)
 	write(home, ".config/megapowers/agent-capabilities.md", "expires_at: 2000-01-01\n")
@@ -70,7 +86,7 @@ func TestDoctorInstallationDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("doctor: %v\n%s", err, out)
 	}
-	for _, want := range []string{"version 1.2.4 differs from 1.2.3", "OK, " + filepath.Join(workspace, ".claude", "settings.json"), "marketplace copy is 2.0.0", "expired 2000-01-01", "skill loads, last 7 days"} {
+	for _, want := range []string{"version 1.2.4 differs from 1.2.3", "OK, " + filepath.Join(workspace, ".claude", "settings.json"), "marketplace copy is 2.0.0", "expired 2000-01-01", "skill loads, last 7 days in " + workspace + ": 1 transcript(s); verify-and-finish 1"} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("missing %q\n%s", want, out)
 		}

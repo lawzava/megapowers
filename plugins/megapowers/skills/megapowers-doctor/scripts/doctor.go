@@ -53,7 +53,9 @@ func runDoctor(getenv getenvFunc, output, errors io.Writer) int {
 	} else {
 		report.add("plugin root: %s", root)
 	}
-	doctorVersion(report, root)
+	if root != "" {
+		doctorVersion(report, root)
+	}
 
 	harness, signal := detectHarness(getenv)
 	report.add("harness: %s (%s)", harness, signal)
@@ -61,8 +63,10 @@ func runDoctor(getenv getenvFunc, output, errors io.Writer) int {
 	if harness != "codex" {
 		doctorClaudeOutputStyle(report, getenv)
 	}
-	doctorMarketplace(report, getenv, harness, root)
-	doctorSkillLoads(report, getenv, root)
+	if root != "" {
+		doctorMarketplace(report, getenv, harness, root)
+		doctorSkillLoads(report, getenv, root)
+	}
 	doctorAgentRegistry(report, getenv)
 
 	if _, err := io.WriteString(output, strings.Join(report.lines, "\n")+"\n"); err != nil {
@@ -296,10 +300,18 @@ type getenvFunc func(string) string
 
 func main() {
 	root := flag.String("root", "", "installed plugin root")
+	harness := flag.String("harness", "", "harness: claude or codex (default: detect from environment)")
 	flag.Parse()
+	if *harness != "" && *harness != "claude" && *harness != "codex" {
+		fmt.Fprintln(os.Stderr, "doctor: --harness must be claude or codex")
+		os.Exit(2)
+	}
 	getenv := func(key string) string {
 		if key == "MEGAPOWERS_PLUGIN_ROOT" && *root != "" {
 			return *root
+		}
+		if key == "MEGAPOWERS_HARNESS" && *harness != "" {
+			return *harness
 		}
 		return os.Getenv(key)
 	}

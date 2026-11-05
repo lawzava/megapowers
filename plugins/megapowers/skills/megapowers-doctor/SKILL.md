@@ -8,12 +8,14 @@ metadata:
 
 # Megapowers Doctor
 
-The plugin root is two directories above this skill's directory. With a local
-shell and Go 1.25 or newer, run:
+The plugin root is two directories above this skill. With Go 1.25 or newer, run:
 
 ```bash
-go run "<plugin root>/skills/megapowers-doctor/scripts/doctor.go" --root "<plugin root>"
+go run "<plugin root>/skills/megapowers-doctor/scripts/doctor.go" --root "<plugin root>" --harness "<harness>"
 ```
+
+Set `<harness>` using [harness invocation](references/invocation.md).
+`--harness` skips unrelated style checks.
 
 It prints the plugin version and root, harness, output-style
 setting, marketplace copy, recent skill loads, and optional agent registry. Problems start with
@@ -28,7 +30,8 @@ Without a local shell or Go, follow [manual checks](references/directory-edition
 A skill fired only if the session loaded its body; a catalog entry or a
 prose mention is not a load. Inspect the session trace, or use the session
 miner in `writing-agent-instructions`, to find successful load records. Report
-counts and session identifiers, not contents. The doctor's `skill loads` line counts sessions with a successful load over the last seven days.
+counts and session identifiers, not contents. The doctor's `skill loads` line
+counts sessions modified in the last seven days that contain a successful load.
 
 If a matching task never loaded the skill, the defect is trigger wording or
 skill discovery; use `writing-agent-instructions`
