@@ -97,7 +97,8 @@ probes. Every probe records provenance.
 Explicit prompts use the Codex `$megapowers:` form in the corpus; the runner
 converts it to Claude's `/megapowers:` form before execution and hashes the
 executed prompt. The implicit interview probe permits `design-and-plan` for
-requirements discovery while still forbidding `grill-me`. This is a case-specific co-selection, not a scorer or gate exception.
+requirements discovery while still forbidding `grill-me`. This is a
+case-specific co-selection, not a scorer or gate exception.
 
 `gates.json` enforces for the harnesses in `enforce_harnesses` (currently
 Claude only) and records violations without failing elsewhere. The 2026-09-02
