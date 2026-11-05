@@ -12,6 +12,10 @@ transcripts. Without them, record each lesson, its evidence, and its proof in
 the reply for the user to keep, and promote nothing without a read-back of the
 target.
 
+The tools run locally and write output only to the local terminal or local
+files. Mined text is never sent anywhere. Keep scorecards, lesson drafts, and
+review output local.
+
 ## 1. Observe
 
 ```bash
@@ -46,9 +50,8 @@ twice, choose the highest surface that works:
 | Surface | Use when | Target |
 |---|---|---|
 | `check` | A test, lint, hook, or script can catch the mistake | The check's path or command |
-| `instructions` | Only judgment prevents it in this project | The nearest `AGENTS.md`, `CLAUDE.md`, or skill reference |
+| `instructions` | Only judgment prevents it in this project, or Megapowers itself needs a local correction | The nearest `AGENTS.md`, `CLAUDE.md`, or local skill reference; report the proposed local change to the user |
 | `memory` | It is a personal preference across projects | Native harness memory, audited with [memory hygiene](memory-hygiene.md) |
-| `upstream` | Megapowers itself caused it in every project | A sanitized export for the maintainers |
 
 Record each candidate with its evidence:
 
@@ -83,7 +86,7 @@ mistake then judges the old code instead of failing because it is missing.
 A path that existed at the old commit is the code under test and is never
 replaced automatically. The overlay refuses to write through a symlink. It exits 3 when the check passes at the
 failing commit (it cannot catch the mistake) or fails now. For an
-`instructions`, `memory`, or `upstream` lesson, compare the same cases with and
+`instructions` or `memory` lesson, compare the same cases with and
 without the change as the parent skill describes, then cite the result:
 `prove --id ID --ab "treatment 5/5, control 1/5, <run reference>"`.
 
@@ -124,26 +127,3 @@ promoted lesson it prints one of:
 An unpromoted lesson older than its age limit shows as `expired`. Review exits
 3 when anything needs the user. Bring those lessons to the user. Retire one
 only with their agreement.
-
-## Upstream
-
-What leaves the machine goes through two sanitized outputs:
-
-```bash
-go run "$SKILL_DIR/scripts/session-mine.go" scorecard --all-workspaces --sanitize --since <date> --format json
-go run "$SKILL_DIR/scripts/lessons.go" export --id ID
-```
-
-`--sanitize` hashes workspace paths, drops run IDs, and folds every skill name
-outside `megapowers:` into `other`. `export` drops the project path, sources,
-and commit IDs, and replaces every check argument that contains `/` or `\`
-with `<path>`. It omits the free-text lesson unless `--include-text` is
-given, because free text can name a client in words no pattern catches; with
-it, path tokens become `<path>` and the user reads the text before sharing.
-It and adds an installed-ab case draft. Sanitizing keeps only
-well-formed `megapowers:<skill>` names. Show both to the user
-before sharing; sharing is an outward effect under `safe-effects`. A
-maintainer who accepts a draft adds the case to
-`evals/studies/installed-ab/cases.json` together with its `oracleProofs`
-entry, and changes a skill only after the installed-ab comparison shows no
-regression.

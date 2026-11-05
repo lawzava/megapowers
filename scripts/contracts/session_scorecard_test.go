@@ -210,8 +210,8 @@ func TestSessionMineScorecard(t *testing.T) {
 		}
 	}
 
-	// A sanitized all-workspace card is what may leave a user's machine for the
-	// upstream loop: counts only, no paths, run IDs, or non-megapowers names.
+	// A sanitized all-workspace card supports local review: counts only,
+	// no paths, run IDs, or non-megapowers names.
 	output, code = run(t, root, nil, tool, append(base, "--all-workspaces", "--sanitize", "--format", "json")...)
 	if code != 0 {
 		t.Fatalf("sanitized scorecard failed (%d): %s", code, output)

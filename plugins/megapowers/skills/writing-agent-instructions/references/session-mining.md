@@ -5,9 +5,9 @@ to correct the agent are the best evidence for a new check, rule, or skill.
 `scripts/session-mine.go` reads only local Claude Code and Codex transcript
 files, read-only, so a retrospective can cover many sessions.
 
-It needs Go, a shell, and local transcripts. Without them, say so and ask the
-user to paste the corrections or sessions to review; do not reconstruct them
-from memory.
+It needs Go, a shell, and local transcripts. Without them, say what is missing
+and use only corrections the user has already supplied. Do not reconstruct
+sessions from memory.
 
 Use it when:
 
@@ -100,8 +100,9 @@ it toward a retrospective class.
 
 ## Privacy
 
-The tool runs locally and keeps no transcript copies. Only a sanitized scorecard
-may leave the machine, and only after the user has seen it. Excerpts are short and redacted:
+The tools run locally and write output only to the local terminal or local
+files. Mined text is never sent anywhere. The mining tool keeps no transcript
+copies. Excerpts are short and redacted:
 emails, tokens, home paths, and URL credentials are removed. Redaction can
-miss things. Never paste raw transcripts or unreviewed excerpts into
-a review package, issue, commit, or other public text.
+miss things. Keep transcripts and excerpts out of review packages, issues,
+commits, and other public text.

@@ -38,7 +38,7 @@ Usage:
   go run lessons.go <command> [--repo DIR] [--store DIR] [flags]
 
 Commands:
-  add      --id ID --class CLASS --lesson TEXT --surface check|instructions|memory|upstream
+  add      --id ID --class CLASS --lesson TEXT --surface check|instructions|memory
            --target PATH --evidence KIND --source TEXT [--source TEXT ...] [--max-age-days N]
   list     [--status candidate|proven|promoted|retired]
   prove    --id ID --fail-ref REF [--check-file PATH ...] -- COMMAND...
@@ -47,7 +47,7 @@ Commands:
   promote  --id ID [--anchor TEXT] [--today YYYY-MM-DD]
   review   --scorecard FILE [--today YYYY-MM-DD]
   retire   --id ID --why TEXT
-  export   --id ID [--include-text]                sanitized upstream draft with a case
+  export   --id ID [--include-text]                sanitized local review draft with a case
 
 The store defaults to $MEGAPOWERS_LESSONS_DIR, else
 ${XDG_STATE_HOME:-~/.local/state}/megapowers/lessons, and must be outside the
@@ -829,7 +829,7 @@ func cmdReview(opt options) (int, error) {
 			continue
 		}
 		if l.Surface == "upstream" {
-			fmt.Printf("%s: upstream draft; run export to share it\n", l.ID)
+			fmt.Printf("%s: legacy draft; run export for local review\n", l.ID)
 			continue
 		}
 		promoted, err := time.Parse(dateLayout, l.Promotion.PromotedAt)
@@ -885,12 +885,11 @@ func cmdRetire(opt options) (int, error) {
 // in it splits into tokens that each still contain a separator.
 var rePathToken = regexp.MustCompile(`\S*[/\\]\S*`)
 
-// scrub replaces path-like tokens before text leaves the machine.
+// scrub replaces path-like tokens in local review output.
 func scrub(text string) string { return rePathToken.ReplaceAllString(text, "<path>") }
 
-// cmdExport prints what may leave the machine for the upstream loop: the
-// lesson, its class and surface, the check command, and an installed-ab case
-// draft. Project paths, sources, and commit IDs stay behind.
+// cmdExport prints a sanitized local review draft with an installed-ab case.
+// It omits project paths, sources, and commit IDs.
 func cmdExport(opt options) (int, error) {
 	p, err := openProject(opt)
 	if err != nil {
@@ -915,7 +914,7 @@ func cmdExport(opt options) (int, error) {
 			"files": map[string]string{
 				"(path)": "(minimal fixture that reproduces the mistake)",
 			},
-			"note": "add to evals/studies/installed-ab/cases.json with an oracleProofs entry before any A/B run",
+			"note": "fixture draft for a local A/B comparison; define an oracle before running it",
 		},
 	}
 	if l.Proof != nil && len(l.Proof.Command) > 0 {
@@ -935,7 +934,7 @@ func cmdExport(opt options) (int, error) {
 	// exported only on request, scrubbed, for the user to read first.
 	if opt.includeText {
 		draft["lesson"] = scrub(l.Lesson)
-		draft["lesson_note"] = "read the lesson text before sharing; free text can name a client or project"
+		draft["lesson_note"] = "review the lesson text locally; free text can name a client or project"
 	}
 	// Keep <path> readable; the draft is for people, not an HTML page.
 	encoder := json.NewEncoder(os.Stdout)

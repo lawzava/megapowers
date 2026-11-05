@@ -5,6 +5,15 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.54.0 - 2026-11-05
+
+### Changed
+
+- Keep learning-loop and session-mining guidance local-only. Fold plugin
+  corrections into local instruction lessons and remove sharing paths.
+- Describe lesson exports as local review output. Preserve redaction and
+  compatibility with existing lesson stores.
+
 ## 0.53.0 - 2026-11-05
 
 ### Changed

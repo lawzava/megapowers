@@ -245,7 +245,7 @@ func TestLessonsContract(t *testing.T) {
 		t.Errorf("--include-text must add scrubbed text, got %d: %s", code, output)
 	}
 
-	// Export is what may leave the machine: no project path, no sources.
+	// Local review output omits project paths and sources.
 	output, code = lessons("export", "--id", "no-sleep-poll", "--include-text")
 	if code != 0 || !strings.Contains(output, "Block on the check") {
 		t.Fatalf("export: %d %s", code, output)
@@ -261,5 +261,20 @@ func TestLessonsContract(t *testing.T) {
 	}
 	if exported["case"] == nil {
 		t.Errorf("export must include an installed-ab case draft: %s", output)
+	}
+
+	// Existing stores retain the legacy surface; review keeps its output local.
+	if output, code := lessons("add", "--id", "legacy", "--class", "verification",
+		"--lesson", "Review a plugin correction locally.", "--surface", "upstream",
+		"--target", "AGENTS.md",
+		"--evidence", "direct-observation", "--source", "old1", "--source", "old2"); code != 0 {
+		t.Fatalf("add legacy surface: %d %s", code, output)
+	}
+	if output, code := lessons("promote", "--id", "legacy"); code != 0 {
+		t.Fatalf("promote legacy surface: %d %s", code, output)
+	}
+	output, code = lessons("review", "--scorecard", card("2026-10-13", map[string]int{}), "--today", "2026-10-20")
+	if code != 0 || !strings.Contains(output, "legacy: legacy draft; run export for local review") || strings.Contains(output, "share") {
+		t.Errorf("review legacy surface: want local review, got %d: %s", code, output)
 	}
 }
