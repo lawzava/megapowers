@@ -40,14 +40,21 @@ OpenCode is noted as not read. `both` always means Claude Code + Codex.
 Each report includes `by_source` counts, `skipped_sources`,
 `partial_sources`, `skipped_sessions`, and `deduplicated_sessions`.
 Invalid export files make the source partial, retaining valid sessions.
-Exports with an `export-status` manifest retain its status,
-skipped-session count, and environment. Without a manifest, `environment` is
-`offline`; status is `complete`,
-`partial`, or `skipped`.
+Exports with an `export-status` manifest retain its status and skipped-session
+count. The manifest's `environment` is a label copied as is: `offline`,
+`inherited`, or `without_xdg_state_home`. Without a manifest, `environment` is
+`offline`; status is `complete`, `partial`, or `skipped`.
 
 `--opencode-export PATH` reads OpenCode session export JSON files (a file or a directory) produced outside the plugin.
-Session IDs are
-counted once. `--workspace` matches the export's current `location.directory`,
+Each file is one JSON object with this shape (`messages` contains message objects):
+
+```json
+{"data":{"info":{"id":"session-id","parentID":"","location":{"directory":"/path/to/workspace"}},"messages":[]}}
+```
+
+`data`, a nonempty `info.id`, and the `messages` array are required.
+`parentID` is optional; workspace matching requires `location.directory`.
+Session IDs are counted once. `--workspace` matches the export's current `location.directory`,
 including child sessions; `--since` filters message timestamps.
 
 OpenCode `user` messages are human turns unless a machine-text anchor below
