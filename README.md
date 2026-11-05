@@ -45,7 +45,7 @@ model router, formatter, or status line.
 | "Add rate limiting to the API" | `test-first-implementation`: writes a failing test, sees it fail, then makes it pass |
 | "Commit this and open a PR" | `verify-and-finish`: re-runs your checks and reports what actually passed |
 | "Deploy to production" | `safe-effects`: confirms the exact target with you, then reads the result back |
-| "Get a second opinion on this auth change" | `independent-review`: shows you what it will send, then asks a model from a different provider to review it |
+| "Get a second opinion on this auth change" | `independent-review`: guides review by another available model, following your reviewer instructions |
 
 Skills guide the agent; they do not force it ([how often they load](#results)).
 Your repository's own instructions and tools always come first.
@@ -86,9 +86,9 @@ uninstall are in [docs/install.md](./docs/install.md).
   compare the same tasks with and without megapowers. Historical totals
   need revalidation after a grader correction.
   [Results below](#results).
-- **Cross-provider review.** `independent-review` sends one artifact to a
-  different model vendor. It sends without asking only to a reviewer you
-  configured, and asks first for any other destination.
+- **Independent model review.** `independent-review` guides the agent to choose
+  another available model, following your instructions. Cross-vendor review is
+  preferred but optional. The skill supplies no provider launcher.
 - **Loads on demand.** The catalog supplies trigger descriptions. A skill's
   full text loads only when you need it.
 
@@ -139,7 +139,7 @@ only when your request matches. The *experimental* labels come from
 |---|---|
 | `verify-and-finish` | Before saying done, committing, merging, publishing, deploying, or handing off: re-runs the real check |
 | `safe-effects` | Before a deploy, message, charge, migration, destructive query, DNS change, or any write that leaves your machine |
-| `independent-review` | Security, auth, billing, concurrency, or data-integrity work needs a second opinion from another provider |
+| `independent-review` | Security, auth, billing, concurrency, or data-integrity work needs an independent opinion from another model |
 
 **Research, long runs, and writing**
 
@@ -257,8 +257,8 @@ longer shipped and do not describe this version.
 
 - 16 skills under `skills/`, listed in `skills/catalog.json`.
 - One optional Claude Code output style, `output-styles/megapowers.md`.
-- Five Go standard-library tools that load only with their skill: the review
-  packager for `independent-review`, a run receipt for `verify-and-finish`
+- Go standard-library tools that load only with their skill: a run receipt
+  for `verify-and-finish`
   that keeps full output and the exit status, run state for `autonomous-run`,
   and the session miner and memory-audit validator for
   `writing-agent-instructions`.
@@ -311,8 +311,8 @@ execution boundaries.
 - The plugin supplies no destructive-command guard or command gates. Use
   harness permissions, OS sandboxing, and least privilege for enforcement.
   See [SECURITY.md](./SECURITY.md).
-- Independent review sends the source you approve to the selected provider.
-  It rejects common secret patterns, not every possible secret.
+- Independent review guidance requires checking secrets and disclosure scope
+  before sending material to the selected reviewer.
 - The evaluation studies that call real models cost money and need a reviewed
   credential broker. Their self-tests do not replace a real run.
 - Only current Claude Code and Codex are supported. Exact boundaries are in

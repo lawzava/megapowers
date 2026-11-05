@@ -45,9 +45,9 @@ diagnosis steps are in
 
 The plugin supplies workflow guidance, with no command guard or gates. Use
 the harness permission system and OS sandbox for enforcement. The
-independent-review skill sends only an explicit file or immutable commit range,
-after a secret scan. It sends without asking only to a reviewer you configured
-in your capability registry or instructions; otherwise it asks first. Read the
+independent-review skill supplies guidance only. The agent chooses another
+available model under your reviewer instructions and checks secrets and
+disclosure scope before sending material off-machine. Read the
 [security policy](https://github.com/lawzava/megapowers/blob/main/SECURITY.md)
 before enabling external review.
 

@@ -49,8 +49,8 @@ A binding can be ranked by capability only when `rankable: true`, its model
 and effort are known, it is available to the active harness, it fits the
 lane's role and write boundary, it meets the capability floor, and it has
 native access. Keep ambient or otherwise unverified bindings unranked; use
-them only through an explicit task-shape route. For independent review, the
-binding's opaque `family` must differ from every artifact author's family.
+them only through an explicit task-shape route. For independent review, apply the
+user's independence rules; prefer a different vendor when available.
 Among eligible bindings, prefer the fastest, then the cheapest. Escalate only
 at a declared trigger.
 
@@ -64,12 +64,11 @@ cannot establish that the required fields and expiry are usable, it ignores the
 registry. `megapowers-doctor` warns when the file is expired or has no
 readable `expires_at`.
 
-`manual` describes something the operator can run; `approved-external` still
-requires the explicit disclosure workflow. Neither is a native agent. An
-`access: native` independent-review binding selects a user-configured native
-reviewer role from another vendor; it does not run the external tool's scanner
-or binary/package verification. Inspect its disclosure scope and actual tool
-permissions before dispatch. The
+Choose an available reviewer under the user's global independence and reviewer
+instructions. Cross-vendor review is preferred but optional unless required.
+Native subagents, installed agent CLIs, and native review use their existing
+interfaces and permissions. Inspect secrets and disclosure scope before
+sending off-machine. The plugin supplies no review launcher. The
 registry is advisory, with one exception: an `independent-review` binding is
 the operator's standing approval to send review packages to that reviewer
 through the configured route, so the agent reviews without asking. It
@@ -124,8 +123,8 @@ eligible agents before waiting. Spawning agents one at a time and waiting on
 each is not parallel fan-out.
 
 Same-provider agents provide parallelism and context separation. They do not
-provide vendor independence. Use the trusted review path only when another
-provider materially reduces residual risk.
+provide vendor independence. Use another available model for review when the
+stakes warrant it, following the user's reviewer instructions.
 
 Set the review scope and correction-round budget before dispatch. Track queued
 and running review requests until completion or confirmed cancellation. Target

@@ -1,7 +1,7 @@
 # Security
 
-megapowers is not a security boundary. It installs model instructions, bundled Go
-tools, and an optional external-review tool into the agent's permission context.
+megapowers is not a security boundary. It installs model instructions and bundled Go
+tools into the agent's permission context.
 Review the exact revision before installing it.
 
 ## Installed capabilities
@@ -11,7 +11,7 @@ Review the exact revision before installing it.
 | Skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
 | Doctor script | Plugin manifests and catalog, local marketplace manifests, Claude settings, optional agent registry, workspace Git root, local Claude and Codex session records | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
 | Memory-audit tool | One explicit audit manifest | Standard output only | None |
-| Independent-review tool | One explicit repository file or immutable commit range | Private advisory receipt, plus transcript only when requested | One operator-named reviewer command after token approval |
+| Independent-review guidance | Context selected by the active agent | Review brief and findings through existing harness tools | Selected review route under user permissions; no bundled launcher |
 
 There is no daemon, model router, formatter, status line, or background
 scheduler.
@@ -56,39 +56,19 @@ guidance, not enforcement.
 
 ## Independent-review disclosure
 
-The review tool accepts only one explicit file or one immutable commit range.
-It does not infer the dirty worktree or include untracked files. Before an
-external call it prints the provider, source identity, paths, file count, byte
-count, package hash, and any `--intent` text, then requires
-`--approve-external`. The intent is sent verbatim and bound to the token.
+Independent review is guidance only. No bundled review script launches provider
+CLIs or accesses their saved logins. The active agent chooses another available
+model through existing harness review, native subagents, or installed agent
+CLIs. Cross-vendor review is preferred but optional. The user's global
+CLAUDE.md or AGENTS.md defines independence and reviewer preferences.
 
-It rejects:
-
-- author and reviewer providers that match;
-- provider binaries resolved inside the repository;
-- symlinks, submodules, non-text files, and oversized packages;
-- secret-like paths and common credential patterns;
-- project routing configuration and unrestricted environment forwarding.
-
-The `independent-review` skill treats a reviewer bound in the operator's
-capability registry, or named in user or repository instructions, as standing
-approval: the agent dispatches with `--approve-external configured` or inspects
-and passes the token itself. With no configured reviewer, it asks before
-sending. Delete the binding to require approval for every review.
-
-Pattern matching cannot identify every secret. Inspect the disclosure and the
-source itself before dispatch. Raw transcripts are not retained by default.
-Receipts are advisory records, not signatures or tamper-proof attestations.
-
-After approval validation, the tool runs a private read-only copy of a native
-reviewer binary whose bytes match the approved hash, or verifies the SHA-256 of
-a script launcher outside the repository before and after execution. An
-explicit receipt output directory must already exist at an absolute canonical
-path that neither overlaps nor contains the repository. Writes are rooted at an
-opened directory handle; the default stays under Git metadata.
+Before sending anything off-machine, inspect the brief and accessible files
+for secrets and disclosure scope. Follow existing user authorization and
+harness permissions. Native review can also send data off-machine. The skill
+provides no automated secret scan, package hashing, or filesystem sandbox.
 
 See [docs/advanced/independent-review.md](./docs/advanced/independent-review.md)
-for the exact workflow.
+for reviewer selection, the return contract, and correction rounds.
 
 ## Prompt injection and supply chain
 
@@ -126,8 +106,8 @@ Broker paths must be absolute, canonical, free of symlinks, outside
 actor-visible and output trees, and point to a self-contained executable. Each
 invocation runs a private read-only copy whose bytes match the pinned hash.
 
-Do not store credentials in repository configuration, fixtures, eval case
-manifests, or review receipts.
+Do not store credentials in repository configuration, fixtures, or eval case
+manifests.
 
 ## Report a vulnerability
 

@@ -46,6 +46,8 @@ eligible bindings; without it, use native defaults. Apart from a bound
 independent reviewer, the registry cannot authorize access, disclosure,
 permissions, writes, or effects.
 
+Choose an available reviewer under the user's independence and reviewer
+instructions; see [independent review](../independent-review/SKILL.md).
 Before review dispatch, set its scope and correction-round budget. A spent
 budget leaves unresolved findings open; it never converts them into approval.
 Use the [reviewer contract](references/review-contract.md). Start a fresh agent

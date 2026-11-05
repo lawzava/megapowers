@@ -98,10 +98,10 @@ needs the lead's effort.
   default Go cache, and check free disk before fanning out builds.
 - After a lane's work is merged or discarded, remove its worktree and branch
   in the same step, within the cleanup authority the user gave.
-- Run a long cross-provider review as a background lane when independent lead
+- Run a long independent review as a background lane when independent lead
   work remains and the session can collect its terminal result; otherwise use
-  foreground review. Native reviewers need a verified different-vendor binding,
-  not a particular external executable.
+  foreground review. Choose the available reviewer under the user's independence
+  rules and check secrets and disclosure scope before sending off-machine.
 - For a correction round, start a fresh agent with the original brief plus
   every later directive. A resumed agent may drop directives given after its
   start; keep correction context explicit and do not reuse it for a new round.
