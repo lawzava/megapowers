@@ -3,22 +3,26 @@
 Last reviewed: 2026-10-08 (UTC), against Claude Code 2.1.295 and Codex
 0.162.0.
 
-Current stable Claude Code and Codex remain the tested plugin install targets.
-The harness-neutral skills and their supporting files may be copied into other
-Agent Skills harnesses; that is not a tested plugin installation. Configure
-native agent/reviewer bindings, isolation, permissions and any hooks locally.
+Current stable Claude Code and Codex are the only supported harnesses. Portable
+skills may load elsewhere, but this repository does not test or document those
+environments.
 
 | Capability | Claude Code | Codex |
 |---|---|---|
 | Marketplace metadata | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
 | Plugin manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
 | Task skills | Supported | Supported |
-| Communication style | Selectable plugin output style (`megapowers:Megapowers`) | No session-wide plugin style; `humanizing-prose` available on demand |
-| Self-diagnosis | `megapowers-doctor` manual checks | Same |
+| Communication style | Selectable plugin output style (`megapowers:Megapowers`) | Trusted startup hook with environment opt-out |
+| Skill reminder at session start | `SessionStart` hook | `SessionStart` hook |
+| Subagent context | `SubagentStart` hook: skill reminder and compact report contract | `SubagentStart` hook: same text |
+| Destructive-command guard | High-confidence denies only | High-confidence denies only |
+| Completion and effect gate | `PreToolUse` denies the first commit, push, PR, publish, deploy, remote API write, outward `gh` write, or MCP write tool once per session with a reason naming the matching skill, unless it already loaded; same-kind calls within 60 seconds also stop until it loads; the retry runs | Same, where Codex honors a `PreToolUse` deny; Codex names MCP tools in the same `mcp__<server>__<tool>` form |
+| Git discard check | `PreToolUse` denies each distinct `git reset --hard`, forced `clean`, forced or whole-tree `checkout`, whole-tree `restore`, `branch -D` of a branch not merged into `HEAD`, or `stash drop` or `clear` once per session with a `git status` reminder; the retry runs | Same, where Codex honors a `PreToolUse` deny |
+| Self-diagnosis | `megapowers-doctor` skill over the Go `doctor` command | Same |
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
-| Independent review provider | Another available model under user reviewer instructions | Another available model under user reviewer instructions |
+| Independent review provider | Any operator-named reviewer CLI, different vendor family from author | Any operator-named reviewer CLI, different vendor family from author |
 | Credentialed installed A/B | Optional diagnostic | Optional diagnostic |
 | Exact-tag install smoke | Post-publish check | Post-publish check |
 
@@ -40,11 +44,9 @@ Codex's explicit-only policy lives in each such skill's `agents/openai.yaml` as
 harness's own policy and tests explicit invocation separately.
 
 `SKILL.md` bodies do not depend on which harness is running.
-`independent-review` supplies guidance for another available model, using
-native subagents or native review. Cross-vendor review
-is preferred but optional. Global CLAUDE.md or AGENTS.md instructions define
-independence and reviewer choice. Inspect secrets and disclosure scope before
-sending off-machine. No review launcher ships with the skill.
+`independent-review` runs whichever reviewer command the operator names and
+forces no vendor. Channel-specific upgrade commands live in a linked reference
+loaded only after the install channel is detected.
 
 Install smoke verifies the cached invocation-policy file and native skill
 discovery. Codex 0.162.0 does not expose invocation policy in `skills/list`,
@@ -62,8 +64,8 @@ harness. Verify current support against the exact CLI and plugin revision.
 
 ## Communication style
 
-Claude Code uses `output-styles/megapowers.md` as its output-style source.
-It offers it through the `/config` output-style picker and the
+Both harness adapters use `output-styles/megapowers.md` as the source of truth.
+Claude Code offers it through the `/config` output-style picker and the
 `/output-style` command with `force-for-plugin: false`, so it is off until
 selected. The value that resolves is the plugin-qualified name
 `megapowers:Megapowers`; the bare `Megapowers` does not resolve, and sessions
@@ -73,13 +75,34 @@ style permits one short line of intent before long work and
 brief progress lines during long tool chains; final answers keep the 100-word
 default and 250-word ceiling and use no em dashes.
 
-Codex has no output-style component in this plugin. Automatic style injection
-is removed; the plugin does not edit `~/.codex/config.toml` or `AGENTS.md`.
-`humanizing-prose` remains available for tasks that need editing judgment.
+Codex has no output-style component. Its bundled `SessionStart` hook adds the
+same body as developer context on startup, resume, clear, and compaction. The
+Codex hooks reference retrieved 2026-10-08 lists `compact` as a `SessionStart`
+`source` and states that matching hooks run before the next model request; the
+plugin's hook declares no source matcher. Codex requires the user to review and
+trust non-managed plugin hooks before it runs them, and asks again when a
+release changes the hook definition. The adapter does not edit
+`~/.codex/config.toml` or `AGENTS.md`. Set `MEGAPOWERS_OUTPUT_STYLE=off` before
+launching Codex to suppress style injection without disabling the guard or the
+reminders.
 
-The plugin supplies no startup skill reminder or subagent report injection.
-User and repository instructions still take precedence over skill guidance.
-The Claude Code style affects the main conversation and cannot hide tool results.
+The same `SessionStart` command tells both harnesses, as factual context, that
+skill guidance applies only after its file loads, that a skill counts as used
+only when loaded, and that explicit user and repository instructions take
+precedence over skill guidance. Claude Code's hooks reference asks for factual
+rather than imperative injected context, and OpenAI's skill guidance asks
+skills to state that user instructions come first. This is instruction
+guidance, not an interpreter block, and it does not depend on the
+selected style or `MEGAPOWERS_OUTPUT_STYLE`. The plugin ships no helper-code
+language rule; that stays with each repository's own instructions. Disabling
+the plugin removes its hooks and skills.
+
+The style affects the main conversation only and cannot hide tool results.
+Subagents receive a separate `SubagentStart` context on both harnesses: the
+skill-loading reminder and a compact report contract (lead with the result,
+cite `file:line` or command evidence, no padding, no em dashes).
+`humanizing-prose` remains available for tasks that need more specific editing
+judgment.
 
 The plugin ships no model or role configuration and does not create model,
 agent, context, sandbox, or permission availability. An optional user-owned
@@ -87,16 +110,43 @@ registry can describe relative capabilities and native bindings for the lead's
 selection. It is advisory input: harness and repository policy still decide
 what exists and what is authorized.
 
-## Installation diagnostics
+## Hook behavior
 
-The `megapowers-doctor` skill uses normal file and session tools to check
-version, root, discovery, applicable style, marketplace copy, recent loads and
-the optional registry. The optional Go doctor lives in `extras/scripts` and
-requires Go 1.25 or newer; it is not installed with either plugin edition.
+Both adapters forward high-confidence denials only. Reversible risk remains
+with each harness's native permission system.
 
-The plugin supplies no destructive-command guard, completion gate, effect
-gate, or git discard gate. Harness permissions and OS controls remain the
-enforcement boundary; `verify-and-finish` and `safe-effects` supply guidance.
+On either harness the hook is a narrow accident tripwire. It does not replace
+the sandbox, OS permissions, review, or `safe-effects` approval for changes
+outside the machine. The same `PreToolUse` hook also stops the first allowed
+command in a session that looks like a completion step (`git commit`,
+`git push`, `gh pr create` or `merge`, `gh release`) or a change outside the
+machine (package publishes such as `npm`, `cargo`, `uv`, or `poetry publish`,
+`twine upload`, and `gem push`; `docker push` or `buildx --push`; `kubectl`
+writes such as `apply`, `patch`, `scale`, or `rollout restart`;
+`terraform apply`, `railway up`, `fly deploy`, `vercel --prod`,
+`netlify` and `heroku` deploys, creates, runs, and config changes,
+`wrangler deploy`; `aws`, `gcloud`, `gsutil`, and `az` commands that create,
+change, deploy, or delete;
+`gh` workflow runs, secret and variable changes, and release uploads;
+`rsync` or `scp` to a remote host; `psql` or `mysql` inline writes to a
+non-loopback host; a `curl`, `wget`, HTTPie, or `xh` write request to a
+non-loopback host; or a wrapper script given `POST`, `PUT`, `PATCH`, or
+`DELETE` with a remote URL or API path). A second `PreToolUse` matcher,
+`mcp__.*`, applies the same `safe-effects` stop to MCP tools whose name's
+action word creates, updates, deletes, sends, posts, applies, executes, or
+runs; it reads only the tool name and skips browser-automation servers. The hook denies that call once with a reason naming `verify-and-finish`
+or `safe-effects`, and the retry runs. Calls of the same kind within 60
+seconds of that denial also stop until the skill loads, so parallel calls
+cannot pass early; after the window a missed detection fails open. If the
+skill already loaded in the transcript, there is no stop. Without a session ID or a writable hook cache, the hook returns
+non-blocking `additionalContext` instead.
+
+Hook policy and JSON handling run in Go. The entrypoint only launches a cached
+executable or builds it from the shipped source. Compilation uses the local Go
+toolchain without fetching modules. The plugin contains no prebuilt binaries.
+The `doctor` command in the same runner reports version, root, harness, Go
+version against the cache, the Claude `outputStyle` value, and hook
+registration; `megapowers-doctor` interprets it.
 
 ## Freshness policy
 
@@ -143,6 +193,13 @@ authorize automatic policy adoption. Keep claims uncertain until tested.
     "cli": "codex",
     "version": "0.162.0",
     "oracle": ["scripts/codex-install-smoke.sh", "evals/studies/trigger-recall/policy_test.go"]
+  },
+  {
+    "source": "https://learn.chatgpt.com/docs/hooks",
+    "reviewed": "2026-10-08",
+    "cli": "codex",
+    "version": "0.162.0",
+    "oracle": ["tests/_hooks/hook_runner_test.go", "tests/_hooks/output_style_test.go"]
   }
 ]
 ```

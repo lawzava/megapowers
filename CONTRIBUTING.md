@@ -17,7 +17,7 @@ decides whether an eval trial passed.
 
 | Change | Required evidence |
 |---|---|
-| Tool, manifest, or runner behavior | A regression test that fails first, then the focused test and the full deterministic checks |
+| Hook, tool, manifest, or runner behavior | A regression test that fails first, then the focused test and the full deterministic checks |
 | New or changed agent guidance | Reproduce the missing behavior or inspect the deficient contract; use task outcomes and an installed-plugin A/B comparison when a comparison would inform the change |
 | Removed or compressed guidance | Deterministic checks, plus evidence for any published behavior the removed text carried |
 | Editorial text | Link, reference, and deterministic checks only |
@@ -44,11 +44,15 @@ A runner selftest proves mechanics only. It is not behavioral evidence.
 
 - Follow repository instructions and neighboring conventions.
 - Deterministic glue and tests use the Go standard library. Shell entrypoints
-  only launch Go commands. Use `go test ./...`
+  only launch Go commands or the cached hook executable. Use `go test ./...`
   for package tests and `scripts/validate.sh` for the canonical check.
-- Keep tests outside the shipped plugin folder. `plugins/megapowers/` may
-  hold no `*_test.go`, `testdata/`, or `evals/`; validation fails if it does.
-- Add or change behavior test-first.
+- Hook tests live in `tests/_hooks/`, outside the shipped plugin folder, and
+  compile into the hooks package through a build overlay. Run them with
+  `go run ./scripts/cmd/maintainer test-hooks [go test flags]`, for example
+  `... test-hooks -run TestGate -count=1`. Plain `go test ./...` skips them;
+  `scripts/validate.sh` runs them. `plugins/megapowers/` may hold no
+  `*_test.go`, `testdata/`, or `evals/`; validation fails if it does.
+- Add or change behavior test-first. Keep hooks small and directly tested.
 - Human-facing prose leads with the outcome, preserves source facts, and omits
   unsupported claims and session history.
 - Keep commits conventional and focused. Do not add attribution or session

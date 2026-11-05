@@ -14,8 +14,7 @@ When the user asks about a period or a pattern rather than one session, run
 corrected the agent, grouped into candidate classes across sessions. Read each
 example before counting it, and cite sessions by file and time. For one
 project, also read its scorecard from the [learning loop](learning-loop.md):
-historical gate blocks from versions before v0.46.0, sleep calls, and
-corrections that followed a skill load show
+gate blocks, sleep calls, and corrections that followed a skill load show
 where time went even when the user never typed a correction.
 
 Look for candidates in these categories:
@@ -49,6 +48,5 @@ check makes a mistake impossible, delete the prose rule it replaces.
 Order candidates by how much time or risk each would have saved. For each one,
 name the target file or tool, the change, and the observed failure it
 addresses. Validate an instruction change as the parent skill describes before
-keeping it. Record each accepted candidate's ID, class, lesson, surface, target and
-timestamped evidence. Follow the [learning loop](learning-loop.md) for proof,
-promotion and later review.
+keeping it. Record each candidate the user accepts with `lessons.go add`, so
+its proof, promotion, and later review follow the [learning loop](learning-loop.md).

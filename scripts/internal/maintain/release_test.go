@@ -12,9 +12,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if os.Getenv("MEGAPOWERS_DOCTOR_FIXTURE_JSON") != "" {
-		os.Exit(runDoctorFixtureChild())
-	}
 	if os.Getenv("MEGAPOWERS_MAINTAIN_FAKE") == "1" {
 		os.Exit(runFakeMaintainerProcess())
 	}

@@ -2,12 +2,9 @@
 
 ## Scope
 
-This repository publishes harness-neutral Agent Skills in one optional
-`megapowers` plugin. Claude Code and Codex remain the tested install targets;
-the skills and their supporting files may be copied into other skill-loading
-harnesses. Harness-specific bindings and hooks belong in the user's local
-setup, not in the shared skill bodies. The optional repository extras `session-mine` helper reads only
-local Claude Code and Codex transcript files. Keep every shipped artifact public-safe: no
+This repository publishes one optional `megapowers` plugin for current Claude
+Code and Codex. Skill Markdown may load elsewhere, but no other harness is a
+supported or tested target. Keep every shipped artifact public-safe: no
 personal secrets, machine-specific paths, or undeclared private services.
 
 ## Authority
@@ -49,7 +46,7 @@ condition, or measurement.
   optionally `disable-model-invocation`. Codex honors `name`, `description`,
   and `metadata.short-description`; explicit-only Codex policy belongs in
   `agents/openai.yaml`. Quote YAML values containing colons. Components remain at
-  plugin root under `skills/` and `output-styles/`.
+  plugin root under `skills/` and `hooks/`.
 - Keep judgment in skills and deterministic policy in tests or tools. Required
   references are linked directly; optional details load only when relevant.
 - Do not commit generated agent workspaces or planning artifacts under
@@ -59,7 +56,7 @@ condition, or measurement.
 ## Tooling and Git
 
 - New repository glue is Go. Application code follows its project language;
-  shell entrypoints launch Go commands.
+  harness-required hook entrypoints may remain shell.
 - Commit only when the user directs. Use focused conventional commits, stage
   explicit paths, never bypass hooks or ignored-path policy, and never rewrite
   shared history without explicit approval.
@@ -68,9 +65,15 @@ condition, or measurement.
 
 ## Verification
 
-Native eval cases live in `evals/native/`. Keep tests outside the shipped
-plugin folder: never add a `*_test.go`, `testdata/`, or `evals/` path under
-`plugins/megapowers/`.
+After editing a non-test Go file in `plugins/megapowers/hooks/`, run
+`go run ./scripts/cmd/maintainer hook-hash --write` to refresh the launcher
+cache key instead of editing `run-hook.cmd` by hand.
+
+Hook tests live in `tests/_hooks/`, not in the plugin folder. Run them with
+`go run ./scripts/cmd/maintainer test-hooks [go test flags]`; plain
+`go test ./...` skips them and `scripts/validate.sh` runs them. Native eval
+cases live in `evals/native/`. Never add a `*_test.go`, `testdata/`, or `evals/`
+path under `plugins/megapowers/`.
 
 Run `scripts/validate.sh` after meaningful changes. When installed, also run:
 

@@ -5,7 +5,7 @@ one layer into another.
 
 | Layer | Question | Credentials | Release role |
 |---|---|---|---|
-| Deterministic regressions | Do manifests, tools, schemas, and runners work? | No | Required PR gate |
+| Deterministic regressions | Do manifests, hooks, tools, schemas, and runners work? | No | Required PR gate |
 | Trigger recall | Does the shipped trigger surface activate the right skill, and only it? | Yes | Enforced for Claude; report-only for Codex |
 | Installed-plugin A/B | Does this exact plugin revision change target behavior? | Yes | Optional diagnostic evidence |
 

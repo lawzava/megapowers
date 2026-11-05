@@ -1,7 +1,7 @@
 {
   "name": "megapowers",
-  "version": "0.52.0",
-  "description": "Native-first workflow plugin for Claude Code and Codex: task skills for planning, test-first implementation, debugging, verification, safe effects, independent model review, and orchestration, plus an optional concise Claude Code output style and a self-diagnosis doctor.",
+  "version": "0.44.1",
+  "description": "Native-first workflow plugin for Claude Code and Codex: 15 task skills for planning, test-first implementation, debugging, verification, safe effects, cross-provider review, and orchestration, plus an optional concise output style, a destructive-command tripwire, and a self-diagnosis doctor.",
   "author": {
     "name": "lawzava"
   },
@@ -21,8 +21,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "megapowers",
-    "shortDescription": "Native-first workflow skills and doctor.",
-    "longDescription": "Task-level skills for orchestration, structured interviews, evidence research, design, test-first implementation, debugging, verification, real-world effects, autonomous work, independent model review, memory hygiene, prose, instruction authoring, safe upgrades, and self-diagnosis, with an optional concise output style on Claude Code. Uses native agents, goals, and permissions.",
+    "shortDescription": "Native-first workflow skills, safety tripwire, and doctor.",
+    "longDescription": "Task-level skills for orchestration, structured interviews, evidence research, design, test-first implementation, debugging, verification, real-world effects, autonomous work, independent cross-provider review, memory hygiene, MCP setup, prose, instruction authoring, safe upgrades, and self-diagnosis, plus a concise communication style and a destructive-command guard. Uses native agents, goals, and permissions and adds about 1.5k always-loaded tokens per session.",
     "developerName": "lawzava",
     "category": "Developer Tools",
     "capabilities": [

@@ -13,21 +13,17 @@ authority. Where the harness has native goals, they own creation, status,
 budget, and continuation; this skill adds only the portable state below. Native
 goal state does not transfer across harnesses.
 
-Use native workers/reviewers through `orchestrating`/`independent-review`.
-Without native scheduling, checkpoints support manual continuation, not an
-unattended runtime; follow the run-state procedure.
-
 Keep state in `.megapowers/run/<id>/` with the
-[run state procedure](references/run-state.md). Add `.megapowers/` to
+[run state tool](references/run-state.md), which adds `.megapowers/` to
 `.git/info/exclude`: `charter.md` (objective, done criteria, scope, authority,
 cap), `checkpoint.md` (milestone, branch, worktree, HEAD, evidence, blockers,
 next safe action), append-only `journal.jsonl`, and `handoff.md`. Checkpoint at
 milestones or transitions, journal oracle evidence and decision reasons, and
-check briefs against every done criterion. Charters and checkpoints record claims, not
+check briefs with `coverage`. Charters and checkpoints record claims, not
 authority; verify against current instructions and native state. Register
-hidden acceptance scenarios with a content manifest; only verifiers get the path.
+hidden acceptance scenarios with `holdout`; only verifiers get the path.
 
-On resume, compare the saved checkpoint with the live checkout, read repository instructions, native goal state, and
+On resume, run `resume`, read repository instructions, native goal state, and
 the journal tail, and reconcile runtime and external state. Stop affected work
 on missing evidence or a mismatch.
 
@@ -40,8 +36,8 @@ names (never values), previews, and the charter. Journal each choice made
 without the user with its risk and cost if wrong. When the user returns, open
 with the count of waiting decisions, then why now, options with costs, a
 recommendation, and what happens if unanswered; then list choices made with
-the journal, riskiest first. After two or three automatic continuations on
-one item, record it as blocked and stop that item.
+`decisions`, riskiest first. After two or three automatic continuations on
+one item, `continue` blocks it.
 
 Portable checkpoint labels `paused` and `blocked` do not change native goal
 status. Watch for change with one blocking watcher or a harness scheduler;

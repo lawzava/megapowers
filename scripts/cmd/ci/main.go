@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -15,7 +16,7 @@ func main() {
 
 func runCLI(ctx context.Context, args []string, getenv func(string) string, runner commandExecutor, stdout, stderr io.Writer) int {
 	if len(args) != 1 {
-		fmt.Fprintln(stderr, "usage: ci <staticcheck|eval-gate|release-verify|manifest-versions|release-smoke|plugin-tree|attestation|release-fast-forward>")
+		fmt.Fprintln(stderr, "usage: ci <staticcheck|eval-gate|release-verify|manifest-versions|release-smoke|plugin-tree|attestation|release-fast-forward|windows-hooks>")
 		return 2
 	}
 	var err error
@@ -71,6 +72,15 @@ func runCLI(ctx context.Context, args []string, getenv func(string) string, runn
 		}
 	case "release-fast-forward":
 		err = fastForwardRelease(ctx, getenv("TAG"), getenv("ATTESTED_SHA"), runner)
+	case "windows-hooks":
+		err = checkWindowsHooks(ctx, filepath.FromSlash("plugins/megapowers/hooks/run-hook.cmd"), runner)
+		if err == nil {
+			var root string
+			if root, err = os.MkdirTemp("", "megapowers-windows-hooks-"); err == nil {
+				defer os.RemoveAll(root)
+				err = checkWindowsHooksFromBangPath(ctx, filepath.FromSlash("plugins/megapowers/hooks/run-hook.cmd"), root, runner)
+			}
+		}
 	default:
 		fmt.Fprintf(stderr, "ci: unknown command %q\n", args[0])
 		return 2

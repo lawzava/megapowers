@@ -37,8 +37,7 @@ user-level instructions that apply to every repository, read
 [global instructions](references/global-instructions.md), which links the
 maintained templates. For a retrospective, read
 [retrospective](references/retrospective.md); to recall past sessions or mine
-corrections across available transcript sources,
-[session mining](references/session-mining.md); to audit native
+corrections, [session mining](references/session-mining.md); to audit native
 memory, [memory hygiene](references/memory-hygiene.md); to score a project's
 skill outcomes or manage lessons, [learning loop](references/learning-loop.md).
 Read more than one reference only when the task spans more than one surface.
