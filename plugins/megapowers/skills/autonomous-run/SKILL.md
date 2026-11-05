@@ -35,8 +35,8 @@ While work is owed and nothing blocks it, do not end a turn with a summary that
 announces the next step, an offer to continue, a decision list that blocks
 nothing, or a milestone report. Put status notes in the same message as the
 next tool call. Before asking, use what is already reachable: linked pull
-requests and tickets, authenticated CLIs, connected MCP tools, environment key
-names (never values), previews, and the charter. Journal each choice made
+requests and tickets, the tools already connected in this session, previews,
+and the charter. Journal each choice made
 without the user with its risk and cost if wrong. When the user returns, open
 with the count of waiting decisions, then why now, options with costs, a
 recommendation, and what happens if unanswered; then list choices made with

@@ -15,7 +15,7 @@ observe:
 - Surface: what a user touches, such as a web UI, CLI, TUI, desktop app, API,
   or library. Pick the primary one and note the others.
 - Launch: the documented local start command, its readiness signal, ports,
-  environment variables, seed data, and authentication.
+  and the test setup the user already configured.
 - Drive: existing end-to-end harnesses first, then a generic recipe such as a
   browser automation tool, a terminal session, or HTTP requests.
 - Evidence: screenshots, terminal transcripts, response bodies, logs, exit

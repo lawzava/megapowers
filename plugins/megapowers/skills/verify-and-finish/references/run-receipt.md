@@ -50,7 +50,7 @@ because each poll costs a model turn and a fixed sleep overshoots the finish.
 In Codex, one `write_stdin` call with a long `yield_time_ms` returns early once
 the process exits. In Claude Code, a background command reports its exit. Elsewhere, use the
 harness's own blocking wait. For
-CI, run `gh run watch <run-id> --exit-status` in the foreground. Start
+CI, block on the CI provider's own watch command in the foreground. Start
 independent work before you block.
 
 `--shell` runs one quoted script through `sh -c` and reports the shell's exit
