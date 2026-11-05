@@ -1,37 +1,28 @@
 ---
 name: megapowers-doctor
-description: "Use when Megapowers seems inactive or broken: a skill did not fire, the output style is missing, a hook errors or times out, or the user asks to check the Megapowers setup."
-when_to_use: "Trigger phrases: megapowers not working, skill did not fire, output style missing, hook error, check megapowers setup, is megapowers installed, megapowers doctor."
+description: "Use when Megapowers seems inactive or broken: a skill did not fire, the output style is missing, or the user asks to check the Megapowers setup."
+when_to_use: "Trigger phrases: megapowers not working, skill did not fire, output style missing, check megapowers setup, is megapowers installed, megapowers doctor."
 metadata:
   short-description: Diagnose a Megapowers installation and give the exact fix
 ---
 
 # Megapowers Doctor
 
-The plugin root is two directories above this skill's directory. If
-`<plugin root>/hooks/run-hook.cmd` is missing, this is the directory
-edition: follow [directory edition](references/directory-edition.md) and stop.
-Otherwise run:
-
-```bash
-"<plugin root>/hooks/run-hook.cmd" doctor
-```
-
-It prints the plugin version and root, the harness, the Go toolchain
-against the cached runner, the output-style setting, the registered
-hooks, whether hooks ran, the marketplace copy, and recent skill loads.
-Problems start with `WARN`. Quote only those lines and give one fix per line
-from [fixes by check](references/fixes.md). If the command fails, report its
-exit status and raw error; that failure is the diagnosis.
+The plugin root is two directories above this skill. Use normal file and
+session tools for the [manual checks](references/directory-edition.md).
+Identify the harness with [harness invocation](references/invocation.md).
+Inspect the plugin version and root, marketplace copy, skill discovery,
+applicable output-style setting, recent successful skill loads, and optional
+agent registry. Report a problem as WARN with its evidence and one fix from
+[fixes by check](references/fixes.md). Report inaccessible inputs as unchecked.
 
 ## Did a skill fire?
 
 A skill fired only if the session loaded its body; a catalog entry or a
-prose mention is not a load. Read the doctor's `skill loads` line, which
-counts load records only; [fixes](references/fixes.md) explains it. Report
-counts and session identifiers, not contents.
+prose mention is not a load. Inspect the session trace to find successful load records. Report
+counts and session identifiers, not contents. Count sessions modified in the last seven days that contain a successful load.
 
 If a matching task never loaded the skill, the defect is trigger wording or
-the startup reminder, not the installation; use `writing-agent-instructions`
+skill discovery; use `writing-agent-instructions`
 for the trigger. If the skill loaded but the outcome did not change, say so; a
 load is not evidence of behavior.

@@ -15,6 +15,26 @@ commands, maintenance coverage, effort comparisons, and metric definitions are i
 are in [RESULTS-archive.md](./RESULTS-archive.md); they used different graders
 and cannot serve as a direct before/after comparison.
 
+## 2026-11-05 hook-removal comparison
+
+Source: the completed hook-removal pilot and its reviewed analysis, using
+megapowers v0.45.1 with hooks and the same tree with its hook registration
+removed. The multi-step comparison used Claude Code 2.1.316, Claude Opus 5.5
+at high effort, the same broker and fixtures, and three runs per case per arm.
+These are historical pilot results, not a new evaluation of v0.46.0.
+
+Required verify-and-finish loading fell without hooks: required-skill contract
+misses were 16/27 with hooks and 21/27 without. Outcome effects were
+inconclusive: the native literal oracle passed 23/36 with hooks and 24/36
+without. Gates fired in only 6/36 runs with hooks, and several exact-phrase
+checks rejected answers that were correct in meaning; the fixtures rarely
+triggered gates and do not establish equivalent outcomes or safety.
+
+The separate 30-day real-use audit covered one operator. It found no
+destructive-guard catches; sampled workflow gates changed the next action in
+roughly a quarter to a third of events, without establishing better outcomes.
+No inference about other operators follows from that audit.
+
 ## 2026-10-25 trigger check for the learning loop
 
 Trigger recall for the case 0.42.0 added, `writing-agent-instructions-learning-loop`.

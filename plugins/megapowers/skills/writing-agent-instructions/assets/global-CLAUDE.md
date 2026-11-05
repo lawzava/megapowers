@@ -31,6 +31,9 @@ guidance.
 - Sending a review package to the reviewer bound in
   `~/.config/megapowers/agent-capabilities.md` is not an outside effect.
   Decide when to review and dispatch it without asking.
+  Use another model for independence. Prefer another vendor when available.
+  Choose an available reviewer unless I specify one here. Check secrets and
+  disclosure scope before sending.
 - An approval covers its target and effect for the rest of the session. A new
   target, environment, or effect needs its own approval.
 - Before writing to a database or remote service, establish from evidence

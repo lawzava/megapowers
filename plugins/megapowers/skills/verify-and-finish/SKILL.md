@@ -18,7 +18,7 @@ proves. An empty search or scan proves absence only after it finds a known
 positive. Never weaken a test, baseline, threshold, or predicate to obtain a
 pass; after a code change, run the [bar guard](references/bar-guard.md) and fix
 or report each finding. Run long or verbose checks through the
-[run receipt tool](references/run-receipt.md); block on a running check and
+[run receipt procedure](references/run-receipt.md); block on a running check and
 never poll with `sleep`.
 
 Label inspection and inference; neither is an executed check. Rerun relevant
@@ -34,7 +34,8 @@ the user will open; name any agreed substitute's limits. After driving one
 journey by hand twice, offer a repeatable
 [verification driver](references/verification-driver.md). Resolve each affected
 specification requirement to fresh evidence or a remaining gap, and join every
-requested review before finishing.
+requested review before finishing. Use [independent review](../independent-review/SKILL.md)
+when the stakes warrant another model's opinion; follow the user's reviewer rules.
 
 Before a handoff, commit, PR, merge, or release, run canonical checks and
 inspect the diff and workspace. Remove generated excess and report unrequested

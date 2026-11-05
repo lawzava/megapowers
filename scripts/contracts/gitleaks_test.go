@@ -19,11 +19,11 @@ func TestGitleaksConfigScopesFixtureExceptions(t *testing.T) {
 		t.Skip("Gitleaks is checked separately in CI")
 	}
 	root := repoRoot(t)
-	paths := []string{"scripts/cmd/ci/release.go", "scripts/contracts/review_regression_test.go"}
+	paths := []string{"scripts/cmd/ci/release.go"}
 	for _, mutate := range append([]string{""}, paths...) {
 		name := mutate
 		if name == "" {
-			name = "public key and synthetic provider"
+			name = "public release key"
 		}
 		t.Run(name, func(t *testing.T) {
 			fixture := t.TempDir()
