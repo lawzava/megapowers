@@ -7,9 +7,30 @@ semver.
 
 ## 0.46.0 - 2026-11-05
 
+### Removed
+
+- Removed all Claude Code and Codex plugin hooks: the destructive-command
+  guard, verify-and-finish and safe-effects gates, git discard gate, startup
+  skill reminder, and subagent guidance. This prepares the plugin for the
+  Claude plugin directory policy restricting command hooks to Verified
+  organizations.
+- Removed automatic Codex output-style injection. Claude Code's native output
+  style remains optional; its force-for-plugin setting stays false.
+- Removed hook launchers, caches, hash tooling, tests, and hook-only CI.
+
 ### Changed
 
 - Upgrading from 0.45.x leaves a compiled hook-runner cache (`megapowers-hooks` in the user cache directory) and Codex hook-trust entries for megapowers; both are safe to delete.
+- The doctor runs as a standalone Go skill script, retaining installation,
+  style, marketplace, registry, and recent skill-load diagnostics without
+  hook-health checks. The skills-only directory package includes the script.
+- Required verify-and-finish loading fell in multi-step tasks: contract
+  misses were 16/27 with hooks and 21/27 without. Outcome effects were
+  inconclusive (23/36 versus 24/36; the fixtures rarely triggered gates).
+  The 30-day audit covered one operator and found no destructive-guard
+  catches; sampled gates changed the next action in roughly a quarter to a
+  third of events, without establishing better outcomes. See the
+  [2026-11-05 evidence](evals/RESULTS.md#2026-11-05-hook-removal-comparison).
 
 ## 0.45.2 - 2026-11-05
 
