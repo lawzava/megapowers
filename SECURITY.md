@@ -106,8 +106,8 @@ Broker paths must be absolute, canonical, free of symlinks, outside
 actor-visible and output trees, and point to a self-contained executable. Each
 invocation runs a private read-only copy whose bytes match the pinned hash.
 
-Do not store credentials in repository configuration, fixtures, eval case
-manifests, or review receipts.
+Do not store credentials in repository configuration, fixtures, or eval case
+manifests.
 
 ## Report a vulnerability
 
