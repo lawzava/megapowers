@@ -53,7 +53,7 @@ change with clear scope, risks, and oracle.
 
 ## Produce an executable handoff
 
-Name the outcome, acceptance criteria, and [verification commands/fences](references/task-contracts.md). Give each
+Name the outcome, acceptance criteria, and verification commands. Give each
 task an ID, owned files, prerequisites, and the contracts it consumes and
 produces. Keep implementation choices open unless the contract fixes a
 signature. Start behavior tasks with a failing test. Slice

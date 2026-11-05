@@ -15,7 +15,7 @@ func Main(ctx context.Context, root string, args []string, stdout, stderr io.Wri
 		return 2
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: maintainer <validate|release|install-smoke|codex-install-smoke|directory-edition> [args]")
+		fmt.Fprintln(stderr, "usage: maintainer <validate|release|install-smoke|codex-install-smoke|hook-hash|test-hooks|directory-edition> [args]")
 		return 2
 	}
 	switch args[0] {
@@ -27,8 +27,12 @@ func Main(ctx context.Context, root string, args []string, stdout, stderr io.Wri
 		return runInstallSmoke(ctx, root, args[1:], stdout, stderr)
 	case "codex-install-smoke":
 		return runCodexInstallSmoke(ctx, root, args[1:], stdout, stderr)
+	case "hook-hash":
+		return runHookHash(root, args[1:], stdout, stderr)
 	case "directory-edition":
 		return runDirectoryEdition(ctx, root, args[1:], stdout, stderr)
+	case "test-hooks":
+		return runTestHooks(ctx, root, args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "maintainer: unknown command: %s\n", args[0])
 		return 2

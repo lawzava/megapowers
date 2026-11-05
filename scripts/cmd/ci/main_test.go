@@ -267,6 +267,43 @@ func TestReleaseSmokeStreamsMaintainerOutput(t *testing.T) {
 	}
 }
 
+func TestWindowsHookChecksRequirePropagatedFailureAndDenyJSON(t *testing.T) {
+	runner := &scriptedExecutor{results: []commandResult{
+		{},
+		{Stdout: "A skill counts as used only when its file was loaded."},
+		{Stdout: "ASD-STE100-inspired. A skill counts as used only when its file was loaded."},
+		{},
+		{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked"}}`},
+		{ExitCode: 1, Stderr: "cannot evaluate command input"},
+		{ExitCode: 1},
+		{ExitCode: 1},
+		{ExitCode: 1},
+	}}
+	if err := checkWindowsHooks(context.Background(), `plugins\megapowers\hooks\run-hook.cmd`, runner); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.calls) != 9 {
+		t.Fatalf("expected nine direct cmd.exe checks, got %d", len(runner.calls))
+	}
+	for _, call := range runner.calls {
+		if call.Name != "cmd.exe" || len(call.Args) == 0 || call.Args[0] != "/c" {
+			t.Fatalf("check did not exercise cmd.exe directly: %#v", call)
+		}
+	}
+
+	broken := &scriptedExecutor{results: []commandResult{
+		{},
+		{Stdout: "A skill counts as used only when its file was loaded."},
+		{Stdout: "ASD-STE100-inspired. A skill counts as used only when its file was loaded."},
+		{},
+		{Stdout: `{"hookSpecificOutput":{"permissionDecision":"deny"}}`},
+		{},
+	}}
+	if err := checkWindowsHooks(context.Background(), "hook.cmd", broken); err == nil || !strings.Contains(err.Error(), "propagate") {
+		t.Fatalf("expected propagation failure, got %v", err)
+	}
+}
+
 func TestEvalGateRequiresBothSteps(t *testing.T) {
 	if err := requireEvalSuccess("success", "success"); err != nil {
 		t.Fatal(err)
@@ -329,5 +366,40 @@ func TestFastForwardReleaseRequiresAttestedSHA(t *testing.T) {
 	}
 	if len(runner.calls) != 0 {
 		t.Fatalf("ran commands without an attested SHA: %#v", runner.calls)
+	}
+}
+
+func TestWindowsHookCheckRunsFromBangPath(t *testing.T) {
+	hooks := t.TempDir()
+	for _, name := range []string{"run-hook.cmd", "hook_runner.go"} {
+		if err := os.WriteFile(filepath.Join(hooks, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runner := &scriptedExecutor{results: []commandResult{
+		{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked"}}`},
+		{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked"}}`},
+	}}
+	if err := checkWindowsHooksFromBangPath(context.Background(), filepath.Join(hooks, "run-hook.cmd"), t.TempDir(), runner); err != nil {
+		t.Fatal(err)
+	}
+	// The second call reuses the runner the first call built.
+	if len(runner.calls) != 2 || len(runner.calls[0].Args) < 2 || !strings.Contains(runner.calls[0].Args[1], "!") {
+		t.Fatalf("hook did not run from a path containing '!': %#v", runner.calls)
+	}
+	copied := filepath.Join(filepath.Dir(runner.calls[0].Args[1]), "hook_runner.go")
+	if _, err := os.Stat(copied); err != nil {
+		t.Fatalf("hook sources were not copied beside the launcher: %v", err)
+	}
+	broken := &scriptedExecutor{results: []commandResult{{Stdout: `{"systemMessage":"guard is inactive"}`}}}
+	if err := checkWindowsHooksFromBangPath(context.Background(), filepath.Join(hooks, "run-hook.cmd"), t.TempDir(), broken); err == nil {
+		t.Fatal("a launcher that fails from a '!' path must fail the check")
+	}
+	reuse := &scriptedExecutor{results: []commandResult{
+		{Stdout: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"blocked"}}`},
+		{Stdout: `{"systemMessage":"cached runner is not a file"}`},
+	}}
+	if err := checkWindowsHooksFromBangPath(context.Background(), filepath.Join(hooks, "run-hook.cmd"), t.TempDir(), reuse); err == nil || !strings.Contains(err.Error(), "second call") {
+		t.Fatalf("a launcher that rejects its cached runner must fail the check, got %v", err)
 	}
 }

@@ -1,7 +1,8 @@
 # megapowers plugin
 
-One workflow plugin for current Claude Code and Codex: task skills, an
-optional Claude Code output style, with no executable code. It uses the planning, agents, goals, permissions, memory, worktrees,
+One workflow plugin for current Claude Code and Codex: 15 task skills, one
+short output style, a hook that blocks a few catastrophic shell commands, and a
+doctor. It uses the planning, agents, goals, permissions, memory, worktrees,
 and browser tools each harness already has. It ships no model router,
 orchestration daemon, or vendor choice.
 
@@ -10,12 +11,22 @@ orchestration daemon, or vendor choice.
 - `skills/`: one skill per task type: orchestration, structured interviews,
   research, design, implementation with language-specific code judgment,
   debugging, verification, actions with real-world side effects, long
-  unattended runs, independent review, prose, safe upgrades,
+  unattended runs, independent review, MCP setup, prose, safe upgrades,
   writing agent instructions (including retrospectives, session recall, and
   memory hygiene), and self-diagnosis (`megapowers-doctor`).
   `skills/catalog.json` records whether each skill is stable or experimental,
   since portable skill frontmatter has no field for that.
-- `output-styles/`: an optional native Claude Code style for direct, concise replies.
+- `output-styles/`: the shared source for direct, concise technical replies.
+- `hooks/`: Go hooks with one entrypoint, `run-hook.cmd`. `SessionStart` adds
+  a skill-loading reminder and, on Codex, the style. `SubagentStart` adds the
+  same reminder and a compact report contract for subagents. `PreToolUse`
+  denies a narrow set of catastrophic shell commands. It also stops the first
+  commit, push, or PR command in a session once and names `verify-and-finish`,
+  and the first publish, deploy, remote API write, or MCP write once and
+  names `safe-effects`; the retry runs, and an already loaded skill skips the
+  stop. A git command that discards uncommitted, stashed, or unmerged work
+  stops once per exact command with a reminder to check `git status`; deleting
+  a branch already merged into `HEAD` does not stop. The same runner's `doctor` command backs `megapowers-doctor`.
 - `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`: plugin
   metadata for each harness.
 
@@ -27,11 +38,13 @@ in the `/config` output-style picker or run
 resolve. The style preserves the built-in coding instructions and respects
 another selected style.
 
-Codex: the plugin does not apply a session-wide style. Invoke
-`humanizing-prose` for writing tasks that need its editing guidance.
-Optional helper scripts live in the repository's extras folder, outside the
-installed plugin. See [extras](https://github.com/lawzava/megapowers/tree/main/extras/scripts).
-They require Go 1.25 or newer.
+Codex: the trusted startup hook adds the same style as developer context
+without changing user config. Codex requires review and trust before it runs
+plugin hooks, and asks again when a release changes them. Set
+`MEGAPOWERS_OUTPUT_STYLE=off` before launching Codex to omit the style.
+
+Hooks compile once with the local Go toolchain (1.25 or newer) into a cached
+executable; the plugin contains no prebuilt binaries.
 
 ## Install
 
@@ -42,17 +55,14 @@ diagnosis steps are in
 
 ## Security
 
-The plugin supplies workflow guidance, with no command guard or gates. Use
-the harness permission system and OS sandbox for enforcement. The
-independent-review skill supplies guidance only. The agent chooses another
-available model under your reviewer instructions and checks secrets and
-disclosure scope before sending material off-machine. Read the
+The guard catches a narrow set of obvious catastrophic shell commands, including
+compound forms and absolute-path wrappers. It is not a sandbox. The
+independent-review skill sends only an explicit file or immutable commit range,
+after a secret scan. It sends without asking only to a reviewer you configured
+in your capability registry or instructions; otherwise it asks first. No
+hook, tool, or skill opens a network connection on its own. Read the
 [security policy](https://github.com/lawzava/megapowers/blob/main/SECURITY.md)
-before enabling external review.
-
-Use normal harness tools for the skills' manual procedures. Review optional
-repository helpers before choosing to run them. They are not installed with
-the plugin.
+before enabling either path.
 
 ## Attribution
 

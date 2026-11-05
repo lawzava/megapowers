@@ -98,8 +98,8 @@ comments after you edit.
 
 Start a fresh session outside any repository and ask the agent to list its
 active instructions. For Claude Code, also check `/context` or `/memory`. For
-Codex, ask it to summarize the current instructions.
-Then repeat inside a repository with its own instructions,
+Codex, run `codex --ask-for-approval never "Summarize the current
+instructions."`. Then repeat inside a repository with its own instructions,
 and confirm the project text appears after the global text and that no rule
 conflicts. After a material change, run one representative task with the old
 and new file.

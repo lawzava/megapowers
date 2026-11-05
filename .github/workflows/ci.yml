@@ -120,3 +120,16 @@ jobs:
         run: npm install -g '${{ matrix.package }}'
       - name: Codex install smoke
         run: go run ./scripts/cmd/maintainer codex-install-smoke
+
+  windows-hook-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.25.x'
+          cache: false
+      - name: Assert run-hook.cmd exit codes through cmd.exe
+        run: go run ./scripts/cmd/ci windows-hooks

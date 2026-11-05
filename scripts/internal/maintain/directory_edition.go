@@ -17,8 +17,8 @@ import (
 )
 
 // The directory edition is a skills-only build of plugins/megapowers for the
-// OpenAI Plugins Directory. It omits the Claude output style, the Claude
-// manifest, the repository skill inventory, and the
+// OpenAI Plugins Directory. It drops hooks, the output style, the Claude
+// manifest, skills/catalog.json (only the doctor hook reads it), and the
 // plugin README, and it rewrites the listing manifest. See
 // developers.openai.com/plugins/deploy/submission-errors for the rules the
 // validator enforces.
@@ -31,7 +31,7 @@ const (
 
 const directoryDescription = "Workflow skills for coding agents: planning, test-first implementation, " +
 	"systematic debugging, verification before completion, safe handling of real-world side effects, " +
-	"independent model review, parallel orchestration, evidence research, and instruction authoring. " +
+	"independent cross-provider review, parallel orchestration, evidence research, and instruction authoring. " +
 	"Skills only: the package ships no hooks, output style, or MCP server."
 
 const directoryLongDescription = `megapowers is a set of task-level workflow skills for coding agents. A skill loads when the task matches its description and gives the agent a short, checkable procedure.
@@ -43,15 +43,15 @@ What it covers:
 - Verify an outcome before claiming it is done, committing, or handing off.
 - Gate deploys, messages, migrations, and other real-world effects behind explicit authority and read-back.
 - Split independent work across parallel agents and coordinate the results.
-- Get an independent opinion on high-stakes changes from another available model, following user reviewer preferences.
+- Run adversarial review of high-stakes changes with a provider other than the author.
 - Research decisions that need evidence beyond the repository.
 - Keep long unattended runs moving across context resets.
 - Interview you to stress-test a plan (grill-me, started by name only).
-- Draft and edit prose, write agent instructions and skills, and check or upgrade this plugin.
+- Draft and edit prose, write agent instructions and skills, set up MCP servers, and check or upgrade this plugin.
 
 Who it is for: developers who work with coding agents in a repository and want consistent practice for planning, testing, debugging, review, and release work.
 
-Limits: this edition contains skills only. It has no hooks, no startup output style, and no destructive-command guard. No executable helpers are bundled. Optional helpers live in the repository extras folder. Review and orchestration skills use whichever agents or providers your environment already provides. Skills are guidance text for the agent; they do not enforce behavior or replace your own review.`
+Limits: this edition contains skills only. It has no hooks, no startup output style, and no destructive-command guard. Some skills bundle small Go programs in their scripts folders; running them needs a local shell and the Go toolchain. Review and orchestration skills use whichever agents or providers your environment already provides. Skills are guidance text for the agent; they do not enforce behavior or replace your own review.`
 
 var directoryCapabilities = []string{
 	"Specify changes and compare design tradeoffs",
@@ -60,12 +60,13 @@ var directoryCapabilities = []string{
 	"Verify outcomes before claiming completion",
 	"Gate real-world side effects behind authority checks",
 	"Orchestrate parallel agent lanes",
-	"Run independent model review",
+	"Run independent cross-provider review",
 	"Research decisions with classified evidence",
 	"Keep long unattended runs moving across resets",
 	"Stress-test a plan through a structured interview",
 	"Draft and edit prose",
 	"Write and audit agent instructions and skills",
+	"Set up and verify MCP servers",
 	"Check and upgrade the plugin install",
 }
 

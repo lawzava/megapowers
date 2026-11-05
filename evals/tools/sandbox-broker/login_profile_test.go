@@ -79,7 +79,7 @@ func TestRateLimitEventBeforeInitKeepsTraceComplete(t *testing.T) {
 	}
 }
 
-// A slow SessionStart hook, such as another plugin compiling on first
+// A slow SessionStart hook, such as the megapowers runner compiling on first
 // use, makes Claude emit hook_progress before init.
 func TestHookProgressBeforeInitKeepsTraceComplete(t *testing.T) {
 	trace := `{"type":"system","subtype":"hook_started","hook_id":"h1","hook_name":"SessionStart:startup","hook_event_name":"SessionStart"}
