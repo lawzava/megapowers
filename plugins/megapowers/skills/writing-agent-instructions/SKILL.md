@@ -8,7 +8,7 @@ metadata:
 
 # Writing Agent Instructions
 
-Choose the smallest instruction surface that reaches the intended work:
+Choose the smallest instruction surface for the work:
 
 - Put durable repository facts, commands, boundaries, and conventions in the
   nearest applicable project instruction file.
@@ -16,17 +16,18 @@ Choose the smallest instruction surface that reaches the intended work:
 - Put rules that must execute or block an action in tests, hooks, settings, or
   a deterministic tool. Prose can guide a model but cannot enforce behavior.
 
-Read the applicable repository instructions, nearby instruction files, code,
-tests, and configured tools before drafting. For every load-bearing statement,
-identify its source as direct observation, repository policy, upstream
-documentation, or an explicit author decision. Remove claims that code or a
-command can reveal cheaply unless their omission would repeatedly cause a bad
-decision.
+Read applicable repository instructions, nearby instructions, code, tests, and
+configured tools before drafting. Attribute load-bearing statements to direct
+observation, repository policy, upstream documentation, or explicit author
+decisions. Remove cheaply discoverable claims unless their omission repeatedly
+causes bad decisions.
 
 Write the minimum instruction that changes behavior. State the condition, the
 required outcome, and any real boundary. Preserve user intent and existing
-authorization. Do not turn examples, preferences, or hypothetical risks into
-blanket prohibitions, approval gates, fixed workflows, or extra files. Add
+authorization. Say what to use ("use Y for Z"); a "do not use X" line steers
+toward X and blocks edge cases where X fits. Mark superseded routes legacy and
+say when to ask. Keep examples, preferences, and hypothetical risks out of
+blanket prohibitions, approval gates, fixed workflows, and extra files. Add
 detail only when omitting it caused an observed failure or creates a concrete
 risk.
 
@@ -41,7 +42,7 @@ corrections across available transcript sources,
 [session mining](references/session-mining.md); to audit native
 memory, [memory hygiene](references/memory-hygiene.md); to score a project's
 skill outcomes or manage lessons, [learning loop](references/learning-loop.md).
-Read more than one reference only when the task spans more than one surface.
+Read multiple references only when the task spans several instruction surfaces.
 
 Validate a new skill or material behavior change at two boundaries. First,
 confirm the target harness discovers the file and accepts its format. Then
