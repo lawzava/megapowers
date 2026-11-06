@@ -5,6 +5,13 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Changed
+
+- Prefer positive instruction wording that names the intended route. Mark
+  superseded routes as legacy and preserve explicit safety and authority limits.
+
 ## 0.54.0 - 2026-11-05
 
 ### Changed
