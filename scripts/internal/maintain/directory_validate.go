@@ -394,6 +394,9 @@ func (c *dirChecker) checkLayout() {
 		segments := strings.Split(name, "/")
 		root := segments[0]
 		base := segments[len(segments)-1]
+		if !isDir && !isSkillEntrypoint(name) && strings.HasSuffix(base, ".md") && startsWithFrontmatter(file.Data) {
+			c.fail("markdown_frontmatter_unsupported", name, "only skills/<name>/SKILL.md may start with YAML frontmatter")
+		}
 		parents := segments[:len(segments)-1]
 		if isDir {
 			parents = segments
@@ -1244,6 +1247,16 @@ func (c *dirChecker) checkAgentYAML(name string, file dirFile) {
 
 // --- skill front matter ---
 
+func startsWithFrontmatter(data []byte) bool {
+	first, _, _ := strings.Cut(strings.TrimPrefix(string(data), "\ufeff"), "\n")
+	return strings.TrimRight(first, " \t\r") == "---"
+}
+
+func isSkillEntrypoint(name string) bool {
+	parts := strings.Split(name, "/")
+	return len(parts) == 3 && parts[0] == "skills" && parts[1] != "" && parts[2] == "SKILL.md"
+}
+
 type dirError struct{ Code, Message string }
 
 func (e *dirError) Error() string { return e.Code + ": " + e.Message }
@@ -1284,9 +1297,9 @@ func parseSkillFrontMatter(text string) (skillFrontMatter, error) {
 	}
 	for _, key := range root.keys {
 		switch key {
-		case "name", "description", "disable-model-invocation":
+		case "name", "description":
 		default:
-			return skillFrontMatter{}, &dirError{"skill_frontmatter_key_unsupported", fmt.Sprintf("front matter allows only name, description, and disable-model-invocation; found %s", key)}
+			return skillFrontMatter{}, &dirError{"skill_frontmatter_key_unsupported", fmt.Sprintf("front matter allows only name and description; found %s", key)}
 		}
 		value := root.m[key]
 		if value.kind != yamlScalar || (!value.quoted && (strings.EqualFold(value.text, "null") || value.text == "~")) {

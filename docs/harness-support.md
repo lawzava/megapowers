@@ -13,7 +13,7 @@ native agent/reviewer bindings, isolation, permissions and any hooks locally.
 | Marketplace metadata | `.claude-plugin/marketplace.json` | `.agents/plugins/marketplace.json` |
 | Plugin manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
 | Task skills | Supported | Supported |
-| Communication style | Selectable plugin output style (`megapowers:Megapowers`) | No session-wide plugin style; `humanizing-prose` available on demand |
+| Communication style | No plugin style; optional manual style in repository-only extras | No session-wide plugin style; `humanizing-prose` available on demand |
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
@@ -23,10 +23,11 @@ native agent/reviewer bindings, isolation, permissions and any hooks locally.
 
 ## Shared contract
 
-Skills use only `name`, a task-triggering `description` of at most 1024 characters,
-and optionally `disable-model-invocation`; values are plain text. Trigger phrases live in `description`, not
-harness-only fields. `grill-me` and `close-off` retain
-`disable-model-invocation` for Claude Code and OpenCode.
+Skills use only `name` and a task-triggering `description` of at most 1024
+characters, as plain text. Trigger phrases live in `description`, not
+harness-only fields. `grill-me` and `close-off` require an explicit user request
+in their descriptions. Claude Code and OpenCode rely on that model guidance,
+not an invocation-policy frontmatter flag.
 Codex and OpenCode use `description` for discovery.
 
 OpenCode accepts HTTP skill catalogs, local source paths in its `skills` array,
@@ -44,8 +45,9 @@ edition uses the existing plugin manifest field when adding agent interfaces;
 `SKILL.md` frontmatter has no nested metadata.
 
 Codex's explicit-only policy lives in each such skill's `agents/openai.yaml` as
-`policy.allow_implicit_invocation: false`. The trigger evaluation reads each
-harness's own policy and tests explicit invocation separately.
+`policy.allow_implicit_invocation: false`. The trigger evaluation distinguishes
+native policy from description-only guidance and tests explicit invocation
+and implicit non-selection separately.
 
 `SKILL.md` bodies do not depend on which harness is running.
 `independent-review` supplies guidance for another available model, using
@@ -70,14 +72,13 @@ harness. Verify current support against the exact CLI and plugin revision.
 
 ## Communication style
 
-Claude Code uses `output-styles/megapowers.md` as its output-style source.
-It offers it through the `/config` output-style picker and the
-`/output-style` command with `force-for-plugin: false`, so it is off until
-selected. The value that resolves is the plugin-qualified name
-`megapowers:Megapowers`; the bare `Megapowers` does not resolve, and sessions
-configured that way recorded no style. Selecting the style preserves the
-built-in coding instructions. Another selected style stays in effect. The
-style permits one short line of intent before long work and
+The plugin ships no output style. The unchanged Claude Code style lives at
+`extras/output-styles/megapowers.md` for manual installation into
+`~/.claude/output-styles/`; see [extras](../extras/README.md#output-style).
+Select the manually installed `Megapowers` in `/config` or `/output-style`.
+The former plugin-qualified `megapowers:Megapowers` no longer resolves from
+the plugin. Selecting the manual style preserves built-in coding instructions.
+Another selected style stays in effect. The style permits one short line of intent before long work and
 brief progress lines during long tool chains; final answers keep the 100-word
 default and 250-word ceiling and use no em dashes.
 
@@ -141,7 +142,7 @@ authorize automatic policy adoption. Keep claims uncertain until tested.
     "reviewed": "2026-10-08",
     "cli": "claude",
     "version": "2.1.295",
-    "oracle": ["scripts/validate.sh", "plugins/megapowers/output-styles/megapowers.md"]
+    "oracle": ["scripts/validate.sh", "extras/output-styles/megapowers.md"]
   },
   {
     "source": "https://learn.chatgpt.com/docs/build-skills",

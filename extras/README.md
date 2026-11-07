@@ -1,6 +1,6 @@
 # Repository-only extras
 
-These helpers and skills do not ship with the plugin or its HTTP skill catalog.
+These helpers, skills, and output style do not ship with the plugin or its HTTP skill catalog.
 The plugin uses manual procedures with normal agent tools and needs no Go runtime.
 
 ## Helpers
@@ -23,6 +23,21 @@ them. Contract tests live under `scripts/contracts/` and
 old plugin-relative helper paths are historical; run helpers from `extras/scripts/`
 as shown above and supply the plugin root explicitly. These skills are not
 part of the supported shipped set.
+
+## Output style
+
+The unchanged `output-styles/megapowers.md` is an optional Claude Code style.
+From this checkout, install it manually:
+
+```bash
+mkdir -p ~/.claude/output-styles
+cp extras/output-styles/megapowers.md ~/.claude/output-styles/megapowers.md
+```
+
+Select `Megapowers` in `/config` or run `/output-style Megapowers`, then start
+a fresh session. It preserves built-in coding instructions and stays off until
+selected. The old plugin-qualified value `megapowers:Megapowers` no longer
+resolves from the shipped plugin; replace it with the manually installed style.
 
 ## OpenCode catalog maintenance
 

@@ -185,6 +185,32 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 }
 
 func checkCatalogBudgets(root string) (int, error) {
+	pluginRoot := filepath.Join(root, "plugins/megapowers")
+	if err := filepath.WalkDir(pluginRoot, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			return nil
+		}
+		rel, err := filepath.Rel(pluginRoot, path)
+		if err != nil {
+			return err
+		}
+		if isSkillEntrypoint(filepath.ToSlash(rel)) {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if startsWithFrontmatter(data) {
+			return fmt.Errorf("%s: markdown_frontmatter_unsupported: only skills/<name>/SKILL.md may start with YAML frontmatter", path)
+		}
+		return nil
+	}); err != nil {
+		return 0, err
+	}
 	paths, err := filepath.Glob(filepath.Join(root, "plugins/megapowers/skills/*/SKILL.md"))
 	if err != nil || len(paths) == 0 {
 		return 0, fmt.Errorf("no skill catalog found: %v", err)

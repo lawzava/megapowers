@@ -1,7 +1,7 @@
 {
   "name": "megapowers",
-  "version": "0.55.2",
-  "description": "Native-first workflow plugin for Claude Code and Codex: task skills for planning, test-first implementation, debugging, verification, safe effects, independent model review, and orchestration, plus an optional concise Claude Code output style.",
+  "version": "0.55.3",
+  "description": "Native-first workflow plugin for Claude Code and Codex: task skills for planning, test-first implementation, debugging, verification, safe effects, independent model review, and orchestration.",
   "author": {
     "name": "lawzava"
   },
@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "megapowers",
     "shortDescription": "Native-first workflow skills.",
-    "longDescription": "Task-level skills for orchestration, structured interviews, evidence research, design, test-first implementation, debugging, verification, real-world effects, autonomous work, independent model review, memory hygiene, prose, and instruction authoring, with an optional concise output style on Claude Code. Uses native agents, goals, and permissions.",
+    "longDescription": "Task-level skills for orchestration, structured interviews, evidence research, design, test-first implementation, debugging, verification, real-world effects, autonomous work, independent model review, memory hygiene, prose, and instruction authoring. Uses native agents, goals, and permissions.",
     "developerName": "lawzava",
     "category": "Developer Tools",
     "capabilities": [

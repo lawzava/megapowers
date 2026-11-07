@@ -216,7 +216,10 @@ func TestNativeFirstContract(t *testing.T) {
 
 func TestOutputStyleContract(t *testing.T) {
 	root := repoRoot(t)
-	style := read(t, root, "plugins/megapowers/output-styles/megapowers.md")
+	if _, err := os.Stat(filepath.Join(root, "plugins/megapowers/output-styles")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("output style must remain repository-only: %v", err)
+	}
+	style := read(t, root, "extras/output-styles/megapowers.md")
 	for _, marker := range []string{
 		"name: Megapowers", "description: Direct, concise technical communication for the operator",
 		"keep-coding-instructions: true", "force-for-plugin: false", "ASD-STE100-inspired principles",
@@ -245,7 +248,7 @@ func TestHumanizingProseDiscussionScope(t *testing.T) {
 	}
 	// A comment's destination cannot decide whether it is a verdict or a discussion.
 	requireAbsent(t, skill, "For an authorized review, PR comment, or issue update, publish only", "discussion scope")
-	style := read(t, root, "plugins/megapowers/output-styles/megapowers.md")
+	style := read(t, root, "extras/output-styles/megapowers.md")
 	requireContains(t, style, "sentence rhythm, opening, and structure", "publication scope")
 	requireAbsent(t, style, "its length follows the piece, not this budget", "length-only publication exception")
 }
@@ -274,7 +277,7 @@ func TestSkillContracts(t *testing.T) {
 		}
 		for field := range fields {
 			switch field {
-			case "name", "description", "disable-model-invocation":
+			case "name", "description":
 			default:
 				t.Errorf("%s has unsupported frontmatter key %s", rel, field)
 			}

@@ -6,7 +6,7 @@
 
 <p align="center">
   Plan, test, debug, and ship with more care in Claude Code and Codex.<br>
-  One plugin, task skills, and an optional Claude Code output style.
+  One plugin with task skills. Optional helpers and style stay in repository-only extras.
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ can load it and follow it.
 It is exactly one plugin, with tested installs for Claude Code and Codex.
 The harness-neutral skills and their supporting files may also be copied into
 other Agent Skills harnesses. Local agent bindings and hooks stay in the user's
-setup; copying skills does not install a plugin or its optional output style.
+setup; copying skills does not install a plugin or the repository-only output style.
 It uses each tool's own
 agents, permissions, worktrees, and memory, and ships no daemon, scheduler,
 model router, formatter, or status line.
@@ -99,7 +99,7 @@ Alternatives:
 - Copy skills with `npx skills add lawzava/megapowers -a opencode`.
 
 Use one route to avoid duplicate skill IDs. These routes load skill text and
-supporting files, not Claude Code's output style. The
+supporting files, not the repository-only Claude Code output style. The
 [OpenCode skills documentation](https://opencode.ai/docs/skills/) defines the
 `skills` array and HTTP catalog format.
 
@@ -128,7 +128,7 @@ that site.
 |---|---|---|---|
 | Works with | Claude Code and Codex, one plugin, shared skills | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
 | Get it from | This repository's marketplace | The official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
-| What you get | Task skills and an optional Claude Code style | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
+| What you get | Task skills; optional helpers and Claude Code style in repository-only extras | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
 | Published measurements | The A/B study below, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
 
 Which one fits:
@@ -185,14 +185,14 @@ go to which skill.
 
 ## Output style
 
-An optional style that makes replies shorter and more direct: the answer
+An optional repository-only style makes replies shorter and more direct: the answer
 first, about 100 words by default and up to 250 unless you ask for depth, and
 no em dashes. It keeps the built-in coding instructions.
 
-- **Claude Code:** off until you select it. Run
-  `/output-style megapowers:Megapowers`, or pick it in `/config` under Output
-  style. The setting must read `"outputStyle": "megapowers:Megapowers"`. The
-  bare value `Megapowers` does not load the plugin style.
+- **Claude Code:** install it manually from
+  [extras/output-styles/](./extras/README.md#output-style) into
+  `~/.claude/output-styles/`, then run `/output-style Megapowers` or select
+  `Megapowers` in `/config`. The plugin no longer ships it.
 - **Codex:** the plugin does not apply a session-wide style. Invoke
   `humanizing-prose` for writing tasks that need its editing guidance.
 
@@ -279,7 +279,6 @@ longer shipped and do not describe this version.
 
 - 13 skills under `skills/`, listed in `skills/catalog.json`.
 - An HTTP skill catalog at `skills/index.json` for OpenCode.
-- One optional Claude Code output style, `output-styles/megapowers.md`.
 - Guidance and passive metadata only: no executable code, hooks, or MCP entries.
   Optional helpers and setup skills live in repository-only
   [extras/](./extras/README.md).
@@ -301,13 +300,13 @@ and summarize it. For optional local diagnostics, see
 
 | Symptom | Fix |
 |---|---|
-| Style not applied on Claude Code | The setting must read `megapowers:Megapowers`, not `Megapowers` |
+| Old `megapowers:Megapowers` style setting no longer resolves | Install the repository-only style manually from [extras](./extras/README.md#output-style), then select `Megapowers` |
 | Wrong version after an upgrade | Compare the marketplace head with the approved release tag before registering it |
 
 ## Limits
 
 - Skills are instructions, not enforcement. Model and tool behavior change.
-- The Claude Code style cannot suppress tool-result rendering.
+- The repository-only Claude Code style cannot suppress tool-result rendering.
 - The plugin supplies no destructive-command guard or command gates. Use
   harness permissions, OS sandboxing, and least privilege for enforcement.
   See [SECURITY.md](./SECURITY.md).

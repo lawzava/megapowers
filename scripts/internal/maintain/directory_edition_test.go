@@ -717,11 +717,11 @@ func TestContrastAgainstWhite(t *testing.T) {
 }
 
 func TestParseFrontMatterScalars(t *testing.T) {
-	fm, err := parseSkillFrontMatter("---\nname: 'a'\ndescription: \"x: \\\"y\\\"\"\ndisable-model-invocation: true\n---\nbody")
+	fm, err := parseSkillFrontMatter("---\nname: 'a'\ndescription: \"x: \\\"y\\\"\"\n---\nbody")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fm.Scalars["name"] != "a" || fm.Scalars["description"] != `x: "y"` || fm.Scalars["disable-model-invocation"] != "true" {
+	if fm.Scalars["name"] != "a" || fm.Scalars["description"] != `x: "y"` || len(fm.Scalars) != 2 {
 		t.Fatalf("scalars = %v", fm.Scalars)
 	}
 	if fm.Body != "body" {

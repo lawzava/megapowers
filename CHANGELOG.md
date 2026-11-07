@@ -5,6 +5,25 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.55.3 - 2026-11-07
+
+### Changed
+
+- Address Anthropic's repeat refusal of 0.55.2: "Frontmatter keys outside the
+  allowed list accepted only from Verified organizations". Move the unchanged
+  Claude Code output style to repository-only `extras/output-styles/`.
+- Remove `disable-model-invocation` from `grill-me` and `close-off`. Claude Code
+  now relies on their explicit-user-request descriptions; Codex keeps
+  `policy.allow_implicit_invocation: false` in `agents/openai.yaml`.
+- Validate only `name` and `description` as scalar text in shipped skill
+  frontmatter. Reject frontmatter in every other shipped Markdown file.
+
+### Known issues
+
+- The repository-only doctor in `extras/` still expects the plugin-qualified
+  `megapowers:Megapowers` style. A manually installed style resolves as
+  `Megapowers`.
+
 ## 0.55.2 - 2026-11-07
 
 ### Changed

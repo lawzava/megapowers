@@ -30,13 +30,11 @@ Start a fresh session. Ask Claude Code to load `humanizing-prose` and summarize
 its preservation rules. This checks that the skill is discovered and fully
 loaded; it says nothing about broader behavior.
 
-The output style is optional and off until selected. Select the
-plugin-qualified value `megapowers:Megapowers` in `/config` under Output style,
-or run `/output-style megapowers:Megapowers`. The resulting setting is
-`"outputStyle": "megapowers:Megapowers"`. The bare value `Megapowers` does not
-resolve to the plugin style. The style preserves built-in coding instructions.
-To opt out while keeping the plugin enabled, select another style. Start a new
-session after changing style and inspect the selected value in `/config`.
+The plugin ships no output style. For the optional manual Claude Code style,
+copy `extras/output-styles/megapowers.md` from a checkout into
+`~/.claude/output-styles/`, then select `Megapowers`. See
+[extras](../extras/README.md#output-style) for commands. Replace any old
+`megapowers:Megapowers` setting; that plugin-qualified style is no longer shipped.
 
 For a project-scoped install, add `--scope project` to both marketplace and
 install commands. For a local user-only install, use `--scope local`.
@@ -86,7 +84,7 @@ Alternatives:
 - Copy skills with `npx skills add lawzava/megapowers -a opencode`.
 
 Use one route to avoid duplicate skill IDs. These routes load skill text and
-supporting files, not Claude Code's output style. The
+supporting files, not the repository-only Claude Code output style. The
 [OpenCode skills documentation](https://opencode.ai/docs/skills/) defines the
 `skills` array and HTTP catalog format.
 
@@ -138,14 +136,14 @@ keeping the output, and `scripts/validate.sh` runs it.
 
 The edition ships skill text and supporting passive files, an icon, and a
 `.codex-plugin/plugin.json` for the directory listing. It omits the Claude Code
-output style and manifest, the source README, and the root skill catalogs.
+manifest, the source README, and the root skill catalogs. The output style is
+repository-only and absent from both editions.
 
 Each packaged `SKILL.md` ends with one line that ranks explicit user
 instructions above skill guidance. Manual procedures use normal agent tools;
 no executable helper code ships in either edition.
 
-Install from the self-hosted marketplace for Claude Code's optional native
-output style. Submission to the directory is a manual step in the OpenAI portal.
+Submission to the directory is a manual step in the OpenAI portal.
 
 ## Pin a release
 

@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "megapowers",
-      "description": "Task-level workflow skills, an optional Claude Code output style, and installation diagnostics.",
+      "description": "Task-level workflow skills for planning, implementation, debugging, verification, and review.",
       "source": {
         "source": "local",
         "path": "./plugins/megapowers"

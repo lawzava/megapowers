@@ -16,8 +16,9 @@ scheduler.
 
 ## Repository-only extras
 
-The optional helpers in [extras/](./extras/README.md) do not ship with the
-plugin. Their read and execution boundaries follow.
+The optional helpers and Claude Code output style in [extras/](./extras/README.md)
+do not ship with the plugin. The style is passive instruction text, installed
+manually into `~/.claude/output-styles/`. Helper boundaries follow.
 
 | Component | Reads | Writes | Network |
 |---|---|---|---|
