@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/lawzava/megapowers/evals/internal/brokerresponse"
+	"github.com/lawzava/megapowers/evals/internal/commandtrace"
 	"io"
 	"io/fs"
 	"net"
@@ -178,16 +179,18 @@ type actorEvent struct {
 }
 
 type actorResult struct {
-	Response      string
-	Trace         []byte
-	Events        []actorEvent
-	OracleRC      *int
-	Inventory     []string
-	SkillsCatalog []string
-	CLIVersion    string
-	Sandbox       string
-	RC            int
-	Duration      time.Duration
+	Response       string
+	Trace          []byte
+	Events         []actorEvent
+	OracleRC       *int
+	Inventory      []string
+	SkillsCatalog  []string
+	CLIVersion     string
+	Sandbox        string
+	RC             int
+	Duration       time.Duration
+	OpenCode       *openCodeTelemetry
+	PreflightTrace []byte
 }
 
 type actor interface {
@@ -284,15 +287,16 @@ type testExecutionReceiptDiagnostic struct {
 }
 
 type armManifest struct {
-	CaseID        string   `json:"case_id"`
-	BlockID       string   `json:"block_id"`
-	Arm           string   `json:"arm"`
-	PromptHash    string   `json:"prompt_hash"`
-	FixtureHash   string   `json:"fixture_hash"`
-	PluginHash    string   `json:"plugin_hash"`
-	PluginNames   []string `json:"plugin_inventory"`
-	InventoryHash string   `json:"plugin_inventory_hash"`
-	EvidenceOnly  string   `json:"evidence"`
+	CaseID        string             `json:"case_id"`
+	BlockID       string             `json:"block_id"`
+	Arm           string             `json:"arm"`
+	PromptHash    string             `json:"prompt_hash"`
+	FixtureHash   string             `json:"fixture_hash"`
+	PluginHash    string             `json:"plugin_hash"`
+	PluginNames   []string           `json:"plugin_inventory"`
+	InventoryHash string             `json:"plugin_inventory_hash"`
+	EvidenceOnly  string             `json:"evidence"`
+	OpenCode      *openCodeTelemetry `json:"opencode,omitempty"`
 }
 
 type scheduledArm struct {
@@ -373,7 +377,7 @@ type publishManifest struct {
 
 func main() {
 	var selftest, validate, run, hashPlugin, credentialed, resume bool
-	var casesPath, gatesPath, harness, model, effort, out, repo, broker, brokerPin string
+	var casesPath, gatesPath, harness, model, effort, out, repo, broker, brokerPin, opencodeProbe string
 	var pairedRuns int
 	var caseIDs caseFilterFlag
 	var actorTimeout time.Duration
@@ -386,7 +390,7 @@ func main() {
 	flag.StringVar(&casesPath, "cases", "", "case catalog")
 	flag.Var(&caseIDs, "case", "case ID to run; repeat or use a comma-separated list")
 	flag.StringVar(&gatesPath, "gates", "", "gate catalog")
-	flag.StringVar(&harness, "harness", "", "claude or codex")
+	flag.StringVar(&harness, "harness", "", "claude, codex, or opencode")
 	flag.StringVar(&model, "model", "", "exact model identity")
 	flag.StringVar(&effort, "effort", "high", "exact effort identity")
 	flag.StringVar(&out, "out", "", "result directory")
@@ -395,16 +399,20 @@ func main() {
 	flag.StringVar(&brokerPin, "broker-sha256", "", "pinned sha256 of the trusted broker")
 	flag.IntVar(&pairedRuns, "paired-runs", 0, "paired runs per case, defaults to the configured minimum")
 	flag.DurationVar(&actorTimeout, "actor-timeout", 20*time.Minute, "maximum time for one actor run")
+	flag.StringVar(&opencodeProbe, "opencode-probe", "", "credentialed treatment-only activation or edit mechanics probe")
 	flag.Parse()
 
 	modes := 0
+	if opencodeProbe != "" {
+		modes++
+	}
 	for _, enabled := range []bool{selftest, validate, run, hashPlugin} {
 		if enabled {
 			modes++
 		}
 	}
 	if modes != 1 {
-		fatal(errors.New("choose exactly one of --selftest, --validate-config, --hash-plugin, or --run"))
+		fatal(errors.New("choose exactly one of --selftest, --validate-config, --hash-plugin, --opencode-probe, or --run"))
 	}
 	if selftest {
 		if err := runSelftest(); err != nil {
@@ -422,6 +430,26 @@ func main() {
 			fatal(err)
 		}
 		fmt.Println(hash)
+		return
+	}
+	if opencodeProbe != "" {
+		if !credentialed {
+			fatal(errors.New("--opencode-probe requires --credentialed"))
+		}
+		if model == "" || out == "" {
+			fatal(errors.New("--opencode-probe requires --model and --out"))
+		}
+		if harness != "" && harness != "opencode" {
+			fatal(errors.New("--opencode-probe uses only the opencode harness"))
+		}
+		if actorTimeout < 10*time.Second || actorTimeout > 2*time.Hour {
+			fatal(errors.New("--actor-timeout must be in [10s,2h]"))
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := runOpenCodeProbe(ctx, root, model, opencodeProbe, out, actorTimeout); err != nil {
+			fatal(err)
+		}
 		return
 	}
 	if casesPath == "" {
@@ -450,8 +478,8 @@ func main() {
 	if !credentialed {
 		fatal(errors.New("--run requires --credentialed; selftests never substitute for real actors"))
 	}
-	if harness != "claude" && harness != "codex" {
-		fatal(errors.New("--harness must be claude or codex"))
+	if harness != "claude" && harness != "codex" && harness != "opencode" {
+		fatal(errors.New("--harness must be claude, codex, or opencode"))
 	}
 	if model == "" || out == "" {
 		fatal(errors.New("--run requires --model and --out"))
@@ -459,9 +487,42 @@ func main() {
 	if actorTimeout < 10*time.Second || actorTimeout > 2*time.Hour {
 		fatal(errors.New("--actor-timeout must be in [10s,2h]"))
 	}
-	brokerHash, err := validateBroker(broker, brokerPin, root, out)
-	if err != nil {
-		fatal(err)
+	var subject actor
+	var brokerHash string
+	if harness == "opencode" {
+		owner, homeErr := os.UserHomeDir()
+		if homeErr != nil {
+			fatal(homeErr)
+		}
+		binary := filepath.Join(owner, ".opencode", "bin", "opencode")
+		content, readErr := os.ReadFile(binary)
+		if readErr != nil {
+			fatal(readErr)
+		}
+		brokerHash = hashBytes(content) // Resume binds the standalone binary, not an OS broker.
+		if broker != "" || brokerPin != "" {
+			fatal(errors.New("OpenCode uses standalone config isolation, not --sandbox-broker"))
+		}
+		switch model {
+		case "openai/gpt-6.1-sol-fast#high":
+			effort = "high"
+		case "claude-agent/opus":
+			effort = "provider-default"
+		default:
+			fatal(errors.New("OpenCode study supports openai/gpt-6.1-sol-fast#high or claude-agent/opus"))
+		}
+		for _, c := range cases.Cases {
+			if len(c.FollowupTasks) > 0 {
+				fatal(errors.New("OpenCode follow-up conversations are not supported; select single-turn cases"))
+			}
+		}
+		subject = openCodeActor{Path: binary, OwnerHome: owner}
+	} else {
+		brokerHash, err = validateBroker(broker, brokerPin, root, out)
+		if err != nil {
+			fatal(err)
+		}
+		subject = brokerActor{Path: broker, ExpectedHash: brokerHash}
 	}
 	if pairedRuns == 0 {
 		pairedRuns = gates.Acceptance.MinimumPairedRuns
@@ -472,7 +533,7 @@ func main() {
 	opts := runOptions{Harness: harness, Model: model, Effort: effort, Repo: root, Out: out, Timestamp: time.Now().UTC(), Resume: resume, Broker: broker, BrokerHash: brokerHash, PairedRuns: pairedRuns, ActorTimeout: actorTimeout}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if _, _, err := executeStudy(ctx, cases, gates, opts, brokerActor{Path: broker, ExpectedHash: brokerHash}); err != nil {
+	if _, _, err := executeStudy(ctx, cases, gates, opts, subject); err != nil {
 		fatal(err)
 	}
 	fmt.Printf("behavioral rows written to %s; score separately with evals/score.go --strict\n", filepath.Join(out, "publish"))
@@ -1089,6 +1150,8 @@ func loadResumeCheckpoint(out string, schedule []scheduledArm, expected publishM
 		sandboxOK := row.Environment.Sandbox == "bwrap"
 		if opts.Selftest {
 			sandboxOK = row.Environment.Sandbox == "in-process-selftest"
+		} else if opts.Harness == "opencode" {
+			sandboxOK = row.Environment.Sandbox == "opencode-config-isolated"
 		} else if row.Status != "completed" {
 			sandboxOK = sandboxOK || row.Environment.Sandbox == "broker-isolated"
 		}
@@ -1196,6 +1259,10 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 		if err := stagePortablePluginTree(filepath.Join(opts.Repo, "plugins", "megapowers"), actorPluginRoot, pluginHash); err != nil {
 			return nil, publishManifest{}, err
 		}
+		if opts.Harness == "opencode" {
+			actorPluginRoot = filepath.Join(opts.Repo, "plugins", "megapowers")
+			subject = pluginBoundActor{Root: actorPluginRoot, Hash: pluginHash, Subject: subject}
+		}
 	}
 	controlHash := emptyControlPluginHash()
 	cliVersion := "selftest"
@@ -1284,8 +1351,14 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 		if err := writePrivateResponse(opts.Out, row, result.Response, result.Trace); err != nil {
 			return rows, manifest, fmt.Errorf("persist private response: %w", err)
 		}
+		if result.PreflightTrace != nil {
+			if err := writePrivateArtifact(opts.Out, "preflights", ".jsonl", row, result.PreflightTrace); err != nil {
+				return rows, manifest, err
+			}
+		}
 		inventory := cleanInventory(result.Inventory)
 		armEvidence := armManifest{CaseID: c.ID, BlockID: scheduled.BlockID, Arm: scheduled.Arm, PromptHash: scheduled.PromptHash, FixtureHash: scheduled.FixtureHash, PluginHash: scheduled.PluginHash, PluginNames: inventory, InventoryHash: hashInventory(inventory), EvidenceOnly: evidenceLabel(opts.Selftest)}
+		armEvidence.OpenCode = result.OpenCode
 		if actorErr != nil || result.RC != 0 || timedOut {
 			row.Status = "harness_error"
 			if timedOut {
@@ -1440,6 +1513,16 @@ func assessStudyAcceptance(rows []resultRow, gates gatesFile) studyAcceptance {
 		assessment.OutcomeAccepted = false
 		assessment.ActivationAccepted = false
 		assessment.Reasons = append(assessment.Reasons, "no completed treatment/control results")
+	}
+	for _, row := range rows {
+		if row.Harness.Name == "opencode" {
+			assessment.Accepted, assessment.OutcomeAccepted = false, false
+			for i := range assessment.Cases {
+				assessment.Cases[i].Accepted, assessment.Cases[i].OutcomeAccepted = false, false
+			}
+			assessment.Reasons = append(assessment.Reasons, "OpenCode uses config isolation, not a broker-attested OS boundary")
+			break
+		}
 	}
 	return assessment
 }
@@ -1793,6 +1876,9 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 // Usage is diagnostic harness-reported metadata, not a billing ledger. Preserve
 // the latest root snapshot rather than summing cumulative or forwarded results.
 func attachEfficiencyMetrics(metrics map[string]float64, result actorResult) {
+	if result.OpenCode != nil {
+		metrics["skill_activation_telemetry_validated"] = boolMetric(result.OpenCode.ActivationValidation == "native-tool-events")
+	}
 	metrics["duration_ms_known"] = boolMetric(result.Duration.Milliseconds() > 0)
 	metrics["usage_trace_complete"] = 0
 	for _, source := range []string{"codex_root_thread", "codex_latest_turn", "claude_latest_root_result"} {
@@ -3677,6 +3763,587 @@ func removePrivateTree(root string) {
 	_ = os.RemoveAll(root)
 }
 
+// OpenCode deliberately uses configuration isolation, not a filesystem sandbox.
+// The owner supplies a dedicated login store; this runner never opens credentials.
+type openCodeActor struct{ Path, OwnerHome string }
+
+func openCodeProbeCase(kind string) (studyCase, error) {
+	switch kind {
+	case "activation":
+		return studyCase{ID: "opencode-activation-probe", Task: "Load the safe-effects skill with your skill tool, then reply DONE"}, nil
+	case "edit":
+		return studyCase{ID: "opencode-edit-probe", Task: "Edit probe.txt so its entire contents are after followed by a newline. Use your file editing tool, not a shell command. Then reply DONE.", Files: map[string]string{"probe.txt": "before\n"}}, nil
+	default:
+		return studyCase{}, fmt.Errorf("unknown OpenCode probe %q", kind)
+	}
+}
+
+func runOpenCodeProbe(ctx context.Context, repo, model, kind, out string, timeout time.Duration) error {
+	c, err := openCodeProbeCase(kind)
+	if err != nil {
+		return err
+	}
+	effort := "high"
+	if model == "claude-agent/opus" {
+		effort = "provider-default"
+	} else if model != "openai/gpt-6.1-sol-fast#high" {
+		return errors.New("unsupported OpenCode probe model")
+	}
+	pluginHash, err := verifiedPluginHash(repo)
+	if err != nil {
+		return err
+	}
+	owner, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	root, err := os.MkdirTemp("", "installed-ab-opencode-probe-*")
+	if err != nil {
+		return err
+	}
+	defer removePrivateTree(root)
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o700); err != nil {
+		return err
+	}
+	if err := materializeCaseFixture(project, c); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o700); err != nil {
+		return err
+	}
+	if err := os.Mkdir(out, 0o700); err != nil {
+		return err
+	}
+	request := actorRequest{Case: c, Arm: "treatment", Harness: "opencode", Model: model, Effort: effort, Home: filepath.Join(root, "home"), Project: project, PluginRoot: filepath.Join(repo, "plugins", "megapowers"), Timeout: timeout}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	subject := pluginBoundActor{Root: request.PluginRoot, Hash: pluginHash, Subject: openCodeActor{Path: filepath.Join(owner, ".opencode", "bin", "opencode"), OwnerHome: owner}}
+	result, actorErr := subject.Run(ctx, request)
+	for name, data := range map[string][]byte{"trace.jsonl": result.Trace, "preflight.jsonl": result.PreflightTrace} {
+		if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
+			return err
+		}
+	}
+	var eventTypes, toolNames []string
+	scanner := bufio.NewScanner(bytes.NewReader(result.Trace))
+	scanner.Buffer(make([]byte, 64<<10), 8<<20)
+	for scanner.Scan() {
+		var event struct {
+			Type string `json:"type"`
+			Part struct {
+				Tool string `json:"tool"`
+			} `json:"part"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &event) == nil {
+			eventTypes = append(eventTypes, event.Type)
+			if event.Part.Tool != "" {
+				toolNames = append(toolNames, event.Part.Tool)
+			}
+		}
+	}
+	edited, _ := os.ReadFile(filepath.Join(project, "probe.txt"))
+	receipt := map[string]any{"evidence": "probe-only-not-behavioral-evidence", "kind": kind, "model": model, "effort": effort, "cli_version": result.CLIVersion, "plugin_commit": gitOutput(repo, "rev-parse", "HEAD"), "plugin_hash": pluginHash, "skill_load_observed": successfulSkillSelection(result.Events, "safe-effects"), "done_reply": strings.TrimSpace(result.Response) == "DONE", "file_edited": string(edited) == "after\n", "event_types": eventTypes, "tool_names": toolNames, "opencode": result.OpenCode}
+	content, err := json.MarshalIndent(receipt, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(out, "probe.json"), append(content, '\n'), 0o600); err != nil {
+		return err
+	}
+	fmt.Println(string(content))
+	return actorErr
+}
+
+// The approved OpenCode recipe points at the checkout. Detect drift around
+// every arm instead of claiming its live files are the immutable staged copy.
+type pluginBoundActor struct {
+	Root, Hash string
+	Subject    actor
+}
+
+func (a pluginBoundActor) Run(ctx context.Context, r actorRequest) (actorResult, error) {
+	check := func() error {
+		got, err := hashPortablePluginTree(a.Root)
+		if err != nil {
+			return err
+		}
+		if got != a.Hash {
+			return errors.New("OpenCode plugin tree changed during study")
+		}
+		return nil
+	}
+	if err := check(); err != nil {
+		return actorResult{RC: 125, Sandbox: "opencode-config-isolated"}, err
+	}
+	result, err := a.Subject.Run(ctx, r)
+	if drift := check(); drift != nil {
+		return result, drift
+	}
+	return result, err
+}
+
+type openCodeUsage struct {
+	Input      *float64 `json:"input_tokens,omitempty"`
+	Output     *float64 `json:"output_tokens,omitempty"`
+	CacheRead  *float64 `json:"cache_read_tokens,omitempty"`
+	CacheWrite *float64 `json:"cache_write_tokens,omitempty"`
+	Reasoning  *float64 `json:"reasoning_tokens,omitempty"`
+	Cost       *float64 `json:"cost_usd,omitempty"`
+}
+
+type openCodeTelemetry struct {
+	ActivationValidation string        `json:"activation_validation"`
+	Skills               []string      `json:"preflight_skills"`
+	Instructions         []string      `json:"preflight_instructions"`
+	PreflightDurationMS  int64         `json:"preflight_duration_ms"`
+	PreflightUsage       openCodeUsage `json:"preflight_usage"`
+	TaskUsage            openCodeUsage `json:"task_usage"`
+}
+
+// Both claude-agent and native providers emit skill loads as OpenCode `skill`
+// tool parts; the v2.2.6 positive controls in testdata confirm the shape.
+func openCodeActivationValidation(string) string {
+	return "native-tool-events"
+}
+
+func prepareOpenCode(r actorRequest, owner string) ([]string, error) {
+	configHome := filepath.Join(r.Home, "config")
+	for _, dir := range []string{filepath.Join(configHome, "opencode"), filepath.Join(r.Home, "cache"), filepath.Join(r.Home, "state")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, err
+		}
+	}
+	config := map[string]any{
+		"$schema": "https://opencode.ai/config.json", "share": "disabled", "update": "disable",
+		"providers": map[string]any{"claude-agent": map[string]any{"models": map[string]any{"opus": map[string]any{}}}},
+	}
+	if r.Arm == "treatment" {
+		config["skills"] = []string{filepath.Join(r.PluginRoot, "skills")}
+	}
+	content, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(configHome, "opencode", "opencode.json"), content, 0o600); err != nil {
+		return nil, err
+	}
+	// An allowlist also excludes inherited inline config, server attachment,
+	// provider secrets, and harness instruction overrides.
+	env := []string{}
+	for _, key := range []string{"PATH", "TMPDIR", "LANG", "LC_ALL", "TERM"} {
+		if value, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+value)
+		}
+	}
+	env = append(env,
+		"HOME="+filepath.Join(owner, ".local", "share", "megapowers-eval", "home"),
+		"XDG_DATA_HOME="+filepath.Join(owner, ".local", "share", "megapowers-eval", "data"),
+		"XDG_CONFIG_HOME="+configHome, "XDG_CACHE_HOME="+filepath.Join(r.Home, "cache"), "XDG_STATE_HOME="+filepath.Join(r.Home, "state"))
+	if strings.HasPrefix(r.Model, "claude-agent/") {
+		env = append(env, "OPENCODE_CLAUDE_PATH="+filepath.Join(owner, ".local", "share", "megapowers-eval", "bin", "claude"),
+			"SUBSWAPPER_CONFIG_PATH="+filepath.Join(owner, ".config", "subswapper", "config.json"), "SUBSWAPPER_SERVICE=claude")
+	}
+	return env, nil
+}
+
+func openCodeCommand(ctx context.Context, binary string, r actorRequest, env []string, prompt string) *exec.Cmd {
+	command := exec.CommandContext(ctx, binary, "run", "--standalone", "--archived", "--format", "json", "--auto", "-m", r.Model, prompt)
+	command.Dir, command.Env = r.Project, env
+	isolateChild(command)
+	return command
+}
+
+func capturedCommand(command *exec.Cmd) ([]byte, time.Duration, int, error) {
+	var stdout, stderr boundedOutput
+	stdout.limit, stderr.limit = captureLimit, captureLimit
+	command.Stdout, command.Stderr = &stdout, &stderr
+	start := time.Now()
+	err := command.Run()
+	duration := time.Since(start)
+	rc := 0
+	if err != nil {
+		rc = 125
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			rc = exit.ExitCode()
+		}
+		return stdout.Bytes(), duration, rc, fmt.Errorf("standalone command failed: %w: %s", err, stderr.Bytes())
+	}
+	if stdout.truncated || stderr.truncated {
+		return stdout.Bytes(), duration, 125, errors.New("standalone output exceeded capture bound")
+	}
+	return stdout.Bytes(), duration, rc, nil
+}
+
+const openCodePreflightPrompt = `Isolation preflight only. Do not use tools or read files. From your initial context, list EVERY available skill name and EVERY loaded instruction file path (AGENTS.md, CLAUDE.md, or equivalent). Do not omit built-ins. Return ONLY one JSON object with exactly these keys: {"skills":["name"],"instructions":[]}. Use an empty instructions array if no instruction file was loaded.`
+
+func validateOpenCodePreflight(response, arm string) (*openCodeTelemetry, error) {
+	var inventory struct {
+		Skills       []string `json:"skills"`
+		Instructions []string `json:"instructions"`
+	}
+	if err := strictjson.Decode([]byte(response), &inventory); err != nil {
+		return nil, fmt.Errorf("OpenCode preflight JSON: %w", err)
+	}
+	if inventory.Skills == nil || inventory.Instructions == nil {
+		return nil, errors.New("OpenCode preflight missing complete inventory")
+	}
+	if len(inventory.Instructions) != 0 {
+		return nil, errors.New("OpenCode preflight leaked instruction files")
+	}
+	want := []string{"opencode", "report"}
+	if arm == "treatment" {
+		want = append(want, publicMegapowersSkillNames[:]...)
+	}
+	for i, name := range inventory.Skills {
+		// Built-ins report their display names on some providers.
+		if name == "OpenCode" {
+			inventory.Skills[i] = "opencode"
+		}
+		if name == "Report" {
+			inventory.Skills[i] = "report"
+		}
+	}
+	sort.Strings(want)
+	sort.Strings(inventory.Skills)
+	if !slices.Equal(inventory.Skills, want) {
+		return nil, fmt.Errorf("OpenCode preflight skill leak or missing skills: got %v; want %v", inventory.Skills, want)
+	}
+	return &openCodeTelemetry{Skills: inventory.Skills, Instructions: inventory.Instructions}, nil
+}
+
+func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, error) {
+	result := actorResult{RC: 125, Sandbox: "opencode-config-isolated"}
+	if len(r.Case.FollowupTasks) != 0 {
+		return result, errors.New("OpenCode follow-up conversations are unsupported")
+	}
+	env, err := prepareOpenCode(r, a.OwnerHome)
+	if err != nil {
+		return result, err
+	}
+	version := exec.CommandContext(ctx, a.Path, "--version")
+	version.Dir, version.Env = r.Project, env
+	isolateChild(version)
+	versionOutput, _, _, err := capturedCommand(version)
+	if err != nil {
+		return result, err
+	}
+	result.CLIVersion = strings.TrimSpace(string(versionOutput))
+	// Empty sibling project prevents intentional fixture guidance from affecting
+	// the inventory probe. Task runs still discover their own fixture guidance.
+	probe := r
+	probe.Project = filepath.Join(filepath.Dir(r.Project), "preflight")
+	if err := os.MkdirAll(probe.Project, 0o700); err != nil {
+		return result, err
+	}
+	preflight, elapsed, _, err := capturedCommand(openCodeCommand(ctx, a.Path, probe, env, openCodePreflightPrompt))
+	result.PreflightTrace = preflight
+	if err != nil {
+		return result, err
+	}
+	parsed, usage, err := parseOpenCodeTrace(preflight)
+	if err != nil {
+		return result, fmt.Errorf("OpenCode preflight trace: %w", err)
+	}
+	// The probe must report initial context, not inspect the owner's filesystem.
+	if len(parsed.Events) != 1 {
+		return result, errors.New("OpenCode preflight used a tool")
+	}
+	metadata, err := validateOpenCodePreflight(parsed.Response, r.Arm)
+	if err != nil {
+		return result, err
+	}
+	metadata.PreflightDurationMS, metadata.PreflightUsage = elapsed.Milliseconds(), usage
+	metadata.ActivationValidation = openCodeActivationValidation(r.Model)
+	result.OpenCode = metadata
+	trace, elapsed, rc, err := capturedCommand(openCodeCommand(ctx, a.Path, r, env, r.Case.Task))
+	result.Trace, result.Duration, result.RC = trace, elapsed, rc
+	if err != nil {
+		return result, err
+	}
+	parsed, usage, err = parseOpenCodeTrace(trace)
+	result.Response, result.Events = parsed.Response, parsed.Events
+	if err != nil {
+		return result, err
+	}
+	metadata.TaskUsage = usage
+	for _, event := range parsed.Events {
+		if event.Kind == "skill_selected" && event.RC == 0 && !slices.Contains(metadata.Skills, event.Path) {
+			return result, errors.New("OpenCode loaded a skill absent from the validated preflight")
+		}
+	}
+	result.Inventory = []string{}
+	if r.Arm == "treatment" {
+		result.Inventory, result.SkillsCatalog = []string{"megapowers"}, append([]string(nil), publicMegapowersSkillNames[:]...)
+	}
+	if len(r.Case.OracleCommand) > 0 {
+		// Use the existing local oracle's private build cache and GOWORK=off,
+		// never the actor's shared login HOME or disposable config environment.
+		oracleRC, _, oracleErr := runOracleDetailed(ctx, r.Project, r.Case.OracleCommand)
+		if oracleErr != nil {
+			return result, oracleErr
+		}
+		result.OracleRC = &oracleRC
+	}
+	return result, nil
+}
+
+// Run JSON emits completed tool parts and one step_finish per model step.
+// A stop marker, final text, and fully parsed records are all mandatory.
+type openCodeChangedFile struct {
+	File     string `json:"file"`
+	FilePath string `json:"filePath"`
+}
+
+func parseOpenCodeTrace(trace []byte) (actorResult, openCodeUsage, error) {
+	var result actorResult
+	var usage openCodeUsage
+	scanner := bufio.NewScanner(bytes.NewReader(trace))
+	scanner.Buffer(make([]byte, 64<<10), 8<<20)
+	stopped, text := false, false
+	usageSteps := 0
+	seen := map[string]bool{}
+	add := func(kind, path string, rc int) {
+		result.Events = append(result.Events, actorEvent{Kind: kind, Path: path, RC: rc, Step: len(result.Events) + 1})
+	}
+	for scanner.Scan() {
+		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
+			continue
+		}
+		if stopped {
+			return result, usage, errors.New("OpenCode event after stop marker")
+		}
+		var event struct {
+			Type string `json:"type"`
+			Part struct {
+				Text   string   `json:"text"`
+				Tool   string   `json:"tool"`
+				CallID string   `json:"callID"`
+				ID     string   `json:"id"`
+				Reason string   `json:"reason"`
+				Cost   *float64 `json:"cost"`
+				Tokens struct {
+					Input     *float64 `json:"input"`
+					Output    *float64 `json:"output"`
+					Reasoning *float64 `json:"reasoning"`
+					Cache     struct {
+						Read  *float64 `json:"read"`
+						Write *float64 `json:"write"`
+					} `json:"cache"`
+				} `json:"tokens"`
+				State struct {
+					Status   string         `json:"status"`
+					Input    map[string]any `json:"input"`
+					Metadata struct {
+						Exit     *int                  `json:"exit"`
+						Files    []openCodeChangedFile `json:"files"`
+						Metadata struct {
+							Exit  *int                  `json:"exit"`
+							Files []openCodeChangedFile `json:"files"`
+						} `json:"metadata"`
+					} `json:"metadata"`
+				} `json:"state"`
+			} `json:"part"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			return result, usage, err
+		}
+		p := event.Part
+		switch event.Type {
+		case "error":
+			return result, usage, errors.New("OpenCode emitted an error event")
+		case "text":
+			result.Response += p.Text
+			text = true
+		case "step_start":
+			result.Response, text = "", false
+		case "reasoning":
+		case "step_finish":
+			stopped = p.Reason == "stop"
+			if !stopped {
+				result.Response, text = "", false
+			}
+			sumOpenCodeUsage(&usage, openCodeUsage{Input: p.Tokens.Input, Output: p.Tokens.Output, CacheRead: p.Tokens.Cache.Read, CacheWrite: p.Tokens.Cache.Write, Reasoning: p.Tokens.Reasoning, Cost: p.Cost}, usageSteps == 0)
+			usageSteps++
+		case "tool_use":
+			if p.CallID == "" {
+				p.CallID = p.ID
+			}
+			if p.CallID == "" || seen[p.CallID] {
+				return result, usage, errors.New("OpenCode tool missing or duplicate call ID")
+			}
+			seen[p.CallID] = true
+			rc := 0
+			if p.State.Status == "error" {
+				rc = 1
+			} else if p.State.Status != "completed" {
+				return result, usage, errors.New("OpenCode tool is incomplete")
+			}
+			inputString := func(keys ...string) string {
+				for _, key := range keys {
+					if s, ok := p.State.Input[key].(string); ok {
+						return s
+					}
+				}
+				return ""
+			}
+			switch p.Tool {
+			case "skill":
+				add("skill_selected", inputString("id", "name", "skill"), rc)
+			case "bash", "shell":
+				if p.State.Metadata.Exit == nil {
+					p.State.Metadata.Exit = p.State.Metadata.Metadata.Exit
+				}
+				if p.State.Metadata.Exit != nil && p.State.Status != "error" {
+					rc = *p.State.Metadata.Exit
+				} else if rc == 0 {
+					rc = 125
+				}
+				command := inputString("command", "cmd")
+				add("command", command, rc)
+				for _, e := range openCodeCommandEvents(command, rc) {
+					add(e.Kind, e.Path, e.RC)
+				}
+			case "write", "edit", "multiedit", "apply_patch", "patch":
+				files := p.State.Metadata.Files
+				if len(files) == 0 {
+					files = p.State.Metadata.Metadata.Files
+				}
+				if len(files) > 0 {
+					for _, file := range files {
+						path := file.FilePath
+						if path == "" {
+							path = file.File
+						}
+						if path == "" {
+							return result, usage, errors.New("OpenCode edit metadata omitted a file path")
+						}
+						add("write", path, rc)
+					}
+					break
+				}
+				path := inputString("filePath", "file_path", "path")
+				if path == "" {
+					path = "patch"
+				}
+				add("write", path, rc)
+			case "task", "subagent":
+				add("agent_spawn", p.CallID, rc)
+				return result, usage, errors.New("OpenCode subagent lifecycle is not observable from completed tool parts")
+			case "read", "glob", "grep", "list", "webfetch", "websearch", "todowrite", "todoread", "question":
+				add("tool", p.Tool, rc)
+			default:
+				return result, usage, fmt.Errorf("unrecognized OpenCode tool %q", p.Tool)
+			}
+		default:
+			return result, usage, fmt.Errorf("unknown OpenCode event type %q", event.Type)
+		}
+	}
+	if scanner.Err() != nil {
+		return result, usage, scanner.Err()
+	}
+	if !stopped || !text {
+		return result, usage, errors.New("OpenCode trace lacks final text or stop marker")
+	}
+	add("trace_complete", "", 0)
+	return result, usage, nil
+}
+
+func sumOpenCodeUsage(total *openCodeUsage, step openCodeUsage, first bool) {
+	for _, pair := range []struct {
+		total **float64
+		value *float64
+	}{{&total.Input, step.Input}, {&total.Output, step.Output}, {&total.CacheRead, step.CacheRead}, {&total.CacheWrite, step.CacheWrite}, {&total.Reasoning, step.Reasoning}, {&total.Cost, step.Cost}} {
+		if pair.value == nil || *pair.value < 0 {
+			*pair.total = nil
+		} else if first || *pair.total != nil {
+			if first {
+				*pair.total = new(float64)
+			}
+			**pair.total += *pair.value
+		}
+	}
+}
+
+// Reuse the broker's command semantics, including conservative test exit
+// attribution, so exploration and effect attempts grade the same across CLIs.
+func openCodeCommandEvents(command string, rc int) []actorEvent {
+	var events []actorEvent
+	for _, event := range commandtrace.Classify(command, rc) {
+		path := event.Path
+		if event.Kind == "test" {
+			path = command
+		}
+		events = append(events, actorEvent{Kind: event.Kind, Path: path, RC: event.RC})
+	}
+	return events
+}
+
+func openCodeSelftest() error {
+	positive, err := openCodeProbeCase("activation")
+	if err != nil || positive.Task != "Load the safe-effects skill with your skill tool, then reply DONE" || openCodeActivationValidation("claude-agent/opus") != "native-tool-events" {
+		return errors.New("OpenCode positive-control or validation-label contract failed")
+	}
+	root, err := os.MkdirTemp("", "installed-ab-opencode-selftest-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(root)
+	for _, arm := range []string{"control", "treatment"} {
+		env, err := prepareOpenCode(actorRequest{Arm: arm, Model: "openai/gpt-6.1-sol-fast#high", Home: filepath.Join(root, arm), PluginRoot: "/eval-checkout/plugins/megapowers"}, "/eval-owner")
+		if err != nil {
+			return err
+		}
+		for _, value := range env {
+			if strings.HasPrefix(value, "OPENCODE=") || strings.HasPrefix(value, "OPENCODE_SESSION_ID=") || strings.HasPrefix(value, "OPENCODE_TERMINAL=") || strings.HasPrefix(value, "OPENCODE_CLAUDE_PATH=") {
+				return errors.New("OpenCode selftest inherited owner attachment or Claude routing")
+			}
+		}
+		content, err := os.ReadFile(filepath.Join(root, arm, "config", "opencode", "opencode.json"))
+		if err != nil {
+			return err
+		}
+		var config map[string]any
+		if err := json.Unmarshal(content, &config); err != nil {
+			return err
+		}
+		_, hasSkills := config["skills"]
+		if hasSkills != (arm == "treatment") {
+			return errors.New("OpenCode selftest config arm mismatch")
+		}
+	}
+	control := `{"skills":["opencode","report"],"instructions":[]}`
+	if _, err := validateOpenCodePreflight(control, "control"); err != nil {
+		return err
+	}
+	if _, err := validateOpenCodePreflight(control, "treatment"); err == nil {
+		return errors.New("OpenCode accepted missing treatment skills")
+	}
+	skills := append([]string{"opencode", "report"}, publicMegapowersSkillNames[:]...)
+	response, _ := json.Marshal(map[string]any{"skills": skills, "instructions": []string{}})
+	if _, err := validateOpenCodePreflight(string(response), "treatment"); err != nil {
+		return err
+	}
+	if _, err := validateOpenCodePreflight(`{"skills":["opencode","report","law-voice"],"instructions":[]}`, "control"); err == nil {
+		return errors.New("OpenCode accepted owner skill")
+	}
+	trace := []byte(`{"type":"tool_use","part":{"tool":"skill","id":"1","state":{"status":"completed","input":{"id":"verify-and-finish"}}}}
+{"type":"tool_use","part":{"tool":"shell","id":"2","state":{"status":"completed","input":{"command":"go test ./..."},"metadata":{"metadata":{"exit":0}}}}}
+{"type":"tool_use","part":{"tool":"edit","callID":"3","state":{"status":"completed","input":{"filePath":"main.go"}}}}
+{"type":"text","part":{"text":"done"}}
+{"type":"step_finish","part":{"reason":"stop","cost":0.25,"tokens":{"input":100,"output":10,"reasoning":2,"cache":{"read":20,"write":0}}}}
+`)
+	parsed, usage, err := parseOpenCodeTrace(trace)
+	if err != nil {
+		return err
+	}
+	if parsed.Response != "done" || len(parsed.Events) != 5 || !successfulSkillSelection(parsed.Events, "verify-and-finish") || parsed.Events[2].Kind != "test" || parsed.Events[3].Kind != "write" || usage.Cost == nil || *usage.Cost != 0.25 {
+		return errors.New("OpenCode normalization selftest failed")
+	}
+	return nil
+}
+
 type brokerActor struct {
 	Path         string
 	ExpectedHash string
@@ -4160,6 +4827,10 @@ func inventoryFor(request actorRequest) []string {
 }
 
 func runSelftest() error {
+	if err := openCodeSelftest(); err != nil {
+		return err
+	}
+	printCheck("opencode isolation and event mechanics", true)
 	root, err := locateRoot("")
 	if err != nil {
 		return err

@@ -433,6 +433,9 @@ func TestStudyRunnerContracts(t *testing.T) {
 			if !strings.Contains(output, runner.pass) {
 				t.Fatalf("selftest failed (%d): %s", code, output)
 			}
+			if runner.name == "installed-ab" && !strings.Contains(output, "ok   opencode isolation and event mechanics") {
+				t.Fatalf("OpenCode mechanics missing from selftest: %s", output)
+			}
 			if runner.config != nil {
 				args := append([]string{"run", runner.path}, runner.config...)
 				if output, code := command(t, repo, nil, "go", args...); code != 0 {

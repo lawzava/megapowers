@@ -1,10 +1,11 @@
 # Installed-plugin A/B
 
 This study compares a current-checkout `megapowers` installation (treatment)
-with an empty control under Claude Code and Codex. Each arm receives the same
-task and fixture bytes in a separate disposable work directory. No user
-plugins, guidance, configuration, or credentials enter either arm. Every
-disposable directory is removed on success and failure.
+with an empty control under Claude Code, Codex, and OpenCode. Each arm receives
+the same task and fixture bytes in a separate disposable work directory. Claude
+Code and Codex use an OS-isolation broker. OpenCode uses the separate,
+owner-provisioned login store and configuration isolation described below.
+Every disposable directory is removed on success and failure.
 
 Installed A/B is optional diagnostic evidence and does not gate a release.
 
@@ -36,6 +37,128 @@ satisfy study acceptance or establish efficacy. Compare `outcome_success`
 across arms; report treatment activation failures separately. To route both
 harnesses through Subswapper, use the broker's
 [explicit Subswapper mode](../../tools/sandbox-broker/README.md).
+
+### OpenCode mechanics smoke
+
+Provision the dedicated evaluation login store outside this repository first.
+The runner never opens, copies, or edits credential files. Run one pair on two
+existing cases with each supported model, using separate output directories:
+
+```bash
+go run evals/studies/installed-ab/run.go --run --credentialed \
+  --harness opencode --model 'openai/gpt-6.1-sol-fast#high' \
+  --paired-runs 1 --case verify-finish-local-only,safe-effects-no-comments \
+  --actor-timeout 5m --out "$TMPDIR/installed-ab-opencode-sol"
+
+go run evals/studies/installed-ab/run.go --run --credentialed \
+  --harness opencode --model claude-agent/opus \
+  --paired-runs 1 --case verify-finish-local-only,safe-effects-no-comments \
+  --actor-timeout 5m --out "$TMPDIR/installed-ab-opencode-opus"
+```
+
+OpenCode uses the real `$HOME/.opencode/bin/opencode`, never a PATH wrapper.
+Each invocation runs `run --standalone --archived --format json --auto -m`
+through Go's `exec.Command`, with the task work directory as cwd. An environment
+allowlist excludes inherited `OPENCODE`, `OPENCODE_SESSION_ID`,
+`OPENCODE_TERMINAL`, inline configuration, and provider secrets.
+
+The child uses `$HOME/.local/share/megapowers-eval/home` as HOME and
+`$HOME/.local/share/megapowers-eval/data` as XDG_DATA_HOME. Each arm has fresh
+XDG_CONFIG_HOME, XDG_CACHE_HOME, and XDG_STATE_HOME under its disposable home.
+Its `opencode/opencode.json` is:
+
+```json
+{"$schema":"https://opencode.ai/config.json","share":"disabled","update":"disable","providers":{"claude-agent":{"models":{"opus":{}}}}}
+```
+
+Only treatment adds `skills`, pointing to this checkout's absolute
+`plugins/megapowers/skills` path. The runner re-hashes the live plugin tree
+before and after every arm and stops on drift. This detects changes at those
+boundaries, not transient modifications between them. Only the Claude model
+receives
+OPENCODE_CLAUDE_PATH pointing to the owner-provisioned evaluation shim,
+SUBSWAPPER_CONFIG_PATH pointing to the owner's Subswapper configuration, and
+SUBSWAPPER_SERVICE=claude. Its effort is recorded as `provider-default`.
+The isolated configuration does not expose Claude's `#high` variant. OpenAI's
+effort is `high`, bound by the model's `#high` suffix.
+
+Before every task, a separate short OpenCode conversation reports its initial
+skill names and loaded instruction files as strict JSON, without using tools.
+The probe uses an empty sibling project so intentional fixture instructions do
+not contaminate the inventory check. Control must list exactly the built-ins
+`opencode` and `report`; treatment must also list all 13 shipped Megapowers
+skills. Built-in display names `OpenCode` and `Report` normalize to those IDs.
+Any extra or missing skill, loaded instruction file, malformed inventory, or
+probe tool call stops the study. This checks reported context, not OS access.
+Successful task-time loads of skills absent from that inventory also stop it.
+The inventory is model self-report backed by the generated configuration,
+not an independent enumeration of loaded context. The model can omit context.
+
+The existing deterministic graders and activation/outcome separation remain
+unchanged. Completed skill tool calls are activation evidence; listing skills
+in preflight is not. Native tool parts provide commands and file-edit attempts.
+The final stopped step provides response text. Unknown event types or tool
+names, partial tools, provider errors, malformed JSON, and missing stop markers
+fail closed.
+The existing TDD receipt gate still fails without trusted execution receipts.
+Multi-turn cases are rejected before any actor call; select single-turn cases
+with `--case` rather than running the entire catalog.
+Native subagent lifecycle events are not yet observable through this adapter.
+An attempted `subagent` or `task` tool call stops the arm as an infrastructure
+error rather than inventing matching completions or grading a dispatch failure.
+
+Each manifest arm records `opencode.preflight_skills`, empty
+`preflight_instructions`, preflight duration/usage, and task usage. Token fields
+and `cost_usd` are sums of OpenCode's step reports, omitted when unavailable;
+they are provider-reported diagnostics, not verified charges. Task duration
+excludes preflight and setup. The existing source revision, plugin tree hash,
+model, and CLI version identify the run. `broker_hash` binds the OpenCode
+binary for resume, not a broker. Raw preflight streams stay in mode-0600
+`private/preflights/`, separate from task traces and activation grading.
+
+Activation metrics for both providers are labelled `native-tool-events` in
+`opencode.activation_validation`, with
+`skill_activation_telemetry_validated: 1` in result-row metrics, because the
+positive controls below emitted the same `skill` tool part. These labels do
+not change outcome or activation grading.
+
+Use a treatment-only positive control to inspect the native skill channel:
+
+```bash
+go run evals/studies/installed-ab/run.go --opencode-probe activation \
+  --credentialed --model claude-agent/opus --actor-timeout 3m \
+  --out "$TMPDIR/opencode-opus-positive-control"
+```
+
+Repeat with `--model 'openai/gpt-6.1-sol-fast#high'` and a different output
+directory. The exact prompt is `Load the safe-effects skill with your skill
+tool, then reply DONE`. `--opencode-probe edit` instead requests a file-tool
+edit of `probe.txt` from `before\n` to `after\n`. Probes use the same generated
+config, environment, isolation preflight and bounded process runner as study
+arms. They write private `trace.jsonl`, `preflight.jsonl`, and `probe.json`,
+labelled `probe-only-not-behavioral-evidence`; they do not create study rows.
+The output directory must be new. Temporary actor directories are removed.
+
+On OpenCode v2.2.6, both explicit activation probes emitted a completed `skill`
+part with `state.input.id: safe-effects` and replied `DONE`. This verifies the
+explicit-load transport for those probes, not spontaneous skill selection.
+Assuming spontaneous loads use the same event shape, zero observed loads in a
+task row means the model did not call the `skill` tool.
+Redacted real skill/edit events and their source commands are in
+[`testdata/README.md`](testdata/README.md). The Opus edit used `write` with
+`state.input.path`; Sol used `patch` with nested `metadata.files[].file`.
+The parser also accepts top-level `state.metadata.files[].filePath`.
+
+This recipe is not a filesystem, credential, or network sandbox.
+`--auto` can execute actor-selected commands with the runner's OS privileges.
+Fixture oracles use the existing local oracle runner, its private build cache,
+and `GOWORK=off`, not the actor's shared login HOME or XDG configuration. The dedicated
+store remains actor-accessible; archived sessions may persist there. The runner
+does not change the owner's normal OpenCode configuration or data. Do not run
+untrusted cases. `opencode-config-isolated` is not a broker-attested boundary,
+so OpenCode rows cannot satisfy the scorer's OS-isolated study-acceptance gate.
+The manifest also rejects study acceptance for OpenCode, regardless of outcomes.
+One pair is only a mechanics smoke, not evidence of model or skill efficacy.
 
 ### Catalogs and sharding
 
@@ -112,7 +235,8 @@ reading private traces.
 
 ## Broker
 
-Real actors run only through a user-reviewed, hash-pinned isolation broker.
+Claude Code and Codex actors run only through a user-reviewed, hash-pinned
+isolation broker.
 The broker owns provider authentication outside the actor-visible filesystem
 and receives its request on standard input. It must attest a real OS boundary
 and prove the actor can read only its current project plus
@@ -131,6 +255,10 @@ current private native CLI credential file outside the actor boundary without
 mounting or copying the store. API-key authentication requires the explicit
 `MEGAPOWERS_BROKER_AUTH_MODE=api-key` fallback. See the broker README for the
 provider-specific containment and refresh limits.
+
+The shared command-classifier extraction changed the broker binary. Rebuild
+the reviewed broker and repin `--broker-sha256` before using that new binary;
+an earlier pin does not identify the rebuilt binary.
 
 Claude actors run with Claude Code's own sandbox inside the broker boundary as
 a second credential guard. That sandbox places empty placeholder files such as
@@ -152,7 +280,7 @@ boundaries, or inventory mismatches fail.
 
 When a case declares `oracle_command`, the request sends that command to the
 broker. The broker runs it inside the same isolated project after the actor
-and returns `oracle_rc`. A credentialed runner never executes actor-modified
+and returns `oracle_rc`. A broker-backed runner never executes actor-modified
 code in the runner environment. Missing or unexpected oracle results fail
 closed.
 

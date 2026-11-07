@@ -1,0 +1,27 @@
+{
+  "part": {
+    "id": "<redacted-id>",
+    "messageID": "<redacted-id>",
+    "partID": "<redacted-id>",
+    "sessionID": "<redacted-id>",
+    "state": {
+      "input": {"content": "after\n", "path": "<project>/probe.txt"},
+      "metadata": {
+        "content": [{"text": "Wrote file successfully: probe.txt", "type": "text"}],
+        "metadata": {"truncated": false},
+        "providerCall": {"executed": false, "state": {"messageID": "<redacted-id>", "sessionID": "<redacted-id>"}},
+        "providerResult": {"executed": false},
+        "rawInput": ""
+      },
+      "output": "Wrote file successfully: probe.txt",
+      "status": "completed",
+      "time": {"end": 1794051501854, "start": 1794051501833},
+      "title": "write"
+    },
+    "tool": "write",
+    "type": "tool"
+  },
+  "sessionID": "<redacted-id>",
+  "timestamp": 1794051501854,
+  "type": "tool_use"
+}

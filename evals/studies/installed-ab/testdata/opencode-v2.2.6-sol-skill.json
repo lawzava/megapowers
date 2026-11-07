@@ -1,0 +1,27 @@
+{
+  "part": {
+    "id": "<redacted-id>",
+    "messageID": "<redacted-id>",
+    "partID": "<redacted-id>",
+    "sessionID": "<redacted-id>",
+    "state": {
+      "input": {"id": "safe-effects"},
+      "metadata": {
+        "content": [{"text": "<public skill body omitted>", "type": "text"}],
+        "metadata": {"directory": "<checkout>/plugins/megapowers/skills/safe-effects", "name": "safe-effects", "truncated": false},
+        "providerCall": {"executed": false, "state": {"itemId": "<redacted-id>"}},
+        "providerResult": {"executed": false},
+        "rawInput": "{\"id\":\"safe-effects\"}"
+      },
+      "output": "<public skill body omitted>",
+      "status": "completed",
+      "time": {"end": 1794051496049, "start": 1794051495996},
+      "title": "skill"
+    },
+    "tool": "skill",
+    "type": "tool"
+  },
+  "sessionID": "<redacted-id>",
+  "timestamp": 1794051496049,
+  "type": "tool_use"
+}
