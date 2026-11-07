@@ -18,6 +18,12 @@ semver.
 - Validate only `name` and `description` as scalar text in shipped skill
   frontmatter. Reject frontmatter in every other shipped Markdown file.
 
+### Known issues
+
+- The repository-only doctor in `extras/` still expects the plugin-qualified
+  `megapowers:Megapowers` style. A manually installed style resolves as
+  `Megapowers`.
+
 ## 0.55.2 - 2026-11-07
 
 ### Changed
