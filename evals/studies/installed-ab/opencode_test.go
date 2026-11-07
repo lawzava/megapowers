@@ -131,6 +131,31 @@ func TestOpenCodeCompoundTestEvents(t *testing.T) {
 	}
 }
 
+func TestOpenCodeGoTestPipelineOutput(t *testing.T) {
+	// Native completed shell shape from the Opus baseline, including nested exit metadata.
+	const trace = `{"type":"tool_use","part":{"id":"check","tool":"shell","state":{"status":"completed","input":{"command":"go test ./... 2>&1 | tail -20"},"output":"ok  \texample/rate\t0.003s\n","metadata":{"metadata":{"exit":0}}}}}
+{"type":"text","part":{"text":"done"}}
+{"type":"step_finish","part":{"reason":"stop"}}
+`
+	for _, tc := range []struct {
+		name, trace string
+		wantRC      int
+	}{
+		{"package success", trace, 0},
+		{"verbose grep with echo", strings.ReplaceAll(strings.ReplaceAll(trace, `go test ./... 2>&1 | tail -20`, `go test -v ./... | grep -E '^(---|ok|FAIL)'; echo exit=$?`), `ok  \texample/rate\t0.003s\n`, `--- PASS: TestAllow (0.00s)\nPASS\nok  \texample/rate\t0.003s\nexit=0\n`), 0},
+		{"failure", strings.ReplaceAll(trace, `ok  \texample/rate\t0.003s\n`, `FAIL\texample/rate\t0.003s\nFAIL\n`), 125},
+		{"no evidence", strings.ReplaceAll(trace, `ok  \texample/rate\t0.003s\n`, ``), 125},
+		{"tool error", strings.ReplaceAll(trace, `"status":"completed"`, `"status":"error"`), 125},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, _, err := parseOpenCodeTrace([]byte(tc.trace))
+			if err != nil || len(result.Events) != 3 || result.Events[1].Kind != "test" || result.Events[1].RC != tc.wantRC {
+				t.Fatalf("pipeline test events: %+v %v; want rc=%d", result.Events, err, tc.wantRC)
+			}
+		})
+	}
+}
+
 func TestOpenCodePreservesToolErrorsAndFinalStepText(t *testing.T) {
 	trace := `{"type":"text","part":{"text":"commentary"}}
 {"type":"tool_use","part":{"id":"shell-1","tool":"shell","state":{"status":"error","input":{"command":"go test ./..."},"metadata":{"metadata":{"exit":0}}}}}

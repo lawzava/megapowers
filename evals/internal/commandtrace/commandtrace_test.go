@@ -109,3 +109,55 @@ func TestObservedSequentialAttributionDoesNotChangeBrokerEvents(t *testing.T) {
 		t.Fatalf("broker accepted untrusted diagnostic: %+v", events)
 	}
 }
+
+func TestObservedGoTestPipelineOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name, command, output string
+		wantRC                int
+	}{
+		{"tail", `go test ./... 2>&1 | tail -20`, "ok  \texample/rate\t0.003s\n", 0},
+		{"grep and masked echo", `go test -v ./... | grep -E '^(---|ok|FAIL)'; echo exit=$?`, "--- PASS: TestAllow (0.00s)\nok  \texample/rate\t(cached)\nexit=0\n", 0},
+		{"prerequisite", `gofmt -l .; go vet ./... && go test -v ./... 2>&1 | tail -10`, "rate.go\nPASS\nok  \texample/rate\t0.003s\n", 0},
+		{"multiple packages", `go test ./... | tail -20`, "ok  \texample/a\t0.003s\nok  \texample/b\t(cached)\n", 0},
+		{"standalone PASS", `go test -v ./... | grep '^PASS$'`, "PASS\n", 0},
+		{"no output", `go test ./... | tail -20`, "", 125},
+		{"masked status only", `go test ./... | grep ok; echo exit=$?`, "exit=0\n", 125},
+		{"individual test only", `go test -v ./... | head -10`, "=== RUN   TestAllow\n--- PASS: TestAllow (0.00s)\n", 125},
+		{"malformed ok", `go test ./... | tail -20`, "ok\n", 125},
+		{"failed package", `go test ./... | tail -20`, "ok  \texample/a\t0.003s\nFAIL\texample/b\t0.002s\nFAIL\n", 125},
+		{"failed test", `go test -v ./... | tail -20`, "--- FAIL: TestAllow (0.00s)\nPASS\nok  \texample/rate\t0.003s\n", 125},
+		{"no test package", `go test ./... | tail -20`, "?   \texample/cmd\t[no test files]\nok  \texample/rate\t0.003s\n", 125},
+		{"conditional fallback", `true || go test ./... | tail -20`, "PASS\n", 125},
+		{"terminated", `exit 0; go test ./... | tail -20`, "PASS\n", 125},
+		{"background", `go test ./... | tail -20 &`, "PASS\n", 125},
+		{"substitution", `echo $(go version); go test ./... | tail -20`, "PASS\n", 125},
+		{"not Go", `npm test | tail -20`, "PASS\n", 125},
+		{"not pipeline", `go test ./...; go vet ./...`, "PASS\n", 125},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Observed(tc.command, 0, tc.output)
+			if len(got) != 1 || got[0].Kind != "test" || got[0].RC != tc.wantRC {
+				t.Fatalf("Observed() = %+v, want test rc=%d", got, tc.wantRC)
+			}
+			if got := Classify(tc.command, 0); len(got) != 0 {
+				t.Fatalf("output inference changed broker classification: %+v", got)
+			}
+		})
+	}
+	for _, rc := range []int{1, 124, 125, 143} {
+		got := Observed(`go test -v ./... | grep -E '^(ok|FAIL)'`, rc, "ok  \texample/rate\t0.003s\n")
+		if len(got) != 1 || got[0].Kind != "test" || got[0].RC != 125 {
+			t.Fatalf("partial or failed pipeline rc=%d inferred success: %+v", rc, got)
+		}
+	}
+	// One invocation's success cannot attest a second, possibly skipped test.
+	events := Observed(`go test ./... | tail -5; false && go test ./... | tail -5`, 0, "ok  \texample/rate\t0.003s\n")
+	if len(events) != 2 {
+		t.Fatalf("missing test attempts: %+v", events)
+	}
+	for _, event := range events {
+		if event.Kind != "test" || event.RC != 125 {
+			t.Fatalf("ambiguous output attributed across invocations: %+v", event)
+		}
+	}
+}

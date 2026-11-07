@@ -48,8 +48,9 @@ func Events(command string, rc int) []Event {
 // Observed retains test attempts in compound commands. Unknown per-test exit
 // codes are 125, never a successful check. Unlike Classify, this diagnostic
 // adapter can use a successful plain && chain, a final sequential command, or
-// an immediately following echo of $? in captured output. These observations
-// are not execution receipts.
+// an immediately following echo of $? in captured output. A single piped Go
+// test can also use unambiguously green Go output. These observations are not
+// execution receipts.
 // Broker consumers must continue using Events/Classify for receipt anchors.
 func Observed(command string, rc int, output string) []Event {
 	return events(command, rc, &output)
@@ -67,8 +68,15 @@ func events(command string, rc int, output *string) []Event {
 	terminated := false
 	allAnd := true
 	background := false
+	testCommands := 0
 	for _, segment := range segments {
 		background = background || segment.background
+		if isTestCommand(executableFields(segment.fields)) {
+			testCommands++
+		} else {
+			anchors, _ := runReceiptTests(segment.words)
+			testCommands += anchors
+		}
 	}
 	for _, segment := range segments[1:] {
 		allAnd = allAnd && segment.operator == "&&"
@@ -121,7 +129,13 @@ func events(command string, rc int, output *string) []Event {
 					} else if allAnd && rc == 0 {
 						testRC = 0
 					} else if index+1 < len(segments) && segment.operator != "|" && !conditional {
-						testRC = echoedExitCode(segments[index+1], segments, *output)
+						if segments[index+1].operator == "|" && len(fields) >= 2 && fields[0] == "go" && fields[1] == "test" && testCommands == 1 && rc == 0 {
+							// A pipeline's echo/aggregate status belongs to its filter.
+							// Do not share output across possibly skipped test invocations.
+							testRC = goTestOutputStatus(*output)
+						} else {
+							testRC = echoedExitCode(segments[index+1], segments, *output)
+						}
 					}
 				}
 			}
@@ -135,6 +149,37 @@ func events(command string, rc int, output *string) []Event {
 		cdChain = false
 	}
 	return events
+}
+
+func goTestOutputStatus(output string) int {
+	if strings.Contains(output, "FAIL") {
+		return 125
+	}
+	green := false
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		switch fields[0] {
+		case "ok":
+			if len(fields) < 3 {
+				return 125
+			}
+			green = true
+		case "PASS":
+			if len(fields) == 1 {
+				green = true
+			}
+		case "?":
+			// A package without test files does not prove passing tests.
+			return 125
+		}
+	}
+	if green {
+		return 0
+	}
+	return 125
 }
 
 // Accept a literal label followed by the immediately preceding command's

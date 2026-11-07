@@ -626,9 +626,18 @@ exit codes or trusted receipts. OpenCode retains test attempts in compound
 commands, including `;`, `&&`, `||` and pipes. An unobserved per-test exit code
 is 125, not a green check. A successful plain `&&` chain proves its checks
 succeeded. A captured `echo label=$?` immediately after a test can report its
-status. Repeated labels must all report the same status; conflicting labels,
-masked pipelines, and conditional fallbacks remain unknown. A final sequential
-test owns the aggregate status even after earlier semicolon-separated commands.
+status. Repeated labels must all report the same status; conflicting labels
+and conditional fallbacks remain unknown. A masked Go test pipeline can count
+as passing only with aggregate exit 0 and a visible `ok <package> <result>` or
+standalone `PASS`, no `FAIL` anywhere in its output, and no package line with another status
+(including `? [no test files]`). Individual `--- PASS:` lines and a filter's
+exit status are insufficient. Output remains ambiguous when the command has
+multiple test invocations, command substitution, background work, or an earlier
+terminating builtin. This inference applies only to OpenCode shell diagnostics,
+not Code Mode's nested tools or trusted broker/TDD receipts. Filters can hide
+failures; this grades visible output, not an unseen complete package result set.
+A final sequential test owns the aggregate status even after earlier
+semicolon-separated commands.
 These diagnostics never replace TDD execution receipts. A hook-declined commit
 or push attempt before a required check does not penalize a trace that then runs the check
 before succeeding. `required_event_kinds` count only events that
