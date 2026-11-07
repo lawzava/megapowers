@@ -15,6 +15,8 @@ semver.
   nine unchanged Go helpers in repository-only `extras/scripts/`.
 - Add a generated OpenCode HTTP skill catalog, stale-index validation, and
   HTTP, local-path, and copy installation instructions.
+- Prefer positive instruction wording that names the intended route. Mark
+  superseded routes as legacy and preserve explicit safety and authority limits.
 
 ### Removed
 
