@@ -44,10 +44,9 @@ condition, or measurement.
 
 ## Skills
 
-- Skill frontmatter contains `name`, a task-triggering `description` (at most 1024 characters),
-  `metadata.short-description`, and
-  optionally `disable-model-invocation`. Codex honors `name`, `description`,
-  and `metadata.short-description`; explicit-only Codex policy belongs in
+- Skill frontmatter contains only `name`, a task-triggering `description` (at most 1024 characters),
+  and optionally `disable-model-invocation`; values are plain text.
+  Explicit-only Codex policy belongs in
   `agents/openai.yaml`. Use no `when_to_use`; put trigger phrases in `description`.
   The shipped plugin contains no executable code, hooks or MCP entries.
   Quote YAML values containing colons. Components remain at

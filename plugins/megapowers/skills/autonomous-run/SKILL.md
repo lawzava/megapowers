@@ -1,8 +1,6 @@
 ---
 name: autonomous-run
 description: "Use when an approved goal must continue unattended across steps, milestones, context resets, or sessions: overnight runs, resuming an approved goal, or babysitting a PR through CI fixes and review comments until merge-ready. Not for one bounded task."
-metadata:
-  short-description: Durable unattended progress across steps, resets, and sessions
 ---
 
 # Autonomous Run

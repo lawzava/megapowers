@@ -21,7 +21,7 @@ const fixtureSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="
 func fixtureManifest(version string, keywords string) string {
 	return `{"name":"megapowers","version":"` + version + `","description":"d","author":{"name":"lawzava"},` +
 		`"homepage":"https://github.com/lawzava/megapowers","repository":"https://github.com/lawzava/megapowers","license":"MIT",` +
-		`"keywords":[` + keywords + `]}`
+		`"keywords":[` + keywords + `],"interface":{"shortDescription":"Workflow skills"}}`
 }
 
 // newDirectorySource builds a minimal valid source repository for the
@@ -50,11 +50,11 @@ func newDirectorySource(t *testing.T) string {
 	write("hooks/hooks.json", "{}", 0o644)
 	write("output-styles/megapowers.md", "style\n", 0o644)
 	write("skills/catalog.json", "{}", 0o644)
-	write("skills/alpha/SKILL.md", "---\nname: alpha\ndescription: Use when testing alpha.\nmetadata:\n  short-description: Alpha short\n---\n\n# Alpha\n\nRead [the ref](references/ref.md) and run `scripts/tool.go`.\n", 0o644)
+	write("skills/alpha/SKILL.md", "---\nname: alpha\ndescription: Use when testing alpha.\n---\n\n# Alpha\n\nRead [the ref](references/ref.md) and run `scripts/tool.go`.\n", 0o644)
 	write("skills/alpha/references/ref.md", "# Ref\n\nSee `scripts/tool.go` and [site](https://example.com/x).\n", 0o644)
 	write("skills/alpha/scripts/tool.go", "package main\n\nfunc main() {}\n", 0o755)
 	write("skills/alpha/scripts/tool_test.go", "package main\n", 0o644)
-	write("skills/beta/SKILL.md", "---\nname: \"beta\"\ndescription: \"Use when beta: colon inside.\"\nmetadata:\n  short-description: Beta short\n---\n\nBody.\n", 0o644)
+	write("skills/beta/SKILL.md", "---\nname: \"beta\"\ndescription: \"Use when beta: colon inside.\"\n---\n\nBody.\n", 0o644)
 	write("skills/beta/agents/openai.yaml", "policy:\n  allow_implicit_invocation: false\n", 0o644)
 	return repo
 }
@@ -154,7 +154,7 @@ func TestDirectoryBuildAddsAgentInterfaceToPackagedCopyOnly(t *testing.T) {
 	}
 	pkg := newDirPackage(files)
 	yaml := string(pkg["skills/beta/agents/openai.yaml"].Data)
-	for _, want := range []string{"interface:", `display_name: "Beta"`, `short_description: "Beta short"`, "allow_implicit_invocation: false"} {
+	for _, want := range []string{"interface:", `display_name: "Beta"`, `short_description: "Workflow skills"`, "allow_implicit_invocation: false"} {
 		if !strings.Contains(yaml, want) {
 			t.Errorf("packaged openai.yaml lacks %q:\n%s", want, yaml)
 		}
@@ -569,19 +569,6 @@ func TestDirectoryValidateAcceptsReferenceShapes(t *testing.T) {
 	}
 }
 
-func TestDirectoryValidateNotesMetadataIgnored(t *testing.T) {
-	report := validateDirectoryPackage(fixturePackage(t))
-	var found bool
-	for _, n := range report.Notes {
-		if n.Code == "skill_metadata_ignored" && strings.Contains(n.Message, "alpha") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("metadata note missing: %v", report.Notes)
-	}
-}
-
 func TestDirectoryValidateBundleSize(t *testing.T) {
 	pkg := fixturePackage(t)
 	// Incompressible data: a deterministic pseudo-random stream.
@@ -730,14 +717,14 @@ func TestContrastAgainstWhite(t *testing.T) {
 }
 
 func TestParseFrontMatterScalars(t *testing.T) {
-	fm, err := parseSkillFrontMatter("---\nname: a\ndescription: \"x: \\\"y\\\"\"\nwhen_to_use: 'it''s'\nmetadata:\n  short-description: s\nflag: true\nfolded: >\n  one\n  two\n---\nbody")
+	fm, err := parseSkillFrontMatter("---\nname: 'a'\ndescription: \"x: \\\"y\\\"\"\ndisable-model-invocation: true\n---\nbody")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fm.Scalars["name"] != "a" || fm.Scalars["description"] != `x: "y"` || fm.Scalars["when_to_use"] != "it's" {
+	if fm.Scalars["name"] != "a" || fm.Scalars["description"] != `x: "y"` || fm.Scalars["disable-model-invocation"] != "true" {
 		t.Fatalf("scalars = %v", fm.Scalars)
 	}
-	if fm.Scalars["folded"] != "one two" || fm.Body != "body" || fm.Nested["metadata"]["short-description"] != "s" {
+	if fm.Body != "body" {
 		t.Fatalf("parsed = %+v", fm)
 	}
 }

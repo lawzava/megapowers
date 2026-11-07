@@ -127,9 +127,8 @@ type archiveEntry struct {
 }
 
 type dirChecker struct {
-	pkg            dirPackage
-	report         dirReport
-	metadataSkills []string
+	pkg    dirPackage
+	report dirReport
 }
 
 func (c *dirChecker) fail(code, p, format string, args ...any) {
@@ -379,9 +378,6 @@ func validateDirectoryPackage(pkg dirPackage) dirReport {
 	pluginName := c.checkManifest()
 	c.checkSkills(pluginName)
 	c.checkReferences()
-	if len(c.metadataSkills) > 0 {
-		c.note("skill_metadata_ignored", "skills", "front matter metadata is ignored by the importer (%d skills: %s); interface settings belong in agents/openai.yaml", len(c.metadataSkills), strings.Join(c.metadataSkills, ", "))
-	}
 	sort.SliceStable(c.report.Errors, func(i, j int) bool { return c.report.Errors[i].Path < c.report.Errors[j].Path })
 	return c.report
 }
@@ -1068,9 +1064,6 @@ func (c *dirChecker) checkSkill(pluginName, dir string, identities map[string]st
 		}
 		return
 	}
-	if fm.Kinds["metadata"] == yamlMap {
-		c.metadataSkills = append(c.metadataSkills, dir)
-	}
 	name, nameOK := c.skillScalar(manifest, fm, "name", 0)
 	c.skillScalar(manifest, fm, "description", 1024)
 	if strings.TrimSpace(fm.Body) == "" {
@@ -1257,7 +1250,6 @@ func (e *dirError) Error() string { return e.Code + ": " + e.Message }
 
 type skillFrontMatter struct {
 	Scalars map[string]string
-	Nested  map[string]map[string]string
 	Kinds   map[string]yamlKind
 	Body    string
 }
@@ -1287,25 +1279,21 @@ func parseSkillFrontMatter(text string) (skillFrontMatter, error) {
 	}
 	fm := skillFrontMatter{
 		Scalars: map[string]string{},
-		Nested:  map[string]map[string]string{},
 		Kinds:   map[string]yamlKind{},
 		Body:    strings.Join(lines[end+1:], "\n"),
 	}
 	for _, key := range root.keys {
-		value := root.m[key]
-		fm.Kinds[key] = value.kind
-		switch value.kind {
-		case yamlScalar:
-			fm.Scalars[key] = value.text
-		case yamlNull:
-			fm.Scalars[key] = ""
-		case yamlMap:
-			inner := map[string]string{}
-			for _, k := range value.keys {
-				inner[k] = value.m[k].text
-			}
-			fm.Nested[key] = inner
+		switch key {
+		case "name", "description", "disable-model-invocation":
+		default:
+			return skillFrontMatter{}, &dirError{"skill_frontmatter_key_unsupported", fmt.Sprintf("front matter allows only name, description, and disable-model-invocation; found %s", key)}
 		}
+		value := root.m[key]
+		if value.kind != yamlScalar || (!value.quoted && (strings.EqualFold(value.text, "null") || value.text == "~")) {
+			return skillFrontMatter{}, &dirError{"skill_frontmatter_value_wrong_type", fmt.Sprintf("%s must be a plain scalar, not a map, list, or null", key)}
+		}
+		fm.Kinds[key] = value.kind
+		fm.Scalars[key] = value.text
 	}
 	return fm, nil
 }

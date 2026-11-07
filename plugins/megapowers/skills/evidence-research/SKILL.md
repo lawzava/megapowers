@@ -1,8 +1,6 @@
 ---
 name: evidence-research
 description: "Use to research a decision needing evidence beyond the repository: current upstream options or behavior, historical rationale, cross-system incidents, disputed claims, or what changed outside the repo. Ask what evidence would settle the decision. Not for repository-only code tracing or summaries of provided material."
-metadata:
-  short-description: Question framing and evidence classification beyond the repo
 ---
 
 # Evidence Research

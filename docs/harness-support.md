@@ -23,8 +23,8 @@ native agent/reviewer bindings, isolation, permissions and any hooks locally.
 
 ## Shared contract
 
-Skills use `name`, a task-triggering `description` of at most 1024 characters,
-and `metadata.short-description`. Trigger phrases live in `description`, not
+Skills use only `name`, a task-triggering `description` of at most 1024 characters,
+and optionally `disable-model-invocation`; values are plain text. Trigger phrases live in `description`, not
 harness-only fields. `grill-me` and `close-off` retain
 `disable-model-invocation` for Claude Code and OpenCode.
 Codex and OpenCode use `description` for discovery.
@@ -39,9 +39,9 @@ test result.
 
 Codex's skill documentation, retrieved 2026-10-08, names `agents/openai.yaml`
 `interface.short_description` and the plugin manifest
-`interface.shortDescription` as short-description carriers. The skills that
-ship with Codex also set `metadata.short-description`, so this plugin keeps
-it. Claude Code documents that it does not act on `metadata` contents.
+`interface.shortDescription` as short-description carriers. The directory
+edition uses the existing plugin manifest field when adding agent interfaces;
+`SKILL.md` frontmatter has no nested metadata.
 
 Codex's explicit-only policy lives in each such skill's `agents/openai.yaml` as
 `policy.allow_implicit_invocation: false`. The trigger evaluation reads each

@@ -1,8 +1,6 @@
 ---
 name: orchestrating
 description: "Use when two or more independent lanes can run in parallel, an output-only lane protects lead context from raw payload, or a handoff or durable run needs coordination. Covers fan out, spawn agents, split the work, delegate lanes, review while building, and independent files or services to inspect at once."
-metadata:
-  short-description: Parallel lanes, output-only lanes, and delegation coordination
 ---
 
 # Orchestrating

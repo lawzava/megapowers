@@ -1,8 +1,6 @@
 ---
 name: test-first-implementation
 description: "Use when adding or changing behavior, fixing a bug whose cause is known, refactoring executable code, or implementing a feature, tool, script, or CLI option, even without a request for tests. Covers implement this, fix this function, change what it returns, add a flag, make the tests pass, add tests, and code pasted inline."
-metadata:
-  short-description: Failing test first, then minimal implementation
 ---
 
 # Test-First Implementation

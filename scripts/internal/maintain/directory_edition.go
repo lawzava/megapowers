@@ -113,6 +113,9 @@ type sourceManifest struct {
 	Repository string   `json:"repository"`
 	License    string   `json:"license"`
 	Keywords   []string `json:"keywords"`
+	Interface  struct {
+		ShortDescription string `json:"shortDescription"`
+	} `json:"interface"`
 }
 
 func readSourceManifest(file string) (sourceManifest, error) {
@@ -195,7 +198,7 @@ func buildDirectoryFiles(root string) ([]dirFile, error) {
 	for _, name := range pkg.paths() {
 		parts := strings.Split(name, "/")
 		if len(parts) == 4 && parts[2] == "agents" && parts[3] == "openai.yaml" {
-			data, err := withAgentInterface(pkg, parts[1], pkg[name].Data)
+			data, err := withAgentInterface(pkg, parts[1], pkg[name].Data, codex.Interface.ShortDescription)
 			if err != nil {
 				return nil, err
 			}
@@ -266,7 +269,7 @@ func buildDirectoryFiles(root string) ([]dirFile, error) {
 // interface. The directory requires one whenever agents/openai.yaml ships
 // (skill_agent_interface_missing), so a file with only a policy gets an
 // interface block in the packaged copy. The source file is not modified.
-func withAgentInterface(pkg dirPackage, skill string, data []byte) ([]byte, error) {
+func withAgentInterface(pkg dirPackage, skill string, data []byte, shortDescription string) ([]byte, error) {
 	root, err := parseYAMLSubset(string(data))
 	if err != nil || root.kind != yamlMap {
 		return data, nil // the validator reports the malformed file
@@ -286,12 +289,9 @@ func withAgentInterface(pkg dirPackage, skill string, data []byte) ([]byte, erro
 	if name == "" {
 		name = skill
 	}
-	short := collapseSpace(fm.Nested["metadata"]["short-description"])
+	short := collapseSpace(shortDescription)
 	if short == "" {
-		short = collapseSpace(fm.Scalars["description"])
-	}
-	if short == "" {
-		return nil, fmt.Errorf("skills/%s has no short-description or description for its agent interface", skill)
+		return nil, fmt.Errorf("skills/%s needs plugin manifest interface.shortDescription for its agent interface", skill)
 	}
 	quote := func(s string) string {
 		out, _ := json.Marshal(s)
