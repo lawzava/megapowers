@@ -50,6 +50,13 @@ func TestOpenCodePreflightOmissionIsRetryable(t *testing.T) {
 	if err == nil || !errors.Is(err, errOpenCodePreflightOmission) {
 		t.Fatalf("omission-only preflight error = %v, want retryable omission", err)
 	}
+	metadata, ok := openCodePreflightOmissionMetadata(err)
+	if !ok || !reflect.DeepEqual(metadata.PreflightOmitted, []string{"independent-review"}) || len(metadata.Skills) != len(omitted) || metadata.Instructions == nil {
+		t.Fatalf("omission metadata = %+v, %v", metadata, ok)
+	}
+	if _, ok := openCodePreflightOmissionMetadata(errors.New("leak")); ok {
+		t.Fatal("non-omission error produced omission metadata")
+	}
 	for _, contaminated := range []string{
 		`{"skills":["opencode","report","law-voice"],"instructions":[]}`,
 		`{"skills":["opencode","report"],"instructions":["/owner/AGENTS.md"]}`,

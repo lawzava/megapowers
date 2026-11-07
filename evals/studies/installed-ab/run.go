@@ -4068,6 +4068,7 @@ type openCodeTelemetry struct {
 	ActivationValidation string        `json:"activation_validation"`
 	Skills               []string      `json:"preflight_skills"`
 	Instructions         []string      `json:"preflight_instructions"`
+	PreflightOmitted     []string      `json:"preflight_omitted,omitempty"`
 	PreflightDurationMS  int64         `json:"preflight_duration_ms"`
 	PreflightUsage       openCodeUsage `json:"preflight_usage"`
 	TaskUsage            openCodeUsage `json:"task_usage"`
@@ -4808,6 +4809,27 @@ const openCodePreflightPrompt = `Isolation preflight only. Do not use tools or r
 
 var errOpenCodePreflightOmission = errors.New("OpenCode preflight omitted expected skills")
 
+type openCodePreflightOmissionError struct {
+	got, missing, want []string
+}
+
+func (e *openCodePreflightOmissionError) Error() string {
+	return fmt.Sprintf("%v: got %v; want %v", errOpenCodePreflightOmission, e.got, e.want)
+}
+
+func (e *openCodePreflightOmissionError) Unwrap() error { return errOpenCodePreflightOmission }
+
+// openCodePreflightOmissionMetadata accepts a final omission-only inventory.
+// Omission cannot leak owner context, so the run proceeds and records the
+// missing names for analysis instead of aborting the study.
+func openCodePreflightOmissionMetadata(err error) (*openCodeTelemetry, bool) {
+	var omission *openCodePreflightOmissionError
+	if !errors.As(err, &omission) {
+		return nil, false
+	}
+	return &openCodeTelemetry{Skills: omission.got, Instructions: []string{}, PreflightOmitted: omission.missing}, true
+}
+
 // openCodePreflightAttempts bounds retries for omission-only self-reports.
 const openCodePreflightAttempts = 3
 
@@ -4860,7 +4882,13 @@ func validateOpenCodePreflight(response, arm string) (*openCodeTelemetry, error)
 			}
 		}
 		if omissionOnly {
-			return nil, fmt.Errorf("%w: got %v; want %v", errOpenCodePreflightOmission, inventory.Skills, want)
+			missing := []string{}
+			for _, name := range want {
+				if !slices.Contains(inventory.Skills, name) {
+					missing = append(missing, name)
+				}
+			}
+			return nil, &openCodePreflightOmissionError{got: inventory.Skills, missing: missing, want: want}
 		}
 		return nil, fmt.Errorf("OpenCode preflight skill leak or missing skills: got %v; want %v", inventory.Skills, want)
 	}
@@ -4916,8 +4944,12 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 		if err == nil {
 			break
 		}
-		if !errors.Is(err, errOpenCodePreflightOmission) || attempt >= openCodePreflightAttempts {
+		if !errors.Is(err, errOpenCodePreflightOmission) {
 			return result, err
+		}
+		if attempt >= openCodePreflightAttempts {
+			metadata, _ = openCodePreflightOmissionMetadata(err)
+			break
 		}
 	}
 	metadata.PreflightDurationMS, metadata.PreflightUsage = elapsed.Milliseconds(), usage
