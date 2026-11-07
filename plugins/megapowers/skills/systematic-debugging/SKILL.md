@@ -1,8 +1,6 @@
 ---
 name: systematic-debugging
 description: "Use when a bug, failing or flaky test, production incident, unexpected output, or performance regression has an unknown cause. Covers why is this failing, broken setup, red CI, preview or deploy failures, exit 1 with no output, pasted build logs, rejected platform config, and checking whether a failure is real."
-metadata:
-  short-description: Diagnose an unknown-cause failure before editing
 ---
 
 # Systematic Debugging

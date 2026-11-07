@@ -5,6 +5,16 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.55.2 - 2026-11-07
+
+### Changed
+
+- Remove nested metadata from shipped skill frontmatter for Anthropic directory
+  compatibility. Allow only `name`, `description`, and optional
+  `disable-model-invocation`, with scalar values enforced by validation.
+- Use the existing Codex plugin manifest short description when adding agent
+  interfaces to the OpenAI directory edition.
+
 ## 0.55.1 - 2026-11-07
 
 ### Fixed

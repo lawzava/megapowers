@@ -269,13 +269,15 @@ func TestSkillContracts(t *testing.T) {
 		if fields["name"] != name {
 			t.Errorf("%s name = %q", rel, fields["name"])
 		}
-		for _, field := range []string{"description", "metadata.short-description"} {
-			if strings.TrimSpace(fields[field]) == "" {
-				t.Errorf("%s missing %s", rel, field)
-			}
+		if strings.TrimSpace(fields["description"]) == "" {
+			t.Errorf("%s missing description", rel)
 		}
-		if _, exists := fields["when_to_use"]; exists {
-			t.Errorf("%s has nonportable when_to_use", rel)
+		for field := range fields {
+			switch field {
+			case "name", "description", "disable-model-invocation":
+			default:
+				t.Errorf("%s has unsupported frontmatter key %s", rel, field)
+			}
 		}
 		if listed := len([]rune(fields["description"])); listed > 1024 {
 			t.Errorf("%s description is %d characters, limit 1024", rel, listed)

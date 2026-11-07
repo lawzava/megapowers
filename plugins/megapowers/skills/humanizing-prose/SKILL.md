@@ -1,8 +1,6 @@
 ---
 name: humanizing-prose
 description: "Use when drafting, rewriting, editing, or preserving human-facing prose for clarity, attribution, proportion, or the user's own style. Covers make it read human, remove AI slop or robotic phrasing, no em dashes, tighten this doc, write normally, and explain it to a non-engineer. Applies to announcements, blog posts, PR descriptions, Slack messages, Linear or Jira comments, and ticket descriptions. Do not select merely because other work ends with a response."
-metadata:
-  short-description: Draft or edit human-facing prose without AI-slop markers
 ---
 
 # Humanizing Prose

@@ -200,9 +200,6 @@ func checkCatalogBudgets(root string) (int, error) {
 		if err != nil {
 			return total, fmt.Errorf("%s: %w", path, err)
 		}
-		if _, exists := fm.Kinds["when_to_use"]; exists {
-			issues = append(issues, fmt.Sprintf("%s: when_to_use is not portable; fold triggers into description", path))
-		}
 		chars := utf8.RuneCountInString(fm.Scalars["description"])
 		total += chars + utf8.RuneCountInString(fm.Scalars["name"])
 		if chars > 1024 {

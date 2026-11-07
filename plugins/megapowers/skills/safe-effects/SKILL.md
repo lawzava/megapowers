@@ -1,8 +1,6 @@
 ---
 name: safe-effects
 description: "Use when preparing a deploy, message, charge, migration, destructive query, DNS change, external API write, or any real-world side effect. Covers push to production, send email, delete rows, call a payment API, post a comment, publish, log out, or delete an account. Applies to commands whose effect leaves this machine."
-metadata:
-  short-description: Authority and read-back for real-world side effects
 ---
 
 # Safe Effects

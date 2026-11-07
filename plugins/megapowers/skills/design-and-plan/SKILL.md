@@ -1,8 +1,6 @@
 ---
 name: design-and-plan
 description: "Use to specify non-trivial behavior or interfaces, define requirements, compare architecture or design tradeoffs, or produce a multi-step implementation plan. Covers write a spec and plan the implementation. Not for mechanical edits, routine status updates, or execution of a settled plan."
-metadata:
-  short-description: Specification, tradeoffs, and executable plan before building
 ---
 
 # Design and Plan

@@ -1,8 +1,6 @@
 ---
 name: verify-and-finish
 description: "Use to verify a completed outcome before claiming success, handing off, committing, pushing, opening a PR, merging, publishing, deploying, shipping, or closing a task. Covers prove this is done, wrap up, and final completion checks. Not for intermediate updates, isolated test runs, or merely naming an oracle command."
-metadata:
-  short-description: Verification and honest status before any completion claim
 ---
 
 # Verify and Finish

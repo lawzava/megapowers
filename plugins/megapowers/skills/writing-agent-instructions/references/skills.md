@@ -16,8 +16,9 @@ The frontmatter `description` carries the actual trigger for Codex and is the
 primary discovery text in the Agent Skills standard. Put what the skill does,
 when it applies, and the narrowest useful boundary there. Front-load the main
 use case because clients may shorten catalog entries. In this repository,
-fold trigger phrases into `description` (at most 1024 characters) and retain
-`metadata.short-description`. Do not add harness-only trigger fields. Keep implicit invocation enabled unless the
+use only `name`, `description` (at most 1024 characters), and optionally
+`disable-model-invocation` in frontmatter; values are plain text. Fold trigger
+phrases into `description`. Keep implicit invocation enabled unless the
 user explicitly requests an invocation-only workflow.
 
 For an explicit-only workflow, configure each supported harness separately:

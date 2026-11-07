@@ -2,8 +2,6 @@
 name: grill-me
 description: "Use when the user asks to be grilled or interviewed, to stress-test a plan, decision, idea, or draft before action. Covers grill me, poke holes in this, challenge my idea, and ask me everything before we start."
 disable-model-invocation: true
-metadata:
-  short-description: Structured interview that stress-tests a plan or idea
 ---
 
 # Grill Me

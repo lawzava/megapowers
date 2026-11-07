@@ -1,8 +1,6 @@
 ---
 name: writing-agent-instructions
 description: "Use when creating, revising, or auditing skills, AGENTS.md, CLAUDE.md, nested project instructions, or native harness memory. Covers skill triggers, progressive disclosure, harness-aware scope, behavioral validation, session retrospectives, recalling earlier sessions, auditing or pruning stale memory, and turning repeated agent mistakes into instruction or tooling changes. Includes assessing what Megapowers does for a project, learning from past sessions, scoring skill outcomes, and reviewing, promoting, or retiring lessons."
-metadata:
-  short-description: Write focused skills, instructions, and memory audits
 ---
 
 # Writing Agent Instructions
