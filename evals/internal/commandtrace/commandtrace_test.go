@@ -2,6 +2,7 @@ package commandtrace
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -132,7 +133,11 @@ func TestObservedGoTestPipelineOutput(t *testing.T) {
 		{"background", `go test ./... | tail -20 &`, "PASS\n", 125},
 		{"substitution", `echo $(go version); go test ./... | tail -20`, "PASS\n", 125},
 		{"not Go", `npm test | tail -20`, "PASS\n", 125},
-		{"not pipeline", `go test ./...; go vet ./...`, "PASS\n", 125},
+		{"sequential output", `go test ./...; go vet ./...`, "PASS\n", 0},
+		{"sequential failure", `go test ./...; cat health.go`, "FAIL\n", 125},
+		{"sequential empty", `go test ./...; cat health.go`, "", 125},
+		{"sequential no tests", `go test ./...; cat health.go`, "?   \texample/hard\t[no test files]\n", 125},
+		{"sequential fallback", `go test ./... || true; cat health.go`, "PASS\n", 125},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := Observed(tc.command, 0, tc.output)
@@ -158,6 +163,54 @@ func TestObservedGoTestPipelineOutput(t *testing.T) {
 	for _, event := range events {
 		if event.Kind != "test" || event.RC != 125 {
 			t.Fatalf("ambiguous output attributed across invocations: %+v", event)
+		}
+	}
+}
+
+func TestObservedGoTestMutationSequence(t *testing.T) {
+	const command = `cp store.go /tmp/f; sed -i 's/fixed/broken/' store.go; go test -count=1 ./... 2>&1 | grep -E -- '--- FAIL|ok'; cp /tmp/f store.go; go test -count=1 ./...; go vet ./...`
+	const green = "PASS\nok  \texample/hard\t0.003s\n"
+	const red = "--- FAIL: TestOrder (0.00s)\n--- FAIL: TestAlias (0.00s)\nFAIL\nFAIL\texample/hard\t0.003s\nFAIL\n"
+	for _, tc := range []struct {
+		name, command, output string
+		want                  []int
+	}{
+		{"red then green", command, red + green, []int{1, 0}},
+		{"CRLF red then green", command, strings.ReplaceAll(red+green, "\n", "\r\n"), []int{1, 0}},
+		{"filtered red block", command, "--- FAIL: TestOrder (0.00s)\n--- FAIL: TestAlias (0.00s)\n" + green, []int{1, 0}},
+		{"bare FAIL", command, "FAIL\n" + green, []int{1, 0}},
+		{"green then red", command, green + red, []int{0, 1}},
+		{"green red green", `go test -v ./... | tail -12; git stash -q; go test ./... | grep -E 'FAIL|ok'; git stash pop -q; go test ./...; go vet ./...`, green + red + green, []int{0, 1, 0}},
+		{"both green", command, green + green, []int{0, 0}},
+		{"missing summary", command, green, []int{125, 125}},
+		{"extra summary", command, green + red + green, []int{125, 125}},
+		{"multiple packages", command, green + "ok  \texample/other\t0.003s\n", []int{125, 125}},
+		{"no test package", command, green + "?   \texample/hard\t[no test files]\n", []int{125, 125}},
+		{"PASS alone ambiguous", command, "PASS\nPASS\n", []int{125, 125}},
+		{"two bare failures ambiguous", command, "FAIL\nFAIL\n", []int{125, 125}},
+		{"mixed test runners", `go test ./... | tail -5; npm test; go vet ./...`, green + green, []int{125, 125}},
+		{"conditional fallback", `true || go test ./... | tail -5; go test ./... | tail -5; go vet ./...`, green + green, []int{125, 125}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			events := Observed(tc.command, 0, tc.output)
+			var got []int
+			for _, event := range events {
+				if event.Kind == "test" {
+					got = append(got, event.RC)
+				}
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("test statuses = %v, want %v", got, tc.want)
+			}
+			if got := Classify(tc.command, 0); len(got) != 0 {
+				t.Fatalf("broker attribution changed: %+v", got)
+			}
+		})
+	}
+	// A plain successful && chain already proves both test statuses.
+	for _, event := range Observed(`go test ./... && go test ./...`, 0, red+green) {
+		if event.Kind != "test" || event.RC != 0 {
+			t.Fatalf("output overrode attributable shell success: %+v", event)
 		}
 	}
 }

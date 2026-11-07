@@ -627,15 +627,26 @@ commands, including `;`, `&&`, `||` and pipes. An unobserved per-test exit code
 is 125, not a green check. A successful plain `&&` chain proves its checks
 succeeded. A captured `echo label=$?` immediately after a test can report its
 status. Repeated labels must all report the same status; conflicting labels
-and conditional fallbacks remain unknown. A masked Go test pipeline can count
+and conditional fallbacks remain unknown. A masked Go test command can count
 as passing only with aggregate exit 0 and a visible `ok <package> <result>` or
-standalone `PASS`, no `FAIL` anywhere in its output, and no package line with another status
-(including `? [no test files]`). Individual `--- PASS:` lines and a filter's
+standalone `PASS`, no `FAIL` anywhere in its output, and no package line with
+another status (including `? [no test files]`). Individual `--- PASS:` lines and a filter's
 exit status are insufficient. Output remains ambiguous when the command has
-multiple test invocations, command substitution, background work, or an earlier
-terminating builtin. This inference applies only to OpenCode shell diagnostics,
+command substitution, background work, or an earlier terminating builtin.
+For multiple Go test invocations in one completed exit-0 shell call, observed
+single-package summaries map to invocations in order only when their counts
+match exactly and every named summary identifies the same package. Repeated
+`FAIL` lines and individual `--- FAIL:` lines form one failed invocation block,
+not additional invocations. A filtered failure block or bare `FAIL` can map to
+red alongside a named package summary. Missing, extra, mixed-package, and
+mixed-runner summaries remain unknown. Only the last test invocation in each
+shell call can satisfy its required `test` event; earlier red events are retained
+without penalizing a final green check. A successful plain `&&` chain retains
+its attributable exit statuses instead of using output inference.
+This inference applies only to OpenCode shell diagnostics,
 not Code Mode's nested tools or trusted broker/TDD receipts. Filters can hide
-failures; this grades visible output, not an unseen complete package result set.
+failures, and sibling commands can print summary-like text. This grades visible
+shell output, not an independently attributed complete package result set.
 A final sequential test owns the aggregate status even after earlier
 semicolon-separated commands.
 These diagnostics never replace TDD execution receipts. A hook-declined commit

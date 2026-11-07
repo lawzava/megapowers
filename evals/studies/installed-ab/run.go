@@ -2216,11 +2216,28 @@ func skillReadOrderEvidence(events []actorEvent, required, forbidden []string) (
 
 func requiredEventsPresent(events []actorEvent, required []string) bool {
 	present := make(map[string]bool, len(required))
+	inCommand, lastTest := false, 125
+	finishCommand := func() {
+		if inCommand && lastTest == 0 {
+			present["test"] = true
+		}
+	}
 	for _, event := range events {
+		if event.Kind == "command" {
+			finishCommand()
+			inCommand, lastTest = true, 125
+		}
+		if inCommand && event.Kind == "test" {
+			// A mutation check may intentionally run red between green checks.
+			// Only the last invocation establishes this call's required check.
+			lastTest = event.RC
+			continue
+		}
 		if event.RC == 0 {
 			present[event.Kind] = true
 		}
 	}
+	finishCommand()
 	for _, kind := range required {
 		if !present[kind] {
 			return false

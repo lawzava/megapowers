@@ -156,6 +156,41 @@ func TestOpenCodeGoTestPipelineOutput(t *testing.T) {
 	}
 }
 
+func TestOpenCodeMutationTestRequiredEvents(t *testing.T) {
+	const command = `go test ./... 2>&1 | tail -5; sed -i 's/fixed/broken/' store.go; go test ./... 2>&1 | grep -E 'FAIL|ok'; cp /tmp/f store.go; go test ./...; go vet ./...`
+	const green = "PASS\nok  \texample/hard\t0.003s\n"
+	const red = "--- FAIL: TestOrder (0.00s)\nFAIL\nFAIL\texample/hard\t0.003s\nFAIL\n"
+	for _, tc := range []struct {
+		name, command, output string
+		want                  bool
+	}{
+		{"restored green", command, green + red + green, true},
+		{"last red", command, green + green + red, false},
+		{"missing invocation", command, green + green, false},
+		{"single sequential", `go test ./...; cat health.go`, green, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tool, err := json.Marshal(map[string]any{"type": "tool_use", "part": map[string]any{"id": "check", "tool": "shell", "state": map[string]any{"status": "completed", "input": map[string]any{"command": tc.command}, "output": tc.output, "metadata": map[string]any{"metadata": map[string]any{"exit": 0}}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			trace := string(tool) + "\n" + `{"type":"text","part":{"text":"done"}}` + "\n" + `{"type":"step_finish","part":{"reason":"stop"}}` + "\n"
+			result, _, err := parseOpenCodeTrace([]byte(trace))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := requiredEventsPresent(result.Events, []string{"test"}); got != tc.want {
+				t.Fatalf("required test = %v, want %v; events: %+v", got, tc.want, result.Events)
+			}
+		})
+	}
+	// A successful earlier call still counts when a later call intentionally runs red.
+	events := []actorEvent{{Kind: "command"}, {Kind: "test", RC: 0}, {Kind: "command"}, {Kind: "test", RC: 1}}
+	if !requiredEventsPresent(events, []string{"test"}) {
+		t.Fatal("discarded a completed successful call")
+	}
+}
+
 func TestOpenCodePreservesToolErrorsAndFinalStepText(t *testing.T) {
 	trace := `{"type":"text","part":{"text":"commentary"}}
 {"type":"tool_use","part":{"id":"shell-1","tool":"shell","state":{"status":"error","input":{"command":"go test ./..."},"metadata":{"metadata":{"exit":0}}}}}

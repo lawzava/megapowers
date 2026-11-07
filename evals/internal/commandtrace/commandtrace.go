@@ -48,9 +48,10 @@ func Events(command string, rc int) []Event {
 // Observed retains test attempts in compound commands. Unknown per-test exit
 // codes are 125, never a successful check. Unlike Classify, this diagnostic
 // adapter can use a successful plain && chain, a final sequential command, or
-// an immediately following echo of $? in captured output. A single piped Go
-// test can also use unambiguously green Go output. These observations are not
-// execution receipts.
+// an immediately following echo of $? in captured output. A single masked Go
+// test can also use unambiguously green Go output. Multiple Go tests can use
+// ordered single-package summaries when their counts match exactly. These
+// observations are not execution receipts.
 // Broker consumers must continue using Events/Classify for receipt anchors.
 func Observed(command string, rc int, output string) []Event {
 	return events(command, rc, &output)
@@ -69,15 +70,24 @@ func events(command string, rc int, output *string) []Event {
 	allAnd := true
 	background := false
 	testCommands := 0
+	goTestsOnly := true
 	for _, segment := range segments {
 		background = background || segment.background
-		if isTestCommand(executableFields(segment.fields)) {
+		fields := executableFields(segment.fields)
+		if isTestCommand(fields) {
 			testCommands++
+			goTestsOnly = goTestsOnly && len(fields) >= 2 && fields[0] == "go" && fields[1] == "test"
 		} else {
 			anchors, _ := runReceiptTests(segment.words)
 			testCommands += anchors
+			goTestsOnly = goTestsOnly && anchors == 0
 		}
 	}
+	var goStatuses []int
+	if output != nil && testCommands > 1 && goTestsOnly && !substitution && !background && rc == 0 {
+		goStatuses = goTestOutputSequence(*output, testCommands)
+	}
+	testIndex := 0
 	for _, segment := range segments[1:] {
 		allAnd = allAnd && segment.operator == "&&"
 	}
@@ -129,17 +139,20 @@ func events(command string, rc int, output *string) []Event {
 					} else if allAnd && rc == 0 {
 						testRC = 0
 					} else if index+1 < len(segments) && segment.operator != "|" && !conditional {
-						if segments[index+1].operator == "|" && len(fields) >= 2 && fields[0] == "go" && fields[1] == "test" && testCommands == 1 && rc == 0 {
-							// A pipeline's echo/aggregate status belongs to its filter.
-							// Do not share output across possibly skipped test invocations.
+						testRC = echoedExitCode(segments[index+1], segments, *output)
+						if testRC == 125 && segments[index+1].operator != "||" && goTestsOnly && testCommands == 1 && rc == 0 {
+							// A filter or trailing command can mask the test's status.
 							testRC = goTestOutputStatus(*output)
-						} else {
-							testRC = echoedExitCode(segments[index+1], segments, *output)
 						}
 					}
 				}
 			}
-			if output != nil && (background || terminated || (segment.operator == "&&" && testRC != 0)) {
+			mapped := goStatuses != nil && !conditional && !allAnd
+			if mapped {
+				kind, testRC = "test", goStatuses[testIndex]
+			}
+			testIndex++
+			if output != nil && (background || terminated || (!mapped && segment.operator == "&&" && testRC != 0)) {
 				// A background shell can return before its tests finish. A failed
 				// && prerequisite or terminating builtin can skip later tests.
 				kind, testRC = "test", 125
@@ -149,6 +162,60 @@ func events(command string, rc int, output *string) []Event {
 		cdChain = false
 	}
 	return events
+}
+
+// Go surrounds a failed package summary with redundant FAIL lines and may
+// print many --- FAIL: test lines. Keep that failure block as one invocation.
+// A filtered block without its package summary can count only alongside a
+// named package elsewhere, with an exact invocation count and no other package.
+func goTestOutputSequence(output string, count int) []int {
+	var statuses []int
+	packageName := ""
+	pendingFailure, afterFailure := false, false
+	flushFailure := func() {
+		if pendingFailure {
+			statuses = append(statuses, 1)
+			pendingFailure = false
+		}
+	}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		switch {
+		case fields[0] == "ok" || fields[0] == "FAIL" && len(fields) > 1:
+			if len(fields) < 3 || packageName != "" && packageName != fields[1] {
+				return nil
+			}
+			packageName = fields[1]
+			if fields[0] == "ok" {
+				flushFailure()
+				statuses = append(statuses, 0)
+				afterFailure = false
+			} else {
+				pendingFailure = false
+				statuses = append(statuses, 1)
+				afterFailure = true
+			}
+		case strings.HasPrefix(strings.TrimSpace(line), "--- FAIL:"):
+			pendingFailure, afterFailure = true, false
+		case line == "FAIL" || line == "FAIL\r":
+			if !afterFailure {
+				pendingFailure = true
+			}
+		case line == "PASS" || line == "PASS\r":
+			flushFailure()
+			afterFailure = false
+		case fields[0] == "?" || strings.Contains(line, "FAIL"):
+			return nil
+		}
+	}
+	flushFailure()
+	if packageName == "" || len(statuses) != count {
+		return nil
+	}
+	return statuses
 }
 
 func goTestOutputStatus(output string) int {
