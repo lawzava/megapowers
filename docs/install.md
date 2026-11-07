@@ -10,8 +10,8 @@ unreleased `main`.
 
 - A current Claude Code or Codex CLI, already authenticated.
 - Git, for marketplace snapshots.
-- Go 1.25 or newer, for the plugin's bundled Go tools, including the doctor.
-  Loading skill guidance alone does not require Go.
+- No Go runtime is needed for the shipped skill guidance. Repository-only
+  helpers in `extras/` need Go 1.25 or newer.
 
 ## Claude Code
 
@@ -36,8 +36,7 @@ or run `/output-style megapowers:Megapowers`. The resulting setting is
 `"outputStyle": "megapowers:Megapowers"`. The bare value `Megapowers` does not
 resolve to the plugin style. The style preserves built-in coding instructions.
 To opt out while keeping the plugin enabled, select another style. Start a new
-session after changing style, then run `/megapowers:megapowers-doctor` to
-confirm the value in effect.
+session after changing style and inspect the selected value in `/config`.
 
 For a project-scoped install, add `--scope project` to both marketplace and
 install commands. For a local user-only install, use `--scope local`.
@@ -60,11 +59,41 @@ Start a fresh session. Ask Codex to load `humanizing-prose` and summarize its
 preservation rules. This checks skill discovery. The plugin does not apply a
 session-wide Codex output style.
 
+## OpenCode
+
+OpenCode uses a copy/path install or HTTP skill catalog, not a plugin install.
+The primary route is the release catalog. Add it to the `skills` array in
+`opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": [
+    "https://raw.githubusercontent.com/lawzava/megapowers/release/plugins/megapowers/skills/"
+  ]
+}
+```
+
+Updates arrive when the `release` branch moves. Each catalog entry uses the
+plugin version so changed releases refresh OpenCode's cached skill files.
+
+Alternatives:
+
+- Point the same array at a checkout's `plugins/megapowers/skills` directory,
+  for example `"/path/to/megapowers/plugins/megapowers/skills"`.
+  Absolute paths are used as written; relative paths resolve from the active
+  OpenCode working directory, not the config file.
+- Copy skills with `npx skills add lawzava/megapowers -a opencode`.
+
+Use one route to avoid duplicate skill IDs. These routes load skill text and
+supporting files, not Claude Code's output style. The
+[OpenCode skills documentation](https://opencode.ai/docs/skills/) defines the
+`skills` array and HTTP catalog format.
+
 ## Developing this repository
 
-The checkout exposes no skills of its own, so working in it never lists a
-skill twice. To try source changes, load the plugin from the checkout for one
-session or install it into an isolated home.
+The checkout exposes no skills of its own. To try source changes, load the
+plugin from the checkout for one session or use an isolated home.
 
 Claude Code:
 
@@ -83,6 +112,16 @@ codex plugin add megapowers@megapowers
 The local marketplace is `.agents/plugins/marketplace.json`. The new home
 needs its own `codex login`.
 
+Regenerate the OpenCode catalog after changing shipped files or versions:
+
+```bash
+go run ./scripts/cmd/maintainer opencode-index
+```
+
+The generator lists every nonhidden file within each shipped skill directory.
+The validator rejects stale catalog entries. Each entry uses the plugin
+version; bump it before publishing changed skill files.
+
 ## Directory edition
 
 The directory edition is a skills-only ZIP for the OpenAI Plugins
@@ -97,15 +136,13 @@ The command writes `megapowers-<version>.zip` and prints its size and sha256.
 The same input gives the same bytes. `--check` builds and validates without
 keeping the output, and `scripts/validate.sh` runs it.
 
-The edition ships the skills and their bundled scripts, an icon, and a
+The edition ships skill text and supporting passive files, an icon, and a
 `.codex-plugin/plugin.json` for the directory listing. It omits the Claude Code
-output style and manifest, the source README, and `skills/catalog.json`.
+output style and manifest, the source README, and the root skill catalogs.
 
 Each packaged `SKILL.md` ends with one line that ranks explicit user
-instructions above skill guidance. Skills that run bundled Go scripts need a
-local shell and Go; without them each skill states a manual fallback or
-stops without sending anything. The skill `upgrading-megapowers` drives the
-Claude Code and Codex plugin CLIs and does not apply to directory installs.
+instructions above skill guidance. Manual procedures use normal agent tools;
+no executable helper code ships in either edition.
 
 Install from the self-hosted marketplace for Claude Code's optional native
 output style. Submission to the directory is a manual step in the OpenAI portal.
@@ -133,8 +170,9 @@ git -C "megapowers-$release_tag" status --short
 
 ## Update
 
-Use `upgrading-megapowers` for an agent-driven update. It inventories the
-installed version, enabled state, source, scope, pins, local edits, duplicates,
+The repository-only [upgrade skill](../extras/skills/upgrading-megapowers/SKILL.md)
+can guide an agent-driven update; it is not installed with the plugin. It
+inventories the installed version, enabled state, source, scope, pins, local edits, duplicates,
 and active caches before asking once for the exact writes. A current install is
 a valid no-op. Keep the channel already in use, and read
 [CHANGELOG.md](../CHANGELOG.md) before changing it.
@@ -142,7 +180,7 @@ a valid no-op. Keep the channel already in use, and read
 The exact per-harness refresh and registration commands, the `HEAD` comparison
 against the approved release tag, and the runtime markers to ignore are in the
 skill's
-[channels reference](../plugins/megapowers/skills/upgrading-megapowers/references/channels.md).
+[channels reference](../extras/skills/upgrading-megapowers/references/channels.md).
 Two rules from it apply to any manual update:
 
 - A registration without a ref tracks `main` and receives unreleased commits.
@@ -191,11 +229,9 @@ measure agent behavior. Optional behavioral studies are described in
 
 ## Diagnose an install
 
-Ask for `megapowers-doctor` (`/megapowers:megapowers-doctor` on Claude Code, or
-the skill name after `$` as the Codex skills list shows it). It runs the
-plugin's standalone `skills/megapowers-doctor/scripts/doctor.go` script and reports the plugin version and root, the
-harness, the Claude `outputStyle` value in effect, the local marketplace copy,
-recent workspace skill-load counts, and the optional agent registry. The
-directory edition omits the catalog and skips load counting. The doctor reads
-local settings and session records; see [SECURITY.md](../SECURITY.md) for its
-read and execution boundaries.
+Use the registration commands above, inspect the selected version and source,
+and ask the agent to load `humanizing-prose` and summarize it. For OpenCode,
+check the skill source and ID using its linked skills documentation.
+
+Optional local doctor diagnostics are in [extras/](../extras/README.md), not
+the shipped plugin. Read [SECURITY.md](../SECURITY.md) before running helpers.

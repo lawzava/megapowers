@@ -33,7 +33,7 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 	}
 	pass, fail := 0, 0
 	total, catalogErr := checkCatalogBudgets(root)
-	fmt.Fprintf(stdout, "  total catalog characters: %d (name + description + when_to_use)\n", total)
+	fmt.Fprintf(stdout, "  total catalog characters: %d (name + description)\n", total)
 	if catalogErr != nil {
 		fmt.Fprintf(stderr, "  FAIL skill catalog budgets\n%v\n", catalogErr)
 		fail++
@@ -137,6 +137,13 @@ func runValidate(ctx context.Context, root string, args []string, stdout, stderr
 		fmt.Fprintln(stdout, "  PASS plugin folder holds only shipped files")
 		pass++
 	}
+	if err := checkOpenCodeIndex(root); err != nil {
+		fmt.Fprintf(stderr, "  FAIL OpenCode skill index\n%v\n", err)
+		fail++
+	} else {
+		fmt.Fprintln(stdout, "  PASS OpenCode skill index")
+		pass++
+	}
 	if report, err := checkDirectoryEdition(root); err != nil {
 		fmt.Fprintf(stderr, "  FAIL OpenAI directory edition package (exit 1)\n%v\n", err)
 		fail++
@@ -193,10 +200,13 @@ func checkCatalogBudgets(root string) (int, error) {
 		if err != nil {
 			return total, fmt.Errorf("%s: %w", path, err)
 		}
-		chars := utf8.RuneCountInString(fm.Scalars["description"] + fm.Scalars["when_to_use"])
+		if _, exists := fm.Kinds["when_to_use"]; exists {
+			issues = append(issues, fmt.Sprintf("%s: when_to_use is not portable; fold triggers into description", path))
+		}
+		chars := utf8.RuneCountInString(fm.Scalars["description"])
 		total += chars + utf8.RuneCountInString(fm.Scalars["name"])
-		if chars > 1536 {
-			issues = append(issues, fmt.Sprintf("%s: description + when_to_use has %d characters (limit 1536)", path, chars))
+		if chars > 1024 {
+			issues = append(issues, fmt.Sprintf("%s: description has %d characters (limit 1024)", path, chars))
 		}
 		// Count source bytes, including CRLF, rather than the parser's
 		// normalized body used by the directory edition.
@@ -325,7 +335,7 @@ func discoverShellFiles(root string) ([]string, error) {
 
 func discoverGoFiles(root string) ([]string, error) {
 	var files []string
-	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers"} {
+	for _, rel := range []string{"scripts", "evals", "internal", "extras"} {
 		paths, err := regularFiles(filepath.Join(root, filepath.FromSlash(rel)), ".go")
 		if err != nil {
 			return nil, err

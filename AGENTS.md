@@ -44,11 +44,13 @@ condition, or measurement.
 
 ## Skills
 
-- Skill frontmatter contains `name`, a task-triggering `description`, a
-  `when_to_use` line of trigger phrases, `metadata.short-description`, and
+- Skill frontmatter contains `name`, a task-triggering `description` (at most 1024 characters),
+  `metadata.short-description`, and
   optionally `disable-model-invocation`. Codex honors `name`, `description`,
   and `metadata.short-description`; explicit-only Codex policy belongs in
-  `agents/openai.yaml`. Quote YAML values containing colons. Components remain at
+  `agents/openai.yaml`. Use no `when_to_use`; put trigger phrases in `description`.
+  The shipped plugin contains no executable code, hooks or MCP entries.
+  Quote YAML values containing colons. Components remain at
   plugin root under `skills/` and `output-styles/`.
 - Keep judgment in skills and deterministic policy in tests or tools. Required
   references are linked directly; optional details load only when relevant.

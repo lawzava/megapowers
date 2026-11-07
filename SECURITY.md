@@ -1,7 +1,7 @@
 # Security
 
-megapowers is not a security boundary. It installs model instructions and bundled Go
-tools into the agent's permission context.
+megapowers is not a security boundary. It installs model instructions into the agent's permission context.
+It ships no executable code, hooks, or MCP configuration.
 Review the exact revision before installing it.
 
 ## Installed capabilities
@@ -9,13 +9,21 @@ Review the exact revision before installing it.
 | Component | Reads | Writes | Network |
 |---|---|---|---|
 | Skills | Repository and task context selected by the harness | Only what the active agent is authorized to change | No direct network client |
-| Doctor script | Plugin manifests and catalog, local marketplace manifests, Claude settings, optional agent registry, workspace Git root, local Claude and Codex session records | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
-| Memory-audit tool | One explicit audit manifest | Standard output only | None |
-| Session miner | Local Claude Code and Codex transcripts, project run journals | Redacted reports on standard output | None |
 | Independent-review guidance | Context selected by the active agent | Review brief and findings through existing harness tools | Selected review route under user permissions; no bundled launcher |
 
 There is no daemon, model router, formatter, status line, or background
 scheduler.
+
+## Repository-only extras
+
+The optional helpers in [extras/](./extras/README.md) do not ship with the
+plugin. Their read and execution boundaries follow.
+
+| Component | Reads | Writes | Network |
+|---|---|---|---|
+| Doctor script | Plugin manifests and catalog, local marketplace manifests, Claude settings, optional agent registry, workspace Git root, local Claude and Codex session records | Summary on standard output | Script: none; `go run` may download a selected Go toolchain |
+| Memory-audit tool | One explicit audit manifest | Standard output only | None |
+| Session miner | Local Claude Code and Codex transcripts, project run journals | Redacted reports on standard output | None |
 
 The doctor reads `~/.claude/settings.json` and project `.claude/settings.json`
 and `.claude/settings.local.json` (parsing only `outputStyle`), the optional
@@ -85,7 +93,8 @@ it does not prove an instruction safe.
 
 Before installation:
 
-1. Inspect both plugin manifests and bundled scripts.
+1. Inspect both plugin manifests and the skill files. Inspect optional extras
+   separately before running them.
 2. Read every skill likely to run in your environment.
 3. Run `scripts/security-lint.sh` and `scripts/validate.sh`.
 4. Verify the selected Git revision and use a pinned checkout when update

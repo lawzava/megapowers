@@ -1,7 +1,6 @@
 ---
 name: systematic-debugging
-description: Use when a bug, failing or flaky test, production incident, unexpected output, or performance regression has an unknown cause.
-when_to_use: "Trigger phrases: why is this failing, bug, broken, flaky, CI is red, preview or deploy failed, is this failure real, error with no obvious cause, something went wrong in the setup, exit 1 with no output, performance regression, what could cause this, build or deploy failed, pasted CI or build log, platform rejects the config."
+description: "Use when a bug, failing or flaky test, production incident, unexpected output, or performance regression has an unknown cause. Covers why is this failing, broken setup, red CI, preview or deploy failures, exit 1 with no output, pasted build logs, rejected platform config, and checking whether a failure is real."
 metadata:
   short-description: Diagnose an unknown-cause failure before editing
 ---

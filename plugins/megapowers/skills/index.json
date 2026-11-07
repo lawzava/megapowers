@@ -1,0 +1,126 @@
+{
+  "skills": [
+    {
+      "name": "autonomous-run",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "references/pr-babysit.md",
+        "references/run-state.md"
+      ]
+    },
+    {
+      "name": "close-off",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml"
+      ]
+    },
+    {
+      "name": "design-and-plan",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "references/design-red-flags.md",
+        "references/openspec.md",
+        "references/task-contracts.md"
+      ]
+    },
+    {
+      "name": "evidence-research",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "grill-me",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "agents/openai.yaml"
+      ]
+    },
+    {
+      "name": "humanizing-prose",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "references/workplace-comments.md"
+      ]
+    },
+    {
+      "name": "independent-review",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "references/correction-rounds.md"
+      ]
+    },
+    {
+      "name": "orchestrating",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "assets/agent-capabilities.md",
+        "references/fences.md",
+        "references/native-dispatch.md",
+        "references/review-contract.md"
+      ]
+    },
+    {
+      "name": "safe-effects",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "systematic-debugging",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "references/performance.md"
+      ]
+    },
+    {
+      "name": "test-first-implementation",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "references/go.md",
+        "references/python.md",
+        "references/typescript.md"
+      ]
+    },
+    {
+      "name": "verify-and-finish",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "references/bar-guard.md",
+        "references/handoff.md",
+        "references/pr-body.md",
+        "references/run-receipt.md",
+        "references/verification-driver.md"
+      ]
+    },
+    {
+      "name": "writing-agent-instructions",
+      "version": "0.55.0",
+      "files": [
+        "SKILL.md",
+        "assets/global-AGENTS.md",
+        "assets/global-CLAUDE.md",
+        "references/global-instructions.md",
+        "references/learning-loop.md",
+        "references/memory-hygiene.md",
+        "references/repository-instructions.md",
+        "references/retrospective.md",
+        "references/session-mining.md",
+        "references/skills.md"
+      ]
+    }
+  ]
+}

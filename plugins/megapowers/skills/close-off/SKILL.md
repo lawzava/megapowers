@@ -1,7 +1,6 @@
 ---
 name: close-off
-description: Use only when the user invokes it at the end of a session, to confirm the task is complete, record what the session learned, and clean up what the session started.
-when_to_use: "Trigger phrases: close off, close off this session, close out the session, end of session cleanup, wrap up and clean up."
+description: "Use only when the user invokes close-off at the end of a session to confirm completion, record learnings, and clean up what the session started. Covers close off, close out the session, end-of-session cleanup, and wrap up and clean up."
 disable-model-invocation: true
 metadata:
   short-description: End-of-session completion check, learnings, and cleanup

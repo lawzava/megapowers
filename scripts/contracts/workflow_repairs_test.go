@@ -21,10 +21,10 @@ var requiredSkillFacts = map[string][]string{
 		"native goal",
 		"announces the next step",
 		"two or three",
-		"`continue`",
-		"`coverage`",
-		"`holdout`",
-		"`decisions`",
+		"record it as blocked",
+		"check briefs against every done criterion",
+		"hidden acceptance scenarios with a content manifest",
+		"choices made with the journal, riskiest first",
 		"blocks nothing",
 		"references/pr-babysit.md",
 	},
@@ -96,7 +96,7 @@ var requiredSkillFacts = map[string][]string{
 		"prerequisites have passed",
 	},
 	"safe-effects": {
-		"under the user's name", "credential stores", "i allow", "say whether it is authorized",
+		"under the user's name", "tools and access this session exposes", "never borrow another tool's saved login", "i allow", "say whether it is authorized",
 		"paid batch",
 	},
 	"systematic-debugging": {
@@ -174,7 +174,7 @@ func normalized(body string) string {
 // the doctor's fix must name the plugin-qualified value.
 func TestDoctorFixesNameQualifiedStyle(t *testing.T) {
 	root := repoRoot(t)
-	fixes := read(t, root, "plugins/megapowers/skills/megapowers-doctor/references/fixes.md")
+	fixes := read(t, root, "extras/skills/megapowers-doctor/references/fixes.md")
 	requireContains(t, fixes, `"outputStyle": "megapowers:Megapowers"`, "doctor fixes")
 }
 
@@ -226,8 +226,7 @@ func TestExperimentalStatusPinned(t *testing.T) {
 		status[skill.Name] = skill.Status
 	}
 	// autonomous-run: runtime resume and compaction recovery are unproven.
-	// megapowers-doctor: no behavioral validation yet.
-	for _, name := range []string{"autonomous-run", "megapowers-doctor"} {
+	for _, name := range []string{"autonomous-run"} {
 		if status[name] != "experimental" {
 			t.Errorf("%s status = %q, want experimental", name, status[name])
 		}

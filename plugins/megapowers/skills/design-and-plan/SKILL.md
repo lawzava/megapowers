@@ -1,7 +1,6 @@
 ---
 name: design-and-plan
-description: Use to specify non-trivial behavior or interfaces, resolve requirements or tradeoffs, or produce a multi-step implementation plan. Do not use for a mechanical edit, routine status update, or execution of a settled plan.
-when_to_use: "Trigger phrases: write a spec, plan the implementation, define requirements, compare design tradeoffs, architecture for a new feature or interface."
+description: "Use to specify non-trivial behavior or interfaces, define requirements, compare architecture or design tradeoffs, or produce a multi-step implementation plan. Covers write a spec and plan the implementation. Not for mechanical edits, routine status updates, or execution of a settled plan."
 metadata:
   short-description: Specification, tradeoffs, and executable plan before building
 ---

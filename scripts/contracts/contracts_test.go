@@ -124,7 +124,7 @@ func TestDocsContract(t *testing.T) {
 	active := []string{"README.md", "SECURITY.md", "CONTRIBUTING.md", "docs/install.md", "docs/orchestration.md", "docs/harness-support.md", "docs/advanced/independent-review.md", "docs/advanced/evals.md", "plugins/megapowers/README.md", "evals/README.md"}
 	for _, rel := range active {
 		body := read(t, root, rel)
-		for _, removed := range []string{"OpenCode", "models.toml", "delegates.toml", "model catalog", "mega-orchestration", "mega-guardrails"} {
+		for _, removed := range []string{"models.toml", "delegates.toml", "model catalog", "mega-orchestration", "mega-guardrails"} {
 			requireAbsent(t, body, removed, rel)
 		}
 	}
@@ -269,15 +269,16 @@ func TestSkillContracts(t *testing.T) {
 		if fields["name"] != name {
 			t.Errorf("%s name = %q", rel, fields["name"])
 		}
-		for _, field := range []string{"description", "when_to_use", "metadata.short-description"} {
+		for _, field := range []string{"description", "metadata.short-description"} {
 			if strings.TrimSpace(fields[field]) == "" {
 				t.Errorf("%s missing %s", rel, field)
 			}
 		}
-		// Claude Code truncates each catalog entry, description plus
-		// when_to_use, at 1,536 characters combined.
-		if listed := len(fields["description"]) + len(fields["when_to_use"]); listed > 1536 {
-			t.Errorf("%s description plus when_to_use is %d characters, limit 1536", rel, listed)
+		if _, exists := fields["when_to_use"]; exists {
+			t.Errorf("%s has nonportable when_to_use", rel)
+		}
+		if listed := len([]rune(fields["description"])); listed > 1024 {
+			t.Errorf("%s description is %d characters, limit 1024", rel, listed)
 		}
 		words := len(strings.Fields(skillBody))
 		totalWords += words
@@ -501,7 +502,7 @@ func TestValidationContract(t *testing.T) {
 	for _, marker := range []string{"deadline(ctx", "plugins/megapowers", ".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "go\", \"test\", \"./...", "go\", \"vet\", \"./...", "checkPluginFolderHoldsNoTests(root)"} {
 		requireContains(t, implementation, marker, "validation implementation")
 	}
-	for _, removed := range []string{"OpenCode", "models.toml", "delegates.toml", "skill-router", "copied-agent"} {
+	for _, removed := range []string{"models.toml", "delegates.toml", "skill-router", "copied-agent"} {
 		requireAbsent(t, implementation, removed, "validation implementation")
 	}
 }
@@ -509,7 +510,7 @@ func TestValidationContract(t *testing.T) {
 func TestMemoryHygieneContract(t *testing.T) {
 	root := repoRoot(t)
 	tmp := t.TempDir()
-	tool := "./plugins/megapowers/skills/writing-agent-instructions/scripts/memory-audit.go"
+	tool := "./extras/scripts/writing-agent-instructions/memory-audit.go"
 	write := func(name, records string) string {
 		t.Helper()
 		path := filepath.Join(tmp, name)

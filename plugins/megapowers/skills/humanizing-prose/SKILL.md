@@ -1,7 +1,6 @@
 ---
 name: humanizing-prose
-description: Use when the task itself is to draft, rewrite, edit, or preserve human-facing prose for clarity, attribution, or proportion; do not select merely because other work ends with a response.
-when_to_use: "Trigger phrases: rewrite this, make it read human, remove AI slop, no em dashes, tighten this doc, draft the announcement, edit the blog post, polish the PR description, sounds robotic, write it in my style, draft the Slack message, write the Linear or Jira comment, ticket description, write it so a non-engineer understands, write normally."
+description: "Use when drafting, rewriting, editing, or preserving human-facing prose for clarity, attribution, proportion, or the user's own style. Covers make it read human, remove AI slop or robotic phrasing, no em dashes, tighten this doc, write normally, and explain it to a non-engineer. Applies to announcements, blog posts, PR descriptions, Slack messages, Linear or Jira comments, and ticket descriptions. Do not select merely because other work ends with a response."
 metadata:
   short-description: Draft or edit human-facing prose without AI-slop markers
 ---

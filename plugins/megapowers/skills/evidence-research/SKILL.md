@@ -1,7 +1,6 @@
 ---
 name: evidence-research
-description: Use to research a decision that needs evidence beyond the repository, such as current upstream behavior, historical rationale, cross-system incidents, or contested claims. Do not use for repository-only code tracing or a summary of provided material.
-when_to_use: "Trigger phrases: investigate disputed claims, compare current upstream options, why did we do X, what changed outside this repository, what evidence would settle this decision."
+description: "Use to research a decision needing evidence beyond the repository: current upstream options or behavior, historical rationale, cross-system incidents, disputed claims, or what changed outside the repo. Ask what evidence would settle the decision. Not for repository-only code tracing or summaries of provided material."
 metadata:
   short-description: Question framing and evidence classification beyond the repo
 ---

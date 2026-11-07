@@ -1,82 +1,54 @@
-# Run state tool
+# Run state
 
-`scripts/run-state.go` writes the deterministic parts of `.megapowers/run/<id>/`.
-Judgment stays in the skill.
+Use normal file and Git tools to maintain `.megapowers/run/<id>/`.
+Keep it outside version control with a local exclude entry. Refuse to overwrite
+an existing run. Keep the charter, checkpoint, append-only journal, and handoff
+private. If files cannot be written, keep the charter and latest checkpoint
+in the conversation.
 
-Run it from the worktree root or pass `--repo DIR`:
+- Initialize a charter with the objective and explicit done criteria (C1, C2,
+  and so on). Complete placeholders before delegating.
+- Checkpoint UTC time, workspace, branch, worktree, HEAD, dirty state, milestone,
+  evidence, blockers, and next safe action. Refresh the handoff.
+- Append journal evidence, decisions and reasons. For an autonomous decision,
+  record risk (low, medium, high) and reversal cost. Review high risks first.
+- On resume, compare each saved checkout field with live Git state. Reconcile
+  mismatches before affected work. Inspect the journal tail, blockers, next
+  action, runtime state, external state, artifact identities, delegate ownership,
+  and remaining effect authority.
+- Count continuations for the same item across context resets. Use a default
+  cap of three unless agreed otherwise. At the cap, record the item as blocked
+  and report it instead of silently restarting its count.
+- Check that each implementer or verifier brief names every done criterion
+  without changing its meaning. A matching ID alone is insufficient.
+- Keep holdout scenarios outside the repository and worktree. Record their
+  canonical location and a SHA-256 manifest of relative paths and contents.
+  Reject empty sets, symlinks and non-regular files. Compare the manifest on
+  resume. Rebaseline only with user approval, recording a high-risk decision.
+  Keep holdout paths and scenario contents out of implementer briefs; only the
+  verifier receives them. Path checks do not prevent an agent reading content.
 
-```bash
-go run <skill-dir>/scripts/run-state.go init --id ID --objective TEXT
-go run <skill-dir>/scripts/run-state.go checkpoint --id ID --milestone TEXT --next TEXT [--blocker TEXT ...] [--evidence TEXT ...]
-go run <skill-dir>/scripts/run-state.go journal --id ID --event KIND --evidence TEXT [--decision TEXT --why TEXT [--risk low|medium|high --if-wrong TEXT]]
-go run <skill-dir>/scripts/run-state.go decisions --id ID
-go run <skill-dir>/scripts/run-state.go resume --id ID
-go run <skill-dir>/scripts/run-state.go continue --id ID --item TEXT [--max N]
-go run <skill-dir>/scripts/run-state.go coverage --id ID --brief FILE [--lane implementer|verifier]
-go run <skill-dir>/scripts/run-state.go holdout --id ID --dir DIR [--rebaseline REASON]
-```
+Stop affected work and reconcile missing criteria, leaked holdouts, or changed
+holdout bytes. Record oracle results, not intent. Never rewrite the journal.
 
-- `init` creates the run directory and a `charter.md` skeleton with the
-  objective filled in; complete the other sections by hand. It adds
-  `.megapowers/` to `.git/info/exclude` only when Git does not already
-  ignore it. It refuses an existing run.
-- `checkpoint` records UTC time, workspace, branch, worktree, HEAD, dirty
-  state, milestone, evidence, blockers, and next safe action, then rewrites
-  `handoff.md`.
-- `journal` appends one JSON line. Record oracle evidence, not intent. Add
-  `--decision` with `--why` to record the reason behind a choice. For a
-  choice made without the user, add `--risk low|medium|high` with
-  `--if-wrong` naming what it costs to reverse.
-- `decisions` lists every journaled decision, `high` risk first, then
-  `medium`, `low`, and unrated, in journal order within a level. It prints
-  `decisions: N` first.
-- `resume` compares the latest checkpoint with the live checkout and prints
-  `match` or `mismatch: recorded X, live Y` per field, the journal tail, the
-  next safe action, and blockers. With a registered holdout it also prints
-  `holdout: match` or `holdout: mismatch` and exits 3 on drift.
-- `continue` journals one automatic continuation on an item and prints
-  `continuation N of M`. Once the item has used its cap (default 3), it
-  journals one `blocked` record and exits 4 on every later call. Pass the
-  same `--item` text each time; the count comes from the journal, so it
-  survives compaction.
-- `coverage` reads the `C1`, `C2`, ... IDs under `## Done criteria` in the
-  charter and lists any the saved brief or handoff does not name. It refuses
-  a charter whose criteria still say `(fill in`. A named ID does not show
-  that the brief kept the criterion's meaning; it catches a criterion that
-  dropped out entirely. Once a holdout is registered, `coverage` also exits
-  3 when the brief names the holdout directory, unless `--lane verifier`
-  marks the lane that runs the scenarios. It checks the path, not
-  paraphrased scenario content.
-- `holdout` registers acceptance scenarios kept outside the worktree and
-  repository, like a holdout set in model training. It refuses a
-  directory inside either, an empty one, and any symlink or non-regular
-  file, then journals the canonical path and a SHA-256 over every relative
-  path and body. A later call prints `match`, or exits 3 when the
-  directory or any byte changed. `--rebaseline REASON` re-registers a
-  changed set as a `high` risk decision, so `decisions` lists it first;
-  use it only with the user's approval. `journal` refuses the `holdout`
-  event, so a registration cannot be forged. The tool cannot stop an
-  agent from reading the directory; keeping the path out of implementer
-  briefs and context is the control.
+When the user returns, open with the count of waiting decisions, then why now,
+options with costs, a recommendation, and what happens if unanswered. List
+autonomous choices from the journal, riskiest first.
 
-Exit codes: 0 success, 3 resume mismatch, coverage gap, leaked holdout path, or
-changed holdout (stop affected work and reconcile), 4 continuation cap reached (stop that item and report it as
-blocked), 125 tool or usage error, including a symlinked `info/exclude`. Through
-`go run`, any failure exits 1; the final `result:` line carries the real code,
-for example `result: mismatch (exit 3)`.
+## Portable record format
 
-Text is folded to one line and capped at 2000 characters. Files are 0600.
-The journal is never rewritten.
+Use run IDs matching `[a-z0-9][a-z0-9-]{0,62}`. Checkpoint metadata uses
+`- Time:`, `- Workspace:`, `- Branch:`, `- Worktree:`, `- HEAD:`, `- Dirty:`
+and `- Milestone:` lines. Keep Evidence, Blockers and Next safe action sections.
+Use canonical workspace and worktree paths and immutable commit identities.
 
-If Go or a shell is not available, write the same four files by hand, keep
-`.megapowers/` out of version control, and count continuations on each item
-yourself: stop at the cap and report the item as blocked. Where files cannot
-be written, keep the charter and latest checkpoint in the conversation. Keep
-holdout scenarios out of every brief.
-
-These commands replace hand-building the four state files, the exclude
-entry, and the repository, branch, worktree, and HEAD part of resume
-reconciliation. Each checkpoint overwrites `checkpoint.md`, so record artifact
-identities, delegate ownership, and remaining effect authority with
-`--evidence` or `journal`. Runtime and external state still need manual
-reconciliation on resume.
+Write each journal entry as one JSON object per line. Required fields are
+`ts` (UTC timestamp), `event`, `evidence` and `head`. Include `branch`,
+`worktree`, `workspace` and `next` when relevant. Event names `oracle`,
+`continuation`, `blocked` and `holdout` preserve scorecard counts. Use `item`
+for the stable continuation item. Record `decision`, `why`, `risk` and
+`if_wrong` for choices; `risk: "high"` identifies high-risk decisions.
+Holdout registration records use `holdout_dir` and `holdout_sha256`.
+For an approved rebaseline, use a `holdout` event with `decision`, `why` and
+`risk: "high"` so scorecards also count the rebaseline.
+Keep the journal append-only and verify holdout evidence independently.
