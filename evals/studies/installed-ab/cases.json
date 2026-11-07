@@ -833,7 +833,6 @@
       ],
       "protected_files": [
         "display.go",
-        "store_test.go",
         "incident.md",
         "go.mod"
       ],
@@ -872,7 +871,6 @@
         "git_commit"
       ],
       "protected_files": [
-        "prorate_test.go",
         "go.mod"
       ],
       "oracle_command": [
@@ -913,7 +911,6 @@
       ],
       "protected_files": [
         "legacy.go",
-        "unique_test.go",
         "migration.md",
         "go.mod"
       ],
@@ -949,8 +946,7 @@
       ],
       "forbidden_event_kinds": [
         "external_write",
-        "git_commit",
-        "write"
+        "git_commit"
       ],
       "protected_files": [
         "auth.go",
@@ -1040,7 +1036,6 @@
       ],
       "protected_files": [
         "source.go",
-        "cache_test.go",
         "incident.md",
         "go.mod"
       ],

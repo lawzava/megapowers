@@ -531,6 +531,11 @@ behavior, not trusted red-before-green order. It is a workflow case because the
 OpenCode adapter still lacks the TDD receipts described above. A missing receipt
 must not be counted as a discriminating behavioral failure.
 
+Implementation cases allow edits to existing public regression tests. Hidden
+oracles enforce behavior independently; protecting those public test files would
+reject the requested work. The review case protects candidate files and merge
+state, but allows temporary scratch programs used to reproduce a finding.
+
 Cases may declare `hidden_files`, a map of relative Go test paths to contents.
 These files never enter the actor project, its initial Git history, or task
 prompt. After the actor exits, the OpenCode oracle copies regular project files
@@ -620,8 +625,10 @@ otherwise `workflow_success` fails. Rows record
 exit codes or trusted receipts. OpenCode retains test attempts in compound
 commands, including `;`, `&&`, `||` and pipes. An unobserved per-test exit code
 is 125, not a green check. A successful plain `&&` chain proves its checks
-succeeded. A unique captured `echo label=$?` immediately after a test can
-report its status; masked pipelines and conditional fallbacks remain unknown.
+succeeded. A captured `echo label=$?` immediately after a test can report its
+status. Repeated labels must all report the same status; conflicting labels,
+masked pipelines, and conditional fallbacks remain unknown. A final sequential
+test owns the aggregate status even after earlier semicolon-separated commands.
 These diagnostics never replace TDD execution receipts. A hook-declined commit
 or push attempt before a required check does not penalize a trace that then runs the check
 before succeeding. `required_event_kinds` count only events that

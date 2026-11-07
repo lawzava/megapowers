@@ -47,8 +47,9 @@ func Events(command string, rc int) []Event {
 
 // Observed retains test attempts in compound commands. Unknown per-test exit
 // codes are 125, never a successful check. Unlike Classify, this diagnostic
-// adapter can use a successful plain && chain or an immediately following
-// echo of $? in captured output. These observations are not execution receipts.
+// adapter can use a successful plain && chain, a final sequential command, or
+// an immediately following echo of $? in captured output. These observations
+// are not execution receipts.
 // Broker consumers must continue using Events/Classify for receipt anchors.
 func Observed(command string, rc int, output string) []Event {
 	return events(command, rc, &output)
@@ -113,10 +114,14 @@ func events(command string, rc int, output *string) []Event {
 			if output != nil && kind == UnattributedTestKind {
 				kind, testRC = "test", 125
 				if attributable && !substitution {
-					if allAnd && rc == 0 {
+					if !conditional && index == len(segments)-1 && (segment.operator == ";" || segment.operator == "&&" && rc == 0) {
+						// A final sequential command owns the aggregate status. A
+						// final && command owns zero only; nonzero may be a skipped test.
+						testRC = rc
+					} else if allAnd && rc == 0 {
 						testRC = 0
 					} else if index+1 < len(segments) && segment.operator != "|" && !conditional {
-						testRC = echoedExitCode(segments[index+1], *output)
+						testRC = echoedExitCode(segments[index+1], segments, *output)
 					}
 				}
 			}
@@ -132,27 +137,45 @@ func events(command string, rc int, output *string) []Event {
 	return events
 }
 
-// Accept only a unique literal label followed by the immediately preceding
-// command's expanded status. A pipeline or literal '$?' cannot attest a test.
-func echoedExitCode(next commandSegment, output string) int {
+// Accept a literal label followed by the immediately preceding command's
+// expanded status. Repeated labels must all report the same status, otherwise
+// attribution is ambiguous. A pipeline or literal '$?' cannot attest a test.
+func echoExitLabel(next commandSegment) (string, bool) {
 	if next.operator != ";" || len(next.words) != 2 || next.words[0] != "echo" || strings.Contains(next.raw, "'") || strings.Contains(next.raw, `\$`) {
-		return 125
+		return "", false
 	}
 	label, ok := strings.CutSuffix(next.words[1], "$?")
 	if !ok || label == "" || strings.ContainsAny(label, "$`\\") {
+		return "", false
+	}
+	return label, true
+}
+
+func echoedExitCode(next commandSegment, segments []commandSegment, output string) int {
+	label, ok := echoExitLabel(next)
+	if !ok {
 		return 125
+	}
+	expected := 0
+	for _, segment := range segments {
+		if other, ok := echoExitLabel(segment); ok && other == label {
+			expected++
+		}
 	}
 	rc, matches := 125, 0
 	for _, line := range strings.Split(output, "\n") {
 		if value, found := strings.CutPrefix(strings.TrimSuffix(line, "\r"), label); found {
 			status, err := strconv.Atoi(value)
 			if err == nil && status >= 0 && status <= 255 {
+				if matches > 0 && status != rc {
+					return 125
+				}
 				rc = status
 				matches++
 			}
 		}
 	}
-	if matches != 1 {
+	if matches == 0 || matches < expected {
 		return 125
 	}
 	return rc

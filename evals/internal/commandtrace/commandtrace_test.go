@@ -61,6 +61,13 @@ func TestObservedTestAttempts(t *testing.T) {
 		{`cat go.mod; go test ./...; echo "exit=$?"; go vet ./...; echo "vet exit=$?"`, "ok\nexit=0\nvet exit=0\n", 0, 0},
 		{`go test ./...; echo EXIT=$?`, "FAIL\nEXIT=1\n", 0, 1},
 		{`go test ./...; echo EXIT=$?`, "EXIT=0\nEXIT=1\n", 0, 125},
+		{`gofmt -l .; go test ./... 2>&1`, "ok\n", 0, 0},
+		{`gofmt -l .; go test ./... 2>&1`, "FAIL\n", 1, 1},
+		{`cat go.mod; go vet ./... && go test ./...`, "ok\n", 0, 0},
+		{`cat go.mod; false && go test ./...`, "", 1, 125},
+		{`go test ./...; echo "exit=$?"; go run ./cmd/greet --name Ada; echo "exit=$?"`, "ok\nexit=0\nHello, world!\nexit=0\n", 0, 0},
+		{`go test ./...; echo "exit=$?"; go run ./cmd/greet --name Ada; echo "exit=$?"`, "Hello, world!\nexit=0\n", 0, 125},
+		{`go test ./...; echo EXIT=$?`, "EXIT=1\nEXIT=1\n", 0, 1},
 		{`go test ./...; echo EXIT=$?`, "", 0, 125},
 		{`go test ./... || true`, "", 0, 125},
 		{`go test ./... | tail -5`, "", 0, 125},
@@ -72,6 +79,8 @@ func TestObservedTestAttempts(t *testing.T) {
 		{`cd pkg && go test ./...; echo rc=$?`, "rc=0\n", 0, 0},
 		{`go test ./... && go vet ./... &`, "", 0, 125},
 		{`go test ./... &`, "", 0, 125},
+		{`sleep 1 & go test ./...`, "ok\n", 0, 125},
+		{`exit 0; go test ./...`, "", 0, 125},
 		{`true && exit 0 && go test ./...`, "", 0, 125},
 		{`exec true && go test ./...`, "", 0, 125},
 		{`return 0; go test ./...; echo rc=$?`, "rc=0\n", 0, 125},
@@ -87,5 +96,16 @@ func TestObservedTestAttempts(t *testing.T) {
 	}
 	if got := Observed(`echo 'go test ./...'`, 0, ""); len(got) != 0 {
 		t.Fatalf("quoted text classified: %+v", got)
+	}
+}
+
+func TestObservedSequentialAttributionDoesNotChangeBrokerEvents(t *testing.T) {
+	const command = "gofmt -l .; go test ./..."
+	events := Events(command, 0)
+	if len(events) != 1 || events[0].Kind != UnattributedTestKind {
+		t.Fatalf("broker attribution changed: %+v", events)
+	}
+	if events := Classify(command, 0); len(events) != 0 {
+		t.Fatalf("broker accepted untrusted diagnostic: %+v", events)
 	}
 }
