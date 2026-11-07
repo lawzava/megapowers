@@ -61,6 +61,25 @@ func TestOpenCodePreflightOmissionIsRetryable(t *testing.T) {
 	}
 }
 
+func TestOpenCodePreflightRetryPromptBustsCache(t *testing.T) {
+	if got := openCodePreflightPromptFor(1); got != openCodePreflightPrompt {
+		t.Fatalf("first attempt prompt changed: %q", got)
+	}
+	seen := map[string]bool{}
+	for attempt := 1; attempt <= openCodePreflightAttempts; attempt++ {
+		prompt := openCodePreflightPromptFor(attempt)
+		if seen[prompt] {
+			t.Fatalf("attempt %d repeats an earlier prompt", attempt)
+		}
+		seen[prompt] = true
+		for _, name := range publicMegapowersSkillNames {
+			if strings.Contains(prompt, name) {
+				t.Fatalf("attempt %d prompt names expected skill %q", attempt, name)
+			}
+		}
+	}
+}
+
 type openCodeTestActor func(context.Context, actorRequest) (actorResult, error)
 
 func (f openCodeTestActor) Run(ctx context.Context, r actorRequest) (actorResult, error) {

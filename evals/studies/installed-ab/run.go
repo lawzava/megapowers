@@ -4811,6 +4811,16 @@ var errOpenCodePreflightOmission = errors.New("OpenCode preflight omitted expect
 // openCodePreflightAttempts bounds retries for omission-only self-reports.
 const openCodePreflightAttempts = 3
 
+// openCodePreflightPromptFor varies retry wording because an identical prompt
+// hits the provider prompt cache and can repeat the same omission verbatim.
+// Retries never name expected skills, so they cannot coach the inventory.
+func openCodePreflightPromptFor(attempt int) string {
+	if attempt <= 1 {
+		return openCodePreflightPrompt
+	}
+	return fmt.Sprintf("%s Retry %d: a previous inventory was incomplete. Go through the available skills list entry by entry and include every one.", openCodePreflightPrompt, attempt)
+}
+
 func validateOpenCodePreflight(response, arm string) (*openCodeTelemetry, error) {
 	var inventory struct {
 		Skills       []string `json:"skills"`
@@ -4888,7 +4898,7 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 	)
 	for attempt := 1; ; attempt++ {
 		var preflight []byte
-		preflight, elapsed, _, err = capturedCommand(openCodeCommand(ctx, a.Path, probe, env, openCodePreflightPrompt))
+		preflight, elapsed, _, err = capturedCommand(openCodeCommand(ctx, a.Path, probe, env, openCodePreflightPromptFor(attempt)))
 		result.PreflightTrace = preflight
 		if err != nil {
 			return result, err
