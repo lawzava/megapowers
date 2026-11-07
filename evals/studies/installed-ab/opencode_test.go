@@ -90,6 +90,36 @@ func TestOpenCodeDoesNotInventSubagentLifecycle(t *testing.T) {
 	}
 }
 
+func TestOpenCodeExecuteCodeModeEvents(t *testing.T) {
+	// Shape from the baseline's completed Code Mode resource-list call.
+	trace := `{"type":"tool_use","part":{"partID":"part-1","type":"tool","id":"call-1","tool":"execute","state":{"status":"completed","input":{"code":"return await tools.opencode.list_mcp_resources({});"},"output":"{\"resources\":[],\"templates\":[]}","title":"execute","metadata":{"metadata":{"toolCalls":[{"tool":"opencode.list_mcp_resources","status":"completed"}],"truncated":false},"providerCall":{"executed":false}}}}}
+{"type":"text","part":{"text":"No resources found."}}
+{"type":"step_finish","part":{"reason":"stop"}}
+`
+	result, _, err := parseOpenCodeTrace([]byte(trace))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Events) != 3 || result.Events[0].Kind != "command" || result.Events[0].Path != "return await tools.opencode.list_mcp_resources({});" || result.Events[0].RC != 0 || result.Events[1].Kind != "other" || result.Events[2].Kind != "trace_complete" {
+		t.Fatalf("Code Mode events: %+v", result.Events)
+	}
+	classified := strings.Replace(trace, "return await tools.opencode.list_mcp_resources({});", "go test ./...", 1)
+	result, _, err = parseOpenCodeTrace([]byte(classified))
+	if err != nil || len(result.Events) != 3 || result.Events[1].Kind != "test" {
+		t.Fatalf("shared classification: %+v %v", result.Events, err)
+	}
+	failed := strings.Replace(trace, `"status":"completed"`, `"status":"error"`, 1)
+	result, _, err = parseOpenCodeTrace([]byte(failed))
+	if err != nil || result.Events[0].RC == 0 || result.Events[1].RC == 0 {
+		t.Fatalf("masked Code Mode error: %+v %v", result.Events, err)
+	}
+	for _, bad := range []string{strings.Replace(trace, `"tool":"execute"`, `"tool":"execute-unknown"`, 1), strings.Replace(trace, `"code":"return await tools.opencode.list_mcp_resources({});"`, `"code":""`, 1)} {
+		if _, _, err := parseOpenCodeTrace([]byte(bad)); err == nil {
+			t.Fatal("accepted unknown tool or missing code")
+		}
+	}
+}
+
 func TestOpenCodePreservesToolErrorsAndFinalStepText(t *testing.T) {
 	trace := `{"type":"text","part":{"text":"commentary"}}
 {"type":"tool_use","part":{"id":"shell-1","tool":"shell","state":{"status":"error","input":{"command":"go test ./..."},"metadata":{"metadata":{"exit":0}}}}}

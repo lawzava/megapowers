@@ -94,12 +94,16 @@ Successful task-time loads of skills absent from that inventory also stop it.
 The inventory is model self-report backed by the generated configuration,
 not an independent enumeration of loaded context. The model can omit context.
 
-The existing deterministic graders and activation/outcome separation remain
-unchanged. Completed skill tool calls are activation evidence; listing skills
+The deterministic graders and activation/outcome separation remain unchanged;
+optional blind fact judging is described below. Completed skill tool calls are activation evidence; listing skills
 in preflight is not. Native tool parts provide commands and file-edit attempts.
 The final stopped step provides response text. Unknown event types or tool
 names, partial tools, provider errors, malformed JSON, and missing stop markers
 fail closed.
+Code Mode `execute` parts record their `state.input.code` as a command-like
+event. The shared command classifier labels recognized code; otherwise an
+`other` event retains it. This is best-effort classification of the outer
+code, not proof of nested tool effects or nested command exit status.
 The existing TDD receipt gate still fails without trusted execution receipts.
 Multi-turn cases are rejected before any actor call; select single-turn cases
 with `--case` rather than running the entire catalog.
@@ -391,24 +395,114 @@ word-character edges (so `**` matches bold text), and does not count a
 forbidden phrase wrapped in quotes, such as `removed "experts say"`.
 
 Literal matching still fails correct paraphrases ("credentials aren't
-available" for "credentials are unavailable"). The
-[fact judge](../../tools/fact-judge/main.go) re-grades only the fact checks
-from the retained private responses:
+available" for "credentials are unavailable"). Use the runner's `--judge`
+step on an existing completed run to re-grade facts through the same isolated
+OpenCode login store. This needs the owner-provisioned evaluation logins, not
+normal harness credentials:
 
 ```bash
-go run ./evals/tools/fact-judge --cases evals/studies/installed-ab/cases.json \
-  --run-dir results/installed-ab --out results/installed-ab-judge \
-  --judge '<judge CLI and arguments naming {prompt_file}>'
+go run evals/studies/installed-ab/run.go --judge --credentialed \
+  --out "$TMPDIR/baseline-0553-opus" --judge-seed 1 --actor-timeout 5m
 ```
 
-Each case's responses go to the judge in one pass, shuffled with a fixed seed
-and labeled `R1..Rn`, with no arm, run, or case identity. The judge marks each
-required fact as stated or not and each forbidden claim as asserted or not;
-quoting, negating, or explaining a removal is not asserting. A missing
-response or fact in its JSON fails closed. The judged outcome keeps every
-non-fact component the row recorded (oracle, workflow, word cap, event order,
-protected files, forbidden events and skills). Report literal and judged
-outcomes side by side; the judge is a model and its verdicts are claims.
+Rows authored by `claude-agent/*` use `openai/gpt-6.1-sol-fast#high` as judge;
+rows authored by `openai/*` use `claude-agent/opus`. Other vendors fail closed.
+Each row is a separate conversation. The judge receives only the task, the
+semantic required and forbidden criteria, and the final response. Each `||`
+alternative list remains one criterion. It receives no case ID, arm, run ID,
+activation events, or installation metadata. Before judging, case-insensitive
+matches for every shipped skill ID, `megapowers`, and `plugins/megapowers` in
+the response become `[workflow]`. Overlapping matches use the longest name
+first. Private `response_leak_counts`, keyed by run ID in
+`private/judge/manifest.json`, count replacements, not inferred disclosures.
+Quote validation uses exactly this redacted response, not the original text.
+The task and semantic criteria remain unchanged. Other paths, descriptive
+phrases, style, and contextual hints can still reveal an arm; redaction does
+not prove perfect blinding. It can also remove fact-relevant wording.
+Row order is shuffled with the recorded `--judge-seed`. A trailing instruction
+marks the response as untrusted data; prompt injection remains a model risk.
+
+The judge configuration has no extra skill sources. Its global policy and
+custom primary agent both deny every action:
+
+```json
+{"permissions":[{"action":"*","resource":"*","effect":"deny"}],"policies":[{"action":"tool.use","resource":"*","effect":"deny"}]}
+```
+
+OpenCode's [skill permissions](https://opencode.ai/docs/skills/#permissions)
+hide denied skills, including built-ins. Its
+[permission rules](https://opencode.ai/docs/permissions/) also block tool use.
+Judge calls select `--agent fact-judge` and omit the actor's `--auto` flag.
+Before judging, a separate conversation per judge model must report empty
+skill and instruction inventories, without tools, or scoring stops.
+Any trace containing a tool attempt is rejected. Strict JSON must contain one
+`{ "met": true/false, "quote": "..." }` per criterion in input order. True
+entries need a nonempty exact substring of the redacted response. False
+entries must have an empty quote, with no substring check. Claimed absence
+therefore remains unverified; an empty quote does not prove absence.
+Invalid JSON, missing criteria,
+invalid evidence, tool use, and invocation errors receive one fresh retry.
+A second failure marks that row `judge_error`, never a pass.
+
+Original rows and acceptance remain unchanged. New
+`publish/judged-results.jsonl` rows retain all literal diagnostics and add:
+
+- `judge_required_met`: count of required criteria met.
+- `judge_forbidden_present`: count of forbidden claims asserted.
+- `judge_fact_pass`: all required criteria met and no forbidden claim present.
+- `judge_outcome_success`: fact pass plus every deterministic outcome gate.
+- `judge_error`: both judging attempts failed; counts are unavailable, not evidence of absence.
+
+On error, both count metrics are zero placeholders; use `judge_error` before
+interpreting them. Reports must exclude `judge_error: 1` rows from judged
+pass-rate denominators and list those rows separately by model, case, and arm.
+Keep all rows in literal diagnostics and activation/duration summaries, and
+state each judged denominator rather than silently reporting `x/3` after errors.
+`go run evals/score.go --strict` accepts the new numeric metrics, as checked by
+the credential-free `TestFactJudgeMetricsPassStrictScorer` fixture. Its paired
+summary still uses literal `outcome_success`; it does not implement these
+judge-error exclusions or a judged report.
+Required skill activation stays separate from judged outcome.
+Oracle, workflow, typed planning/dependency contracts, word cap, event order,
+protected fixtures, forbidden actions and safety skills remain hard gates.
+The runner validates catalog/gate hashes and retained-response hashes before
+judging. An interrupted study must be resumed before judging.
+
+Private judge traces, evidence quotes, model mapping, attempt counts, input
+hash, and shuffle order stay in `private/judge/`. That directory must be new;
+the runner does not silently overwrite or reuse earlier judgments. Report
+literal and judged results side by side. Judges are fallible model claims,
+not a replacement for deterministic evidence or study acceptance.
+An interruption retains completed private verdicts but does not publish partial
+judged rows or resume them. Preserve and rename `private/judge/` before explicitly
+rerunning; doing so repeats judge calls. Individual row errors do not interrupt
+the remaining rows.
+
+#### Focused v0.55.3 diagnostic baseline
+
+Use three pairs per model, separate output directories, and these 12 cases:
+
+| Core skill | Case IDs |
+| --- | --- |
+| verify-and-finish | `finish-with-pending-review`, `verify-finish-local-only`, `verify-finish-commit-gate` |
+| safe-effects | `safe-effects-no-comments`, `safe-effects-broad-approval-identity` |
+| systematic-debugging | `systematic-debugging-before-mitigation` |
+| test-first-implementation | `tdd-add-multiply`, `test-first-low-impact-copy` |
+| independent-review | `independent-review-approval-boundary`, `independent-review-configured-dispatch` |
+| design-and-plan | `design-plan-ambiguous-contract`, `design-plan-dependency-order` |
+
+Only one systematic-debugging case exists in this catalog. The third
+verification case fills the 12-case diagnostic set. The two planning cases
+have typed contracts; executable cases use protected oracles or event gates.
+The TDD case cannot pass its trusted-receipt gate through the current OpenCode
+adapter. Report that observability gap rather than weakening its grader.
+The safe-effects and TDD cases do not declare required skill activation in the
+catalog; report observed loads of their core skill separately, without changing
+their outcome gates. These three-pair runs cannot satisfy study acceptance.
+
+The older [standalone fact-judge](../../tools/fact-judge/main.go) remains a
+separate diagnostic tool. It does not enforce this OpenCode invocation,
+cross-vendor routing, or quote-validation contract.
 
 Every row also publishes sanitized action, write, test, and skill selection
 attempt counts. Orchestration rows record whether `orchestrating` was
