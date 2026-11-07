@@ -86,19 +86,22 @@ for Claude.
 
 ## Corpus and gates
 
-`cases.json` ships at least three recall probes per model-selectable skill
-and at least ten no-skill probes. Skills with
-`disable-model-invocation: true` in Claude Code, or
-`policy.allow_implicit_invocation: false` in Codex's `agents/openai.yaml`,
-are exempt from implicit recall. The runner reads each harness's native policy.
-`grill-me` has separate explicit-invocation and implicit non-selection
-probes. Every probe records provenance.
+`cases.json` ships at least three recall probes per implicitly invoked skill
+and at least ten no-skill probes. `grill-me` and `close-off` instead have
+explicit-invocation and implicit non-selection probes. Claude Code relies on
+their descriptions beginning "Use only when the user explicitly asks"; this
+is model guidance, not an enforced policy. Codex also uses
+`policy.allow_implicit_invocation: false` in `agents/openai.yaml`.
+The runner reads these separate boundaries to omit implicit recall minimums,
+not precision checks. Every probe records provenance.
 
 Explicit prompts use the Codex `$megapowers:` form in the corpus; the runner
 converts it to Claude's `/megapowers:` form before execution and hashes the
-executed prompt. The implicit interview probe permits `design-and-plan` for
-requirements discovery while still forbidding `grill-me`. This is a
-case-specific co-selection, not a scorer or gate exception. Setup, upgrade,
+executed prompt. The implicit plan-assessment probe permits `design-and-plan`
+while forbidding `grill-me`; the handoff-status probe permits `verify-and-finish`
+while forbidding `close-off`. The former interview and cleanup requests now
+match Claude's description-only triggers, so they are no longer negative probes.
+These are case-specific co-selections, not scorer or gate exceptions. Setup, upgrade,
 and doctor skills are repository-only extras and have no shipped-skill probes.
 
 `gates.json` enforces for the harnesses in `enforce_harnesses` (currently

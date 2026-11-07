@@ -16,8 +16,8 @@ The frontmatter `description` carries the actual trigger for Codex and is the
 primary discovery text in the Agent Skills standard. Put what the skill does,
 when it applies, and the narrowest useful boundary there. Front-load the main
 use case because clients may shorten catalog entries. In this repository,
-use only `name`, `description` (at most 1024 characters), and optionally
-`disable-model-invocation` in frontmatter; values are plain text. Fold trigger
+use only `name` and `description` (at most 1024 characters) in frontmatter,
+as plain text. Fold trigger
 phrases into `description`. Keep implicit invocation enabled unless the
 user explicitly requests an invocation-only workflow.
 
@@ -25,11 +25,12 @@ For an explicit-only workflow, configure each supported harness separately:
 
 - For ChatGPT and Codex, set `policy.allow_implicit_invocation: false` in
   `agents/openai.yaml`. Keep the skill available for explicit invocation.
-- For Claude Code, set `disable-model-invocation: true` in `SKILL.md`
-  frontmatter.
+- For Claude Code and OpenCode, begin the description with an explicit-user-request
+  condition. This repository omits invocation-policy frontmatter for Anthropic
+  directory compatibility; the description is model guidance, not enforcement.
 
-One field does not configure the other harness. When a distributed skill must
-be explicit-only in both, set both controls and verify both clients.
+Codex's policy does not configure the other harnesses. Verify explicit invocation
+and implicit non-selection separately in each supported client.
 
 ## Write the entrypoint
 

@@ -15,36 +15,50 @@ func TestNativeCodexInvocationPolicy(t *testing.T) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "..", "SKILL.md"), []byte("---\nname: manual\n---\nBody\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "..", "SKILL.md"), []byte("---\nname: manual\ndescription: Use when testing.\n---\nBody\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "openai.yaml"), []byte("policy:\n  allow_implicit_invocation: false\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := loadUnselectableSkills(root, map[string]bool{"manual": true}, "codex")
+	got, err := loadUserInvokedOnlySkills(root, map[string]bool{"manual": true}, "codex")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !got["manual"] {
 		t.Fatal("Codex native explicit-only policy was ignored")
 	}
-	got, err = loadUnselectableSkills(root, map[string]bool{"manual": true}, "claude")
+	got, err = loadUserInvokedOnlySkills(root, map[string]bool{"manual": true}, "claude")
 	if err != nil || got["manual"] {
 		t.Fatalf("Claude must not use Codex policy: %v, %v", got, err)
 	}
 	if err := os.Remove(filepath.Join(dir, "openai.yaml")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "..", "SKILL.md"), []byte("---\nname: manual\ndisable-model-invocation: true\n---\nBody\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "..", "SKILL.md"), []byte("---\nname: manual\ndescription: Use only when the user explicitly asks for a manual test.\n---\nBody\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	got, err = loadUnselectableSkills(root, map[string]bool{"manual": true}, "codex")
+	got, err = loadUserInvokedOnlySkills(root, map[string]bool{"manual": true}, "codex")
 	if err != nil || got["manual"] {
-		t.Fatalf("Codex must not use Claude policy: %v, %v", got, err)
+		t.Fatalf("Codex must not treat description guidance as native policy: %v, %v", got, err)
 	}
-	got, err = loadUnselectableSkills(root, map[string]bool{"manual": true}, "claude")
+	got, err = loadUserInvokedOnlySkills(root, map[string]bool{"manual": true}, "claude")
 	if err != nil || !got["manual"] {
-		t.Fatalf("Claude policy missing: %v, %v", got, err)
+		t.Fatalf("Claude description-only boundary missing: %v, %v", got, err)
+	}
+}
+
+func TestShippedUserInvokedOnlyBoundaries(t *testing.T) {
+	root, err := locateRoot("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := map[string]bool{"grill-me": true, "close-off": true}
+	for _, harness := range []string{"claude", "codex"} {
+		got, err := loadUserInvokedOnlySkills(root, catalog, harness)
+		if err != nil || !got["grill-me"] || !got["close-off"] {
+			t.Errorf("%s user-invoked-only boundaries = %v, %v", harness, got, err)
+		}
 	}
 }
 
@@ -100,7 +114,7 @@ func TestExplicitPromptUsesHarnessSyntax(t *testing.T) {
 }
 
 func TestCoSelectionStillRejectsImplicitInterviewAndMissingRequiredSkill(t *testing.T) {
-	catalog := map[string]bool{"grill-me": true, "design-and-plan": true, "systematic-debugging": true, "verify-and-finish": true}
+	catalog := map[string]bool{"grill-me": true, "close-off": true, "design-and-plan": true, "systematic-debugging": true, "verify-and-finish": true}
 	for _, tc := range []struct {
 		probe      probeCase
 		selections []string
@@ -108,6 +122,8 @@ func TestCoSelectionStillRejectsImplicitInterviewAndMissingRequiredSkill(t *test
 	}{
 		{probeCase{Kind: "near-miss", Allowed: []string{"design-and-plan"}}, []string{"design-and-plan"}, "pass"},
 		{probeCase{Kind: "near-miss", Allowed: []string{"design-and-plan"}}, []string{"design-and-plan", "grill-me"}, "fail"},
+		{probeCase{Kind: "near-miss"}, []string{"close-off"}, "fail"},
+		{probeCase{Kind: "explicit", Expected: "close-off"}, []string{"close-off"}, "pass"},
 		{probeCase{Kind: "paraphrase", Expected: "systematic-debugging", Allowed: []string{"verify-and-finish"}}, []string{"systematic-debugging", "verify-and-finish"}, "pass"},
 		{probeCase{Kind: "paraphrase", Expected: "systematic-debugging", Allowed: []string{"verify-and-finish"}}, []string{"verify-and-finish"}, "fail"},
 	} {

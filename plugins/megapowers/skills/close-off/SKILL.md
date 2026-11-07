@@ -1,7 +1,6 @@
 ---
 name: close-off
-description: "Use only when the user invokes close-off at the end of a session to confirm completion, record learnings, and clean up what the session started. Covers close off, close out the session, end-of-session cleanup, and wrap up and clean up."
-disable-model-invocation: true
+description: "Use only when the user explicitly asks to close off the session to confirm completion, record learnings, and clean up what the session started. Covers close off, close out the session, end-of-session cleanup, and wrap up and clean up."
 ---
 
 # Close Off

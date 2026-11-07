@@ -159,7 +159,7 @@ var forbiddenSkillText = map[string][]string{
 	"writing-agent-instructions": {"in Go"},
 }
 
-// forbiddenEverywhere applies to every shipped skill body and the output style.
+// forbiddenEverywhere applies to every shipped skill body and the extras output style.
 var forbiddenEverywhere = []string{
 	"Write all new helper code",
 	"Python or another scripting language",
@@ -194,22 +194,24 @@ func TestSkillRequiredFacts(t *testing.T) {
 			}
 		})
 	}
-	style := read(t, root, "plugins/megapowers/output-styles/megapowers.md")
+	style := read(t, root, "extras/output-styles/megapowers.md")
 	for _, needle := range forbiddenEverywhere {
 		requireAbsent(t, style, needle, "output style")
 	}
 }
 
-// close-off ends sessions, so both harnesses must keep it explicit-only.
-func TestCloseOffExplicitOnly(t *testing.T) {
+// Claude relies on descriptions; Codex also has native explicit-only policy.
+func TestUserInvokedOnlySkills(t *testing.T) {
 	root := repoRoot(t)
-	skill := read(t, root, "plugins/megapowers/skills/close-off/SKILL.md")
-	if !regexp.MustCompile(`(?m)^disable-model-invocation: true$`).MatchString(skill) {
-		t.Error("close-off lacks disable-model-invocation: true")
-	}
-	policy := read(t, root, "plugins/megapowers/skills/close-off/agents/openai.yaml")
-	if !regexp.MustCompile(`(?m)^policy:\n  allow_implicit_invocation: false$`).MatchString(policy) {
-		t.Error("close-off openai.yaml lacks policy.allow_implicit_invocation: false")
+	for _, name := range []string{"close-off", "grill-me"} {
+		skill := read(t, root, "plugins/megapowers/skills/"+name+"/SKILL.md")
+		if !regexp.MustCompile(`(?m)^description: "Use only when the user explicitly asks`).MatchString(skill) {
+			t.Errorf("%s lacks a leading explicit-user-request description condition", name)
+		}
+		policy := read(t, root, "plugins/megapowers/skills/"+name+"/agents/openai.yaml")
+		if !regexp.MustCompile(`(?m)^policy:\n  allow_implicit_invocation: false$`).MatchString(policy) {
+			t.Errorf("%s openai.yaml lacks policy.allow_implicit_invocation: false", name)
+		}
 	}
 }
 

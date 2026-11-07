@@ -497,10 +497,24 @@ func TestTriggerRecallCorpusPolicy(t *testing.T) {
 		t.Errorf("no-skill pool has %d probes", noSkill)
 	}
 	for _, skill := range catalog.Skills {
-		frontmatter := read(t, repo, "plugins/megapowers/skills/"+skill.Name+"/SKILL.md")
-		disabled := strings.Contains(strings.SplitN(frontmatter, "---", 3)[1], "disable-model-invocation: true")
+		frontmatter := strings.SplitN(read(t, repo, "plugins/megapowers/skills/"+skill.Name+"/SKILL.md"), "---", 3)[1]
+		disabled := strings.Contains(frontmatter, `description: "Use only when the user explicitly asks`)
 		if disabled && counts[skill.Name] != 1 {
-			t.Errorf("explicit-only skill %s has %d expected probes, want its single explicit probe", skill.Name, counts[skill.Name])
+			t.Errorf("user-invoked-only skill %s has %d expected probes, want its single explicit probe", skill.Name, counts[skill.Name])
+		}
+		if disabled {
+			explicit, implicit := false, false
+			for _, c := range cases.Cases {
+				if c.Expected == skill.Name && c.Kind == "explicit" {
+					explicit = true
+				}
+				if c.ID == skill.Name+"-implicit" && c.Kind == "near-miss" && c.Expected == "" {
+					implicit = true
+				}
+			}
+			if !explicit || !implicit {
+				t.Errorf("%s must keep explicit invocation and implicit non-selection coverage", skill.Name)
+			}
 		}
 		if !disabled && counts[skill.Name] < 3 {
 			t.Errorf("selectable skill %s has %d probes", skill.Name, counts[skill.Name])

@@ -112,7 +112,7 @@ guidance.
 
 ## Communication
 
-<!-- Delete this section if you select the megapowers:Megapowers output style; it covers the same rules. -->
+<!-- Delete this section if you manually install and select the repository-only Megapowers output style; it covers the same rules. -->
 
 - Start with the answer, result, or status, and end when the content ends.
 - Cite `path:line` or the command that produced the evidence.

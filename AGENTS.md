@@ -44,13 +44,13 @@ condition, or measurement.
 
 ## Skills
 
-- Skill frontmatter contains only `name`, a task-triggering `description` (at most 1024 characters),
-  and optionally `disable-model-invocation`; values are plain text.
+- Skill frontmatter contains only `name` and a task-triggering `description`
+  (at most 1024 characters), as plain text.
   Explicit-only Codex policy belongs in
   `agents/openai.yaml`. Use no `when_to_use`; put trigger phrases in `description`.
   The shipped plugin contains no executable code, hooks or MCP entries.
   Quote YAML values containing colons. Components remain at
-  plugin root under `skills/` and `output-styles/`.
+  plugin root under `skills/`.
 - Keep judgment in skills and deterministic policy in tests or tools. Required
   references are linked directly; optional details load only when relevant.
 - Do not commit generated agent workspaces or planning artifacts under

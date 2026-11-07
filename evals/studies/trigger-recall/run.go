@@ -350,11 +350,11 @@ func main() {
 		harnesses = []string{"claude", "codex"}
 	}
 	for _, name := range harnesses {
-		unselectable, err := loadUnselectableSkills(root, catalog, name)
+		userInvokedOnly, err := loadUserInvokedOnlySkills(root, catalog, name)
 		if err != nil {
 			fatal(err)
 		}
-		if err := validateConfiguration(cases, gates, catalog, unselectable); err != nil {
+		if err := validateConfiguration(cases, gates, catalog, userInvokedOnly); err != nil {
 			fatal(fmt.Errorf("%s: %w", name, err))
 		}
 	}
@@ -452,15 +452,15 @@ func loadCatalog(root string) (map[string]bool, error) {
 	return names, nil
 }
 
-var disableModelInvocationPattern = regexp.MustCompile(`(?m)^disable-model-invocation:\s*true\s*$`)
+var explicitRequestDescriptionPattern = regexp.MustCompile(`(?m)^description: ["']?Use only when the user explicitly asks\b`)
 
-// Explicit-only skills stay in precision and explicit-invocation accounting.
-// Only each harness's native policy can exempt a skill from implicit recall.
-func loadUnselectableSkills(root string, catalog map[string]bool, harness string) (map[string]bool, error) {
+// User-invoked-only skills stay in precision and explicit-invocation accounting.
+// Claude relies on description guidance, not an enforced invocation policy.
+func loadUserInvokedOnlySkills(root string, catalog map[string]bool, harness string) (map[string]bool, error) {
 	if harness != "claude" && harness != "codex" {
 		return nil, errors.New("--harness must be claude or codex")
 	}
-	unselectable := make(map[string]bool)
+	userInvokedOnly := make(map[string]bool)
 	for name := range catalog {
 		dir := filepath.Join(root, "plugins", "megapowers", "skills", name)
 		content, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
@@ -468,7 +468,7 @@ func loadUnselectableSkills(root string, catalog map[string]bool, harness string
 			return nil, err
 		}
 		if harness == "claude" {
-			unselectable[name] = disableModelInvocationPattern.MatchString(frontmatterOf(string(content)))
+			userInvokedOnly[name] = explicitRequestDescriptionPattern.MatchString(frontmatterOf(string(content)))
 			continue
 		}
 		policy, err := os.ReadFile(filepath.Join(dir, "agents", "openai.yaml"))
@@ -482,9 +482,9 @@ func loadUnselectableSkills(root string, catalog map[string]bool, harness string
 		if err != nil {
 			return nil, fmt.Errorf("%s/agents/openai.yaml: %w", name, err)
 		}
-		unselectable[name] = disabled
+		userInvokedOnly[name] = disabled
 	}
-	return unselectable, nil
+	return userInvokedOnly, nil
 }
 
 // The shipped policy uses a block mapping. Reject unsupported spellings instead
@@ -610,7 +610,7 @@ func validateCases(cases casesFile, catalog map[string]bool) error {
 	return nil
 }
 
-func validateConfiguration(cases casesFile, gates gatesFile, catalog, unselectable map[string]bool) error {
+func validateConfiguration(cases casesFile, gates gatesFile, catalog, userInvokedOnly map[string]bool) error {
 	if err := validateCases(cases, catalog); err != nil {
 		return err
 	}
@@ -618,8 +618,8 @@ func validateConfiguration(cases casesFile, gates gatesFile, catalog, unselectab
 	noSkillProbes := 0
 	for _, c := range cases.Cases {
 		if c.Expected != "" && c.Kind != "explicit" {
-			if unselectable[c.Expected] {
-				return fmt.Errorf("case %q expects %q, whose native policy disables implicit invocation", c.ID, c.Expected)
+			if userInvokedOnly[c.Expected] {
+				return fmt.Errorf("case %q expects %q, whose description or native policy requires an explicit user request", c.ID, c.Expected)
 			}
 			recallProbes[c.Expected]++
 		}
@@ -628,7 +628,7 @@ func validateConfiguration(cases casesFile, gates gatesFile, catalog, unselectab
 		}
 	}
 	for skill := range catalog {
-		if unselectable[skill] {
+		if userInvokedOnly[skill] {
 			continue
 		}
 		if recallProbes[skill] < 3 {
@@ -1867,8 +1867,8 @@ func runSelftest() error {
 	probeUnselectable := exemptCorpus
 	probeUnselectable.Cases = append(append([]probeCase(nil), exemptCorpus.Cases...), probeCase{ID: "grill-me-verbatim", Kind: "verbatim", Expected: "grill-me", Prompt: "p", Provenance: "selftest"})
 	probeErr := validateConfiguration(probeUnselectable, exemptGates, catalog, unselectable)
-	check("unselectable skills are exempt from recall probe minimums", exemptErr == nil && strictErr != nil && strings.Contains(strictErr.Error(), `"grill-me" has 0 recall probes`) && probeErr != nil && strings.Contains(probeErr.Error(), "disables implicit invocation"))
-	check("frontmatter flag detection reads only the frontmatter", disableModelInvocationPattern.MatchString(frontmatterOf("---\nname: x\ndisable-model-invocation: true\n---\n# body\n")) && !disableModelInvocationPattern.MatchString(frontmatterOf("---\nname: x\n---\n# body\ndisable-model-invocation: true\n")))
+	check("user-invoked-only skills are exempt from recall probe minimums", exemptErr == nil && strictErr != nil && strings.Contains(strictErr.Error(), `"grill-me" has 0 recall probes`) && probeErr != nil && strings.Contains(probeErr.Error(), "requires an explicit user request"))
+	check("explicit request detection reads only the description frontmatter", explicitRequestDescriptionPattern.MatchString(frontmatterOf("---\nname: x\ndescription: Use only when the user explicitly asks for x.\n---\n# body\n")) && !explicitRequestDescriptionPattern.MatchString(frontmatterOf("---\nname: x\n---\n# body\ndescription: Use only when the user explicitly asks for x.\n")))
 	scopedGates := enforceGates
 	scopedGates.EnforceHarnesses = []string{"claude"}
 	check("enforcement applies only to listed harnesses", enforcementApplies(scopedGates, "claude") && !enforcementApplies(scopedGates, "codex") && enforcementApplies(enforceGates, "codex") && !enforcementApplies(gates, "claude"))
