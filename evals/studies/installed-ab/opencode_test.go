@@ -87,6 +87,28 @@ func TestOpenCodePreflightRetryPromptBustsCache(t *testing.T) {
 	}
 }
 
+func TestOpenCodePreflightAllowsOnlyListedSkillLoads(t *testing.T) {
+	done := actorEvent{Kind: "trace_complete"}
+	pack := []string{"using-superpowers", "brainstorming"}
+	for _, tc := range []struct {
+		name   string
+		events []actorEvent
+		arm    string
+		ok     bool
+	}{
+		{"no tools", []actorEvent{done}, "treatment", true},
+		{"pack bootstrap skill", []actorEvent{{Kind: "skill_selected", Path: "using-superpowers"}, done}, "treatment", true},
+		{"unlisted skill", []actorEvent{{Kind: "skill_selected", Path: "law-voice"}, done}, "treatment", false},
+		{"pack skill in control", []actorEvent{{Kind: "skill_selected", Path: "using-superpowers"}, done}, "control", false},
+		{"shell read", []actorEvent{{Kind: "command", Path: "cat ~/AGENTS.md"}, done}, "treatment", false},
+		{"no completion", []actorEvent{{Kind: "skill_selected", Path: "using-superpowers"}}, "treatment", false},
+	} {
+		if got := openCodePreflightToolsAllowed(tc.events, tc.arm, pack...); got != tc.ok {
+			t.Errorf("%s: allowed = %v, want %v", tc.name, got, tc.ok)
+		}
+	}
+}
+
 type openCodeTestActor func(context.Context, actorRequest) (actorResult, error)
 
 func (f openCodeTestActor) Run(ctx context.Context, r actorRequest) (actorResult, error) {

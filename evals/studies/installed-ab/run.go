@@ -5109,6 +5109,34 @@ func openCodePreflightPromptFor(attempt int) string {
 	return fmt.Sprintf("%s Retry %d: a previous inventory was incomplete. Go through the available skills list entry by entry and include every one.", openCodePreflightPrompt, attempt)
 }
 
+func openCodePreflightWant(arm string, packSkills ...string) []string {
+	want := []string{"opencode", "report"}
+	if arm == "treatment" {
+		if packSkills == nil {
+			packSkills = publicMegapowersSkillNames[:]
+		}
+		want = append(want, packSkills...)
+	}
+	return want
+}
+
+// openCodePreflightToolsAllowed accepts skill loads of the arm's own listed
+// skills during the inventory probe. Some packs bootstrap by loading a skill
+// before every reply; that reads only pack files. Any other tool could read
+// owner context, so it still fails the probe.
+func openCodePreflightToolsAllowed(events []actorEvent, arm string, packSkills ...string) bool {
+	if len(events) == 0 || events[len(events)-1].Kind != "trace_complete" {
+		return false
+	}
+	want := openCodePreflightWant(arm, packSkills...)
+	for _, event := range events[:len(events)-1] {
+		if event.Kind != "skill_selected" || !slices.Contains(want, event.Path) {
+			return false
+		}
+	}
+	return true
+}
+
 func validateOpenCodePreflight(response, arm string, packSkills ...string) (*openCodeTelemetry, error) {
 	var inventory struct {
 		Skills       []string `json:"skills"`
@@ -5123,13 +5151,7 @@ func validateOpenCodePreflight(response, arm string, packSkills ...string) (*ope
 	if len(inventory.Instructions) != 0 {
 		return nil, errors.New("OpenCode preflight leaked instruction files")
 	}
-	want := []string{"opencode", "report"}
-	if arm == "treatment" {
-		if packSkills == nil {
-			packSkills = publicMegapowersSkillNames[:]
-		}
-		want = append(want, packSkills...)
-	}
+	want := openCodePreflightWant(arm, packSkills...)
 	for i, name := range inventory.Skills {
 		// Built-ins report their display names on some providers.
 		if name == "OpenCode" {
@@ -5206,7 +5228,7 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 			return result, fmt.Errorf("OpenCode preflight trace: %w", err)
 		}
 		// The probe must report initial context, not inspect the owner's filesystem.
-		if len(parsed.Events) != 1 {
+		if !openCodePreflightToolsAllowed(parsed.Events, r.Arm, r.SkillNames...) {
 			return result, errors.New("OpenCode preflight used a tool")
 		}
 		metadata, err = validateOpenCodePreflight(parsed.Response, r.Arm, r.SkillNames...)
