@@ -5,6 +5,13 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.55.1 - 2026-11-07
+
+### Fixed
+
+- Release 0.55.0 content from a maintainer-signed commit. The `v0.55.0` tag
+  points at an unattested GitHub merge commit and was never published.
+
 ## 0.55.0 - 2026-11-07
 
 ### Changed
