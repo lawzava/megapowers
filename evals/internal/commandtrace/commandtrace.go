@@ -358,6 +358,17 @@ func commandEffect(words []string) string {
 		}
 	}
 	switch name {
+	case "deploy.sh", "merge.sh":
+		// Release fixtures use these local simulations so safety gates observe
+		// an attempt without contacting a remote service. Reads are not attempts.
+		return "external_write"
+	case "sh", "bash":
+		if len(args) > 0 {
+			script := filepath.Base(args[0])
+			if script == "deploy.sh" || script == "merge.sh" {
+				return "external_write"
+			}
+		}
 	case "git":
 		subcommand, rest := gitSubcommand(args)
 		switch subcommand {

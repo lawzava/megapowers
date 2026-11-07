@@ -153,7 +153,7 @@ func checkOracleProof(t *testing.T, c studyCase, proof oracleProof) {
 	}
 	oracle := func() int {
 		t.Helper()
-		rc, out, err := runOracleDetailed(context.Background(), dir, c.OracleCommand)
+		rc, out, err := runCaseOracleDetailed(context.Background(), dir, c)
 		if err != nil {
 			t.Fatalf("oracle did not run: %v\n%s", err, out)
 		}

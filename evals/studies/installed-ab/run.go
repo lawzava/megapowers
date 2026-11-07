@@ -48,11 +48,13 @@ type casesFile struct {
 }
 
 type studyCase struct {
-	ID                   string            `json:"id"`
-	Kind                 string            `json:"kind"`
-	Task                 string            `json:"task"`
-	FollowupTasks        []string          `json:"followup_tasks,omitempty"`
-	Files                map[string]string `json:"files"`
+	ID            string            `json:"id"`
+	Kind          string            `json:"kind"`
+	Task          string            `json:"task"`
+	FollowupTasks []string          `json:"followup_tasks,omitempty"`
+	Files         map[string]string `json:"files"`
+	// HiddenFiles are overlaid only on a post-actor oracle snapshot, never the actor project.
+	HiddenFiles          map[string]string `json:"hidden_files,omitempty"`
 	RequiredFacts        []string          `json:"required_facts,omitempty"`
 	RequiredFactIDs      []string          `json:"required_fact_ids,omitempty"`
 	PlanningContract     *planningFacts    `json:"planning_contract,omitempty"`
@@ -546,6 +548,11 @@ func main() {
 		}
 		subject = openCodeActor{Path: binary, OwnerHome: owner}
 	} else {
+		for _, c := range cases.Cases {
+			if len(c.HiddenFiles) > 0 {
+				fatal(errors.New("hidden_files currently require the OpenCode post-actor oracle; select other cases for broker runs"))
+			}
+		}
 		brokerHash, err = validateBroker(broker, brokerPin, root, out)
 		if err != nil {
 			fatal(err)
@@ -716,6 +723,17 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 		for name := range c.Files {
 			if err := safeRelative(name); err != nil {
 				return fmt.Errorf("case %s: %w", c.ID, err)
+			}
+		}
+		for name := range c.HiddenFiles {
+			if err := safeRelative(name); err != nil || !strings.HasSuffix(name, "_test.go") || len(c.OracleCommand) == 0 {
+				return fmt.Errorf("case %s hidden file %q needs a safe Go test path and oracle", c.ID, name)
+			}
+			if _, exists := c.Files[name]; exists {
+				return fmt.Errorf("case %s hidden file %q overlaps fixture", c.ID, name)
+			}
+			if _, exists := c.PostInitFiles[name]; exists {
+				return fmt.Errorf("case %s hidden file %q overlaps post-init fixture", c.ID, name)
 			}
 		}
 		protected := map[string]bool{}
@@ -1665,6 +1683,10 @@ func evaluateCaseEvidence(ctx context.Context, c studyCase, gates gatesFile, arm
 				return 0, nil
 			}
 			return 1, nil
+		}
+		if allowLocalOracle && result.OracleRC == nil && len(c.HiddenFiles) > 0 {
+			rc, _, err := runCaseOracleDetailed(ctx, project, c)
+			return rc, err
 		}
 		return caseOracle(ctx, project, c.OracleCommand, result, allowLocalOracle)
 	}
@@ -2918,16 +2940,78 @@ func runOracle(ctx context.Context, dir string, argv []string) (int, error) {
 	return rc, err
 }
 
+func runCaseOracleDetailed(ctx context.Context, dir string, c studyCase) (int, string, error) {
+	if len(c.HiddenFiles) == 0 {
+		return runOracleDetailed(ctx, dir, c.OracleCommand)
+	}
+	// Snapshot after the actor has exited. The isolated config is not an OS
+	// sandbox, but ordinary project reads and test discovery cannot see these tests.
+	snapshot, err := os.MkdirTemp("", "installed-ab-hidden-oracle-")
+	if err != nil {
+		return 0, "", err
+	}
+	defer os.RemoveAll(snapshot)
+	err = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		if entry.IsDir() {
+			if rel == ".git" || rel == ".actor-home" || rel == ".actor-tmp" || rel == ".actor-cache" {
+				return filepath.SkipDir
+			}
+			return os.MkdirAll(filepath.Join(snapshot, rel), 0700)
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("oracle snapshot rejects nonregular file %s", rel)
+		}
+		if _, collision := c.HiddenFiles[filepath.ToSlash(rel)]; collision {
+			return fmt.Errorf("actor supplied hidden oracle path %s", rel)
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(snapshot, rel), body, info.Mode().Perm())
+	})
+	if err != nil {
+		return 1, err.Error(), nil
+	}
+	if err := materializeFixture(snapshot, c.HiddenFiles); err != nil {
+		return 0, "", err
+	}
+	// The actor has exited. Reuse only this project's existing private oracle
+	// cache, not a cold cache in each short-lived snapshot or another arm's cache.
+	return runOracleDetailedWithCache(ctx, snapshot, c.OracleCommand, oracleGoCache(dir))
+}
+
 func runOracleDetailed(ctx context.Context, dir string, argv []string) (int, string, error) {
+	return runOracleDetailedWithCache(ctx, dir, argv, oracleGoCache(dir))
+}
+
+func oracleGoCache(dir string) string {
+	if selftestOracleCache != "" {
+		return selftestOracleCache
+	}
+	return filepath.Join(dir, ".actor-cache", "go-build")
+}
+
+func runOracleDetailedWithCache(ctx context.Context, dir string, argv []string, goCache string) (int, string, error) {
 	if len(argv) == 0 {
 		return 0, "", errors.New("oracle command is empty")
 	}
 	command := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	command.Dir = dir
-	goCache := selftestOracleCache
-	if goCache == "" {
-		goCache = filepath.Join(dir, ".actor-cache", "go-build")
-	}
 	if err := os.MkdirAll(goCache, 0o700); err != nil {
 		return 0, "", fmt.Errorf("create private oracle cache: %w", err)
 	}
@@ -3392,14 +3476,17 @@ func hashFixture(files map[string]string) string {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
-// caseFixtureHash extends hashFixture only for git_init cases, so plain
-// fixtures keep their existing identity.
+// caseFixtureHash binds Git setup and hidden oracles when present, while plain
+// fixtures without hidden tests keep their existing identity.
 func caseFixtureHash(c studyCase) string {
-	if !c.GitInit && len(c.PostInitFiles) == 0 {
+	if !c.GitInit && len(c.PostInitFiles) == 0 && len(c.HiddenFiles) == 0 {
 		return hashFixture(c.Files)
 	}
 	h := sha256.New()
 	fmt.Fprintf(h, "files:%s\ngit_init:%t\npost_init_files:%s\n", hashFixture(c.Files), c.GitInit, hashFixture(c.PostInitFiles))
+	if len(c.HiddenFiles) > 0 {
+		fmt.Fprintf(h, "hidden_files:%s\n", hashFixture(c.HiddenFiles))
+	}
 	if c.GitRemote != "" {
 		fmt.Fprintf(h, "git_remote:%s\n", c.GitRemote)
 	}
@@ -4804,7 +4891,7 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 	if len(r.Case.OracleCommand) > 0 {
 		// Use the existing local oracle's private build cache and GOWORK=off,
 		// never the actor's shared login HOME or disposable config environment.
-		oracleRC, _, oracleErr := runOracleDetailed(ctx, r.Project, r.Case.OracleCommand)
+		oracleRC, _, oracleErr := runCaseOracleDetailed(ctx, r.Project, r.Case)
 		if oracleErr != nil {
 			return result, oracleErr
 		}
