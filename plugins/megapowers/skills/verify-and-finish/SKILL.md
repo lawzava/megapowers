@@ -1,7 +1,6 @@
 ---
 name: verify-and-finish
-description: Use to verify a completed outcome before claiming success, handing off, committing, merging, publishing, deploying, or closing a task. Do not use for an intermediate update, an isolated test run, or merely naming an oracle command.
-when_to_use: "Trigger phrases: prove this is done, commit, push, open the PR, merge, publish, deploy, ship it, wrap up, hand off, final completion check."
+description: "Use to verify a completed outcome before claiming success, handing off, committing, pushing, opening a PR, merging, publishing, deploying, shipping, or closing a task. Covers prove this is done, wrap up, and final completion checks. Not for intermediate updates, isolated test runs, or merely naming an oracle command."
 metadata:
   short-description: Verification and honest status before any completion claim
 ---
@@ -18,7 +17,7 @@ proves. An empty search or scan proves absence only after it finds a known
 positive. Never weaken a test, baseline, threshold, or predicate to obtain a
 pass; after a code change, run the [bar guard](references/bar-guard.md) and fix
 or report each finding. Run long or verbose checks through the
-[run receipt tool](references/run-receipt.md); block on a running check and
+[run receipt procedure](references/run-receipt.md); block on a running check and
 never poll with `sleep`.
 
 Label inspection and inference; neither is an executed check. Rerun relevant

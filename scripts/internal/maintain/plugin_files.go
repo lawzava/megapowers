@@ -1,6 +1,7 @@
 package maintain
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,8 +10,8 @@ import (
 )
 
 // checkPluginFolderHoldsNoTests fails when the shipped plugin directory
-// contains a test, test data, or an eval case. Those files belong under
-// tests/ or evals/ and must not reach plugin installs or marketplace scans.
+// contains executable code, hooks, MCP configuration, tests or eval data.
+// Helpers belong in extras; tests and evals stay in repository tooling.
 func checkPluginFolderHoldsNoTests(root string) error {
 	pluginRoot := filepath.Join(root, "plugins", "megapowers")
 	var found []string
@@ -23,14 +24,36 @@ func checkPluginFolderHoldsNoTests(root string) error {
 			return relErr
 		}
 		if entry.IsDir() {
-			if name := entry.Name(); name == "testdata" || name == "evals" {
+			if name := entry.Name(); name == "testdata" || name == "evals" || name == "hooks" {
 				found = append(found, filepath.ToSlash(rel)+"/")
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if strings.HasSuffix(entry.Name(), "_test.go") {
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		// Match the passive file types accepted by the probe's package oracle.
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		passive := ext == ".md" || ext == ".json" || ext == ".svg" || ext == ".yaml"
+		if !passive || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 != 0 || entry.Name() == ".mcp.json" || entry.Name() == "hooks.json" {
 			found = append(found, filepath.ToSlash(rel))
+		}
+		if entry.Name() == "plugin.json" {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			var manifest map[string]json.RawMessage
+			if err := json.Unmarshal(data, &manifest); err != nil {
+				return err
+			}
+			for _, key := range []string{"hooks", "mcpServers"} {
+				if _, exists := manifest[key]; exists {
+					found = append(found, filepath.ToSlash(rel)+":"+key)
+				}
+			}
 		}
 		return nil
 	})
@@ -41,6 +64,5 @@ func checkPluginFolderHoldsNoTests(root string) error {
 		return nil
 	}
 	sort.Strings(found)
-	return fmt.Errorf("plugin folder holds files that must live outside it (tests under %s, evals under evals/):\n  %s",
-		"tests/", strings.Join(found, "\n  "))
+	return fmt.Errorf("plugin folder holds code, integrations or test data that must live outside it:\n  %s", strings.Join(found, "\n  "))
 }

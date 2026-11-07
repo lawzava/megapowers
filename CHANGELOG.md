@@ -5,6 +5,23 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.55.0 - 2026-11-07
+
+### Changed
+
+- Make skill descriptions portable across harnesses. Fold triggers into
+  `description`, remove `when_to_use`, and enforce the 1024-character limit.
+- Replace bundled helper calls with manual agent-tool procedures. Keep the
+  nine unchanged Go helpers in repository-only `extras/scripts/`.
+- Add a generated OpenCode HTTP skill catalog, stale-index validation, and
+  HTTP, local-path, and copy installation instructions.
+
+### Removed
+
+- Move `megapowers-doctor`, `upgrading-megapowers`, and `mcp-setup` unchanged
+  into `extras/skills/`. They no longer ship or appear in shipped-skill evals.
+- Exclude executable code, hooks, and MCP configuration from the plugin.
+
 ## 0.54.0 - 2026-11-05
 
 ### Changed

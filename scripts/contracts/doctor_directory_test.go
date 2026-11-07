@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const doctorSkillRel = "plugins/megapowers/skills/megapowers-doctor"
+const doctorSkillRel = "extras/skills/megapowers-doctor"
 
 // Simulate a directory-edition plugin root (no hooks/, no output-styles/) and
 // check that the skill's links resolve there and that the root two levels up

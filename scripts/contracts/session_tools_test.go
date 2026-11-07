@@ -40,7 +40,7 @@ func TestLearningGuidanceStaysLocal(t *testing.T) {
 	requireContains(t, mining, "keep transcripts and excerpts out of review packages, issues, commits, and other public text", "local transcript boundary")
 	requireContains(t, loop, "megapowers itself", "local plugin lessons")
 	requireContains(t, loop, "report the proposed local change to the user", "local plugin lessons")
-	tool := normalized(read(t, root, base+"scripts/lessons.go"))
+	tool := normalized(read(t, root, "extras/scripts/writing-agent-instructions/lessons.go"))
 	for _, phrase := range []string{"export to share", "before sharing", "leave the machine", "leaves the machine", "sanitized upstream draft"} {
 		requireAbsent(t, tool, phrase, "lesson tool text")
 	}

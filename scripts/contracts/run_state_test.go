@@ -14,7 +14,7 @@ func TestRunStateContract(t *testing.T) {
 	root := repoRoot(t)
 	tmp := t.TempDir()
 	tool := filepath.Join(tmp, "run-state")
-	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/autonomous-run/scripts/run-state.go"); code != 0 {
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./extras/scripts/autonomous-run/run-state.go"); code != 0 {
 		t.Fatalf("build run-state (%d): %s", code, output)
 	}
 	gitEnv := []string{
@@ -269,7 +269,7 @@ func TestRunStateDecisionRiskOrdersReview(t *testing.T) {
 	root := repoRoot(t)
 	tmp := t.TempDir()
 	tool := filepath.Join(tmp, "run-state")
-	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/autonomous-run/scripts/run-state.go"); code != 0 {
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./extras/scripts/autonomous-run/run-state.go"); code != 0 {
 		t.Fatalf("build run-state (%d): %s", code, output)
 	}
 	gitEnv := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
@@ -348,7 +348,7 @@ func TestRunStateContinuationCapAndCoverage(t *testing.T) {
 	root := repoRoot(t)
 	tmp := t.TempDir()
 	tool := filepath.Join(tmp, "run-state")
-	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/autonomous-run/scripts/run-state.go"); code != 0 {
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./extras/scripts/autonomous-run/run-state.go"); code != 0 {
 		t.Fatalf("build run-state (%d): %s", code, output)
 	}
 	gitEnv := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
@@ -430,7 +430,7 @@ func TestRunStateParsesInstalledABCheckpointFixturesAndPartialCheckpoints(t *tes
 	root := repoRoot(t)
 	tmp := t.TempDir()
 	tool := filepath.Join(tmp, "run-state")
-	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/autonomous-run/scripts/run-state.go"); code != 0 {
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./extras/scripts/autonomous-run/run-state.go"); code != 0 {
 		t.Fatalf("build run-state (%d): %s", code, output)
 	}
 	gitEnv := []string{
@@ -537,7 +537,7 @@ func TestRunStateHoldoutScenarios(t *testing.T) {
 	root := repoRoot(t)
 	tmp := t.TempDir()
 	tool := filepath.Join(tmp, "run-state")
-	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/autonomous-run/scripts/run-state.go"); code != 0 {
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./extras/scripts/autonomous-run/run-state.go"); code != 0 {
 		t.Fatalf("build run-state (%d): %s", code, output)
 	}
 	gitEnv := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",

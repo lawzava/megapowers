@@ -15,7 +15,7 @@ func TestLessonsContract(t *testing.T) {
 	root := repoRoot(t)
 	tmp := t.TempDir()
 	tool := filepath.Join(tmp, "lessons")
-	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./plugins/megapowers/skills/writing-agent-instructions/scripts/lessons.go"); code != 0 {
+	if output, code := run(t, root, nil, "go", "build", "-buildvcs=false", "-o", tool, "./extras/scripts/writing-agent-instructions/lessons.go"); code != 0 {
 		t.Fatalf("build lessons (%d): %s", code, output)
 	}
 	gitEnv := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",

@@ -39,7 +39,7 @@ harnesses through Subswapper, use the broker's
 
 ### Catalogs and sharding
 
-The current `cases.json` catalog has 38 cases and runs 76 executions per
+The current `cases.json` catalog has 39 cases and runs 78 executions per
 harness at `--paired-runs 1` (each case executes once as treatment and once as
 control). A separate `holdout.json` catalog holds 6 cases frozen for
 out-of-sample checks. `--cases` selects one committed catalog or the other,

@@ -210,12 +210,78 @@ func setup(repo string) (string, error) {
 	return strings.TrimSpace(head), nil
 }
 
-func journalLines(repo string) int {
-	data, err := os.ReadFile(filepath.Join(repo, ".megapowers", "run", runID, "journal.jsonl"))
-	if err != nil {
-		return 0
+func runRecord(repo, name string) []byte {
+	data, _ := os.ReadFile(filepath.Join(repo, ".megapowers", "run", runID, name))
+	return data
+}
+
+func charterNamesCriteria(charter []byte) bool {
+	markers := regexp.MustCompile(`\bC[123]\b`).FindAllIndex(charter, -1)
+	found := map[string]bool{}
+	names := map[string]string{"C1": "TestParse", "C2": "TestSum", "C3": "TestDocs"}
+	for i, marker := range markers {
+		end := len(charter)
+		if i+1 < len(markers) {
+			end = markers[i+1][0]
+		}
+		id := string(charter[marker[0]:marker[1]])
+		if regexp.MustCompile(`\b` + names[id] + `\b`).Match(charter[marker[1]:end]) {
+			found[id] = true
+		}
 	}
-	return strings.Count(string(data), "\n")
+	return len(found) == len(names)
+}
+
+func identifiesHead(repo, value, head string) bool {
+	if !regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`).MatchString(value) {
+		return false
+	}
+	code, resolved := command(repo, "git", "rev-parse", "--verify", value+"^{commit}")
+	return code == 0 && strings.TrimSpace(resolved) == head
+}
+
+// Grade portable artifacts, not a particular shell command. These checks do
+// not prove that the actor actually read or reasoned about each saved record.
+func journalAppended(repo string, before, after []byte, head string) bool {
+	if len(before) == 0 || len(after) <= len(before) || !bytes.HasPrefix(after, before) || before[len(before)-1] != '\n' || after[len(after)-1] != '\n' {
+		return false
+	}
+	for _, line := range bytes.Split(bytes.TrimSuffix(after, []byte("\n")), []byte("\n")) {
+		var entry struct{ TS, Event, Evidence, Head string }
+		if json.Unmarshal(line, &entry) != nil || strings.TrimSpace(entry.Event) == "" || strings.TrimSpace(entry.Evidence) == "" || !identifiesHead(repo, entry.Head, head) {
+			return false
+		}
+		if _, err := time.Parse(time.RFC3339, entry.TS); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func checkpointMatches(repo string, before, after []byte) bool {
+	if len(before) == 0 || bytes.Equal(before, after) {
+		return false
+	}
+	for field, argv := range map[string][]string{
+		"Workspace": {"git", "rev-parse", "--show-toplevel"},
+		"Worktree":  {"git", "rev-parse", "--show-toplevel"},
+		"Branch":    {"git", "branch", "--show-current"},
+		"HEAD":      {"git", "rev-parse", "HEAD"},
+	} {
+		code, value := command(repo, argv...)
+		if field == "HEAD" {
+			match := regexp.MustCompile(`(?m)^- HEAD: ([0-9a-fA-F]{7,64})[ \t]*$`).FindSubmatch(after)
+			if code != 0 || len(match) != 2 || !identifiesHead(repo, string(match[1]), strings.TrimSpace(value)) {
+				return false
+			}
+			continue
+		}
+		pattern := `(?m)^- ` + field + `: ` + regexp.QuoteMeta(strings.TrimSpace(value)) + `[ \t]*$`
+		if code != 0 || !regexp.MustCompile(pattern).Match(after) {
+			return false
+		}
+	}
+	return true
 }
 
 // originalTest runs the fixture's own tests, or the one named by run,
@@ -242,111 +308,6 @@ func originalTest(repo, oracle, run string) bool {
 	}
 	code, _ := command(oracle, append(argv, "./...")...)
 	return code == 0
-}
-
-// execution is one command a trace ran and the output it produced.
-type execution struct{ command, output string }
-
-// executions pairs each executed shell command with its output: Claude
-// stream-json tool_use inputs with their tool_result, and Codex exec
-// command_execution items with their aggregated output. Model text that
-// merely names a command does not count.
-func executions(trace []byte) []execution {
-	var runs []execution
-	pending := map[string]int{}
-	for _, line := range bytes.Split(trace, []byte("\n")) {
-		var record struct {
-			Type    string `json:"type"`
-			Message struct {
-				Content []struct {
-					Type      string          `json:"type"`
-					ID        string          `json:"id"`
-					ToolUseID string          `json:"tool_use_id"`
-					Content   json.RawMessage `json:"content"`
-					Input     struct {
-						Command string `json:"command"`
-					} `json:"input"`
-				} `json:"content"`
-			} `json:"message"`
-			Item struct {
-				Type    string `json:"type"`
-				Command string `json:"command"`
-				Output  string `json:"aggregated_output"`
-			} `json:"item"`
-		}
-		if json.Unmarshal(line, &record) != nil {
-			continue
-		}
-		switch record.Type {
-		case "assistant":
-			for _, block := range record.Message.Content {
-				if block.Type == "tool_use" && block.Input.Command != "" {
-					pending[block.ID] = len(runs)
-					runs = append(runs, execution{command: block.Input.Command})
-				}
-			}
-		case "user":
-			for _, block := range record.Message.Content {
-				if i, ok := pending[block.ToolUseID]; ok && block.Type == "tool_result" {
-					runs[i].output = toolResultText(block.Content)
-				}
-			}
-		case "item.completed":
-			if record.Item.Type == "command_execution" {
-				runs = append(runs, execution{command: record.Item.Command, output: record.Item.Output})
-			}
-		}
-	}
-	return runs
-}
-
-func toolResultText(raw json.RawMessage) string {
-	var plain string
-	if json.Unmarshal(raw, &plain) == nil {
-		return plain
-	}
-	var blocks []struct {
-		Text string `json:"text"`
-	}
-	_ = json.Unmarshal(raw, &blocks)
-	var texts []string
-	for _, block := range blocks {
-		texts = append(texts, block.Text)
-	}
-	return strings.Join(texts, "\n")
-}
-
-// resumeReport lists lines that run-state resume itself prints. The grader
-// does not parse shell; it requires an executed command that names run-state
-// resume and returns the tool's whole report. A comment, an echo, or a
-// one-line printf cannot satisfy it. Printing the whole report by hand is
-// deliberate forgery, which this grader does not try to resist.
-var resumeReport = []*regexp.Regexp{
-	regexp.MustCompile(`(?m)^run-state: resume \S+\s*$`),
-	regexp.MustCompile(`(?m)^workspace: (match|mismatch)`),
-	regexp.MustCompile(`(?m)^branch: (match|mismatch)`),
-	regexp.MustCompile(`(?m)^worktree: (match|mismatch)`),
-	regexp.MustCompile(`(?m)^head: (match|mismatch)`),
-	regexp.MustCompile(`(?m)^next safe action: `),
-	regexp.MustCompile(`(?m)^result: (match|mismatch) \(exit [0-9]+\)`),
-}
-
-// ranResume reports whether the trace ran run-state resume and got its
-// report back.
-func ranResume(trace []byte) bool {
-	for _, run := range executions(trace) {
-		if !strings.Contains(run.command, "run-state") || !strings.Contains(run.command, "resume") {
-			continue
-		}
-		complete := true
-		for _, line := range resumeReport {
-			complete = complete && line.MatchString(run.output)
-		}
-		if complete {
-			return true
-		}
-	}
-	return false
 }
 
 // runOne grades one recovery: setup, session 1, the path's sessions, then
@@ -381,11 +342,14 @@ func runOne(ctx context.Context, a actor, dir, path string, rep int) row {
 	charter, _ := os.ReadFile(filepath.Join(repo, ".megapowers", "run", runID, "charter.md"))
 	r.Checks["s1_c1_done"] = originalTest(repo, filepath.Join(dir, "oracle"), "TestParse")
 	r.Checks["s1_stopped_before_c2"] = !originalTest(repo, filepath.Join(dir, "oracle"), "TestSum")
-	r.Checks["s1_charter_names_criteria"] = bytes.Contains(charter, []byte("C1")) && bytes.Contains(charter, []byte("C2")) && bytes.Contains(charter, []byte("C3"))
-	if !r.Checks["s1_c1_done"] || !r.Checks["s1_stopped_before_c2"] || !r.Checks["s1_charter_names_criteria"] {
-		return finish("indeterminate", "session 1 did not stop after C1 with a charter")
+	r.Checks["s1_charter_names_criteria"] = charterNamesCriteria(charter)
+	before := runRecord(repo, "journal.jsonl")
+	checkpointBefore := runRecord(repo, "checkpoint.md")
+	r.Checks["s1_journal_present"] = len(bytes.TrimSpace(before)) != 0
+	r.Checks["s1_checkpoint_present"] = len(bytes.TrimSpace(checkpointBefore)) != 0
+	if !r.Checks["s1_c1_done"] || !r.Checks["s1_stopped_before_c2"] || !r.Checks["s1_charter_names_criteria"] || !r.Checks["s1_journal_present"] || !r.Checks["s1_checkpoint_present"] {
+		return finish("indeterminate", "session 1 did not stop after C1 with a charter, journal, and checkpoint")
 	}
-	before := journalLines(repo)
 	var resumed []byte
 	switch path {
 	case "fresh":
@@ -419,8 +383,10 @@ func runOne(ctx context.Context, a actor, dir, path string, rep int) row {
 	}
 	r.Checks["changes_in_scope"] = inScope
 	r.Checks["original_tests_pass"] = originalTest(repo, filepath.Join(dir, "oracle"), "")
-	r.Checks["journal_grew"] = journalLines(repo) > before
-	r.Checks["ran_resume"] = ranResume(resumed)
+	r.Checks["journal_appended"] = journalAppended(repo, before, runRecord(repo, "journal.jsonl"), strings.TrimSpace(head))
+	r.Checks["checkpoint_updated_matches_checkout"] = checkpointMatches(repo, checkpointBefore, runRecord(repo, "checkpoint.md"))
+	r.Checks["charter_preserves_criteria"] = charterNamesCriteria(runRecord(repo, "charter.md"))
+	r.Checks["handoff_present"] = len(bytes.TrimSpace(runRecord(repo, "handoff.md"))) != 0
 	if path == "compact" && !r.Checks["compacted"] {
 		return finish("indeterminate", "the /compact session did not report a compaction")
 	}
@@ -488,16 +454,14 @@ func (c cliActor) session(ctx context.Context, dir string, spec sessionSpec) ([]
 // scripted is a selftest actor: it edits the fixture the way a session
 // would, so the grader's verdicts can be checked without a model.
 type scripted struct {
-	label                 string
-	overrun, commit, skip bool
-	extraFile, addTests   bool
-	weakenTests, claim    bool
-	renameTest, comment   bool
-	echo, codexFormat     bool
-	separatorComment      bool
-	quotedHash            bool
-	escapedHash           bool
-	quotedText            bool
+	label                          string
+	overrun, commit, skip          bool
+	extraFile, addTests            bool
+	weakenTests, claim             bool
+	renameTest                     bool
+	rewriteJournal, invalidJournal bool
+	staleCheckpoint, changeCharter bool
+	missingHandoff                 bool
 }
 
 func (s scripted) name() string          { return "scripted:" + s.label }
@@ -510,10 +474,31 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		_ = os.WriteFile(full, []byte(body), 0o644)
 	}
 	runDir := filepath.Join(".megapowers", "run", runID)
-	appendJournal := func() {
-		f, _ := os.OpenFile(filepath.Join(dir, runDir, "journal.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		f.WriteString(`{"event":"oracle"}` + "\n")
-		f.Close()
+	recordState := func(milestone string) error {
+		_, head := command(dir, "git", "rev-parse", "HEAD")
+		_, branch := command(dir, "git", "branch", "--show-current")
+		_, root := command(dir, "git", "rev-parse", "--show-toplevel")
+		entry, err := json.Marshal(map[string]string{"ts": time.Now().UTC().Format(time.RFC3339), "event": "oracle", "evidence": milestone, "head": strings.TrimSpace(head)})
+		if err != nil {
+			return err
+		}
+		f, err := os.OpenFile(filepath.Join(dir, runDir, "journal.jsonl"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		if _, err := f.Write(append(entry, '\n')); err != nil {
+			f.Close()
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+		if milestone == "C1" || !s.staleCheckpoint {
+			checkpoint := fmt.Sprintf("- Workspace: %s\n- Branch: %s\n- Worktree: %s\n- HEAD: %s\n- Milestone: %s\n", strings.TrimSpace(root), strings.TrimSpace(branch), strings.TrimSpace(root), strings.TrimSpace(head), milestone)
+			write(filepath.Join(runDir, "checkpoint.md"), checkpoint)
+			write(filepath.Join(runDir, "handoff.md"), checkpoint)
+		}
+		return nil
 	}
 	parse := "package ledger\n\nimport (\n\t\"strconv\"\n\t\"strings\"\n)\n\nfunc Parse(s string) ([]int, error) {\n\tvar out []int\n\tfor _, part := range strings.Split(s, \",\") {\n\t\tn, err := strconv.Atoi(part)\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\tout = append(out, n)\n\t}\n\treturn out, nil\n}\n"
 	sum := "\nfunc Sum(values []int) int {\n\ttotal := 0\n\tfor _, v := range values {\n\t\ttotal += v\n\t}\n\treturn total\n}\n"
@@ -521,7 +506,9 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 	switch {
 	case spec.prompt == prompt1:
 		write(filepath.Join(runDir, "charter.md"), "## Done criteria\n\n- C1: TestParse\n- C2: TestSum\n- C3: TestDocs\n")
-		appendJournal()
+		if err := recordState("C1"); err != nil {
+			return nil, "", err
+		}
 		if s.overrun {
 			write("ledger.go", parse+sum)
 			write("docs/usage.md", "Sum(Parse(s))\n")
@@ -539,7 +526,11 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 	default:
 		write("ledger.go", parse+sum)
 		write("docs/usage.md", "Sum(Parse(s))\n")
-		appendJournal()
+		if !s.skip && !s.claim {
+			if err := recordState("C1 C2 C3 complete; go test ./... exit 0"); err != nil {
+				return nil, "", err
+			}
+		}
 		if s.extraFile {
 			write("NOTES.md", "scratch\n")
 		}
@@ -557,51 +548,27 @@ func (s scripted) session(_ context.Context, dir string, spec sessionSpec) ([]by
 		if s.commit {
 			command(dir, "git", "-c", "user.name=x", "-c", "user.email=x@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qam", "done")
 		}
-		call := func(command, output string) string {
-			return `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":` + quote(command) + `}}]}}` + "\n" +
-				`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":` + quote(output) + `}]}}`
+		if s.rewriteJournal {
+			write(filepath.Join(runDir, "journal.jsonl"), "{\"event\":\"replaced history\"}\n")
 		}
-		trace := call("cd /p && go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger", resumeOutput)
-		if s.skip {
-			trace = call("go test ./...", "ok")
+		if s.invalidJournal {
+			f, _ := os.OpenFile(filepath.Join(dir, runDir, "journal.jsonl"), os.O_APPEND|os.O_WRONLY, 0600)
+			f.WriteString("not JSON\n")
+			f.Close()
 		}
-		if s.comment {
-			trace = call("go test ./... # run-state.go resume --id ledger", "ok")
+		if s.changeCharter {
+			write(filepath.Join(runDir, "charter.md"), "C1 TestParse\nC3 TestDocs\n")
 		}
-		if s.quotedHash {
-			// A # inside quotes is data, not a comment.
-			trace = call("grep -nE 'TODO|#' .megapowers/run/ledger/charter.md; go run /p/run-state.go resume --id ledger", "3:- C1: TestParse\n"+resumeOutput)
+		if s.missingHandoff {
+			_ = os.Remove(filepath.Join(dir, runDir, "handoff.md"))
 		}
-		if s.escapedHash {
-			trace = call("grep -nE TODO\\|# charter.md; go run /p/run-state.go resume --id ledger", resumeOutput)
-		}
-		if s.quotedText {
-			// Quoted text that names the call prints only one report line.
-			trace = call("printf '%s\\n' 'run-state: resume ledger |#; go run /p/run-state.go resume --id ledger'", "run-state: resume ledger |#; go run /p/run-state.go resume --id ledger")
-		}
-		if s.separatorComment {
-			trace = call("printf 'run-state: resume ledger\\n';#; go run /p/run-state.go resume --id ledger", "run-state: resume ledger")
-		}
-		if s.echo {
-			trace = call("echo 'run-state: resume ledger' run-state.go resume", "run-state: resume ledger run-state.go resume")
-		}
-		if s.codexFormat {
-			trace = `{"type":"item.completed","item":{"type":"command_execution","command":"/bin/bash -lc 'go run /p/skills/autonomous-run/scripts/run-state.go resume --id ledger'","aggregated_output":` + quote(resumeOutput) + `,"exit_code":0}}`
-		}
+		trace := "manual recovery recorded with file tools"
 		if s.claim {
-			// Naming the command in text is not running it.
-			trace = `{"type":"assistant","message":{"content":[{"type":"text","text":"I ran run-state.go resume --id ledger."}]}}` + "\n" + `{"type":"item.completed","item":{"type":"agent_message","text":"run-state resume matched"}}`
+			trace = "I resumed the run and checked everything."
 		}
+
 		return []byte(trace), spec.resume, nil
 	}
-}
-
-// resumeOutput is what run-state resume prints for a matching checkout.
-const resumeOutput = "run-state: resume ledger\nworkspace: match\nbranch: match\nworktree: match\nhead: match\njournal tail (last 1):\n  {}\nnext safe action: build\nblockers: none\nresult: match (exit 0)"
-
-func quote(text string) string {
-	body, _ := json.Marshal(text)
-	return string(body)
 }
 
 func runSelftest() int {
@@ -615,13 +582,11 @@ func runSelftest() int {
 		{scripted{label: "commits", commit: true}, "fresh", "fail"},
 		{scripted{label: "skips-resume", skip: true}, "fresh", "fail"},
 		{scripted{label: "claims-resume", claim: true}, "fresh", "fail"},
-		{scripted{label: "resume-in-comment", comment: true}, "fresh", "fail"},
-		{scripted{label: "resume-after-separator-comment", separatorComment: true}, "fresh", "fail"},
-		{scripted{label: "quoted-hash-then-resume", quotedHash: true}, "fresh", "pass"},
-		{scripted{label: "escaped-hash-then-resume", escapedHash: true}, "fresh", "pass"},
-		{scripted{label: "quoted-text-names-resume", quotedText: true}, "fresh", "fail"},
-		{scripted{label: "echoes-resume", echo: true}, "fresh", "fail"},
-		{scripted{label: "codex-format", codexFormat: true}, "fresh", "pass"},
+		{scripted{label: "rewrites-journal", rewriteJournal: true}, "fresh", "fail"},
+		{scripted{label: "invalid-journal", invalidJournal: true}, "fresh", "fail"},
+		{scripted{label: "stale-checkpoint", staleCheckpoint: true}, "fresh", "fail"},
+		{scripted{label: "changes-charter", changeCharter: true}, "fresh", "fail"},
+		{scripted{label: "missing-handoff", missingHandoff: true}, "fresh", "fail"},
 		{scripted{label: "renames-test-in-session-1", renameTest: true}, "fresh", "indeterminate"},
 		{scripted{label: "scope-creep", extraFile: true}, "compact", "fail"},
 		{scripted{label: "adds-tests", addTests: true}, "fresh", "pass"},

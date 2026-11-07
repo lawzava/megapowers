@@ -1900,13 +1900,10 @@ var publicMegapowersSkillNames = [...]string{
 	"grill-me",
 	"humanizing-prose",
 	"independent-review",
-	"mcp-setup",
-	"megapowers-doctor",
 	"orchestrating",
 	"safe-effects",
 	"systematic-debugging",
 	"test-first-implementation",
-	"upgrading-megapowers",
 	"verify-and-finish",
 	"writing-agent-instructions",
 }

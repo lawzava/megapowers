@@ -250,57 +250,6 @@
       "provenance": "authored 2026-08-30; low-stakes cleanup must not summon cross-vendor review"
     },
     {
-      "id": "mcp-setup-verbatim",
-      "kind": "verbatim",
-      "expected": "mcp-setup",
-      "prompt": "The firecrawl MCP server is configured for this harness but its tools stopped appearing. Diagnose the configuration and lay out the fix; stop before touching credentials.",
-      "provenance": "session scan 2026-08-23: MCP setup ranked top of the plumbing-friction backlog"
-    },
-    {
-      "id": "mcp-setup-paraphrase",
-      "kind": "paraphrase",
-      "expected": "mcp-setup",
-      "allowed": ["verify-and-finish"],
-      "prompt": "Wire up an MCP server that exposes GitHub tools to this CLI and prove the tools actually load. If you cannot verify here, say exactly which verification step is blocked.",
-      "provenance": "session scan 2026-08-23; revised 2026-11-02: the completion proof legitimately permits verify-and-finish alongside required mcp-setup"
-    },
-    {
-      "id": "mcp-setup-buried",
-      "kind": "buried",
-      "expected": "mcp-setup",
-      "prompt": "Before standup: first tell me what port config.json declares. Then the annoying one — the database MCP server shows up in config but none of its tools resolve at runtime; work out why and what to change, stopping before any credential edits.",
-      "files": { "config.json": "{ \"port\": 8443 }\n" },
-      "provenance": "session scan 2026-08-23: MCP setup ranked top of the plumbing-friction backlog"
-    },
-    {
-      "id": "mcp-setup-near-miss",
-      "kind": "near-miss",
-      "prompt": "What is the Model Context Protocol, in two sentences?",
-      "provenance": "authored 2026-08-30; explaining MCP is not installing or debugging a server"
-    },
-    {
-      "id": "megapowers-doctor-verbatim",
-      "kind": "verbatim",
-      "expected": "megapowers-doctor",
-      "prompt": "Megapowers is not working in this session: the output style seems missing and no skill fired when I committed. Check the megapowers setup and tell me the exact fix.",
-      "provenance": "audit 2026-09-25: Claude output style silently off 09-05..09-25 with no detection"
-    },
-    {
-      "id": "megapowers-doctor-paraphrase",
-      "kind": "paraphrase",
-      "expected": "megapowers-doctor",
-      "prompt": "The installed megapowers doctor reports a different marketplace version. Figure out what is wrong with the plugin install and how to repair it.",
-      "provenance": "hook-free migration 2026-11-05: diagnose a stale installed plugin version"
-    },
-    {
-      "id": "megapowers-doctor-buried",
-      "kind": "buried",
-      "expected": "megapowers-doctor",
-      "prompt": "Quick one first: what port does config.json declare? Then the real issue: replies got long again and I suspect the megapowers style stopped applying after the last plugin update; diagnose the plugin setup.",
-      "files": { "config.json": "{ \"port\": 8443 }\n" },
-      "provenance": "audit 2026-09-25: verbosity complaints followed the silent style loss"
-    },
-    {
       "id": "memory-hygiene-near-miss",
       "kind": "near-miss",
       "prompt": "Summarize memory/MEMORY.md in two sentences.",
@@ -459,34 +408,6 @@
         "calc.go": "package calc\n\nfunc Add(a, b int) int { return a + b }\n\nfunc Double(a int) int { return Add(a, a) }\n"
       },
       "provenance": "authored 2026-08-30; reading code changes no behavior"
-    },
-    {
-      "id": "upgrading-megapowers-verbatim",
-      "kind": "verbatim",
-      "expected": "upgrading-megapowers",
-      "prompt": "Check whether a newer Megapowers release exists than what is installed here, and upgrade if so. If checking is blocked in this environment, say exactly which step is blocked and stop.",
-      "provenance": "session scan 2026-08-26: install lag ranked in the backlog"
-    },
-    {
-      "id": "upgrading-megapowers-paraphrase",
-      "kind": "paraphrase",
-      "expected": "upgrading-megapowers",
-      "prompt": "My megapowers plugin state looks stale — skills load from an old version. Repair or reinstall the plugin so the installed state matches the latest release, or report the exact blocked step.",
-      "provenance": "session scan 2026-08-26: install lag ranked in the backlog"
-    },
-    {
-      "id": "upgrading-megapowers-buried",
-      "kind": "buried",
-      "expected": "upgrading-megapowers",
-      "prompt": "Wrap-up chores. First: one sentence on what README.md says. Second: this machine's megapowers install has drifted from the marketplace — refresh it to current, or name the exact step this environment blocks.",
-      "files": { "README.md": "# Scratch\n\nA fixture repo.\n" },
-      "provenance": "session scan 2026-08-26: install lag ranked in the backlog"
-    },
-    {
-      "id": "upgrading-megapowers-near-miss",
-      "kind": "near-miss",
-      "prompt": "List the names of the skills the installed megapowers plugin ships. Names only.",
-      "provenance": "authored 2026-08-30; an inventory question is not an upgrade"
     },
     {
       "id": "verify-and-finish-verbatim",

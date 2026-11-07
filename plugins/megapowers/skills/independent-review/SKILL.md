@@ -1,7 +1,6 @@
 ---
 name: independent-review
-description: Use when security, auth, billing, concurrency, data integrity, or another high-stakes artifact needs an independent opinion from another model.
-when_to_use: "Trigger phrases: get a second opinion from another model, external review, have another vendor review this, adversarial review of auth, billing, or migration code before merge."
+description: "Use when security, auth, billing, concurrency, data integrity, migrations, or another high-stakes artifact needs an independent opinion from another model before merge. Covers get a second opinion, external review, another vendor's review, and adversarial review."
 metadata:
   short-description: Independent model review of a high-stakes artifact
 ---

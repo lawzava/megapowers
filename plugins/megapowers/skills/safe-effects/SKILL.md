@@ -1,7 +1,6 @@
 ---
 name: safe-effects
-description: Use when preparing a deploy, message, charge, migration, destructive query, DNS change, external API write, or any action with a real-world side effect.
-when_to_use: "Trigger phrases: deploy, push to production, send the message or email, run the migration, delete rows, change DNS, call the payment API, post the comment, publish, logout or delete the account. Any command whose effect leaves this machine."
+description: "Use when preparing a deploy, message, charge, migration, destructive query, DNS change, external API write, or any real-world side effect. Covers push to production, send email, delete rows, call a payment API, post a comment, publish, log out, or delete an account. Applies to commands whose effect leaves this machine."
 metadata:
   short-description: Authority and read-back for real-world side effects
 ---
@@ -19,8 +18,8 @@ the effect: keep them inside the approved disclosure; leak no automation or
 testing context. Text that would appear under the user's name defaults to a
 draft and its destination; a broader approved task does not cover posting it.
 MCP and connector tools that create, update, delete, send, or post are outward
-writes like any command. Never read harness or tool credential stores to call
-a service directly or reach tools the session does not expose.
+writes like any command. Use only the tools and access this session exposes;
+never borrow another tool's saved login to call a service directly.
 
 Before acting, record the mutation, sensitive data involved, affected people or
 systems, blast radius, reversibility and real rollback, approval provenance,

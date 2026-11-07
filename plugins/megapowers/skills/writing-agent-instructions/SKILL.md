@@ -1,7 +1,6 @@
 ---
 name: writing-agent-instructions
-description: Use when creating, revising, or auditing an agent skill, AGENTS.md, CLAUDE.md, nested project instructions, or native harness memory, including trigger design, progressive disclosure, harness-aware scope, behavioral validation, past-session recall, session retrospectives that turn agent mistakes into instruction or tooling changes, and the per-project learning loop that scores skill outcomes and promotes or retires lessons.
-when_to_use: "Trigger phrases: write a skill, create a skill instruction, improve AGENTS.md, audit CLAUDE.md, project instructions, subfolder instructions, skill trigger, run a retro on this session, what should we change so the agent avoids this next time, audit memory, prune stale memories, recall earlier sessions, what is megapowers doing for this project, learn from past sessions, score skill outcomes, review lessons, retire a lesson."
+description: "Use when creating, revising, or auditing skills, AGENTS.md, CLAUDE.md, nested project instructions, or native harness memory. Covers skill triggers, progressive disclosure, harness-aware scope, behavioral validation, session retrospectives, recalling earlier sessions, auditing or pruning stale memory, and turning repeated agent mistakes into instruction or tooling changes. Includes assessing what Megapowers does for a project, learning from past sessions, scoring skill outcomes, and reviewing, promoting, or retiring lessons."
 metadata:
   short-description: Write focused skills, instructions, and memory audits
 ---

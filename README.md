@@ -66,15 +66,42 @@ codex plugin marketplace add lawzava/megapowers --ref release
 codex plugin add megapowers@megapowers
 ```
 
-Then start a fresh session. Bundled Go tools, including the doctor, need Go
-1.25 or newer on `PATH`; loading skill guidance does not.
+Then start a fresh session. Loading the shipped skills needs no Go runtime.
 
-**Try it:** ask "check my megapowers setup". The doctor reports the plugin
-version, local marketplace copy, and Claude Code output-style setting.
+Both plugin installs track the `release` branch, which only moves to signed
+release tags. Pinning, install scopes, and uninstall are in
+[docs/install.md](./docs/install.md).
 
-Both installs track the `release` branch, which only moves to signed release
-tags, so you never get unreleased `main`. Pinning, install scopes, and
-uninstall are in [docs/install.md](./docs/install.md).
+### OpenCode
+
+OpenCode uses a copy/path install or HTTP skill catalog, not a plugin install.
+The primary route is the release catalog. Add it to the `skills` array in
+`opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": [
+    "https://raw.githubusercontent.com/lawzava/megapowers/release/plugins/megapowers/skills/"
+  ]
+}
+```
+
+Updates arrive when the `release` branch moves. Each catalog entry uses the
+plugin version so changed releases refresh OpenCode's cached skill files.
+
+Alternatives:
+
+- Point the same array at a checkout's `plugins/megapowers/skills` directory,
+  for example `"/path/to/megapowers/plugins/megapowers/skills"`.
+  Absolute paths are used as written; relative paths resolve from the active
+  OpenCode working directory, not the config file.
+- Copy skills with `npx skills add lawzava/megapowers -a opencode`.
+
+Use one route to avoid duplicate skill IDs. These routes load skill text and
+supporting files, not Claude Code's output style. The
+[OpenCode skills documentation](https://opencode.ai/docs/skills/) defines the
+`skills` array and HTTP catalog format.
 
 ## Why megapowers
 
@@ -101,7 +128,7 @@ that site.
 |---|---|---|---|
 | Works with | Claude Code and Codex, one plugin, shared skills | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
 | Get it from | This repository's marketplace | The official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
-| What you get | Task skills, an optional Claude Code style, a doctor | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
+| What you get | Task skills and an optional Claude Code style | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
 | Published measurements | The A/B study below, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
 
 Which one fits:
@@ -150,13 +177,8 @@ only when your request matches. The *experimental* labels come from
 | `humanizing-prose` | You want human-facing text drafted or edited without filler, and without dropping or inventing facts |
 | `writing-agent-instructions` *(experimental)* | You are writing or revising a skill, `AGENTS.md`, or `CLAUDE.md`, running a session retrospective or recall, auditing saved memory, or scoring what Megapowers does for a project and keeping its lessons |
 
-**Setup and upkeep**
-
-| Skill | Use it when |
-|---|---|
-| `megapowers-doctor` *(experimental)* | A skill did not fire, the Claude Code style looks off, or the install needs checking |
-| `upgrading-megapowers` | You want to update, reinstall, or repair the plugin |
-| `mcp-setup` *(experimental)* | An MCP server needs installing or fixing, or its tools are missing |
+Repository-only setup and upkeep skills are in [extras/](./extras/README.md);
+they are not installed with the plugin.
 
 [docs/orchestration.md](./docs/orchestration.md) explains which kinds of task
 go to which skill.
@@ -255,16 +277,12 @@ longer shipped and do not describe this version.
 <details>
 <summary>Exactly what installs</summary>
 
-- 16 skills under `skills/`, listed in `skills/catalog.json`.
+- 13 skills under `skills/`, listed in `skills/catalog.json`.
+- An HTTP skill catalog at `skills/index.json` for OpenCode.
 - One optional Claude Code output style, `output-styles/megapowers.md`.
-- Go standard-library tools that load only with their skill: a run receipt
-  for `verify-and-finish`
-  that keeps full output and the exit status, run state for `autonomous-run`,
-  and the session miner and memory-audit validator for
-  `writing-agent-instructions`.
-- A standalone Go doctor script behind `megapowers-doctor`, which reports
-  the version, Claude Code style setting, local marketplace copy, optional
-  agent registry, and recent workspace skill-load counts.
+- Guidance and passive metadata only: no executable code, hooks, or MCP entries.
+  Optional helpers and setup skills live in repository-only
+  [extras/](./extras/README.md).
 
 The plugin does not edit global user configuration and supplies no model,
 provider, or agent configuration. For non-trivial delegation, `orchestrating`
@@ -276,33 +294,15 @@ access.
 
 ## Troubleshooting
 
-Start with the doctor: `/megapowers:megapowers-doctor` on Claude Code, or the
-skill name after `$` as it appears in the Codex skills list. It runs the
-standalone Go doctor script and reports the plugin version and root, which
-tool is running, the Claude `outputStyle` value in effect, the local
-marketplace copy, optional agent registry, and recent workspace skill-load
-counts. It reads plugin manifests and the skill catalog, local marketplace
-manifests, and the optional registry. It parses only `outputStyle` from
-`~/.claude/settings.json` and project `.claude/settings.json` and
-`.claude/settings.local.json`, and runs `git rev-parse --show-toplevel`
-locally. It reads recent Claude transcripts in the workspace's project
-directory, including subagents, and Codex rollout headers under
-`~/.codex/sessions` from today and the previous 14 date directories, examining
-at most 2,000 headers and collecting at most 500 transcripts across both
-harnesses. Environment overrides can select other local settings and session
-directories. It counts sessions modified in the last seven days that contain a
-successful load. It prints summaries rather than transcript bodies. The
-directory edition omits the catalog and skips load counting. Running the
-script uses Go's build caches; with `GOTOOLCHAIN=auto`, Go may download a
-selected toolchain. Set `GOTOOLCHAIN=local` to require a suitable locally
-installed toolchain. See [SECURITY.md](./SECURITY.md) for the read and
-execution boundaries.
+Check registration with the plugin-list commands in
+[docs/install.md](./docs/install.md), then ask the agent to load a named skill
+and summarize it. For optional local diagnostics, see
+[extras/](./extras/README.md).
 
 | Symptom | Fix |
 |---|---|
 | Style not applied on Claude Code | The setting must read `megapowers:Megapowers`, not `Megapowers` |
-| Doctor error mentioning Go | Install Go 1.25 or newer |
-| Wrong version after an upgrade | Use `upgrading-megapowers`, which compares the marketplace head with the approved release tag before writing |
+| Wrong version after an upgrade | Compare the marketplace head with the approved release tag before registering it |
 
 ## Limits
 
@@ -315,7 +315,7 @@ execution boundaries.
   before sending material to the selected reviewer.
 - The evaluation studies that call real models cost money and need a reviewed
   credential broker. Their self-tests do not replace a real run.
-- Only current Claude Code and Codex are supported. Exact boundaries are in
+- Claude Code and Codex are the tested plugin targets; OpenCode uses skill sources. Exact boundaries are in
   [docs/harness-support.md](./docs/harness-support.md).
 
 ## Documentation

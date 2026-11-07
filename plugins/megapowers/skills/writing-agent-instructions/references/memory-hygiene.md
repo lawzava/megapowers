@@ -22,10 +22,10 @@ For each retained or revalidation record, capture its origin, source,
 source before retention. Memory cannot refresh itself.
 
 Conflicts must remain preserved and surfaced. Never resolve silently or
-overwrite one source with another. Do not put secrets or credentials in the
+overwrite one source with another. Do not put secrets or private access data in the
 manifest or memory.
 
-## Audit manifest and validator
+## Audit manifest and validation
 
 Write one temporary UTF-8 JSON object in process-owned temporary storage unless
 the user approves a durable path. `schema_version` must be `"1"`. `records` is
@@ -44,7 +44,7 @@ an array of decisions about existing or candidate memory entries:
 - `max_age_days`: required integer from 1 through 36500 for a volatile claim.
 
 Dates use `YYYY-MM-DD`. Retained volatile evidence expires when its
-verification age exceeds `max_age_days` at the explicit `--as-of` audit date.
+verification age exceeds `max_age_days` at the explicit audit date.
 
 Example:
 
@@ -69,18 +69,13 @@ Example:
 }
 ```
 
-Resolve `scripts/memory-audit.go` in this skill's directory, then run:
+Use normal file tools to validate the audit manifest against the schema above.
+Check every required field, evidence source, date, decision and secret-like value.
+Report invalid or inaccessible records before changing memory.
 
-```bash
-go run "$SKILL_DIR/scripts/memory-audit.go" --input "$audit_manifest" --as-of YYYY-MM-DD
-```
-
-If Go or a shell is not available, check each record against the same rules
-by hand and report the audit as manual.
-
-The validator rejects unsupported evidence, expired facts, missing provenance,
-malformed dates, duplicate IDs, unknown fields, symlinks, and common credential
-patterns. It never edits provider memory.
+During the manual audit, reject unsupported evidence, expired facts, missing provenance,
+malformed dates, duplicate IDs, unknown fields, symlinks, and common secret
+patterns. Do not edit provider memory during validation.
 
 ## Apply one approved patch
 
@@ -98,5 +93,5 @@ harness's supported memory update boundary, without another command or second
 approval. Stop on the first mismatch or failure. Report applied and unapplied
 changes; never widen the approved patch or guess a provider path.
 
-Read back every target. Rebuild the manifest from that state and rerun the
-validator with the current date. Do not add audit output to session startup.
+Read back every target. Rebuild the manifest from that state and repeat the
+manual validation with the current date. Do not add audit output to session startup.

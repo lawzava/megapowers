@@ -77,15 +77,20 @@ func TestValidateKeepsDiagnosticsOfAbruptExitsAndBuildFailures(t *testing.T) {
 
 func TestValidateCatalogBudgets(t *testing.T) {
 	for _, tc := range []struct{ name, description, trigger, body, want string }{
-		{"combined", strings.Repeat("x", 1000), strings.Repeat("y", 537), "Body", "1537 characters"},
+		{"description", strings.Repeat("x", 1025), "", "Body", "1025 characters"},
+		{"nonportable", "Use when testing", "test", "Body", "when_to_use"},
 		{"body", "Use for tests", "", strings.Repeat("x", 20001), "20001 bytes"},
 		{"crlf-body", "Use for tests", "", strings.Repeat("x\r\n", 7000), "21000 bytes"},
-		{"boundary", strings.Repeat("é", 1000), strings.Repeat("y", 536), strings.Repeat("x", 20000), ""},
+		{"boundary", strings.Repeat("é", 1024), "", strings.Repeat("x", 20000), ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo, _ := newValidateFixture(t)
 			path := filepath.Join(repo, "plugins/megapowers/skills/alpha/SKILL.md")
-			if err := os.WriteFile(path, []byte("---\nname: alpha\ndescription: "+tc.description+"\nwhen_to_use: \""+tc.trigger+"\"\n---\n"+tc.body), 0600); err != nil {
+			trigger := ""
+			if tc.trigger != "" {
+				trigger = "when_to_use: " + tc.trigger + "\n"
+			}
+			if err := os.WriteFile(path, []byte("---\nname: alpha\ndescription: "+tc.description+"\n"+trigger+"---\n"+tc.body), 0600); err != nil {
 				t.Fatal(err)
 			}
 			var out, errOut bytes.Buffer
@@ -93,7 +98,7 @@ func TestValidateCatalogBudgets(t *testing.T) {
 			if tc.want != "" && (code == 0 || !strings.Contains(errOut.String(), tc.want)) {
 				t.Fatalf("oversize catalog accepted: code %d\n%s\n%s", code, &out, &errOut)
 			}
-			if tc.want == "" && (code != 0 || !strings.Contains(out.String(), "total catalog characters: 1541")) {
+			if tc.want == "" && (code != 0 || !strings.Contains(out.String(), "total catalog characters: 1029")) {
 				t.Fatalf("boundary/count: code %d\n%s\n%s", code, &out, &errOut)
 			}
 		})
@@ -113,6 +118,7 @@ func newValidateFixture(t *testing.T) (string, string) {
 		"scripts",
 		"evals",
 		"internal",
+		"extras",
 	}
 	for _, rel := range dirs {
 		if err := os.MkdirAll(filepath.Join(repo, filepath.FromSlash(rel)), 0o755); err != nil {
@@ -132,6 +138,11 @@ func newValidateFixture(t *testing.T) (string, string) {
 	write("CHANGELOG.md", "# Changelog\n\n## 1.2.3 - test\n")
 	write("plugins/megapowers/.claude-plugin/icon.svg", `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"></svg>`)
 	write("plugins/megapowers/skills/alpha/SKILL.md", "---\nname: alpha\ndescription: Use when testing.\n---\n\nBody.\n")
+	index, err := buildOpenCodeIndex(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(openCodeIndexPath, string(index))
 	write("scripts/dummy.go", "package dummy\n")
 	write("scripts/dummy.sh", "#!/bin/sh\necho ok\n")
 	if err := os.Chmod(filepath.Join(repo, "scripts/dummy.sh"), 0o755); err != nil {
@@ -170,7 +181,7 @@ func newValidateFixture(t *testing.T) (string, string) {
 // A fresh checkout has no tests/ directory after the hook-only tests are removed.
 func TestDiscoverGoFilesWithoutLegacyHookTests(t *testing.T) {
 	root := t.TempDir()
-	for _, rel := range []string{"scripts", "evals", "internal", "plugins/megapowers"} {
+	for _, rel := range []string{"scripts", "evals", "internal", "extras"} {
 		path := filepath.Join(root, rel)
 		if err := os.MkdirAll(path, 0755); err != nil {
 			t.Fatal(err)

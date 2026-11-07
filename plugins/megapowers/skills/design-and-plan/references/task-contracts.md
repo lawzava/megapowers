@@ -3,10 +3,9 @@
 Keep the existing task ID, owned files, prerequisites, consumes/produces
 contracts, verification commands and disjoint ownership. Add only:
 
-- **Fence:** repo-relative exact files, `dir/` prefixes or `*` patterns; `*`
-  may match `/`. Quote patterns, use `/` separators, and reject empty, absolute,
-  backslash, `.` or `..` path components. All other characters are literal.
-  The [fence checker](../../orchestrating/references/fences.md) uses this syntax.
+- **Fence:** repo-relative exact files, `dir/` prefixes or `*` patterns, using
+  the [fence syntax](../../orchestrating/references/fences.md). Define ownership
+  before dispatch, not after seeing the worker's patch.
 - **Out-of-scope:** the changes this task must not make, even inside its fence.
 - **Acceptance:** one exact repo-relative command per acceptance item, run from
   the repository root, with the expected observable result. Do not replace an

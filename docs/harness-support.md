@@ -14,7 +14,6 @@ native agent/reviewer bindings, isolation, permissions and any hooks locally.
 | Plugin manifest | `.claude-plugin/plugin.json` | `.codex-plugin/plugin.json` |
 | Task skills | Supported | Supported |
 | Communication style | Selectable plugin output style (`megapowers:Megapowers`) | No session-wide plugin style; `humanizing-prose` available on demand |
-| Self-diagnosis | `megapowers-doctor` skill over the standalone Go script | Same |
 | Native agents and parallel work | Direct agents; native team/task coordination when available | Direct agents; native team/task coordination when available |
 | Personal capability registry | Advisory, read on demand | Advisory, read on demand |
 | Durable goals | Prefer native goal support | Prefer native goal support |
@@ -24,10 +23,19 @@ native agent/reviewer bindings, isolation, permissions and any hooks locally.
 
 ## Shared contract
 
-Skills use `name`, `description`, `when_to_use`, and `metadata.short-description`
-frontmatter; `grill-me` and `close-off` set `disable-model-invocation` for Claude Code.
-Claude Code concatenates `description` and `when_to_use` in its skill listing.
-Codex matches implicit invocation on `description`.
+Skills use `name`, a task-triggering `description` of at most 1024 characters,
+and `metadata.short-description`. Trigger phrases live in `description`, not
+harness-only fields. `grill-me` and `close-off` retain
+`disable-model-invocation` for Claude Code and OpenCode.
+Codex and OpenCode use `description` for discovery.
+
+OpenCode accepts HTTP skill catalogs, local source paths in its `skills` array,
+or copied skills. This is not a plugin installation. See
+[install.md](./install.md#opencode) and the
+[OpenCode skills documentation](https://opencode.ai/docs/skills/).
+The release catalog lists every shipped skill's files and uses the plugin
+version for cache refresh. This documents the source format, not a behavioral
+test result.
 
 Codex's skill documentation, retrieved 2026-10-08, names `agents/openai.yaml`
 `interface.short_description` and the plugin manifest
@@ -89,10 +97,8 @@ what exists and what is authorized.
 
 ## Installation diagnostics
 
-The standalone Go doctor reports plugin version, root, harness, Claude Code
-output-style settings, local marketplace versions, recent skill loads, and the optional agent
-registry. `megapowers-doctor` interprets its report. It runs only when invoked
-and needs Go 1.25 or newer.
+The plugin ships no executable code. Optional doctor and setup guidance live
+in repository-only [extras](../extras/README.md), outside installed skills.
 
 The plugin supplies no destructive-command guard, completion gate, effect
 gate, or git discard gate. Harness permissions and OS controls remain the
