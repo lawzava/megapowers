@@ -164,6 +164,131 @@ so OpenCode rows cannot satisfy the scorer's OS-isolated study-acceptance gate.
 The manifest also rejects study acceptance for OpenCode, regardless of outcomes.
 One pair is only a mechanics smoke, not evidence of model or skill efficacy.
 
+### Third-party OpenCode treatment variants
+
+`--skill-pack NAME=ABSOLUTE_DIRECTORY --skill-pack-revision FULL_SHA` replaces
+only the treatment's skill source. Without these flags, Megapowers is unchanged.
+The runner reads the pack's Git origin URL and requires HEAD to equal the pin.
+Every file below the selected source must match that commit, including modes;
+untracked/ignored files, missing files and symlinks fail. Live tree hashes are
+checked before and after each arm. Source paths stay private. Both arms' rows
+and the run manifest record `skill_pack` with name, source URL, revision and
+sorted frontmatter skill names. Controls retain empty configuration and the
+canonical empty-plugin hash; their pack metadata identifies the comparison,
+not installed control skills. Resume also binds this metadata.
+
+The following pins were inspected through GitHub's commit/tree and raw-file
+APIs. These are source inspections, not live OpenCode inventory observations.
+
+| Pack | Source | Pin | Source directory | SKILL.md count |
+| --- | --- | --- | --- | ---: |
+| superpowers | https://github.com/obra/superpowers | `22f0b463e7a5e579904dd6211a520321035526f7` | `skills/` | 15 |
+| mattpocock | https://github.com/mattpocock/skills | `4ae2317ddb22b046e26455e4f9c9b3aaaf62212d` | `skills/` | 39 |
+
+Superpowers has one directory per skill. Matt Pocock groups skills under
+`engineering/`, `in-progress/`, `misc/`, and `productivity/`.
+Its `deprecated/README.md` is not a skill: nested loose Markdown is not discovered.
+[OpenCode V2 discovery](https://opencode.ai/docs/skills) supports grouped
+`SKILL.md` directories to depth six, so neither pack needs flattening or
+symlinks. All inspected names match their directory IDs. No frontmatter
+rejection was identified: each file has a scalar name and description, and V2
+accepts portability fields. This runner's name reader is deliberately narrower
+than YAML: portable kebab-case IDs must match directories and cannot collide
+with built-ins. Unsupported name syntax fails rather than guessing. It is not
+a complete frontmatter validator. Source-root Markdown skills are unsupported.
+
+Matt Pocock sets `disable-model-invocation: true` on 24 of its 39 skills.
+V2 hides those skills from the initial inventory, not from explicit loading.
+The requested preflight expectation still includes **all** frontmatter names
+plus `opencode` and `report`. Existing omission-only retries then record
+`preflight_omitted`; unexpected names and instructions still stop the run.
+Expect at most 15 advertised Matt Pocock skills. Successful loads of expected
+pack names remain valid even when the initial self-report omitted them; other
+unreported names still stop the arm. The default Megapowers boundary is
+unchanged. Do not count visibility differences as skill rejection or rewrite
+the pack silently.
+
+Fetch only data into a new private scratch directory. These commands disable
+user/system Git configuration and hooks, do not initialize submodules, and run
+no repository scripts, installers or plugins:
+
+```bash
+test -n "$TMPDIR"
+PACK_ROOT=$(mktemp -d "$TMPDIR/installed-ab-packs.XXXXXX")
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+git -c core.hooksPath=/dev/null clone --no-checkout \
+  https://github.com/obra/superpowers "$PACK_ROOT/superpowers"
+git -C "$PACK_ROOT/superpowers" -c core.hooksPath=/dev/null \
+  -c submodule.recurse=false checkout --detach 22f0b463e7a5e579904dd6211a520321035526f7
+git -c core.hooksPath=/dev/null clone --no-checkout \
+  https://github.com/mattpocock/skills "$PACK_ROOT/mattpocock"
+git -C "$PACK_ROOT/mattpocock" -c core.hooksPath=/dev/null \
+  -c submodule.recurse=false checkout --detach 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d
+unset GIT_CONFIG_NOSYSTEM GIT_CONFIG_GLOBAL
+
+go run evals/studies/installed-ab/run.go --validate-config \
+  --skill-pack "superpowers=$PACK_ROOT/superpowers/skills" \
+  --skill-pack-revision 22f0b463e7a5e579904dd6211a520321035526f7
+go run evals/studies/installed-ab/run.go --validate-config \
+  --skill-pack "mattpocock=$PACK_ROOT/mattpocock/skills" \
+  --skill-pack-revision 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d
+```
+
+Do not load repository instructions or execute pack code during fetch or
+validation. The runner only reads and hashes pack files. Real actors still use
+unsandboxed OpenCode `--auto`: malicious skill instructions could cause script
+execution or other effects. This recipe does **not** enforce read-only actor
+access or a no-execution boundary. Review the pinned data and resolve that
+boundary before credentialed runs if those guarantees are required.
+Pack runs refuse to start without `--allow-unsandboxed-pack-actors`; this flag
+acknowledges the risk, not a no-execution guarantee. **Do not run the loop below
+until the owner approves that boundary or supplies isolation.**
+
+After committing the runner and catalog, run full pairs with the same cases,
+model, repetition count, timeout and judge as the Megapowers comparison.
+The following loop gives all four pack/model commands for the focused 12-case
+diagnostic. If using another baseline subset, replace `CASES` once for every
+variant, including Megapowers. Do not combine independent outputs as one paired
+study or borrow old controls: source revision, catalog and schedule identities
+must match, and this runner has no treatment-only/shared-control mode.
+
+```bash
+CASES=finish-with-pending-review,verify-finish-local-only,verify-finish-commit-gate,safe-effects-no-comments,safe-effects-broad-approval-identity,systematic-debugging-before-mitigation,tdd-add-multiply,test-first-low-impact-copy,independent-review-approval-boundary,independent-review-configured-dispatch,design-plan-ambiguous-contract,design-plan-dependency-order
+for pack in superpowers mattpocock; do
+  case "$pack" in
+    superpowers) sha=22f0b463e7a5e579904dd6211a520321035526f7 ;;
+    mattpocock) sha=4ae2317ddb22b046e26455e4f9c9b3aaaf62212d ;;
+  esac
+  for label in sol opus; do
+    case "$label" in
+      sol) model='openai/gpt-6.1-sol-fast#high' ;;
+      opus) model=claude-agent/opus ;;
+    esac
+    out="$TMPDIR/installed-ab-$pack-$label"
+    go run evals/studies/installed-ab/run.go --run --credentialed \
+      --harness opencode --model "$model" --case "$CASES" \
+      --paired-runs 3 --actor-timeout 5m --out "$out" \
+      --skill-pack "$pack=$PACK_ROOT/$pack/skills" --skill-pack-revision "$sha" \
+      --allow-unsandboxed-pack-actors || break 2
+    go run evals/studies/installed-ab/run.go --judge --credentialed \
+      --out "$out" --judge-seed 1 --actor-timeout 5m || break 2
+  done
+done
+# Remove only this fetch's data after all runs and resumes are complete:
+rm -rf -- "$PACK_ROOT"
+```
+
+Judge routing, prompts, criteria and outcome gates stay the same. Pack names,
+source URLs and skill IDs are additionally masked in responses for both arms;
+short IDs match at word boundaries. Judges and offline rescoring preserve pack
+attribution without needing the pack checkout. Blinding remains incomplete.
+Inspect `private/judge/manifest.json`'s `response_leak_counts` before comparing
+results: masking ordinary-word IDs can also remove fact-relevant wording.
+Compare `judge_outcome_success`, excluding and listing `judge_error` rows as
+above. Megapowers-specific activation requirements remain unchanged and can
+penalize other packs' `task_success`; they are not cross-pack outcome measures.
+No pack-specific equivalent skills are substituted into case definitions.
+
 ### Catalogs and sharding
 
 The current `cases.json` catalog has 47 cases and runs 94 executions per

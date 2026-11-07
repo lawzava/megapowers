@@ -31,6 +31,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -147,6 +148,7 @@ type gatesFile struct {
 }
 
 type runOptions struct {
+	SkillPack    *skillPack
 	Harness      string
 	Model        string
 	Effort       string
@@ -162,7 +164,185 @@ type runOptions struct {
 	ActorTimeout time.Duration
 }
 
+// Only public provenance enters results. The local checkout path stays private.
+type skillPackIdentity struct {
+	Name      string   `json:"name"`
+	SourceURL string   `json:"source_url"`
+	Revision  string   `json:"revision"`
+	Skills    []string `json:"skills"`
+}
+
+type skillPack struct {
+	Identity  skillPackIdentity
+	Dir, Hash string
+}
+
+func skillPackIdentityFor(pack *skillPack) *skillPackIdentity {
+	if pack == nil {
+		return nil
+	}
+	return &pack.Identity
+}
+
+func packIdentityKey(identity *skillPackIdentity) string {
+	if identity == nil {
+		return ""
+	}
+	content, _ := json.Marshal(identity)
+	return string(content)
+}
+
+var packNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+var packRevisionPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+
+func loadSkillPack(value, revision string) (*skillPack, error) {
+	name, dir, ok := strings.Cut(value, "=")
+	if !ok || !packNamePattern.MatchString(name) || len(name) > 64 || name == "megapowers" || !filepath.IsAbs(dir) || !packRevisionPattern.MatchString(revision) {
+		return nil, errors.New("skill pack requires name=absolute-directory and --skill-pack-revision full commit SHA")
+	}
+	dir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return nil, err
+	}
+	repo := gitOutput(dir, "rev-parse", "--show-toplevel")
+	if repo == "" || gitOutput(repo, "rev-parse", "HEAD") != revision {
+		return nil, errors.New("skill pack checkout HEAD does not match pinned revision")
+	}
+	relative, err := filepath.Rel(repo, dir)
+	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return nil, errors.New("skill pack directory must be inside its pinned Git checkout")
+	}
+	// Read literal provenance, not transport rewrites from url.*.insteadOf.
+	source := gitOutput(repo, "config", "--local", "--get", "remote.origin.url")
+	u, err := url.Parse(source)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, errors.New("skill pack origin must be a public-safe HTTPS source URL")
+	}
+	hash, err := verifiedTreeHash(repo, filepath.ToSlash(relative))
+	if err != nil {
+		return nil, fmt.Errorf("verify pinned skill pack: %w", err)
+	}
+	names, err := skillPackNames(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &skillPack{Identity: skillPackIdentity{Name: name, SourceURL: source, Revision: revision, Skills: names}, Dir: dir, Hash: hash}, nil
+}
+
+// This is a deliberately narrow name reader, not a general YAML validator.
+// Reject unsupported layouts rather than silently compare a partial inventory.
+// OpenCode V2 discovers grouped SKILL.md files recursively to depth six.
+func skillPackNames(root string) ([]string, error) {
+	var names []string
+	seen := map[string]bool{"opencode": true, "report": true}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("skill pack symlink is unsupported: %s", path)
+		}
+		if !entry.IsDir() {
+			if filepath.Dir(path) == root && strings.HasSuffix(entry.Name(), ".md") {
+				return errors.New("skill pack source-root Markdown is unsupported; use directory SKILL.md skills")
+			}
+			return nil
+		}
+		if path != root && (strings.HasPrefix(entry.Name(), ".") || entry.Name() == "node_modules") {
+			return filepath.SkipDir
+		}
+		relative, _ := filepath.Rel(root, path)
+		if relative != "." && len(strings.Split(relative, string(filepath.Separator))) > 6 {
+			return fmt.Errorf("skill pack exceeds OpenCode discovery depth: %s", path)
+		}
+		content, err := os.ReadFile(filepath.Join(path, "SKILL.md"))
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		text := strings.ReplaceAll(string(content), "\r\n", "\n")
+		if !strings.HasPrefix(text, "---\n") {
+			return fmt.Errorf("missing skill frontmatter: %s", path)
+		}
+		header, _, closed := strings.Cut(text[4:], "\n---")
+		if !closed {
+			return fmt.Errorf("unclosed skill frontmatter: %s", path)
+		}
+		name, count := "", 0
+		for _, line := range strings.Split(header, "\n") {
+			if !strings.HasPrefix(line, "name:") {
+				continue
+			}
+			count++
+			name = strings.TrimSpace(strings.TrimPrefix(line, "name:"))
+			if strings.HasPrefix(name, `"`) {
+				name, err = strconv.Unquote(name)
+				if err != nil {
+					return fmt.Errorf("unsupported quoted skill name: %s", path)
+				}
+			} else if strings.HasPrefix(name, "'") && strings.HasSuffix(name, "'") && len(name) >= 2 {
+				name = strings.ReplaceAll(name[1:len(name)-1], "''", "'")
+			} else {
+				name, _, _ = strings.Cut(name, " #")
+				name = strings.TrimSpace(name)
+			}
+		}
+		if count != 1 || !packNamePattern.MatchString(name) || len(name) > 64 || name != filepath.Base(path) || seen[name] {
+			return fmt.Errorf("missing, duplicate, reserved, unsupported or path-mismatched skill name: %s", path)
+		}
+		seen[name] = true
+		names = append(names, name)
+		return filepath.SkipDir
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return nil, errors.New("skill pack has no discoverable SKILL.md files")
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func skillPackConfigSelftest(pack *skillPack, root string) error {
+	for _, arm := range []string{"control", "treatment"} {
+		r := actorRequest{Arm: arm, Home: filepath.Join(root, arm), SkillsDir: pack.Dir}
+		if _, err := prepareOpenCode(r, "/eval-owner"); err != nil {
+			return err
+		}
+		content, err := os.ReadFile(filepath.Join(r.Home, "config/opencode/opencode.json"))
+		if err != nil {
+			return err
+		}
+		var config struct {
+			Skills []string `json:"skills"`
+		}
+		if err := json.Unmarshal(content, &config); err != nil {
+			return err
+		}
+		names := []string{"opencode", "report"}
+		if arm == "treatment" {
+			if !slices.Equal(config.Skills, []string{pack.Dir}) {
+				return errors.New("pack config does not point at skills directory")
+			}
+			names = append(names, pack.Identity.Skills...)
+		} else if config.Skills != nil {
+			return errors.New("pack contaminated control config")
+		}
+		response, _ := json.Marshal(map[string]any{"skills": names, "instructions": []string{}})
+		if _, err := validateOpenCodePreflight(string(response), arm, pack.Identity.Skills...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type actorRequest struct {
+	SkillsDir  string
+	SkillNames []string
+	PackName   string
 	Case       studyCase
 	Arm        string
 	Harness    string
@@ -226,6 +406,7 @@ type runEnvironment struct {
 }
 
 type resultRow struct {
+	SkillPack     *skillPackIdentity `json:"skill_pack,omitempty"`
 	SchemaVersion string             `json:"schema_version"`
 	Study         string             `json:"study"`
 	EvidenceClass string             `json:"evidence_class"`
@@ -360,27 +541,29 @@ type studyAcceptance struct {
 }
 
 type publishManifest struct {
-	SchemaVersion          string          `json:"schema_version"`
-	Study                  string          `json:"study"`
-	Evidence               string          `json:"evidence"`
-	Harness                string          `json:"harness"`
-	Model                  string          `json:"model"`
-	Effort                 string          `json:"effort"`
-	Environment            runEnvironment  `json:"environment"`
-	PairedRuns             int             `json:"paired_runs"`
-	ScheduleHash           string          `json:"schedule_hash"`
-	BrokerHash             string          `json:"broker_hash"`
-	CaseCatalogHash        string          `json:"case_catalog_hash"`
-	GatesHash              string          `json:"gates_hash"`
-	TreatmentPluginHash    string          `json:"treatment_plugin_hash"`
-	EmptyControlPluginHash string          `json:"empty_control_plugin_hash"`
-	Acceptance             studyAcceptance `json:"acceptance"`
-	Arms                   []armManifest   `json:"arms"`
+	SkillPack              *skillPackIdentity `json:"skill_pack,omitempty"`
+	SchemaVersion          string             `json:"schema_version"`
+	Study                  string             `json:"study"`
+	Evidence               string             `json:"evidence"`
+	Harness                string             `json:"harness"`
+	Model                  string             `json:"model"`
+	Effort                 string             `json:"effort"`
+	Environment            runEnvironment     `json:"environment"`
+	PairedRuns             int                `json:"paired_runs"`
+	ScheduleHash           string             `json:"schedule_hash"`
+	BrokerHash             string             `json:"broker_hash"`
+	CaseCatalogHash        string             `json:"case_catalog_hash"`
+	GatesHash              string             `json:"gates_hash"`
+	TreatmentPluginHash    string             `json:"treatment_plugin_hash"`
+	EmptyControlPluginHash string             `json:"empty_control_plugin_hash"`
+	Acceptance             studyAcceptance    `json:"acceptance"`
+	Arms                   []armManifest      `json:"arms"`
 }
 
 func main() {
 	var selftest, validate, run, hashPlugin, credentialed, resume, judge, rescore bool
-	var casesPath, gatesPath, harness, model, effort, out, repo, broker, brokerPin, opencodeProbe string
+	var allowUnsandboxedPackActors bool
+	var casesPath, gatesPath, harness, model, effort, out, repo, broker, brokerPin, opencodeProbe, packFlag, packRevision string
 	var pairedRuns int
 	var judgeSeed int64
 	var caseIDs caseFilterFlag
@@ -407,7 +590,27 @@ func main() {
 	flag.IntVar(&pairedRuns, "paired-runs", 0, "paired runs per case, defaults to the configured minimum")
 	flag.DurationVar(&actorTimeout, "actor-timeout", 20*time.Minute, "maximum time for one actor run")
 	flag.StringVar(&opencodeProbe, "opencode-probe", "", "credentialed treatment-only activation or edit mechanics probe")
+	flag.StringVar(&packFlag, "skill-pack", "", "OpenCode treatment variant: name=absolute-skills-directory (read-only Git checkout)")
+	flag.StringVar(&packRevision, "skill-pack-revision", "", "required full pinned commit SHA for --skill-pack")
+	flag.BoolVar(&allowUnsandboxedPackActors, "allow-unsandboxed-pack-actors", false, "acknowledge that pack actors can execute downloaded code and write the live checkout; not a sandbox")
 	flag.Parse()
+	if run && packFlag != "" && !allowUnsandboxedPackActors {
+		fatal(errors.New("unsandboxed pack actors can execute downloaded code and write the pack checkout; resolve the no-execution boundary before explicitly acknowledging with --allow-unsandboxed-pack-actors"))
+	}
+	if allowUnsandboxedPackActors && (!run || harness != "opencode" || packFlag == "") {
+		fatal(errors.New("unsandboxed pack actors acknowledgement applies only to --run --harness opencode --skill-pack"))
+	}
+	if (packFlag != "" || packRevision != "") && !((run && harness == "opencode") || validate) {
+		fatal(errors.New("--skill-pack is supported only with --run --harness opencode or --validate-config"))
+	}
+	var pack *skillPack
+	if packFlag != "" || packRevision != "" {
+		var err error
+		pack, err = loadSkillPack(packFlag, packRevision)
+		if err != nil {
+			fatal(err)
+		}
+	}
 
 	modes := 0
 	if opencodeProbe != "" {
@@ -480,6 +683,10 @@ func main() {
 	}
 	if validate {
 		fmt.Printf("installed-ab config: %d cases valid\n", len(cases.Cases))
+		if pack != nil {
+			content, _ := json.Marshal(pack.Identity)
+			fmt.Printf("skill_pack=%s\nskills_dir=%s\npreflight_expected=%v\n", content, pack.Dir, append([]string{"opencode", "report"}, pack.Identity.Skills...))
+		}
 		return
 	}
 	if rescore {
@@ -565,7 +772,7 @@ func main() {
 	if pairedRuns < 1 {
 		fatal(errors.New("--paired-runs must be positive"))
 	}
-	opts := runOptions{Harness: harness, Model: model, Effort: effort, Repo: root, Out: out, Timestamp: time.Now().UTC(), Resume: resume, Broker: broker, BrokerHash: brokerHash, PairedRuns: pairedRuns, ActorTimeout: actorTimeout}
+	opts := runOptions{Harness: harness, Model: model, Effort: effort, Repo: root, Out: out, Timestamp: time.Now().UTC(), Resume: resume, Broker: broker, BrokerHash: brokerHash, PairedRuns: pairedRuns, ActorTimeout: actorTimeout, SkillPack: pack}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if _, _, err := executeStudy(ctx, cases, gates, opts, subject); err != nil {
@@ -1039,6 +1246,7 @@ func manifestIdentityMismatch(got, want publishManifest) error {
 		{"gates_hash", got.GatesHash, want.GatesHash},
 		{"treatment_plugin_hash", got.TreatmentPluginHash, want.TreatmentPluginHash},
 		{"empty_control_plugin_hash", got.EmptyControlPluginHash, want.EmptyControlPluginHash},
+		{"skill_pack", packIdentityKey(got.SkillPack), packIdentityKey(want.SkillPack)},
 	}
 	for _, field := range fields {
 		if fmt.Sprint(field.got) != fmt.Sprint(field.want) {
@@ -1048,15 +1256,18 @@ func manifestIdentityMismatch(got, want publishManifest) error {
 	return nil
 }
 
-func expectedInventory(arm string) []string {
+func expectedInventory(arm string, packs ...*skillPackIdentity) []string {
 	if arm == "treatment" {
+		if len(packs) > 0 && packs[0] != nil {
+			return []string{packs[0].Name}
+		}
 		return []string{"megapowers"}
 	}
 	return []string{}
 }
 
-func armManifestMatches(got armManifest, want scheduledArm, selftest bool) bool {
-	inventory := expectedInventory(want.Arm)
+func armManifestMatches(got armManifest, want scheduledArm, selftest bool, packs ...*skillPackIdentity) bool {
+	inventory := expectedInventory(want.Arm, packs...)
 	return got.CaseID == want.Case.ID && got.BlockID == want.BlockID && got.Arm == want.Arm &&
 		got.PromptHash == want.PromptHash && got.FixtureHash == want.FixtureHash && got.PluginHash == want.PluginHash &&
 		sameStringSet(got.PluginNames, inventory) && got.InventoryHash == hashInventory(inventory) &&
@@ -1180,6 +1391,7 @@ func loadResumeCheckpoint(out string, schedule []scheduledArm, expected publishM
 			{"harness.model", row.Harness.Model, portableIdentifier(opts.Model)},
 			{"harness.effort", row.Harness.Effort, portableIdentifier(opts.Effort)},
 			{"source.repository", row.Source.Repository, "megapowers"},
+			{"skill_pack", packIdentityKey(row.SkillPack), packIdentityKey(expected.SkillPack)},
 			{"source.revision", row.Source.Revision, portableIdentifier(revision)},
 			{"prompt_hash", row.PromptHash, want.PromptHash},
 			{"fixture_hash", row.FixtureHash, want.FixtureHash},
@@ -1224,7 +1436,7 @@ func loadResumeCheckpoint(out string, schedule []scheduledArm, expected publishM
 		arm := priorManifest.Arms[index]
 		terminalHarnessError := row.Status != "completed" && index == len(priorRows)-1
 		if !terminalHarnessError {
-			if !armManifestMatches(arm, want, opts.Selftest) || resumeArmKey(arm.BlockID, arm.Arm) != key {
+			if !armManifestMatches(arm, want, opts.Selftest, expected.SkillPack) || resumeArmKey(arm.BlockID, arm.Arm) != key {
 				return checkpoint, fmt.Errorf("resume row %d is missing its matching inventory evidence: got case=%q block=%q arm=%q inventory=%v evidence=%q", index+1, arm.CaseID, arm.BlockID, arm.Arm, arm.PluginNames, arm.EvidenceOnly)
 			}
 		}
@@ -1296,7 +1508,21 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 	}
 	pluginHash := hashBytes([]byte("in-process-selftest-plugin"))
 	actorPluginRoot := filepath.Join(opts.Repo, "plugins", "megapowers")
-	if !opts.Selftest {
+	var packIdentity *skillPackIdentity
+	if opts.SkillPack != nil {
+		if opts.Harness != "opencode" {
+			return nil, publishManifest{}, errors.New("skill packs require OpenCode")
+		}
+		packIdentity = &opts.SkillPack.Identity
+		pluginHash, err = hashPortablePluginTree(opts.SkillPack.Dir)
+		if err != nil {
+			return nil, publishManifest{}, err
+		}
+		if pluginHash != opts.SkillPack.Hash {
+			return nil, publishManifest{}, errors.New("skill pack changed after validation")
+		}
+		subject = pluginBoundActor{Root: opts.SkillPack.Dir, Hash: pluginHash, Subject: subject}
+	} else if !opts.Selftest {
 		pluginHash, err = verifiedPluginHash(opts.Repo)
 		if err != nil {
 			return nil, publishManifest{}, err
@@ -1327,6 +1553,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 	}
 	schedule := scheduledArms(cases, pairedRuns, pluginHash, controlHash)
 	manifest := publishManifest{SchemaVersion: "2", Study: "installed-plugin-ab", Evidence: evidenceLabel(opts.Selftest), Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, Environment: runEnvironment{OS: runtime.GOOS, Arch: runtime.GOARCH, Locale: portableIdentifier(locale())}, PairedRuns: pairedRuns, ScheduleHash: hashSchedule(schedule), BrokerHash: brokerHash, CaseCatalogHash: caseCatalogHash, GatesHash: gatesHash, TreatmentPluginHash: pluginHash, EmptyControlPluginHash: controlHash}
+	manifest.SkillPack = packIdentity
 	rows := make([]resultRow, 0, len(schedule))
 	completed := make(map[string]bool)
 	expectedCLIVersion := ""
@@ -1377,6 +1604,10 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 			actorTimeout = 20 * time.Minute
 		}
 		request := actorRequest{Case: c, Arm: scheduled.Arm, Harness: opts.Harness, Model: opts.Model, Effort: opts.Effort, Home: home, Project: project, PluginRoot: pluginRoot, Timeout: actorTimeout}
+		if opts.SkillPack != nil && scheduled.Arm == "treatment" {
+			request.PluginRoot = ""
+			request.SkillsDir, request.SkillNames, request.PackName = opts.SkillPack.Dir, append([]string(nil), packIdentity.Skills...), packIdentity.Name
+		}
 		actorCtx, cancelActor := context.WithTimeout(ctx, actorTimeout)
 		result, actorErr := subject.Run(actorCtx, request)
 		timedOut := errors.Is(actorCtx.Err(), context.DeadlineExceeded)
@@ -1402,7 +1633,7 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 				return rows, manifest, err
 			}
 		}
-		inventory := cleanInventory(result.Inventory)
+		inventory := cleanInventory(result.Inventory, expectedInventory(scheduled.Arm, packIdentity)...)
 		armEvidence := armManifest{CaseID: c.ID, BlockID: scheduled.BlockID, Arm: scheduled.Arm, PromptHash: scheduled.PromptHash, FixtureHash: scheduled.FixtureHash, PluginHash: scheduled.PluginHash, PluginNames: inventory, InventoryHash: hashInventory(inventory), EvidenceOnly: evidenceLabel(opts.Selftest)}
 		armEvidence.OpenCode = result.OpenCode
 		if actorErr != nil || result.RC != 0 || timedOut {
@@ -1611,6 +1842,7 @@ func baseRow(c studyCase, arm, block string, opts runOptions, revision, cliVersi
 		sandbox = "in-process-selftest"
 	}
 	return resultRow{
+		SkillPack:     skillPackIdentityFor(opts.SkillPack),
 		SchemaVersion: "1", Study: "installed-plugin-ab", EvidenceClass: "behavioral", CaseID: c.ID,
 		RunID: fmt.Sprintf("%s-%s-%s", block, arm, timestamp.Format("20060102T150405Z")), BlockID: block, Arm: arm,
 		Harness:    harnessIdentity{Name: opts.Harness, CLIVersion: portableIdentifier(cliVersion), Model: portableIdentifier(opts.Model), Effort: portableIdentifier(opts.Effort)},
@@ -1622,23 +1854,25 @@ func baseRow(c studyCase, arm, block string, opts runOptions, revision, cliVersi
 }
 
 type evidenceManifest struct {
-	SchemaVersion string          `json:"schema_version"`
-	Study         string          `json:"study"`
-	EvidenceClass string          `json:"evidence_class"`
-	Harness       harnessIdentity `json:"harness"`
-	Source        sourceIdentity  `json:"source"`
-	CaseID        string          `json:"case_id"`
-	BlockID       string          `json:"block_id"`
-	Arm           string          `json:"arm"`
-	PromptHash    string          `json:"prompt_hash"`
-	FixtureHash   string          `json:"fixture_hash"`
-	PluginHash    string          `json:"plugin_hash"`
-	Environment   environment     `json:"environment"`
-	Timestamp     string          `json:"timestamp"`
+	SkillPack     *skillPackIdentity `json:"skill_pack,omitempty"`
+	SchemaVersion string             `json:"schema_version"`
+	Study         string             `json:"study"`
+	EvidenceClass string             `json:"evidence_class"`
+	Harness       harnessIdentity    `json:"harness"`
+	Source        sourceIdentity     `json:"source"`
+	CaseID        string             `json:"case_id"`
+	BlockID       string             `json:"block_id"`
+	Arm           string             `json:"arm"`
+	PromptHash    string             `json:"prompt_hash"`
+	FixtureHash   string             `json:"fixture_hash"`
+	PluginHash    string             `json:"plugin_hash"`
+	Environment   environment        `json:"environment"`
+	Timestamp     string             `json:"timestamp"`
 }
 
 func evidenceManifestFor(row resultRow) evidenceManifest {
 	return evidenceManifest{
+		SkillPack:     row.SkillPack,
 		SchemaVersion: row.SchemaVersion, Study: row.Study, EvidenceClass: row.EvidenceClass,
 		Harness: row.Harness, Source: row.Source, CaseID: row.CaseID, BlockID: row.BlockID, Arm: row.Arm,
 		PromptHash: row.PromptHash, FixtureHash: row.FixtureHash, PluginHash: row.PluginHash,
@@ -3519,7 +3753,10 @@ type trackedPluginFile struct {
 // Ignored or untracked payloads, symlinks, special files, and worktree drift
 // fail closed instead of entering an otherwise clean-looking comparison.
 func verifiedPluginHash(repo string) (string, error) {
-	const pluginPath = "plugins/megapowers"
+	return verifiedTreeHash(repo, "plugins/megapowers")
+}
+
+func verifiedTreeHash(repo, pluginPath string) (string, error) {
 	formatOutput, err := exec.Command("git", "-C", repo, "rev-parse", "--show-object-format").Output()
 	if err != nil {
 		return "", fmt.Errorf("read repository object format: %w", err)
@@ -4107,9 +4344,24 @@ var factJudgeIdentityPattern = func() *regexp.Regexp {
 	return regexp.MustCompile("(?i)" + strings.Join(names, "|"))
 }()
 
-func redactFactJudgeResponse(response string) (string, int) {
+func redactFactJudgeResponse(response string, packs ...*skillPackIdentity) (string, int) {
+	pattern := factJudgeIdentityPattern
+	if len(packs) > 0 && packs[0] != nil {
+		pack := packs[0]
+		names := append([]string{pack.SourceURL, pack.Name}, pack.Skills...)
+		sort.Slice(names, func(i, j int) bool { return len(names[i]) > len(names[j]) })
+		alternatives := []string{}
+		for _, name := range names {
+			if name != "" {
+				alternatives = append(alternatives, `\b`+regexp.QuoteMeta(name)+`\b`)
+			}
+		}
+		// Packs can contain short IDs such as pr. Do not erase those letters
+		// inside unrelated words like project while masking standalone IDs.
+		pattern = regexp.MustCompile("(?i)" + strings.TrimPrefix(factJudgeIdentityPattern.String(), "(?i)") + "|" + strings.Join(alternatives, "|"))
+	}
 	leaks := 0
-	redacted := factJudgeIdentityPattern.ReplaceAllStringFunc(response, func(string) string {
+	redacted := pattern.ReplaceAllStringFunc(response, func(string) string {
 		leaks++
 		return "[workflow]"
 	})
@@ -4174,9 +4426,9 @@ func parseFactJudgment(data []byte, response string, required, forbidden int) (f
 
 type factJudgeInvoker func(context.Context, string, string) ([]byte, error)
 
-func judgeFactResponse(ctx context.Context, c studyCase, response, model string, invoke factJudgeInvoker) (factJudgment, int, error) {
+func judgeFactResponse(ctx context.Context, c studyCase, response, model string, invoke factJudgeInvoker, packs ...*skillPackIdentity) (factJudgment, int, error) {
 	// Evidence must refer to exactly the redacted text visible to the judge.
-	response, _ = redactFactJudgeResponse(response)
+	response, _ = redactFactJudgeResponse(response, packs...)
 	var v factJudgment
 	var err error
 	for attempt := 1; attempt <= 2; attempt++ {
@@ -4293,6 +4545,11 @@ func rescoreRun(ctx context.Context, catalog casesFile, gates gatesFile, out str
 	if err := decodeStrict(filepath.Join(out, "publish/manifest.json"), &manifest); err != nil {
 		return err
 	}
+	for _, row := range rows {
+		if packIdentityKey(row.SkillPack) != packIdentityKey(manifest.SkillPack) {
+			return errors.New("rescore skill pack provenance does not match manifest")
+		}
+	}
 	ch, gh, err := configurationHashes(selected, gates)
 	if err != nil {
 		return err
@@ -4401,7 +4658,7 @@ func rescoreRun(ctx context.Context, catalog casesFile, gates gatesFile, out str
 			if err != nil {
 				return err
 			}
-			redacted, _ := redactFactJudgeResponse(string(response))
+			redacted, _ := redactFactJudgeResponse(string(response), row.SkillPack)
 			valid, err := parseFactJudgment(content, redacted, len(c.RequiredFacts), len(c.ForbiddenFacts))
 			if err != nil {
 				return fmt.Errorf("invalid saved judge verdict: %w", err)
@@ -4563,6 +4820,11 @@ func runFactJudge(ctx context.Context, catalog casesFile, gates gatesFile, out s
 	if err := decodeStrict(filepath.Join(out, "publish", "manifest.json"), &original); err != nil {
 		return err
 	}
+	for _, row := range rows {
+		if packIdentityKey(row.SkillPack) != packIdentityKey(original.SkillPack) {
+			return errors.New("judge skill pack provenance does not match manifest")
+		}
+	}
 	caseHash, gateHash, err := configurationHashes(selected, gates)
 	if err != nil {
 		return err
@@ -4626,7 +4888,7 @@ func runFactJudge(ctx context.Context, catalog casesFile, gates gatesFile, out s
 		if hashBytes(response) != row.Artifacts["response"] {
 			return errors.New("retained response does not match row artifact hash")
 		}
-		_, manifest.ResponseLeaks[row.RunID] = redactFactJudgeResponse(string(response))
+		_, manifest.ResponseLeaks[row.RunID] = redactFactJudgeResponse(string(response), row.SkillPack)
 		model, _ := factJudgeModel(row.Harness.Model)
 		if !preflighted[model] {
 			data, err := boundedCall(ctx, model, openCodePreflightPrompt, filepath.Join(private, fmt.Sprintf("%04d-preflight.jsonl", ordinal+1)))
@@ -4650,7 +4912,7 @@ func runFactJudge(ctx context.Context, catalog casesFile, gates gatesFile, out s
 			invocation++
 			return boundedCall(ctx, model, prompt, filepath.Join(private, fmt.Sprintf("%04d-attempt-%d.jsonl", ordinal+1, invocation)))
 		}
-		v, attempts, judgeErr := judgeFactResponse(ctx, c, string(response), model, invoke)
+		v, attempts, judgeErr := judgeFactResponse(ctx, c, string(response), model, invoke, row.SkillPack)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -4729,7 +4991,11 @@ func prepareOpenCode(r actorRequest, owner string) ([]string, error) {
 		"providers": map[string]any{"claude-agent": map[string]any{"models": map[string]any{"opus": map[string]any{}}}},
 	}
 	if r.Arm == "treatment" {
-		config["skills"] = []string{filepath.Join(r.PluginRoot, "skills")}
+		dir := r.SkillsDir
+		if dir == "" {
+			dir = filepath.Join(r.PluginRoot, "skills")
+		}
+		config["skills"] = []string{dir}
 	}
 	if r.Arm == "judge" {
 		// A custom primary avoids built-in agent exceptions after the global
@@ -4843,7 +5109,7 @@ func openCodePreflightPromptFor(attempt int) string {
 	return fmt.Sprintf("%s Retry %d: a previous inventory was incomplete. Go through the available skills list entry by entry and include every one.", openCodePreflightPrompt, attempt)
 }
 
-func validateOpenCodePreflight(response, arm string) (*openCodeTelemetry, error) {
+func validateOpenCodePreflight(response, arm string, packSkills ...string) (*openCodeTelemetry, error) {
 	var inventory struct {
 		Skills       []string `json:"skills"`
 		Instructions []string `json:"instructions"`
@@ -4859,7 +5125,10 @@ func validateOpenCodePreflight(response, arm string) (*openCodeTelemetry, error)
 	}
 	want := []string{"opencode", "report"}
 	if arm == "treatment" {
-		want = append(want, publicMegapowersSkillNames[:]...)
+		if packSkills == nil {
+			packSkills = publicMegapowersSkillNames[:]
+		}
+		want = append(want, packSkills...)
 	}
 	for i, name := range inventory.Skills {
 		// Built-ins report their display names on some providers.
@@ -4940,7 +5209,7 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 		if len(parsed.Events) != 1 {
 			return result, errors.New("OpenCode preflight used a tool")
 		}
-		metadata, err = validateOpenCodePreflight(parsed.Response, r.Arm)
+		metadata, err = validateOpenCodePreflight(parsed.Response, r.Arm, r.SkillNames...)
 		if err == nil {
 			break
 		}
@@ -4966,14 +5235,15 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 		return result, err
 	}
 	metadata.TaskUsage = usage
-	for _, event := range parsed.Events {
-		if event.Kind == "skill_selected" && event.RC == 0 && !slices.Contains(metadata.Skills, event.Path) {
-			return result, errors.New("OpenCode loaded a skill absent from the validated preflight")
-		}
+	if err := validateOpenCodeSkillSelections(parsed.Events, metadata.Skills, r.SkillNames); err != nil {
+		return result, err
 	}
 	result.Inventory = []string{}
 	if r.Arm == "treatment" {
 		result.Inventory, result.SkillsCatalog = []string{"megapowers"}, append([]string(nil), publicMegapowersSkillNames[:]...)
+		if r.SkillsDir != "" {
+			result.Inventory, result.SkillsCatalog = []string{r.PackName}, append([]string(nil), r.SkillNames...)
+		}
 	}
 	if len(r.Case.OracleCommand) > 0 {
 		// Use the existing local oracle's private build cache and GOWORK=off,
@@ -4985,6 +5255,15 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 		result.OracleRC = &oracleRC
 	}
 	return result, nil
+}
+
+func validateOpenCodeSkillSelections(events []actorEvent, reported, packNames []string) error {
+	for _, event := range events {
+		if event.Kind == "skill_selected" && event.RC == 0 && !slices.Contains(reported, event.Path) && !slices.Contains(packNames, event.Path) {
+			return errors.New("OpenCode loaded a skill absent from the validated preflight and pinned pack")
+		}
+	}
+	return nil
 }
 
 // Run JSON emits completed tool parts and one step_finish per model step.
@@ -5210,6 +5489,26 @@ func openCodeSelftest() error {
 		return err
 	}
 	defer os.RemoveAll(root)
+	packDir := filepath.Join(root, "pack-skills")
+	for _, name := range []string{"alpha", "group/beta"} {
+		dir := filepath.Join(packDir, name)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+filepath.Base(name)+"\ndescription: Test.\n---\n"), 0600); err != nil {
+			return err
+		}
+	}
+	packNames, err := skillPackNames(packDir)
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(packNames, []string{"alpha", "beta"}) {
+		return errors.New("pack selftest did not discover nested names")
+	}
+	if err := skillPackConfigSelftest(&skillPack{Dir: packDir, Identity: skillPackIdentity{Skills: packNames}}, filepath.Join(root, "pack-config")); err != nil {
+		return err
+	}
 	for _, arm := range []string{"control", "treatment"} {
 		env, err := prepareOpenCode(actorRequest{Arm: arm, Model: "openai/gpt-6.1-sol-fast#high", Home: filepath.Join(root, arm), PluginRoot: "/eval-checkout/plugins/megapowers"}, "/eval-owner")
 		if err != nil {
@@ -5514,11 +5813,11 @@ func samePaths(a, b []string) bool {
 	return strings.Join(left, "\x00") == strings.Join(right, "\x00")
 }
 
-func cleanInventory(input []string) []string {
+func cleanInventory(input []string, additional ...string) []string {
 	seen := map[string]bool{}
 	var output []string
 	for _, name := range input {
-		if name == "megapowers" && !seen[name] {
+		if (name == "megapowers" || slices.Contains(additional, name)) && !seen[name] {
 			seen[name] = true
 			output = append(output, name)
 		}

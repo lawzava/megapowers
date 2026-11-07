@@ -20,6 +20,7 @@ import (
 	"github.com/lawzava/megapowers/internal/strictjson"
 	"io"
 	"math"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -46,6 +47,21 @@ type sourceIdentity struct {
 	Revision   string `json:"revision"`
 }
 
+type skillPackIdentity struct {
+	Name      string   `json:"name"`
+	SourceURL string   `json:"source_url"`
+	Revision  string   `json:"revision"`
+	Skills    []string `json:"skills"`
+}
+
+func skillPackKey(pack *skillPackIdentity) string {
+	if pack == nil {
+		return ""
+	}
+	content, _ := json.Marshal(pack)
+	return string(content)
+}
+
 type environmentEnvelope struct {
 	OS      string `json:"os"`
 	Arch    string `json:"arch"`
@@ -54,6 +70,7 @@ type environmentEnvelope struct {
 }
 
 type resultRow struct {
+	SkillPack     *skillPackIdentity  `json:"skill_pack,omitempty"`
 	SchemaVersion string              `json:"schema_version"`
 	Study         string              `json:"study"`
 	EvidenceClass string              `json:"evidence_class"`
@@ -148,6 +165,18 @@ func requiredHash(name, value string) error {
 }
 
 func validateRow(row resultRow) error {
+	if pack := row.SkillPack; pack != nil {
+		namePattern := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+		u, err := url.Parse(pack.SourceURL)
+		if row.Study != installedABStudy || row.Harness.Name != "opencode" || !namePattern.MatchString(pack.Name) || len(pack.Name) > 64 || pack.Name == "megapowers" || !revisionPattern.MatchString(pack.Revision) || err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || len(pack.Skills) == 0 || !sort.StringsAreSorted(pack.Skills) {
+			return errors.New("invalid skill_pack provenance")
+		}
+		for i, name := range pack.Skills {
+			if !namePattern.MatchString(name) || len(name) > 64 || name == "opencode" || name == "report" || (i > 0 && name == pack.Skills[i-1]) {
+				return errors.New("invalid skill_pack skill inventory")
+			}
+		}
+	}
 	if row.SchemaVersion != schemaVersion {
 		return fmt.Errorf("schema_version %q is unsupported", row.SchemaVersion)
 	}
@@ -401,6 +430,7 @@ func comparisonIdentity(row resultRow) string {
 		row.Harness.Effort,
 		row.Source.Repository,
 		row.Source.Revision,
+		skillPackKey(row.SkillPack),
 		row.PromptHash,
 		row.FixtureHash,
 		row.Environment.OS,
@@ -518,6 +548,7 @@ func activationGroupIdentity(row resultRow) string {
 		row.Harness.Effort,
 		row.Source.Repository,
 		row.Source.Revision,
+		skillPackKey(row.SkillPack),
 		row.Environment.OS,
 		row.Environment.Arch,
 		row.Environment.Sandbox,
