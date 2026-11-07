@@ -500,6 +500,31 @@ The safe-effects and TDD cases do not declare required skill activation in the
 catalog; report observed loads of their core skill separately, without changing
 their outcome gates. These three-pair runs cannot satisfy study acceptance.
 
+#### Offline rescoring
+
+Recompute response and trace metrics from a completed OpenCode run, then merge
+its saved `private/judge/*-verdict.json` receipts without invoking any model:
+
+```bash
+go run evals/studies/installed-ab/run.go --rescore --out "$TMPDIR/run-copy"
+```
+
+This writes new `publish/rescored-results.jsonl` and
+`publish/rescored-judged-results.jsonl`. Both paths must be absent. Original
+results, judged results, private artifacts, manifests and acceptance stay
+unchanged. Use a private copy when the original run must remain read-only.
+Catalog/gate, original row, prompt, fixture, response and trace hashes must match.
+The saved judge manifest must bind the original results and row set. Every row
+needs a saved judge verdict, including saved `judge_error` receipts. Missing,
+duplicate or invalid verdicts fail before publication. Evidence quotes are
+revalidated against the same redacted response used for judging.
+
+Final project directories are not retained. Rescoring therefore preserves the
+original oracle, protected-fixture and code-quality observations as hard gates;
+it does not rerun code or infer final files from edits. TDD still requires
+trusted execution receipts. Broker-backed traces are currently unsupported and
+fail explicitly rather than using the OpenCode normalizer.
+
 The older [standalone fact-judge](../../tools/fact-judge/main.go) remains a
 separate diagnostic tool. It does not enforce this OpenCode invocation,
 cross-vendor routing, or quote-validation contract.
@@ -534,9 +559,14 @@ code blocks; otherwise `artifact_success` fails. Rows record
 must occur, and the first exit-0 execution of each (falling back to the first
 attempt when a kind has no exit-0 event) must appear in the listed order;
 otherwise `workflow_success` fails. Rows record
-`required_event_order`. A test command counts as a `test` event only as the
-last segment of a plain `&&` chain; a hook-declined commit or push attempt
-before a required check does not penalize a trace that then runs the check
+`required_event_order`. Broker tests count as successful only with attributable
+exit codes or trusted receipts. OpenCode retains test attempts in compound
+commands, including `;`, `&&`, `||` and pipes. An unobserved per-test exit code
+is 125, not a green check. A successful plain `&&` chain proves its checks
+succeeded. A unique captured `echo label=$?` immediately after a test can
+report its status; masked pipelines and conditional fallbacks remain unknown.
+These diagnostics never replace TDD execution receipts. A hook-declined commit
+or push attempt before a required check does not penalize a trace that then runs the check
 before succeeding. `required_event_kinds` count only events that
 exited 0; `required_event_attempts` count any attempt of the listed kinds,
 which suits a push that an offline actor can never complete. Rows record

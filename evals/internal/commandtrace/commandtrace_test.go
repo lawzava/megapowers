@@ -47,3 +47,45 @@ func TestNormalizedCommandSegments(t *testing.T) {
 		t.Fatalf("NormalizedCommandSegments() = %q, want %q", got, want)
 	}
 }
+
+func TestObservedTestAttempts(t *testing.T) {
+	for _, tc := range []struct {
+		command, output string
+		rc, wantRC      int
+	}{
+		{`go test ./...`, "", 7, 7},
+		{`cd pkg && go test ./...`, "", 0, 0},
+		{`cd missing && go test ./...`, "", 1, 125},
+		{`go test ./... && go vet ./...`, "", 0, 0},
+		{`go test ./... && go vet ./...`, "", 1, 125},
+		{`cat go.mod; go test ./...; echo "exit=$?"; go vet ./...; echo "vet exit=$?"`, "ok\nexit=0\nvet exit=0\n", 0, 0},
+		{`go test ./...; echo EXIT=$?`, "FAIL\nEXIT=1\n", 0, 1},
+		{`go test ./...; echo EXIT=$?`, "EXIT=0\nEXIT=1\n", 0, 125},
+		{`go test ./...; echo EXIT=$?`, "", 0, 125},
+		{`go test ./... || true`, "", 0, 125},
+		{`go test ./... | tail -5`, "", 0, 125},
+		{`false || go test ./...`, "", 0, 125},
+		{`true || go test ./...; echo rc=$?`, "rc=0\n", 0, 125},
+		{`false && go test ./...; echo rc=$?`, "rc=1\n", 0, 125},
+		{`make build && go test ./...; echo rc=$?`, "rc=1\n", 0, 125},
+		{`cd missing && go test ./...; echo rc=$?`, "rc=1\n", 0, 125},
+		{`cd pkg && go test ./...; echo rc=$?`, "rc=0\n", 0, 0},
+		{`go test ./... && go vet ./... &`, "", 0, 125},
+		{`go test ./... &`, "", 0, 125},
+		{`true && exit 0 && go test ./...`, "", 0, 125},
+		{`exec true && go test ./...`, "", 0, 125},
+		{`return 0; go test ./...; echo rc=$?`, "rc=0\n", 0, 125},
+		{`echo 'go test ./...'; go test ./...; echo rc=$?`, "rc=0\n", 0, 0},
+		{`go test ./...; echo 'rc=$?'`, "rc=0\n", 0, 125},
+	} {
+		t.Run(tc.command+tc.output, func(t *testing.T) {
+			got := Observed(tc.command, tc.rc, tc.output)
+			if len(got) != 1 || got[0].Kind != "test" || got[0].RC != tc.wantRC {
+				t.Fatalf("Observed() = %+v, want test rc=%d", got, tc.wantRC)
+			}
+		})
+	}
+	if got := Observed(`echo 'go test ./...'`, 0, ""); len(got) != 0 {
+		t.Fatalf("quoted text classified: %+v", got)
+	}
+}

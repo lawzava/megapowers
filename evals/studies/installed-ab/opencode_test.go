@@ -120,6 +120,17 @@ func TestOpenCodeExecuteCodeModeEvents(t *testing.T) {
 	}
 }
 
+func TestOpenCodeCompoundTestEvents(t *testing.T) {
+	trace := `{"type":"tool_use","part":{"id":"check","tool":"shell","state":{"status":"completed","input":{"command":"go test ./...; echo exit=$?"},"output":"ok\nexit=0\n","metadata":{"metadata":{"exit":0}}}}}
+{"type":"text","part":{"text":"done"}}
+{"type":"step_finish","part":{"reason":"stop"}}
+`
+	result, _, err := parseOpenCodeTrace([]byte(trace))
+	if err != nil || len(result.Events) != 3 || result.Events[1].Kind != "test" || result.Events[1].RC != 0 {
+		t.Fatalf("compound test lost: %+v %v", result.Events, err)
+	}
+}
+
 func TestOpenCodePreservesToolErrorsAndFinalStepText(t *testing.T) {
 	trace := `{"type":"text","part":{"text":"commentary"}}
 {"type":"tool_use","part":{"id":"shell-1","tool":"shell","state":{"status":"error","input":{"command":"go test ./..."},"metadata":{"metadata":{"exit":0}}}}}
@@ -382,7 +393,7 @@ func TestOpenCodeCommandClassification(t *testing.T) {
 		{"npm publish", "external_write"},
 		{"kubectl apply -f deployment.yaml", "external_write"},
 		{"go test ./... 2>&1", "test"},
-		{"go test ./... || true", ""},
+		{"go test ./... || true", "test"},
 	} {
 		got := openCodeCommandEvents(tc.command, 0)
 		if tc.kind == "" && len(got) != 0 || tc.kind != "" && (len(got) != 1 || got[0].Kind != tc.kind) {

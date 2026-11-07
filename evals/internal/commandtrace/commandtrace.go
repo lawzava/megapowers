@@ -42,6 +42,19 @@ func Classify(command string, rc int) []Event {
 // test's rc, so those shapes yield only an unattributed anchor. Effect events
 // (external_write, git_commit) record attempts with the aggregate rc.
 func Events(command string, rc int) []Event {
+	return events(command, rc, nil)
+}
+
+// Observed retains test attempts in compound commands. Unknown per-test exit
+// codes are 125, never a successful check. Unlike Classify, this diagnostic
+// adapter can use a successful plain && chain or an immediately following
+// echo of $? in captured output. These observations are not execution receipts.
+// Broker consumers must continue using Events/Classify for receipt anchors.
+func Observed(command string, rc int, output string) []Event {
+	return events(command, rc, &output)
+}
+
+func events(command string, rc int, output *string) []Event {
 	segments, substitution, ok := splitCommandSegments(command)
 	if !ok || len(segments) == 0 {
 		return nil
@@ -49,14 +62,28 @@ func Events(command string, rc int) []Event {
 	events := make([]Event, 0, 3)
 	workingDirectory := ""
 	cdChain := true
+	conditional := false
+	terminated := false
+	allAnd := true
+	background := false
+	for _, segment := range segments {
+		background = background || segment.background
+	}
+	for _, segment := range segments[1:] {
+		allAnd = allAnd && segment.operator == "&&"
+	}
 	for index, segment := range segments {
 		fields := executableFields(segment.fields)
+		conditional = conditional || segment.operator == "||"
 		if index > 0 && segment.operator != "&&" {
 			cdChain = false
 		}
 		if len(fields) == 0 {
 			cdChain = false
 			continue
+		}
+		if fields[0] == "exit" || fields[0] == "return" || fields[0] == "exec" {
+			terminated = true
 		}
 		if fields[0] == "cd" && len(fields) >= 2 {
 			workingDirectory = strings.TrimPrefix(filepath.ToSlash(filepath.Clean(fields[1])), "./")
@@ -79,14 +106,56 @@ func Events(command string, rc int) []Event {
 		}
 		for anchor := 0; anchor < testAnchors; anchor++ {
 			kind := UnattributedTestKind
+			testRC := rc
 			if attributable && !substitution && cdChain && index == len(segments)-1 {
 				kind = "test"
 			}
-			events = append(events, Event{Kind: kind, RC: rc})
+			if output != nil && kind == UnattributedTestKind {
+				kind, testRC = "test", 125
+				if attributable && !substitution {
+					if allAnd && rc == 0 {
+						testRC = 0
+					} else if index+1 < len(segments) && segment.operator != "|" && !conditional {
+						testRC = echoedExitCode(segments[index+1], *output)
+					}
+				}
+			}
+			if output != nil && (background || terminated || (segment.operator == "&&" && testRC != 0)) {
+				// A background shell can return before its tests finish. A failed
+				// && prerequisite or terminating builtin can skip later tests.
+				kind, testRC = "test", 125
+			}
+			events = append(events, Event{Kind: kind, RC: testRC})
 		}
 		cdChain = false
 	}
 	return events
+}
+
+// Accept only a unique literal label followed by the immediately preceding
+// command's expanded status. A pipeline or literal '$?' cannot attest a test.
+func echoedExitCode(next commandSegment, output string) int {
+	if next.operator != ";" || len(next.words) != 2 || next.words[0] != "echo" || strings.Contains(next.raw, "'") || strings.Contains(next.raw, `\$`) {
+		return 125
+	}
+	label, ok := strings.CutSuffix(next.words[1], "$?")
+	if !ok || label == "" || strings.ContainsAny(label, "$`\\") {
+		return 125
+	}
+	rc, matches := 125, 0
+	for _, line := range strings.Split(output, "\n") {
+		if value, found := strings.CutPrefix(strings.TrimSuffix(line, "\r"), label); found {
+			status, err := strconv.Atoi(value)
+			if err == nil && status >= 0 && status <= 255 {
+				rc = status
+				matches++
+			}
+		}
+	}
+	if matches != 1 {
+		return 125
+	}
+	return rc
 }
 
 // commandSegment is one simple command of a shell command line. operator is
@@ -95,9 +164,11 @@ func Events(command string, rc int) []Event {
 // characters trimmed; words are case-preserving shell words with quoting
 // removed, so a quoted argument such as a header value stays one word.
 type commandSegment struct {
-	operator string
-	fields   []string
-	words    []string
+	background bool
+	raw        string
+	operator   string
+	fields     []string
+	words      []string
 }
 
 // splitCommandSegments splits a command line on ; && || | & and newlines
@@ -141,7 +212,7 @@ func splitCommandSegments(command string) ([]commandSegment, bool, bool) {
 			fields[index] = strings.ToLower(strings.Trim(fields[index], "'\"()"))
 		}
 		if len(fields) > 0 {
-			segments = append(segments, commandSegment{operator: operator, fields: fields, words: words})
+			segments = append(segments, commandSegment{raw: command[start:end], operator: operator, fields: fields, words: words})
 		}
 		words = make([]string, 0, 4)
 	}
@@ -195,6 +266,9 @@ func splitCommandSegments(command string) ([]commandSegment, bool, bool) {
 				}
 			case character == '&':
 				next = "&"
+			}
+			if next == "&" && len(segments) > 0 {
+				segments[len(segments)-1].background = true
 			}
 			if character == '\n' && len(heredocs) > 0 {
 				index = skipHeredocBodies(command, index+1, heredocs) - 1

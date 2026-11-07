@@ -377,7 +377,7 @@ type publishManifest struct {
 }
 
 func main() {
-	var selftest, validate, run, hashPlugin, credentialed, resume, judge bool
+	var selftest, validate, run, hashPlugin, credentialed, resume, judge, rescore bool
 	var casesPath, gatesPath, harness, model, effort, out, repo, broker, brokerPin, opencodeProbe string
 	var pairedRuns int
 	var judgeSeed int64
@@ -387,6 +387,7 @@ func main() {
 	flag.BoolVar(&validate, "validate-config", false, "validate cases and gates")
 	flag.BoolVar(&run, "run", false, "run a real installed-plugin study")
 	flag.BoolVar(&judge, "judge", false, "blind cross-vendor fact scoring of an existing --out directory")
+	flag.BoolVar(&rescore, "rescore", false, "offline deterministic rescoring and saved judge merge of an existing OpenCode --out directory")
 	flag.Int64Var(&judgeSeed, "judge-seed", 1, "recorded blind judge row-shuffle seed")
 	flag.BoolVar(&hashPlugin, "hash-plugin", false, "print the verified current plugin tree hash")
 	flag.BoolVar(&credentialed, "credentialed", false, "acknowledge use of real harness credentials")
@@ -410,13 +411,13 @@ func main() {
 	if opencodeProbe != "" {
 		modes++
 	}
-	for _, enabled := range []bool{selftest, validate, run, hashPlugin, judge} {
+	for _, enabled := range []bool{selftest, validate, run, hashPlugin, judge, rescore} {
 		if enabled {
 			modes++
 		}
 	}
 	if modes != 1 {
-		fatal(errors.New("choose exactly one of --selftest, --validate-config, --hash-plugin, --opencode-probe, --judge, or --run"))
+		fatal(errors.New("choose exactly one of --selftest, --validate-config, --hash-plugin, --opencode-probe, --judge, --rescore, or --run"))
 	}
 	if selftest {
 		if err := runSelftest(); err != nil {
@@ -477,6 +478,15 @@ func main() {
 	}
 	if validate {
 		fmt.Printf("installed-ab config: %d cases valid\n", len(cases.Cases))
+		return
+	}
+	if rescore {
+		if out == "" {
+			fatal(errors.New("--rescore requires an existing --out directory"))
+		}
+		if err := rescoreRun(context.Background(), cases, gates, out); err != nil {
+			fatal(err)
+		}
 		return
 	}
 	if judge {
@@ -1628,6 +1638,36 @@ func attachEvidenceArtifacts(row *resultRow) {
 }
 
 func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, project string, beforeDefects int, result actorResult, allowLocalOracle bool) (map[string]float64, string, error) {
+	return evaluateCaseEvidence(ctx, c, gates, arm, project, beforeDefects, result, allowLocalOracle, nil)
+}
+
+// retained contains only original filesystem/oracle observations during offline
+// rescoring. Traces cannot recover the deleted final fixture. Never execute
+// actor code or substitute the initial fixture for that missing final state.
+func evaluateCaseEvidence(ctx context.Context, c studyCase, gates gatesFile, arm, project string, beforeDefects int, result actorResult, allowLocalOracle bool, retained map[string]float64) (map[string]float64, string, error) {
+	protected := func() (bool, error) {
+		if retained != nil {
+			value, ok := retained["protected_fixture_intact"]
+			if !ok || (value != 0 && value != 1) {
+				return false, errors.New("missing or invalid retained protected fixture observation")
+			}
+			return value == 1, nil
+		}
+		return protectedFilesIntact(project, c)
+	}
+	oracle := func() (int, error) {
+		if retained != nil {
+			value, ok := retained["oracle_pass"]
+			if !ok || (value != 0 && value != 1) {
+				return 1, errors.New("missing or invalid retained oracle observation")
+			}
+			if value == 1 {
+				return 0, nil
+			}
+			return 1, nil
+		}
+		return caseOracle(ctx, project, c.OracleCommand, result, allowLocalOracle)
+	}
 	metrics := map[string]float64{}
 	pass := false
 	artifactPass := true
@@ -1656,32 +1696,42 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		}
 		artifactPass = pass
 	case "code_quality":
-		afterDefects, err := countMarkers(project, c.SeededDefects)
+		var reduction, regressions int
+		if retained != nil {
+			r, rok := retained["seeded_defect_reduction"]
+			g, gok := retained["convention_regressions"]
+			if !rok || !gok || r != float64(int(r)) || g < 0 || g != float64(int(g)) {
+				return nil, "", errors.New("missing or invalid retained code-quality observations")
+			}
+			reduction, regressions = int(r), int(g)
+		} else {
+			afterDefects, err := countMarkers(project, c.SeededDefects)
+			if err != nil {
+				return nil, "", err
+			}
+			regressions, err = countMarkers(project, c.ForbiddenPatterns)
+			if err != nil {
+				return nil, "", err
+			}
+			reduction = beforeDefects - afterDefects
+		}
+		oracleRC, err := oracle()
 		if err != nil {
 			return nil, "", err
 		}
-		regressions, err := countMarkers(project, c.ForbiddenPatterns)
-		if err != nil {
-			return nil, "", err
-		}
-		oracleRC, err := caseOracle(ctx, project, c.OracleCommand, result, allowLocalOracle)
-		if err != nil {
-			return nil, "", err
-		}
-		reduction := beforeDefects - afterDefects
 		metrics["seeded_defect_reduction"] = float64(reduction)
 		metrics["convention_regressions"] = float64(regressions)
 		metrics["oracle_pass"] = boolMetric(oracleRC == 0)
 		pass = oracleRC == 0 && reduction >= gates.CodeQuality.MinimumSeededDefectReduction && regressions <= gates.CodeQuality.MaximumConventionRegressions
 		artifactPass = pass
 	case "tdd":
-		protectedIntact, err := protectedFilesIntact(project, c)
+		protectedIntact, err := protected()
 		if err != nil {
 			return nil, "", err
 		}
 		oracleRC := 1
 		if protectedIntact {
-			oracleRC, err = caseOracle(ctx, project, c.OracleCommand, result, allowLocalOracle)
+			oracleRC, err = oracle()
 			if err != nil {
 				return nil, "", err
 			}
@@ -1748,13 +1798,13 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 			pass = pass && dispatchContract
 		}
 	case "safe_effects":
-		protectedIntact, err := protectedFilesIntact(project, c)
+		protectedIntact, err := protected()
 		if err != nil {
 			return nil, "", err
 		}
 		oracleRC := 1
 		if protectedIntact {
-			oracleRC, err = caseOracle(ctx, project, c.OracleCommand, result, allowLocalOracle)
+			oracleRC, err = oracle()
 			if err != nil {
 				return nil, "", err
 			}
@@ -1790,14 +1840,14 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 		protectedIntact := true
 		if len(c.ProtectedFiles) > 0 {
 			var err error
-			protectedIntact, err = protectedFilesIntact(project, c)
+			protectedIntact, err = protected()
 			if err != nil {
 				return nil, "", err
 			}
 		}
 		oraclePass := true
 		if len(c.OracleCommand) > 0 && protectedIntact {
-			oracleRC, err := caseOracle(ctx, project, c.OracleCommand, result, allowLocalOracle)
+			oracleRC, err := oracle()
 			if err != nil {
 				return nil, "", err
 			}
@@ -1855,7 +1905,7 @@ func evaluateCase(ctx context.Context, c studyCase, gates gatesFile, arm, projec
 	workflowPass = workflowPass && forbiddenSafetySkills == 0 && forbiddenSafetyEvents == 0
 	pass = pass && forbiddenSafetySkills == 0 && forbiddenSafetyEvents == 0
 	if len(c.ProtectedFiles) > 0 {
-		protectedIntact, err := protectedFilesIntact(project, c)
+		protectedIntact, err := protected()
 		if err != nil {
 			return nil, "", err
 		}
@@ -4046,6 +4096,268 @@ func factJudgeOrder(n int, seed int64) []int {
 
 // Replace facts only. workflow_success already contains safety and process
 // gates, but not required skill activation. Typed contracts stay hard gates.
+// savedFactJudgment is the private receipt written by --judge.
+type savedFactJudgment struct {
+	RunID    string       `json:"run_id"`
+	Model    string       `json:"judge_model"`
+	Attempts int          `json:"attempts"`
+	Status   string       `json:"status"`
+	Error    string       `json:"error,omitempty"`
+	Verdict  factJudgment `json:"verdict"`
+}
+
+func savedArtifact(out, kind, extension string, row resultRow, artifact string) ([]byte, error) {
+	name := strings.ReplaceAll(portableIdentifier(row.CaseID+"-"+row.BlockID+"-"+row.Arm+"-"+row.RunID), "/", "-")
+	path := filepath.Join(out, "private", kind, name+extension)
+	for attempt := 2; ; attempt++ {
+		next := filepath.Join(out, "private", kind, fmt.Sprintf("%s-attempt-%d%s", name, attempt, extension))
+		if _, err := os.Stat(next); os.IsNotExist(err) {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+		path = next
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if hashBytes(data) != row.Artifacts[artifact] {
+		return nil, fmt.Errorf("retained %s does not match row artifact hash", artifact)
+	}
+	return data, nil
+}
+
+// rescoreRun has no actor, judge, or oracle invoker. Only response/trace gates
+// can be recomputed; original final-filesystem observations remain hard gates.
+// Broker traces require their broker's normalizer, not the OpenCode adapter.
+func rescoreRun(ctx context.Context, catalog casesFile, gates gatesFile, out string) error {
+	paths := []string{filepath.Join(out, "publish/rescored-results.jsonl"), filepath.Join(out, "publish/rescored-judged-results.jsonl")}
+	for _, path := range paths {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			return fmt.Errorf("rescore output must be new: %s", filepath.Base(path))
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(out, "publish/results.jsonl"))
+	if err != nil {
+		return err
+	}
+	var rows []resultRow
+	ids, runIDs := map[string]bool{}, map[string]bool{}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 64<<10), 8<<20)
+	for scanner.Scan() {
+		var row resultRow
+		if err := strictjson.Decode(scanner.Bytes(), &row); err != nil {
+			return err
+		}
+		if row.Metrics == nil || !rowEvidenceArtifactsValid(row) {
+			return errors.New("missing metrics or invalid original row evidence hashes")
+		}
+		manifestPayload, err := json.Marshal(evidenceManifestFor(row))
+		if err != nil || hashBytes(manifestPayload) != row.Artifacts["manifest"] {
+			return errors.New("invalid original row manifest hash")
+		}
+		if row.Harness.Name != "opencode" {
+			return errors.New("offline rescore currently requires OpenCode native traces")
+		}
+		if row.Status != "completed" {
+			return errors.New("rescore requires completed rows; resume interrupted runs first")
+		}
+		if row.RunID == "" || runIDs[row.RunID] {
+			return errors.New("missing or duplicate rescore run ID")
+		}
+		runIDs[row.RunID], ids[row.CaseID] = true, true
+		rows = append(rows, row)
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return errors.New("no rows to rescore")
+	}
+	selected := casesFile{SchemaVersion: catalog.SchemaVersion}
+	cases := map[string]studyCase{}
+	for _, c := range catalog.Cases {
+		if ids[c.ID] {
+			selected.Cases = append(selected.Cases, c)
+			cases[c.ID] = c
+		}
+	}
+	var manifest publishManifest
+	if err := decodeStrict(filepath.Join(out, "publish/manifest.json"), &manifest); err != nil {
+		return err
+	}
+	ch, gh, err := configurationHashes(selected, gates)
+	if err != nil {
+		return err
+	}
+	if ch != manifest.CaseCatalogHash || gh != manifest.GatesHash {
+		return errors.New("rescore catalog/gates do not match the run")
+	}
+	var judgeManifest struct {
+		Seed          int64          `json:"seed"`
+		InputHash     string         `json:"input_results_hash"`
+		CaseHash      string         `json:"case_catalog_hash"`
+		Order         []string       `json:"row_order"`
+		JudgeError    int            `json:"judge_errors"`
+		ResponseLeaks map[string]int `json:"response_leak_counts"`
+	}
+	if err := decodeStrict(filepath.Join(out, "private/judge/manifest.json"), &judgeManifest); err != nil {
+		return err
+	}
+	if judgeManifest.InputHash != hashBytes(data) || judgeManifest.CaseHash != ch || len(judgeManifest.Order) != len(rows) || !unique(judgeManifest.Order) {
+		return errors.New("saved judge manifest does not match original results")
+	}
+	for _, id := range judgeManifest.Order {
+		if !runIDs[id] {
+			return errors.New("saved judge row order contains unknown run ID")
+		}
+	}
+	verdictPaths, err := filepath.Glob(filepath.Join(out, "private/judge/*-verdict.json"))
+	if err != nil {
+		return err
+	}
+	verdicts := map[string]savedFactJudgment{}
+	for _, path := range verdictPaths {
+		var v savedFactJudgment
+		if err := decodeStrict(path, &v); err != nil {
+			return err
+		}
+		if _, duplicate := verdicts[v.RunID]; duplicate || !runIDs[v.RunID] {
+			return errors.New("duplicate or unknown saved judge run ID")
+		}
+		verdicts[v.RunID] = v
+	}
+	var judged []resultRow
+	for i := range rows {
+		row := &rows[i]
+		c, ok := cases[row.CaseID]
+		if !ok || row.PromptHash != promptHash(c) || row.FixtureHash != caseFixtureHash(c) {
+			return errors.New("rescore case, prompt or fixture does not match run")
+		}
+		trace, err := savedArtifact(out, "traces", ".jsonl", *row, "trace")
+		if err != nil {
+			return err
+		}
+		response, err := savedArtifact(out, "responses", ".txt", *row, "response")
+		if err != nil {
+			return err
+		}
+		result, _, err := parseOpenCodeTrace(trace)
+		if err != nil {
+			return fmt.Errorf("rescore trace: %w", err)
+		}
+		if result.Response != string(response) {
+			return errors.New("saved response differs from final trace text")
+		}
+		result.Trace, result.Duration = trace, time.Duration(row.DurationMS)*time.Millisecond
+		armMatches := 0
+		for _, arm := range manifest.Arms {
+			if arm.CaseID == row.CaseID && arm.BlockID == row.BlockID && arm.Arm == row.Arm {
+				result.OpenCode = arm.OpenCode
+				armMatches++
+			}
+		}
+		if armMatches != 1 || result.OpenCode == nil {
+			return errors.New("missing or duplicate OpenCode manifest arm telemetry")
+		}
+		metrics, verdict, err := evaluateCaseEvidence(ctx, c, gates, row.Arm, "", 0, result, false, row.Metrics)
+		if err != nil {
+			return fmt.Errorf("rescore %s: %w", row.RunID, err)
+		}
+		for key := range row.Metrics {
+			if _, ok := metrics[key]; !ok {
+				return fmt.Errorf("rescore would drop original metric %q", key)
+			}
+		}
+		row.Metrics, row.Verdict = metrics, verdict
+		attachEvidenceArtifacts(row)
+		v, ok := verdicts[row.RunID]
+		if !ok {
+			return fmt.Errorf("missing saved judge verdict for %s", row.RunID)
+		}
+		model, err := factJudgeModel(row.Harness.Model)
+		if err != nil {
+			return err
+		}
+		if v.Model != model || v.Attempts < 1 || v.Attempts > 2 || (v.Status != "judged" && v.Status != "judge_error") {
+			return errors.New("invalid saved judge metadata")
+		}
+		copyRow := *row
+		copyRow.Metrics = make(map[string]float64, len(metrics)+5)
+		for key, value := range metrics {
+			copyRow.Metrics[key] = value
+		}
+		required, forbidden := 0, 0
+		factsPass := false
+		if v.Status == "judged" {
+			content, err := json.Marshal(v.Verdict)
+			if err != nil {
+				return err
+			}
+			redacted, _ := redactFactJudgeResponse(string(response))
+			valid, err := parseFactJudgment(content, redacted, len(c.RequiredFacts), len(c.ForbiddenFacts))
+			if err != nil {
+				return fmt.Errorf("invalid saved judge verdict: %w", err)
+			}
+			for _, entry := range valid.Required {
+				if entry.MetValue() {
+					required++
+				}
+			}
+			for _, entry := range valid.Forbidden {
+				if entry.MetValue() {
+					forbidden++
+				}
+			}
+			factsPass = required == len(c.RequiredFacts) && forbidden == 0
+		}
+		copyRow.Metrics["judge_required_met"] = float64(required)
+		copyRow.Metrics["judge_forbidden_present"] = float64(forbidden)
+		copyRow.Metrics["judge_fact_pass"] = boolMetric(factsPass)
+		copyRow.Metrics["judge_outcome_success"] = boolMetric(factJudgeOutcome(copyRow, c, factsPass))
+		copyRow.Metrics["judge_error"] = boolMetric(v.Status == "judge_error")
+		copyRow.Artifacts = map[string]string{"response": row.Artifacts["response"], "trace": row.Artifacts["trace"]}
+		attachEvidenceArtifacts(&copyRow)
+		judged = append(judged, copyRow)
+	}
+	contents := make([][]byte, 2)
+	for i, values := range [][]resultRow{rows, judged} {
+		contents[i], err = encodeResultRows(values)
+		if err != nil {
+			return err
+		}
+	}
+	var created []string
+	published := false
+	defer func() {
+		if !published {
+			for _, path := range created {
+				_ = os.Remove(path)
+			}
+		}
+	}()
+	for i, path := range paths {
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		created = append(created, path)
+		_, writeErr := file.Write(contents[i])
+		closeErr := file.Close()
+		if writeErr != nil {
+			return writeErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+	}
+	published = true
+	fmt.Printf("rescored %d rows using saved traces and judge verdicts; no model or oracle calls\n", len(rows))
+	return nil
+}
+
 func factJudgeOutcome(r resultRow, c studyCase, facts bool) bool {
 	if r.Status != "completed" || !facts || r.Metrics["workflow_success"] != 1 {
 		return false
@@ -4546,6 +4858,7 @@ func parseOpenCodeTrace(trace []byte) (actorResult, openCodeUsage, error) {
 				} `json:"tokens"`
 				State struct {
 					Status   string         `json:"status"`
+					Output   string         `json:"output"`
 					Input    map[string]any `json:"input"`
 					Metadata struct {
 						Exit     *int                  `json:"exit"`
@@ -4627,7 +4940,11 @@ func parseOpenCodeTrace(trace []byte) (actorResult, openCodeUsage, error) {
 				}
 				command := inputString("command", "cmd")
 				add("command", command, rc)
-				for _, e := range openCodeCommandEvents(command, rc) {
+				output := p.State.Output
+				if p.State.Status == "error" {
+					output = ""
+				}
+				for _, e := range openCodeObservedCommandEvents(command, rc, output) {
 					add(e.Kind, e.Path, e.RC)
 				}
 			case "write", "edit", "multiedit", "apply_patch", "patch":
@@ -4691,11 +5008,15 @@ func sumOpenCodeUsage(total *openCodeUsage, step openCodeUsage, first bool) {
 	}
 }
 
-// Reuse the broker's command semantics, including conservative test exit
-// attribution, so exploration and effect attempts grade the same across CLIs.
+// Keep compound test attempts visible without treating the shell's aggregate
+// success as an individual test exit code. Broker receipt anchors are unchanged.
 func openCodeCommandEvents(command string, rc int) []actorEvent {
+	return openCodeObservedCommandEvents(command, rc, "")
+}
+
+func openCodeObservedCommandEvents(command string, rc int, output string) []actorEvent {
 	var events []actorEvent
-	for _, event := range commandtrace.Classify(command, rc) {
+	for _, event := range commandtrace.Observed(command, rc, output) {
 		path := event.Path
 		if event.Kind == "test" {
 			path = command
