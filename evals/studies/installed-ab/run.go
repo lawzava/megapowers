@@ -4806,6 +4806,11 @@ func capturedCommand(command *exec.Cmd) ([]byte, time.Duration, int, error) {
 
 const openCodePreflightPrompt = `Isolation preflight only. Do not use tools or read files. From your initial context, list EVERY available skill name and EVERY loaded instruction file path (AGENTS.md, CLAUDE.md, or equivalent). Do not omit built-ins. Return ONLY one JSON object with exactly these keys: {"skills":["name"],"instructions":[]}. Use an empty instructions array if no instruction file was loaded.`
 
+var errOpenCodePreflightOmission = errors.New("OpenCode preflight omitted expected skills")
+
+// openCodePreflightAttempts bounds retries for omission-only self-reports.
+const openCodePreflightAttempts = 3
+
 func validateOpenCodePreflight(response, arm string) (*openCodeTelemetry, error) {
 	var inventory struct {
 		Skills       []string `json:"skills"`
@@ -4836,6 +4841,17 @@ func validateOpenCodePreflight(response, arm string) (*openCodeTelemetry, error)
 	sort.Strings(want)
 	sort.Strings(inventory.Skills)
 	if !slices.Equal(inventory.Skills, want) {
+		// A self-report that only omits expected names is model recall noise,
+		// not contamination; any unexpected name is a leak and never retried.
+		omissionOnly := len(inventory.Skills) < len(want)
+		for _, name := range inventory.Skills {
+			if !slices.Contains(want, name) {
+				omissionOnly = false
+			}
+		}
+		if omissionOnly {
+			return nil, fmt.Errorf("%w: got %v; want %v", errOpenCodePreflightOmission, inventory.Skills, want)
+		}
 		return nil, fmt.Errorf("OpenCode preflight skill leak or missing skills: got %v; want %v", inventory.Skills, want)
 	}
 	return &openCodeTelemetry{Skills: inventory.Skills, Instructions: inventory.Instructions}, nil
@@ -4865,22 +4881,34 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 	if err := os.MkdirAll(probe.Project, 0o700); err != nil {
 		return result, err
 	}
-	preflight, elapsed, _, err := capturedCommand(openCodeCommand(ctx, a.Path, probe, env, openCodePreflightPrompt))
-	result.PreflightTrace = preflight
-	if err != nil {
-		return result, err
-	}
-	parsed, usage, err := parseOpenCodeTrace(preflight)
-	if err != nil {
-		return result, fmt.Errorf("OpenCode preflight trace: %w", err)
-	}
-	// The probe must report initial context, not inspect the owner's filesystem.
-	if len(parsed.Events) != 1 {
-		return result, errors.New("OpenCode preflight used a tool")
-	}
-	metadata, err := validateOpenCodePreflight(parsed.Response, r.Arm)
-	if err != nil {
-		return result, err
+	var (
+		metadata *openCodeTelemetry
+		elapsed  time.Duration
+		usage    openCodeUsage
+	)
+	for attempt := 1; ; attempt++ {
+		var preflight []byte
+		preflight, elapsed, _, err = capturedCommand(openCodeCommand(ctx, a.Path, probe, env, openCodePreflightPrompt))
+		result.PreflightTrace = preflight
+		if err != nil {
+			return result, err
+		}
+		var parsed actorResult
+		parsed, usage, err = parseOpenCodeTrace(preflight)
+		if err != nil {
+			return result, fmt.Errorf("OpenCode preflight trace: %w", err)
+		}
+		// The probe must report initial context, not inspect the owner's filesystem.
+		if len(parsed.Events) != 1 {
+			return result, errors.New("OpenCode preflight used a tool")
+		}
+		metadata, err = validateOpenCodePreflight(parsed.Response, r.Arm)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, errOpenCodePreflightOmission) || attempt >= openCodePreflightAttempts {
+			return result, err
+		}
 	}
 	metadata.PreflightDurationMS, metadata.PreflightUsage = elapsed.Milliseconds(), usage
 	metadata.ActivationValidation = openCodeActivationValidation(r.Model)
@@ -4890,7 +4918,7 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 	if err != nil {
 		return result, err
 	}
-	parsed, usage, err = parseOpenCodeTrace(trace)
+	parsed, usage, err := parseOpenCodeTrace(trace)
 	result.Response, result.Events = parsed.Response, parsed.Events
 	if err != nil {
 		return result, err

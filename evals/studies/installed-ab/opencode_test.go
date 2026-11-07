@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,6 +33,30 @@ func TestOpenCodeIsolationPreflight(t *testing.T) {
 	} {
 		if _, err := validateOpenCodePreflight(response, "control"); err == nil {
 			t.Errorf("accepted contaminated or incomplete preflight: %s", response)
+		}
+	}
+}
+
+func TestOpenCodePreflightOmissionIsRetryable(t *testing.T) {
+	skills := append([]string{"opencode", "report"}, publicMegapowersSkillNames[:]...)
+	omitted := []string{}
+	for _, name := range skills {
+		if name != "independent-review" {
+			omitted = append(omitted, name)
+		}
+	}
+	response, _ := json.Marshal(map[string]any{"skills": omitted, "instructions": []string{}})
+	_, err := validateOpenCodePreflight(string(response), "treatment")
+	if err == nil || !errors.Is(err, errOpenCodePreflightOmission) {
+		t.Fatalf("omission-only preflight error = %v, want retryable omission", err)
+	}
+	for _, contaminated := range []string{
+		`{"skills":["opencode","report","law-voice"],"instructions":[]}`,
+		`{"skills":["opencode","report"],"instructions":["/owner/AGENTS.md"]}`,
+		`{"skills":["opencode","law-voice"],"instructions":[]}`,
+	} {
+		if _, err := validateOpenCodePreflight(contaminated, "control"); errors.Is(err, errOpenCodePreflightOmission) {
+			t.Errorf("contaminated preflight marked retryable: %s", contaminated)
 		}
 	}
 }
