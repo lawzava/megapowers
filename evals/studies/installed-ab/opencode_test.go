@@ -168,6 +168,39 @@ func TestOpenCodePreflightRetryKeepsEveryAttempt(t *testing.T) {
 	}
 }
 
+func TestOpenCodePreflightUsageStaysUnknownWhenAnyAttemptOmitsIt(t *testing.T) {
+	full := append([]string{"opencode", "report"}, publicMegapowersSkillNames[:]...)
+	omitted := full[:len(full)-1]
+	noTokens := func(skills []string) []byte {
+		response, _ := json.Marshal(map[string]any{"skills": skills, "instructions": []string{}})
+		text, _ := json.Marshal(map[string]any{"type": "text", "part": map[string]any{"text": string(response)}})
+		finish, _ := json.Marshal(map[string]any{"type": "step_finish", "part": map[string]any{"reason": "stop"}})
+		return append(append(append(text, '\n'), finish...), '\n')
+	}
+	for _, order := range [][]bool{{true, false, true}, {false, true, true}, {true, true, false}} {
+		calls := 0
+		run := func(string) ([]byte, time.Duration, error) {
+			skills := omitted
+			if calls == 2 {
+				skills = full
+			}
+			trace := noTokens(skills)
+			if order[calls] {
+				trace = fakeOpenCodePreflightTrace(skills, 100)
+			}
+			calls++
+			return trace, time.Second, nil
+		}
+		metadata, _, err := runOpenCodePreflight(run, "treatment")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if metadata.PreflightUsage.Input != nil {
+			t.Errorf("order %v: input = %v, want unknown", order, *metadata.PreflightUsage.Input)
+		}
+	}
+}
+
 func TestOpenCodeSkillSelectionsUseArmInventoryAfterOmission(t *testing.T) {
 	reported := []string{"opencode", "report", "safe-effects"}
 	events := []actorEvent{{Kind: "skill_selected", Path: "independent-review"}}

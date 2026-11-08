@@ -5319,7 +5319,8 @@ func runOpenCodePreflight(run func(prompt string) ([]byte, time.Duration, error)
 		if err != nil {
 			return nil, traces, fmt.Errorf("OpenCode preflight trace: %w", err)
 		}
-		usage = addOpenCodeUsage(usage, attemptUsage)
+		// An attempt without a counter makes the total unknown, never understated.
+		sumOpenCodeUsage(&usage, attemptUsage, attempt == 1)
 		// The probe must report initial context, not inspect the owner's filesystem.
 		if !openCodePreflightToolsAllowed(parsed.Events, arm, packSkills...) {
 			return nil, traces, errors.New("OpenCode preflight used a tool")
@@ -5337,27 +5338,6 @@ func runOpenCodePreflight(run func(prompt string) ([]byte, time.Duration, error)
 		metadata.PreflightAttempts = attempt
 		metadata.PreflightDurationMS, metadata.PreflightUsage = total.Milliseconds(), usage
 		return metadata, traces, nil
-	}
-}
-
-func addOpenCodeUsage(a, b openCodeUsage) openCodeUsage {
-	add := func(x, y *float64) *float64 {
-		if x == nil && y == nil {
-			return nil
-		}
-		sum := 0.0
-		if x != nil {
-			sum += *x
-		}
-		if y != nil {
-			sum += *y
-		}
-		return &sum
-	}
-	return openCodeUsage{
-		Input: add(a.Input, b.Input), Output: add(a.Output, b.Output),
-		CacheRead: add(a.CacheRead, b.CacheRead), CacheWrite: add(a.CacheWrite, b.CacheWrite),
-		Reasoning: add(a.Reasoning, b.Reasoning), Cost: add(a.Cost, b.Cost),
 	}
 }
 
