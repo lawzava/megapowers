@@ -1,6 +1,6 @@
 ---
 name: safe-effects
-description: "Use when preparing a deploy, message, charge, migration, destructive query, DNS change, external API write, or any real-world side effect. Covers push to production, send email, delete rows, call a payment API, post a comment, publish, log out, or delete an account. Applies to commands whose effect leaves this machine."
+description: "Before effects leave this machine, confirm authority for the exact target, effect, environment, and scope; implied approval or preparation authority does not authorize deploying, publishing, sending, or posting under the user's name. Reuse scoped approval. Load for external mutations, destructive actions, unclear authority, disclosure, audience, retries, or rollback. Not needed for purely local work that prepares nothing to send or run externally."
 ---
 
 # Safe Effects

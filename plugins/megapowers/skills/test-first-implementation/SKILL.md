@@ -1,6 +1,6 @@
 ---
 name: test-first-implementation
-description: "Use when adding or changing behavior, fixing a bug whose cause is known, refactoring executable code, or implementing a feature, tool, script, or CLI option, even without a request for tests. Covers implement this, fix this function, change what it returns, add a flag, make the tests pass, add tests, and code pasted inline."
+description: "For executable behavior, including a bug fix with a known cause, run a test that fails for the missing behavior before changing production code; preserve scope. Low-impact copy, styling, or config-value edits need existing checks, not new tests. Load for non-trivial implementation, test-boundary choices, or refactoring risks, not mechanical edits or settled red/green loops. Diagnose unknown causes first."
 ---
 
 # Test-First Implementation

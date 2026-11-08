@@ -5,6 +5,29 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.56.0 - 2026-11-08
+
+### Changed
+
+- Put the critical rule of `safe-effects`, `verify-and-finish`,
+  `systematic-debugging`, `test-first-implementation` and
+  `independent-review` in each description, so it applies before the skill
+  loads. Narrow `design-and-plan` and the other guardrail triggers, and make
+  reference reads conditional where traces showed cost without benefit.
+  Measured in OpenCode with a blind cross-vendor judge on 20 cases x 3 reps:
+  Sol with the plugin went from 56/60 to 57/60, skill loads fell from 104 to
+  68, and the plugin's time overhead fell from +35% to +13%. Opus stayed at
+  55/60.
+- README: add a dated comparison with mattpocock/skills, superpowers, pstack
+  and addyosmani/agent-skills on 8 cases in OpenCode.
+
+### Added
+
+- Evaluation only, not shipped: the OpenCode harness for `installed-ab`, a
+  blind cross-vendor fact judge, `--rescore`, eight hard trap cases, pinned
+  third-party skill-pack arms, subagent session capture, and grader fixes
+  for piped and repeated `go test` runs.
+
 ## 0.55.3 - 2026-11-07
 
 ### Changed

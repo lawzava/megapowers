@@ -129,7 +129,7 @@ that site.
 | Works with | Claude Code and Codex, one plugin, shared skills | 16 agent tools, including Claude Code, Codex, Cursor, Gemini CLI, and Copilot CLI | Any skills-compatible client through `npx skills add` |
 | Get it from | This repository's marketplace | The official Claude Code marketplace and, per its README, the official Codex marketplace | skills.sh, 4.2M installs across the collection |
 | What you get | Task skills; optional helpers and Claude Code style in repository-only extras | 14 skills, including brainstorming, writing-plans, executing-plans, subagent-driven-development, TDD, and `diagnosing-superpowers` | Single-purpose skills: `code-review`, `tdd`, `triage`, `diagnosing-bugs`, `handoff`, `writing-for-agents`, `grill-me` (1.2M installs) |
-| Published measurements | The A/B study below, with SHA-pinned artifacts | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
+| Published measurements | [Pack comparison](#skill-packs-compared-in-opencode-2026-11-08) and A/B studies, with SHA-pinned packs | Per-change probe counts in release notes (for example, TDD control 8/10 against treatment 5/10 when a section was cut) and a quorum eval lab | None found in the repository on 2026-09-25 |
 
 Which one fits:
 
@@ -201,6 +201,39 @@ median of 70 words, and 0.6 percent contained an em dash, against 36 percent
 without the style. These numbers are not a token-saving or cost claim.
 
 ## Results
+
+### Skill packs compared in OpenCode (2026-11-08)
+
+Each pack ran on the same 8 cases, 3 runs per case, with and without the
+pack, in isolated OpenCode sessions. A blind judge from the other vendor
+graded each run: Sol graded Opus runs and Opus graded Sol runs. The 8 cases are
+the ones where some run failed in an earlier 20-case baseline. Opus is
+`claude-agent/opus`; Sol is `openai/gpt-6.1-sol-fast#high`. Packs were pinned
+to these commits: megapowers `b75e795`, mattpocock/skills `4ae2317`,
+obra/superpowers `22f0b46`, pstack (`cursor/plugins`) `6b03002`,
+addyosmani/agent-skills `301b02b`.
+
+| Pack | Opus without → with (of 24) | Sol without → with (of 24) | Time with vs without (Opus / Sol) |
+|---|---:|---:|---:|
+| megapowers | 18 → 22 | 23 → 24 | −5% / +6% |
+| mattpocock/skills | 17 → 22 | 24 → 23 | +6% / +19% |
+| superpowers | 19 → 21 | 23 → 21 | +14% / +24% |
+| pstack | 18 → 19 | 24 → 22 | −2% / +2% |
+| addyosmani/agent-skills | 20 → 18 | 24 → 24 | +5% / +25% |
+
+Not every row comes from a fresh run. The megapowers, mattpocock/skills and
+superpowers Opus rows are the same 8 cases taken from earlier 20-case runs.
+Those runs used the same skill content as listed above, and their saved runs
+were graded again with the current grader. The pstack, addyosmani/agent-skills
+and superpowers Sol rows ran fresh on the 8 cases.
+
+Opus gained 4 to 5 passes with megapowers and with mattpocock/skills. This
+small, selected sample does not establish reliable differences between packs.
+Sol passes almost every case without any pack. On the full 20 cases, megapowers
+scored 51 → 55 of 60 on Opus and 56 → 57 of 60 on Sol. Method, cases and
+commands: [installed-ab study](./evals/studies/installed-ab/README.md).
+
+### Earlier studies
 
 The October 2026 A/B studies reported gains in judgment cases and ties on
 their coding tasks. Their totals have not been revalidated after an October 12

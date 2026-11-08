@@ -1,49 +1,44 @@
 ---
 name: verify-and-finish
-description: "Use to verify a completed outcome before claiming success, handing off, committing, pushing, opening a PR, merging, publishing, deploying, shipping, or closing a task. Covers prove this is done, wrap up, and final completion checks. Not for intermediate updates, isolated test runs, or merely naming an oracle command."
+description: "Before claiming completion, run acceptance checks on the current artifact and await required reviews; local checks do not prove external outcomes. Load before commit, push, PR, merge, publish, or deploy, for release/handoff gates, or uncertain verification boundaries. A routine local edit, isolated test run, or status-only answer needs evidence, not this full workflow."
 ---
 
 # Verify and Finish
 
-First check, with the cheapest fresh oracle, whether the outcome already holds.
-If nothing remains and no review or manual gate is pending, report a verified
-no-op before broad checks; an external no-op needs an external readback.
+Check whether the outcome already holds with the cheapest fresh oracle. Report
+a verified no-op before broad checks only if no work, review, or manual gate
+remains; an external no-op needs external readback.
 
-Evidence precedes every load-bearing claim. Run each acceptance oracle fresh
-against the current artifact, read the whole result, and state only what it
-proves. An empty search or scan proves absence only after it finds a known
-positive. Never weaken a test, baseline, threshold, or predicate to obtain a
-pass; after a code change, run the [bar guard](references/bar-guard.md) and fix
-or report each finding. Run long or verbose checks through the
-[run receipt procedure](references/run-receipt.md); block on a running check and
-never poll with `sleep`.
+Run each acceptance oracle fresh against the current artifact. Read the whole
+result; claim only what it proves. An empty search proves absence only after
+finding a known positive. Never weaken a test, baseline, threshold, or predicate
+to obtain a pass. After any code change that touches tests, baselines,
+thresholds, or predicates, run the [bar guard](references/bar-guard.md) and fix
+or report each finding. Inspect the diff for missing criteria and scope changes.
+Preserve exit status and output.
+Use [run receipts](references/run-receipt.md) for checks that can outlive the
+tool timeout or lose output. Block on completion, not a guessed wait.
 
-Label inspection and inference; neither is an executed check. Rerun relevant
-checks after a rebase onto a changed base. Separate declared configuration from
-effective runtime behavior. A local build cannot prove a deployment, published
-package, API effect, or user-visible result; exercise the real boundary and
-record the environment and correlation identity, or report the criterion
-unverified. A claim that something will recur
-names its schedule, hook, or config entry and cites a readback of it.
+Label inspection and inference, not as executed checks. Rerun relevant checks
+after a rebase onto a changed base. Distinguish declared configuration from
+runtime behavior. Exercise the claimed boundary, recording environment and
+correlation identity, or mark it unverified. A local build cannot prove external
+or user-visible outcomes. Recurrence claims need schedule, hook, or config readback.
 
-When the change can affect a user journey, run that journey through the surface
-the user will open; name any agreed substitute's limits. After driving one
-journey by hand twice, offer a repeatable
-[verification driver](references/verification-driver.md). Resolve each affected
-specification requirement to fresh evidence or a remaining gap, and join every
-requested review before finishing. Use [independent review](../independent-review/SKILL.md)
-when the stakes warrant another model's opinion; follow the user's reviewer rules.
+Run affected user journeys through the user's surface; name agreed substitutes'
+limits. After driving one journey twice, offer a repeatable
+[verification driver](references/verification-driver.md). Map each requirement
+to fresh evidence or a gap. Join every requested review before finishing;
+follow user rules for [independent review](../independent-review/SKILL.md).
 
-Before a handoff, commit, PR, merge, or release, run canonical checks and
-inspect the diff and workspace. Remove generated excess and report unrequested
-behavior as scope creep. Keep review packages, receipts, and evidence records
-under `$TMPDIR`, out of project files, unless the user asks otherwise; review
-provenance belongs in the report.
-Confirm a named target branch and authority before
-committing, publishing, merging, or deleting a branch or worktree. For a
-handoff, write a [handoff note](references/handoff.md); for a PR, use the
+Before handoff, commit, PR, merge, or release, run canonical checks and inspect
+the diff and workspace. Remove generated excess; report scope creep. Keep
+review packages and evidence under `$TMPDIR` unless asked otherwise. Report
+review provenance. Confirm target branch and authority before commits,
+publication, merges, or branch/worktree deletion. For cross-session resumption,
+use the [handoff guide](references/handoff.md); for PRs, the
 [PR body guide](references/pr-body.md).
 
-Open the report with `VERIFIED: <claim>` only when every required criterion has
-fresh oracle evidence, and state what that evidence does not cover. Otherwise
-use `NOT VERIFIED. Remaining: <gap>`, citing each gap's rule or command result.
+Open with `VERIFIED: <claim>` only when every required criterion has fresh oracle
+evidence; state what that evidence does not cover. Otherwise use
+`NOT VERIFIED. Remaining: <gap>`, citing the rule or result behind each gap.

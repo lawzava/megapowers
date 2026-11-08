@@ -1,6 +1,6 @@
 ---
 name: independent-review
-description: "Use when security, auth, billing, concurrency, data integrity, migrations, or another high-stakes artifact needs an independent opinion from another model before merge. Covers get a second opinion, external review, another vendor's review, and adversarial review."
+description: "For high-stakes changes involving security, auth, billing, concurrency, data integrity, or migrations, use the configured or required independent reviewer before merge; tests or queued review are not approval. Follow reviewer and disclosure authority without re-asking within scope or silently substituting models. Load to prepare, dispatch, or adjudicate an independent review or second opinion, not routine self-checks or review status."
 ---
 
 # Independent Review

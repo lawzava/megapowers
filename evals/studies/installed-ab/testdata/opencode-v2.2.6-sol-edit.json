@@ -1,0 +1,33 @@
+{
+  "part": {
+    "id": "<redacted-id>",
+    "messageID": "<redacted-id>",
+    "partID": "<redacted-id>",
+    "sessionID": "<redacted-id>",
+    "state": {
+      "input": {"patchText": "*** Begin Patch\n*** Delete File: probe.txt\n*** Add File: probe.txt\n+after\n*** End Patch"},
+      "metadata": {
+        "content": [{"text": "Success. Updated the following files:\nD probe.txt\nA probe.txt", "type": "text"}],
+        "metadata": {
+          "files": [
+            {"additions": 0, "deletions": 1, "file": "probe.txt", "patch": "Index: <project>/probe.txt\n===================================================================\n--- <project>/probe.txt\n+++ <project>/probe.txt\n@@ -1,1 +0,0 @@\n-before\n", "status": "deleted"},
+            {"additions": 1, "deletions": 0, "file": "probe.txt", "patch": "Index: <project>/probe.txt\n===================================================================\n--- <project>/probe.txt\n+++ <project>/probe.txt\n@@ -0,0 +1,1 @@\n+after\n", "status": "added"}
+          ],
+          "truncated": false
+        },
+        "providerCall": {"executed": false, "state": {"itemId": "<redacted-id>"}},
+        "providerResult": {"executed": false},
+        "rawInput": "{\"patchText\":\"*** Begin Patch\\n*** Delete File: probe.txt\\n*** Add File: probe.txt\\n+after\\n*** End Patch\"}"
+      },
+      "output": "Success. Updated the following files:\nD probe.txt\nA probe.txt",
+      "status": "completed",
+      "time": {"end": 1794051503180, "start": 1794051502833},
+      "title": "patch"
+    },
+    "tool": "patch",
+    "type": "tool"
+  },
+  "sessionID": "<redacted-id>",
+  "timestamp": 1794051503180,
+  "type": "tool_use"
+}
