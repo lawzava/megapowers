@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func savedRescoreRun(t *testing.T) (casesFile, gatesFile, string) {
+func savedRescoreRun(t *testing.T, withChild ...bool) (casesFile, gatesFile, string) {
 	t.Helper()
 	_, gates, err := loadConfiguration("cases.json", "gates.json")
 	if err != nil {
@@ -31,6 +31,10 @@ func savedRescoreRun(t *testing.T) (casesFile, gatesFile, string) {
 {"type":"text","part":{"text":"local"}}
 {"type":"step_finish","part":{"reason":"stop"}}
 `)
+	if len(withChild) > 0 && withChild[0] {
+		spawn := bytes.SplitN(openCodeSpawnTrace("subagent", "ses_child1"), []byte("\n"), 2)[0]
+		trace = append(append(spawn, '\n'), trace...)
+	}
 	row := resultRow{CaseID: c.ID, RunID: "saved-run", BlockID: "1", Arm: "control", Status: "completed", Harness: harnessIdentity{Name: "opencode", Model: "claude-agent/opus"}, PromptHash: promptHash(c), FixtureHash: caseFixtureHash(c), Metrics: map[string]float64{"workflow_success": 0, "oracle_pass": 1, "protected_fixture_intact": 1}, Artifacts: map[string]string{"response": hashBytes([]byte("local")), "trace": hashBytes(trace)}}
 	attachEvidenceArtifacts(&row)
 	// A previous interrupted attempt must not replace the hash-matching evidence.
@@ -39,6 +43,11 @@ func savedRescoreRun(t *testing.T) (casesFile, gatesFile, string) {
 	}
 	if err := writePrivateResponse(dir, row, "local", trace); err != nil {
 		t.Fatal(err)
+	}
+	if len(withChild) > 0 && withChild[0] {
+		if err := writePrivateChildTraces(dir, &row, map[string][]byte{"ses_child1": []byte(openCodeChildExport)}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	rows, _ := encodeResultRows([]resultRow{row})
 	if err := os.WriteFile(filepath.Join(dir, "publish/results.jsonl"), rows, 0600); err != nil {
@@ -91,6 +100,60 @@ func TestRescoreSavedOpenCodeRun(t *testing.T) {
 	}
 	if err := rescoreRun(context.Background(), catalog, gates, dir); err == nil {
 		t.Fatal("overwrote rescore")
+	}
+}
+
+func TestRescoreSavedOpenCodeChildren(t *testing.T) {
+	for _, mutation := range []string{"none", "missing", "tampered"} {
+		t.Run(mutation, func(t *testing.T) {
+			catalog, gates, dir := savedRescoreRun(t, true)
+			paths, _ := filepath.Glob(filepath.Join(dir, "private/traces/*.child-*.json"))
+			if len(paths) != 1 {
+				t.Fatalf("child traces: %v", paths)
+			}
+			switch mutation {
+			case "missing":
+				if err := os.Remove(paths[0]); err != nil {
+					t.Fatal(err)
+				}
+			case "tampered":
+				if err := os.WriteFile(paths[0], []byte("{}"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := rescoreRun(context.Background(), catalog, gates, dir)
+			if mutation != "none" {
+				if err == nil {
+					t.Fatal("rescore silently dropped unseen child actions")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(dir, "publish/rescored-results.jsonl"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var row resultRow
+			if err := json.Unmarshal(bytes.TrimSpace(data), &row); err != nil {
+				t.Fatal(err)
+			}
+			if row.Metrics["agent_spawn_count"] != 1 || row.Metrics["test_attempts"] != 2 || row.Metrics["write_attempts"] != 1 {
+				t.Fatalf("rescore dropped child evidence: %v", row.Metrics)
+			}
+			data, err = os.ReadFile(filepath.Join(dir, "publish/rescored-judged-results.jsonl"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			row = resultRow{}
+			if err := json.Unmarshal(bytes.TrimSpace(data), &row); err != nil {
+				t.Fatal(err)
+			}
+			if row.Artifacts["child_trace_ses_child1"] != hashBytes([]byte(openCodeChildExport)) {
+				t.Fatalf("judged rescore lost child hash: %v", row.Artifacts)
+			}
+		})
 	}
 }
 

@@ -107,9 +107,30 @@ code, not proof of nested tool effects or nested command exit status.
 The existing TDD receipt gate still fails without trusted execution receipts.
 Multi-turn cases are rejected before any actor call; select single-turn cases
 with `--case` rather than running the entire catalog.
-Native subagent lifecycle events are not yet observable through this adapter.
-An attempted `subagent` or `task` tool call stops the arm as an infrastructure
-error rather than inventing matching completions or grading a dispatch failure.
+After the actor exits, `subagent` and `task` parts supply child session IDs.
+The runner calls `session export --standalone ID` with the actor's exact cwd
+and environment, including HOME and all XDG directories. It recursively exports
+up to 64 children across eight levels. Missing IDs, failed exports, repeated
+session references, nonterminal sessions, partial tools, and unknown actions
+stop the arm as infrastructure errors. Export validation requires a successful
+idle outcome, completed assistant messages, final text, and a stop marker.
+Every export must name the spawning session as its `parentID`; root and part
+session IDs must agree. Errored spawn calls without child IDs also void the arm.
+
+Each spawn expands depth-first into `agent_spawn`, the child's classified
+actions in exported message/content order, and `agent_complete`. Descendant
+actions carry `session_id`; only the parent contributes the final response and
+the single `trace_complete` event. This is spawn-point attribution, not a global
+wall-clock ordering or proof of parallel execution. Child work counts toward
+write, command, test, safety, and skill gates. `agent_spawn_count` counts all
+successful spawns, including nested children. Existing dispatch-contract
+metrics inspect only the root actor and ignore child work between root spawns;
+the adapter does not invent explicit wait events.
+
+Raw child exports remain beside the parent in `private/traces/` as
+`*.child-ID.json`, mode `0600`. Result artifacts bind each export's hash.
+Offline rescoring reads these bound exports and fails if any is missing or
+changed. Task usage remains the root actor's step reports, not total child usage.
 
 Each manifest arm records `opencode.preflight_skills`, empty
 `preflight_instructions`, preflight duration/usage, and task usage. Token fields

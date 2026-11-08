@@ -355,10 +355,11 @@ type actorRequest struct {
 }
 
 type actorEvent struct {
-	Kind string `json:"kind"`
-	Path string `json:"path,omitempty"`
-	RC   int    `json:"rc,omitempty"`
-	Step int    `json:"step"`
+	Kind      string `json:"kind"`
+	Path      string `json:"path,omitempty"`
+	RC        int    `json:"rc,omitempty"`
+	Step      int    `json:"step"`
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type actorResult struct {
@@ -374,6 +375,7 @@ type actorResult struct {
 	Duration       time.Duration
 	OpenCode       *openCodeTelemetry
 	PreflightTrace []byte
+	ChildTraces    map[string][]byte
 }
 
 type actor interface {
@@ -1628,6 +1630,9 @@ func executeStudy(ctx context.Context, cases casesFile, gates gatesFile, opts ru
 		if err := writePrivateResponse(opts.Out, row, result.Response, result.Trace); err != nil {
 			return rows, manifest, fmt.Errorf("persist private response: %w", err)
 		}
+		if err := writePrivateChildTraces(opts.Out, &row, result.ChildTraces); err != nil {
+			return rows, manifest, fmt.Errorf("persist private child traces: %w", err)
+		}
 		if result.PreflightTrace != nil {
 			if err := writePrivateArtifact(opts.Out, "preflights", ".jsonl", row, result.PreflightTrace); err != nil {
 				return rows, manifest, err
@@ -2179,6 +2184,12 @@ func evaluateCaseEvidence(ctx context.Context, c studyCase, gates gatesFile, arm
 	metrics["write_attempts"] = float64(writes)
 	metrics["test_attempts"] = float64(tests)
 	metrics["skill_selection_attempts"] = float64(selections)
+	metrics["agent_spawn_count"] = 0
+	for _, event := range result.Events {
+		if event.Kind == "agent_spawn" && event.RC == 0 {
+			metrics["agent_spawn_count"]++
+		}
+	}
 	metrics["artifact_success"] = boolMetric(artifactPass)
 	metrics["workflow_success"] = boolMetric(workflowPass)
 	metrics["outcome_success"] = boolMetric(outcomePass)
@@ -2551,6 +2562,10 @@ func orchestrationEvidence(events []actorEvent, requiredSpawns int) (int, int, b
 	spawnAttempts := 0
 	valid := true
 	for index, event := range events {
+		// Dispatch contracts concern the root actor, not work it delegated.
+		if event.SessionID != "" {
+			continue
+		}
 		switch event.Kind {
 		case "agent_spawn":
 			spawnAttempts++
@@ -2576,7 +2591,7 @@ func orchestrationEvidence(events []actorEvent, requiredSpawns int) (int, int, b
 	}
 	spawnsBeforeWait := 0
 	for _, event := range events[:firstWait] {
-		if event.Kind == "agent_spawn" && event.RC == 0 && event.Path != "" {
+		if event.SessionID == "" && event.Kind == "agent_spawn" && event.RC == 0 && event.Path != "" {
 			spawnsBeforeWait++
 		}
 	}
@@ -2603,6 +2618,9 @@ func dispatchBatchComplete(events []actorEvent, requiredSpawns int) bool {
 	started := false
 	spawned := make(map[string]bool, requiredSpawns)
 	for _, event := range events {
+		if event.SessionID != "" {
+			continue
+		}
 		if !started {
 			if event.Kind != "agent_spawn" {
 				continue
@@ -3029,6 +3047,19 @@ func writePrivateResponse(out string, row resultRow, response string, trace []by
 		return err
 	}
 	return writePrivateArtifact(out, "responses", ".txt", row, []byte(response))
+}
+
+func writePrivateChildTraces(out string, row *resultRow, children map[string][]byte) error {
+	for id, data := range children {
+		if !validOpenCodeSessionID(id) {
+			return errors.New("invalid OpenCode child session ID")
+		}
+		if err := writePrivateArtifact(out, "traces", ".child-"+id+".json", *row, data); err != nil {
+			return err
+		}
+		row.Artifacts["child_trace_"+id] = hashBytes(data)
+	}
+	return nil
 }
 
 func writePrivateArtifact(out, kind, extension string, row resultRow, data []byte) error {
@@ -4229,7 +4260,11 @@ func runOpenCodeProbe(ctx context.Context, repo, model, kind, out string, timeou
 	defer cancel()
 	subject := pluginBoundActor{Root: request.PluginRoot, Hash: pluginHash, Subject: openCodeActor{Path: filepath.Join(owner, ".opencode", "bin", "opencode"), OwnerHome: owner}}
 	result, actorErr := subject.Run(ctx, request)
-	for name, data := range map[string][]byte{"trace.jsonl": result.Trace, "preflight.jsonl": result.PreflightTrace} {
+	traces := map[string][]byte{"trace.jsonl": result.Trace, "preflight.jsonl": result.PreflightTrace}
+	for id, data := range result.ChildTraces {
+		traces["trace.child-"+id+".json"] = data
+	}
+	for name, data := range traces {
 		if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
 			return err
 		}
@@ -4606,7 +4641,9 @@ func rescoreRun(ctx context.Context, catalog casesFile, gates gatesFile, out str
 		if err != nil {
 			return err
 		}
-		result, _, err := parseOpenCodeTrace(trace)
+		result, _, err := parseOpenCodeTraceWithChildren(trace, func(id string) ([]byte, error) {
+			return savedArtifact(out, "traces", ".child-"+id+".json", *row, "child_trace_"+id)
+		})
 		if err != nil {
 			return fmt.Errorf("rescore trace: %w", err)
 		}
@@ -4681,6 +4718,11 @@ func rescoreRun(ctx context.Context, catalog casesFile, gates gatesFile, out str
 		copyRow.Metrics["judge_outcome_success"] = boolMetric(factJudgeOutcome(copyRow, c, factsPass))
 		copyRow.Metrics["judge_error"] = boolMetric(v.Status == "judge_error")
 		copyRow.Artifacts = map[string]string{"response": row.Artifacts["response"], "trace": row.Artifacts["trace"]}
+		for key, value := range row.Artifacts {
+			if strings.HasPrefix(key, "child_trace_") {
+				copyRow.Artifacts[key] = value
+			}
+		}
 		attachEvidenceArtifacts(&copyRow)
 		judged = append(judged, copyRow)
 	}
@@ -5049,6 +5091,154 @@ func openCodeCommand(ctx context.Context, binary string, r actorRequest, env []s
 	return command
 }
 
+func openCodeExportCommand(ctx context.Context, binary string, r actorRequest, env []string, id string) *exec.Cmd {
+	command := exec.CommandContext(ctx, binary, "session", "export", "--standalone", id)
+	command.Dir, command.Env = r.Project, env
+	isolateChild(command)
+	return command
+}
+
+func validOpenCodeSessionID(id string) bool {
+	return len(id) <= 128 && openCodeSessionIDPattern.MatchString(id)
+}
+
+var openCodeSessionIDPattern = regexp.MustCompile(`^ses_[A-Za-z0-9]+$`)
+
+// These ceilings bound both export work and retained private data. Repeated
+// references fail closed: replaying a resumed session could double-count work.
+const openCodeChildDepthLimit = 8
+const openCodeChildCountLimit = 64
+
+type openCodeChildReader struct {
+	load   func(string) ([]byte, error)
+	traces map[string][]byte
+	rootID string
+}
+
+func parseOpenCodeTraceWithChildren(trace []byte, load func(string) ([]byte, error)) (actorResult, openCodeUsage, error) {
+	children := &openCodeChildReader{load: load, traces: map[string][]byte{}}
+	result, usage, err := parseOpenCodeSessionTrace(trace, children, 0, "")
+	result.ChildTraces = children.traces
+	return result, usage, err
+}
+
+// Export uses V2 messages/content rather than run's streamed part envelopes.
+// Adapt only that envelope; the same parser classifies every child tool below.
+func openCodeExportTrace(data []byte, id, parentID string) ([]byte, error) {
+	var exported struct {
+		Info struct {
+			ParentID string                     `json:"parentID"`
+			ID       string                     `json:"id"`
+			Outcome  string                     `json:"outcome"`
+			Time     struct{ Busy, Idle int64 } `json:"time"`
+		} `json:"info"`
+		Messages []struct {
+			Type string `json:"type"`
+			Time struct {
+				Completed int64 `json:"completed"`
+			} `json:"time"`
+			Content []json.RawMessage `json:"content"`
+			Finish  string            `json:"finish"`
+			Outcome string            `json:"outcome"`
+			Error   json.RawMessage   `json:"error"`
+			Cost    json.RawMessage   `json:"cost"`
+			Tokens  json.RawMessage   `json:"tokens"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(data, &exported); err != nil {
+		return nil, err
+	}
+	if exported.Info.ID != id {
+		return nil, errors.New("OpenCode child export identity mismatch")
+	}
+	if exported.Info.ParentID != parentID {
+		return nil, errors.New("OpenCode child export parent identity mismatch")
+	}
+	if exported.Info.Outcome != "succeeded" || exported.Info.Time.Busy <= 0 || exported.Info.Time.Idle < exported.Info.Time.Busy || len(exported.Messages) == 0 {
+		return nil, errors.New("OpenCode child session is incomplete or failed")
+	}
+	last := exported.Messages[len(exported.Messages)-1]
+	if last.Type != "idle" || last.Outcome != "succeeded" {
+		return nil, errors.New("OpenCode child session is incomplete: missing successful idle message")
+	}
+	var trace bytes.Buffer
+	assistantSeen := false
+	emit := func(kind string, part any) error {
+		return json.NewEncoder(&trace).Encode(map[string]any{"type": kind, "part": part, "sessionID": id})
+	}
+	for i, message := range exported.Messages {
+		switch message.Type {
+		case "user":
+			// Prompts are not action evidence; only assistant tool parts are.
+			if assistantSeen {
+				return nil, errors.New("OpenCode child session has unobserved continuation input")
+			}
+		case "idle":
+			if i != len(exported.Messages)-1 || message.Outcome != "succeeded" {
+				return nil, errors.New("OpenCode child export has an unexpected idle message")
+			}
+		case "assistant":
+			assistantSeen = true
+			if message.Time.Completed <= 0 || (len(message.Error) != 0 && string(message.Error) != "null") {
+				return nil, errors.New("OpenCode child assistant message is incomplete or failed")
+			}
+			if err := emit("step_start", nil); err != nil {
+				return nil, err
+			}
+			for _, content := range message.Content {
+				var part map[string]json.RawMessage
+				if err := json.Unmarshal(content, &part); err != nil {
+					return nil, err
+				}
+				var kind string
+				if err := json.Unmarshal(part["type"], &kind); err != nil {
+					return nil, err
+				}
+				switch kind {
+				case "text", "reasoning":
+				case "tool":
+					kind = "tool_use"
+					part["tool"] = part["name"]
+					var state map[string]json.RawMessage
+					if err := json.Unmarshal(part["state"], &state); err != nil {
+						return nil, err
+					}
+					if state == nil {
+						return nil, errors.New("OpenCode child tool omitted its state")
+					}
+					var blocks []struct{ Type, Text string }
+					if raw := state["content"]; len(raw) > 0 {
+						if err := json.Unmarshal(raw, &blocks); err != nil {
+							return nil, err
+						}
+					}
+					var output strings.Builder
+					for _, block := range blocks {
+						if block.Type == "text" {
+							output.WriteString(block.Text)
+						}
+					}
+					if _, ok := state["output"]; !ok {
+						state["output"], _ = json.Marshal(output.String())
+					}
+					part["state"], _ = json.Marshal(state)
+				default:
+					return nil, fmt.Errorf("unknown OpenCode child content type %q", kind)
+				}
+				if err := emit(kind, part); err != nil {
+					return nil, err
+				}
+			}
+			if err := emit("step_finish", map[string]any{"reason": message.Finish, "cost": message.Cost, "tokens": message.Tokens}); err != nil {
+				return nil, err
+			}
+		default:
+			return nil, fmt.Errorf("unknown OpenCode child message type %q", message.Type)
+		}
+	}
+	return trace.Bytes(), nil
+}
+
 func capturedCommand(command *exec.Cmd) ([]byte, time.Duration, int, error) {
 	var stdout, stderr boundedOutput
 	stdout.limit, stderr.limit = captureLimit, captureLimit
@@ -5251,8 +5441,12 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 	if err != nil {
 		return result, err
 	}
-	parsed, usage, err := parseOpenCodeTrace(trace)
+	parsed, usage, err := parseOpenCodeTraceWithChildren(trace, func(id string) ([]byte, error) {
+		data, _, _, err := capturedCommand(openCodeExportCommand(ctx, a.Path, r, env, id))
+		return data, err
+	})
 	result.Response, result.Events = parsed.Response, parsed.Events
+	result.ChildTraces = parsed.ChildTraces
 	if err != nil {
 		return result, err
 	}
@@ -5296,15 +5490,20 @@ type openCodeChangedFile struct {
 }
 
 func parseOpenCodeTrace(trace []byte) (actorResult, openCodeUsage, error) {
+	return parseOpenCodeTraceWithChildren(trace, nil)
+}
+
+func parseOpenCodeSessionTrace(trace []byte, children *openCodeChildReader, depth int, sessionID string) (actorResult, openCodeUsage, error) {
 	var result actorResult
 	var usage openCodeUsage
 	scanner := bufio.NewScanner(bytes.NewReader(trace))
 	scanner.Buffer(make([]byte, 64<<10), 8<<20)
 	stopped, text := false, false
+	traceSessionID := sessionID
 	usageSteps := 0
 	seen := map[string]bool{}
 	add := func(kind, path string, rc int) {
-		result.Events = append(result.Events, actorEvent{Kind: kind, Path: path, RC: rc, Step: len(result.Events) + 1})
+		result.Events = append(result.Events, actorEvent{Kind: kind, Path: path, RC: rc, Step: len(result.Events) + 1, SessionID: sessionID})
 	}
 	for scanner.Scan() {
 		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
@@ -5314,15 +5513,17 @@ func parseOpenCodeTrace(trace []byte) (actorResult, openCodeUsage, error) {
 			return result, usage, errors.New("OpenCode event after stop marker")
 		}
 		var event struct {
-			Type string `json:"type"`
-			Part struct {
-				Text   string   `json:"text"`
-				Tool   string   `json:"tool"`
-				CallID string   `json:"callID"`
-				ID     string   `json:"id"`
-				Reason string   `json:"reason"`
-				Cost   *float64 `json:"cost"`
-				Tokens struct {
+			Type      string `json:"type"`
+			SessionID string `json:"sessionID"`
+			Part      struct {
+				SessionID string   `json:"sessionID"`
+				Text      string   `json:"text"`
+				Tool      string   `json:"tool"`
+				CallID    string   `json:"callID"`
+				ID        string   `json:"id"`
+				Reason    string   `json:"reason"`
+				Cost      *float64 `json:"cost"`
+				Tokens    struct {
 					Input     *float64 `json:"input"`
 					Output    *float64 `json:"output"`
 					Reasoning *float64 `json:"reasoning"`
@@ -5336,11 +5537,13 @@ func parseOpenCodeTrace(trace []byte) (actorResult, openCodeUsage, error) {
 					Output   string         `json:"output"`
 					Input    map[string]any `json:"input"`
 					Metadata struct {
-						Exit     *int                  `json:"exit"`
-						Files    []openCodeChangedFile `json:"files"`
-						Metadata struct {
-							Exit  *int                  `json:"exit"`
-							Files []openCodeChangedFile `json:"files"`
+						SessionID string                `json:"sessionID"`
+						Exit      *int                  `json:"exit"`
+						Files     []openCodeChangedFile `json:"files"`
+						Metadata  struct {
+							SessionID string                `json:"sessionID"`
+							Exit      *int                  `json:"exit"`
+							Files     []openCodeChangedFile `json:"files"`
 						} `json:"metadata"`
 					} `json:"metadata"`
 				} `json:"state"`
@@ -5350,6 +5553,18 @@ func parseOpenCodeTrace(trace []byte) (actorResult, openCodeUsage, error) {
 			return result, usage, err
 		}
 		p := event.Part
+		for _, observed := range []string{event.SessionID, p.SessionID} {
+			if observed == "" {
+				continue
+			}
+			if traceSessionID != "" && observed != traceSessionID {
+				return result, usage, errors.New("OpenCode trace session identity mismatch")
+			}
+			traceSessionID = observed
+		}
+		if depth == 0 {
+			children.rootID = traceSessionID
+		}
 		switch event.Type {
 		case "error":
 			return result, usage, errors.New("OpenCode emitted an error event")
@@ -5446,8 +5661,47 @@ func parseOpenCodeTrace(trace []byte) (actorResult, openCodeUsage, error) {
 				}
 				add("write", path, rc)
 			case "task", "subagent":
-				add("agent_spawn", p.CallID, rc)
-				return result, usage, errors.New("OpenCode subagent lifecycle is not observable from completed tool parts")
+				id := p.State.Metadata.Metadata.SessionID
+				if id == "" {
+					id = p.State.Metadata.SessionID
+				}
+				if !validOpenCodeSessionID(id) {
+					return result, usage, errors.New("OpenCode subagent omitted a valid child session ID")
+				}
+				if !validOpenCodeSessionID(traceSessionID) {
+					return result, usage, errors.New("OpenCode subagent omitted a valid spawning session ID")
+				}
+				add("agent_spawn", id, rc)
+				if children.load == nil {
+					return result, usage, fmt.Errorf("OpenCode child %s requires a session export", id)
+				}
+				if _, duplicate := children.traces[id]; duplicate || id == children.rootID {
+					return result, usage, fmt.Errorf("OpenCode repeated or cyclic child session %s", id)
+				}
+				if depth >= openCodeChildDepthLimit || len(children.traces) >= openCodeChildCountLimit {
+					return result, usage, errors.New("OpenCode child session recursion/count bound exceeded")
+				}
+				data, err := children.load(id)
+				children.traces[id] = data
+				if err != nil {
+					return result, usage, fmt.Errorf("OpenCode export child %s: %w", id, err)
+				}
+				childTrace, err := openCodeExportTrace(data, id, traceSessionID)
+				if err != nil {
+					return result, usage, fmt.Errorf("OpenCode child %s: %w", id, err)
+				}
+				child, _, err := parseOpenCodeSessionTrace(childTrace, children, depth+1, id)
+				for _, event := range child.Events {
+					if event.Kind == "trace_complete" {
+						continue
+					}
+					event.Step = len(result.Events) + 1
+					result.Events = append(result.Events, event)
+				}
+				if err != nil {
+					return result, usage, fmt.Errorf("OpenCode child %s: %w", id, err)
+				}
+				add("agent_complete", id, rc)
 			case "read", "glob", "grep", "list", "webfetch", "websearch", "todowrite", "todoread", "question":
 				add("tool", p.Tool, rc)
 			default:

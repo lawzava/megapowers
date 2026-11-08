@@ -414,12 +414,25 @@ func main() {
  }
  if os.Getenv("OPENCODE") != "" || os.Getenv("OPENCODE_SESSION_ID") != "" { panic("inherited owner server") }
  config, err := os.ReadFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "opencode", "opencode.json")); if err != nil { panic(err) }
- treated := strings.Contains(string(config), "skills")
- emit := func(v any) { if err := json.NewEncoder(os.Stdout).Encode(v); err != nil { panic(err) } }
- text := "done"
+  treated := strings.Contains(string(config), "skills")
+  emit := func(v any) { if err := json.NewEncoder(os.Stdout).Encode(v); err != nil { panic(err) } }
+  if os.Args[1] == "session" {
+    if strings.Join(os.Args[1:4], " ") != "session export --standalone" { panic("wrong export command") }
+    actorEnv, err := os.ReadFile("actor-env.txt"); if err != nil || string(actorEnv) != strings.Join(os.Environ(), "\n") { panic("export environment differs from actor") }
+    if os.Args[4] == "ses_missing1" { fmt.Fprintln(os.Stderr,"missing session"); os.Exit(1) }
+    child := %q; if !treated { child = strings.Replace(child, "safe-effects", "report", 1) }
+    if os.Args[4] == "ses_running1" { child = strings.ReplaceAll(strings.Replace(child,"ses_child1","ses_running1",1),"\"idle\":30","\"idle\":0") }
+    fmt.Println(child); return
+  }
+  text := "done"
  if strings.HasPrefix(os.Args[len(os.Args)-1], "Isolation preflight only.") {
    text = %q; if treated { text = %q }
- } else {
+  } else {
+    if strings.HasPrefix(os.Args[len(os.Args)-1], "child") {
+      id := "ses_child1"; if os.Args[len(os.Args)-1] == "child-export-fail" { id = "ses_missing1" }; if os.Args[len(os.Args)-1] == "child-running" { id = "ses_running1" }
+      if err := os.WriteFile("actor-env.txt", []byte(strings.Join(os.Environ(), "\n")), 0600); err != nil { panic(err) }
+      emit(map[string]any{"type":"tool_use","sessionID":"ses_parent1","part":map[string]any{"id":"spawn-1","tool":"subagent","state":map[string]any{"status":"completed","input":map[string]any{},"metadata":map[string]any{"metadata":map[string]any{"sessionID":id,"status":"completed"}}}}})
+    }
    if treated || os.Args[len(os.Args)-1] == "leak" {
      skill := "safe-effects"; if os.Args[len(os.Args)-1] == "leak" { skill = "law-voice" }
      emit(map[string]any{"type":"tool_use","part":map[string]any{"id":"skill-1","tool":"skill","state":map[string]any{"status":"completed","input":map[string]any{"id":skill}}}})
@@ -432,7 +445,7 @@ func main() {
  if os.Args[len(os.Args)-1] == "malformed" { fmt.Println("broken") }
 }
 
-`, string(control), string(treatment))
+`, openCodeChildExport, string(control), string(treatment))
 	file, binary := filepath.Join(root, "main.go"), filepath.Join(root, "fake-opencode")
 	if err := os.WriteFile(file, []byte(source), 0o600); err != nil {
 		t.Fatal(err)
@@ -484,6 +497,18 @@ func main() {
 		r.Case.Task = "leak"
 		if _, err := (openCodeActor{Path: binary, OwnerHome: filepath.Join(root, "owner")}).Run(context.Background(), r); err == nil {
 			t.Fatal("successful owner skill load did not stop the arm")
+		}
+		r.Case.Task = "child"
+		got, err = (openCodeActor{Path: binary, OwnerHome: filepath.Join(root, "owner")}).Run(context.Background(), r)
+		if err != nil || len(got.ChildTraces) != 1 || got.Events[0].Kind != "agent_spawn" || !requiredEventsPresent(got.Events, []string{"test"}) {
+			t.Fatalf("actor did not export/grade child: %+v %v", got, err)
+		}
+		for _, task := range []string{"child-export-fail", "child-running"} {
+			r.Case.Task = task
+			got, err = (openCodeActor{Path: binary, OwnerHome: filepath.Join(root, "owner")}).Run(context.Background(), r)
+			if err == nil || len(got.ChildTraces) != 1 {
+				t.Fatalf("actor dropped unseen child: %+v %v", got, err)
+			}
 		}
 	}
 }
