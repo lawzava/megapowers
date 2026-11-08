@@ -4341,6 +4341,7 @@ type openCodeTelemetry struct {
 	Skills               []string      `json:"preflight_skills"`
 	Instructions         []string      `json:"preflight_instructions"`
 	PreflightOmitted     []string      `json:"preflight_omitted,omitempty"`
+	PreflightAttempts    int           `json:"preflight_attempts,omitempty"`
 	PreflightDurationMS  int64         `json:"preflight_duration_ms"`
 	PreflightUsage       openCodeUsage `json:"preflight_usage"`
 	TaskUsage            openCodeUsage `json:"task_usage"`
@@ -5299,6 +5300,67 @@ func openCodePreflightPromptFor(attempt int) string {
 	return fmt.Sprintf("%s Retry %d: a previous inventory was incomplete. Go through the available skills list entry by entry and include every one.", openCodePreflightPrompt, attempt)
 }
 
+// runOpenCodePreflight keeps every attempt's trace and sums duration and usage
+// across attempts, so retries stay auditable and their cost is not hidden.
+func runOpenCodePreflight(run func(prompt string) ([]byte, time.Duration, error), arm string, packSkills ...string) (*openCodeTelemetry, []byte, error) {
+	var (
+		traces []byte
+		total  time.Duration
+		usage  openCodeUsage
+	)
+	for attempt := 1; ; attempt++ {
+		trace, elapsed, err := run(openCodePreflightPromptFor(attempt))
+		traces = append(traces, trace...)
+		total += elapsed
+		if err != nil {
+			return nil, traces, err
+		}
+		parsed, attemptUsage, err := parseOpenCodeTrace(trace)
+		if err != nil {
+			return nil, traces, fmt.Errorf("OpenCode preflight trace: %w", err)
+		}
+		usage = addOpenCodeUsage(usage, attemptUsage)
+		// The probe must report initial context, not inspect the owner's filesystem.
+		if !openCodePreflightToolsAllowed(parsed.Events, arm, packSkills...) {
+			return nil, traces, errors.New("OpenCode preflight used a tool")
+		}
+		metadata, err := validateOpenCodePreflight(parsed.Response, arm, packSkills...)
+		if err != nil {
+			if !errors.Is(err, errOpenCodePreflightOmission) {
+				return nil, traces, err
+			}
+			if attempt < openCodePreflightAttempts {
+				continue
+			}
+			metadata, _ = openCodePreflightOmissionMetadata(err)
+		}
+		metadata.PreflightAttempts = attempt
+		metadata.PreflightDurationMS, metadata.PreflightUsage = total.Milliseconds(), usage
+		return metadata, traces, nil
+	}
+}
+
+func addOpenCodeUsage(a, b openCodeUsage) openCodeUsage {
+	add := func(x, y *float64) *float64 {
+		if x == nil && y == nil {
+			return nil
+		}
+		sum := 0.0
+		if x != nil {
+			sum += *x
+		}
+		if y != nil {
+			sum += *y
+		}
+		return &sum
+	}
+	return openCodeUsage{
+		Input: add(a.Input, b.Input), Output: add(a.Output, b.Output),
+		CacheRead: add(a.CacheRead, b.CacheRead), CacheWrite: add(a.CacheWrite, b.CacheWrite),
+		Reasoning: add(a.Reasoning, b.Reasoning), Cost: add(a.Cost, b.Cost),
+	}
+}
+
 func openCodePreflightWant(arm string, packSkills ...string) []string {
 	want := []string{"opencode", "report"}
 	if arm == "treatment" {
@@ -5400,40 +5462,14 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 	if err := os.MkdirAll(probe.Project, 0o700); err != nil {
 		return result, err
 	}
-	var (
-		metadata *openCodeTelemetry
-		elapsed  time.Duration
-		usage    openCodeUsage
-	)
-	for attempt := 1; ; attempt++ {
-		var preflight []byte
-		preflight, elapsed, _, err = capturedCommand(openCodeCommand(ctx, a.Path, probe, env, openCodePreflightPromptFor(attempt)))
-		result.PreflightTrace = preflight
-		if err != nil {
-			return result, err
-		}
-		var parsed actorResult
-		parsed, usage, err = parseOpenCodeTrace(preflight)
-		if err != nil {
-			return result, fmt.Errorf("OpenCode preflight trace: %w", err)
-		}
-		// The probe must report initial context, not inspect the owner's filesystem.
-		if !openCodePreflightToolsAllowed(parsed.Events, r.Arm, r.SkillNames...) {
-			return result, errors.New("OpenCode preflight used a tool")
-		}
-		metadata, err = validateOpenCodePreflight(parsed.Response, r.Arm, r.SkillNames...)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, errOpenCodePreflightOmission) {
-			return result, err
-		}
-		if attempt >= openCodePreflightAttempts {
-			metadata, _ = openCodePreflightOmissionMetadata(err)
-			break
-		}
+	metadata, preflightTraces, err := runOpenCodePreflight(func(prompt string) ([]byte, time.Duration, error) {
+		trace, elapsed, _, err := capturedCommand(openCodeCommand(ctx, a.Path, probe, env, prompt))
+		return trace, elapsed, err
+	}, r.Arm, r.SkillNames...)
+	result.PreflightTrace = preflightTraces
+	if err != nil {
+		return result, err
 	}
-	metadata.PreflightDurationMS, metadata.PreflightUsage = elapsed.Milliseconds(), usage
 	metadata.ActivationValidation = openCodeActivationValidation(r.Model)
 	result.OpenCode = metadata
 	trace, elapsed, rc, err := capturedCommand(openCodeCommand(ctx, a.Path, r, env, r.Case.Task))
@@ -5451,7 +5487,9 @@ func (a openCodeActor) Run(ctx context.Context, r actorRequest) (actorResult, er
 		return result, err
 	}
 	metadata.TaskUsage = usage
-	if err := validateOpenCodeSkillSelections(parsed.Events, metadata.Skills, r.SkillNames); err != nil {
+	// Check loads against the arm's pinned inventory, not only the reported one:
+	// an accepted omission must not turn a later load into a selection-dependent abort.
+	if err := validateOpenCodeSkillSelections(parsed.Events, metadata.Skills, openCodePreflightWant(r.Arm, r.SkillNames...)); err != nil {
 		return result, err
 	}
 	result.Inventory = []string{}

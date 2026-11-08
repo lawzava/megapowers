@@ -109,6 +109,76 @@ func TestOpenCodePreflightAllowsOnlyListedSkillLoads(t *testing.T) {
 	}
 }
 
+func fakeOpenCodePreflightTrace(skills []string, input float64) []byte {
+	response, _ := json.Marshal(map[string]any{"skills": skills, "instructions": []string{}})
+	text, _ := json.Marshal(map[string]any{"type": "text", "part": map[string]any{"text": string(response)}})
+	finish, _ := json.Marshal(map[string]any{"type": "step_finish", "part": map[string]any{"reason": "stop", "cost": 0.01, "tokens": map[string]any{"input": input, "output": 10, "reasoning": 0, "cache": map[string]any{"read": 0, "write": 0}}}})
+	return append(append(append(text, '\n'), finish...), '\n')
+}
+
+func TestOpenCodePreflightRetryKeepsEveryAttempt(t *testing.T) {
+	full := append([]string{"opencode", "report"}, publicMegapowersSkillNames[:]...)
+	omitted := []string{}
+	for _, name := range full {
+		if name != "independent-review" {
+			omitted = append(omitted, name)
+		}
+	}
+	for _, tc := range []struct {
+		name        string
+		answers     [][]string
+		wantOmitted []string
+		wantErr     bool
+	}{
+		{"recovers on third attempt", [][]string{omitted, omitted, full}, nil, false},
+		{"accepts final omission", [][]string{omitted, omitted, omitted}, []string{"independent-review"}, false},
+		{"leak on retry fails", [][]string{omitted, append(full, "law-voice")}, nil, true},
+	} {
+		calls := 0
+		run := func(prompt string) ([]byte, time.Duration, error) {
+			if prompt != openCodePreflightPromptFor(calls+1) {
+				t.Fatalf("%s: attempt %d used wrong prompt", tc.name, calls+1)
+			}
+			trace := fakeOpenCodePreflightTrace(tc.answers[calls], 100)
+			calls++
+			return trace, time.Second, nil
+		}
+		metadata, traces, err := runOpenCodePreflight(run, "treatment")
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("%s: accepted a leak", tc.name)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if metadata.PreflightAttempts != len(tc.answers) || metadata.PreflightDurationMS != int64(len(tc.answers))*1000 {
+			t.Errorf("%s: attempts=%d duration=%d", tc.name, metadata.PreflightAttempts, metadata.PreflightDurationMS)
+		}
+		if metadata.PreflightUsage.Input == nil || *metadata.PreflightUsage.Input != float64(100*len(tc.answers)) {
+			t.Errorf("%s: usage not accumulated: %+v", tc.name, metadata.PreflightUsage)
+		}
+		if got := bytes.Count(traces, []byte(`"step_finish"`)); got != len(tc.answers) {
+			t.Errorf("%s: kept %d attempt traces, want %d", tc.name, got, len(tc.answers))
+		}
+		if !reflect.DeepEqual(metadata.PreflightOmitted, tc.wantOmitted) {
+			t.Errorf("%s: omitted = %v, want %v", tc.name, metadata.PreflightOmitted, tc.wantOmitted)
+		}
+	}
+}
+
+func TestOpenCodeSkillSelectionsUseArmInventoryAfterOmission(t *testing.T) {
+	reported := []string{"opencode", "report", "safe-effects"}
+	events := []actorEvent{{Kind: "skill_selected", Path: "independent-review"}}
+	if err := validateOpenCodeSkillSelections(events, reported, openCodePreflightWant("treatment")); err != nil {
+		t.Fatalf("omitted but installed skill rejected: %v", err)
+	}
+	if err := validateOpenCodeSkillSelections(events, reported, openCodePreflightWant("control")); err == nil {
+		t.Fatal("control accepted a megapowers skill load")
+	}
+}
+
 type openCodeTestActor func(context.Context, actorRequest) (actorResult, error)
 
 func (f openCodeTestActor) Run(ctx context.Context, r actorRequest) (actorResult, error) {
