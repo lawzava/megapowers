@@ -132,23 +132,23 @@ authorize automatic policy adoption. Keep claims uncertain until tested.
 [
   {
     "source": "https://code.claude.com/docs/en/skills",
-    "reviewed": "2026-10-08",
+    "reviewed": "2026-11-08",
     "cli": "claude",
-    "version": "2.1.295",
+    "version": "2.1.296",
     "oracle": ["scripts/validate.sh", "evals/studies/trigger-recall/policy_test.go"]
   },
   {
     "source": "https://code.claude.com/docs/en/output-styles",
-    "reviewed": "2026-10-08",
+    "reviewed": "2026-11-08",
     "cli": "claude",
-    "version": "2.1.295",
+    "version": "2.1.296",
     "oracle": ["scripts/validate.sh", "extras/output-styles/megapowers.md"]
   },
   {
     "source": "https://learn.chatgpt.com/docs/build-skills",
-    "reviewed": "2026-10-08",
+    "reviewed": "2026-11-08",
     "cli": "codex",
-    "version": "0.162.0",
+    "version": "0.162.1",
     "oracle": ["scripts/codex-install-smoke.sh", "evals/studies/trigger-recall/policy_test.go"]
   }
 ]
