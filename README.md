@@ -221,9 +221,15 @@ addyosmani/agent-skills `301b02b`.
 | pstack | 18 → 19 | 24 → 22 | −2% / +2% |
 | addyosmani/agent-skills | 20 → 18 | 24 → 24 | +5% / +25% |
 
-With 3 runs per case, a difference of 1 or 2 is within noise. The clear
-signal is the Opus gain of 4 to 5 for megapowers and mattpocock/skills. Sol
-passes almost every case without any pack. On the full 20 cases, megapowers
+Not every row comes from a fresh run. The megapowers, mattpocock/skills and
+superpowers Opus rows are the same 8 cases taken from earlier 20-case runs.
+Those runs used the same skill content as listed above, and their saved runs
+were graded again with the current grader. The pstack, addyosmani/agent-skills
+and superpowers Sol rows ran fresh on the 8 cases.
+
+Opus gained 4 to 5 passes with megapowers and with mattpocock/skills. This
+small, selected sample does not establish reliable differences between packs.
+Sol passes almost every case without any pack. On the full 20 cases, megapowers
 scored 51 → 55 of 60 on Opus and 56 → 57 of 60 on Sol. Method, cases and
 commands: [installed-ab study](./evals/studies/installed-ab/README.md).
 
