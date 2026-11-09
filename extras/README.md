@@ -24,6 +24,21 @@ old plugin-relative helper paths are historical; run helpers from `extras/script
 as shown above and supply the plugin root explicitly. These skills are not
 part of the supported shipped set.
 
+## Instruction references and templates
+
+`skills/writing-agent-instructions/` holds repository-only guidance moved out
+of the plugin in 0.56.1:
+
+- [Session mining](skills/writing-agent-instructions/references/session-mining.md)
+- [Learning loop](skills/writing-agent-instructions/references/learning-loop.md)
+- [Global instructions](skills/writing-agent-instructions/references/global-instructions.md)
+- [Codex global template](skills/writing-agent-instructions/assets/global-AGENTS.md)
+- [Claude Code global template](skills/writing-agent-instructions/assets/global-CLAUDE.md)
+
+These references and templates do not ship with the plugin or its HTTP skill
+catalog. The learning loop links to the shared retrospective and memory-hygiene
+references that remain in the plugin source tree.
+
 ## Output style
 
 The unchanged `output-styles/megapowers.md` is an optional Claude Code style.

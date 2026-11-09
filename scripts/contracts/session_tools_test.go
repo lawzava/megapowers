@@ -2,22 +2,22 @@ package contracts
 
 import "testing"
 
-func TestShippedGuidanceUsesSessionTools(t *testing.T) {
+func TestGuidanceUsesSessionTools(t *testing.T) {
 	root := repoRoot(t)
 	for _, rel := range []string{
-		"autonomous-run/SKILL.md",
-		"writing-agent-instructions/assets/global-AGENTS.md",
-		"writing-agent-instructions/assets/global-CLAUDE.md",
-		"verify-and-finish/references/run-receipt.md",
-		"verify-and-finish/references/verification-driver.md",
+		"plugins/megapowers/skills/autonomous-run/SKILL.md",
+		"extras/skills/writing-agent-instructions/assets/global-AGENTS.md",
+		"extras/skills/writing-agent-instructions/assets/global-CLAUDE.md",
+		"plugins/megapowers/skills/verify-and-finish/references/run-receipt.md",
+		"plugins/megapowers/skills/verify-and-finish/references/verification-driver.md",
 	} {
-		body := normalized(read(t, root, "plugins/megapowers/skills/"+rel))
+		body := normalized(read(t, root, rel))
 		for _, phrase := range []string{"authenticated clis", "environment key names", "environment variables, seed data, and authentication", "gh run watch", "gh pr checks"} {
 			requireAbsent(t, body, phrase, rel)
 		}
 	}
 	for _, name := range []string{"global-AGENTS.md", "global-CLAUDE.md"} {
-		rel := "plugins/megapowers/skills/writing-agent-instructions/assets/" + name
+		rel := "extras/skills/writing-agent-instructions/assets/" + name
 		body := normalized(read(t, root, rel))
 		requireContains(t, body, "linked pull requests and tickets, and the tools already connected in this session. say what you checked.", rel)
 		requireAbsent(t, body, "charter", rel)
@@ -26,7 +26,7 @@ func TestShippedGuidanceUsesSessionTools(t *testing.T) {
 
 func TestLearningGuidanceStaysLocal(t *testing.T) {
 	root := repoRoot(t)
-	base := "plugins/megapowers/skills/writing-agent-instructions/"
+	base := "extras/skills/writing-agent-instructions/"
 	for _, rel := range []string{"references/learning-loop.md", "references/session-mining.md"} {
 		body := normalized(read(t, root, base+rel))
 		requireContains(t, body, "output only to the local terminal or local files", rel)

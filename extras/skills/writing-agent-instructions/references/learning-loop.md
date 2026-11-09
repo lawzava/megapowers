@@ -18,11 +18,11 @@ establish an absence of problems.
 
 ## 2. Propose
 
-Run a [retrospective](retrospective.md). For each repeated class, choose a
+Run a [retrospective](../../../../plugins/megapowers/skills/writing-agent-instructions/references/retrospective.md). For each repeated class, choose a
 check when deterministic tooling can catch it, instructions for project
 judgment, native memory for cross-project preferences, or a local instruction lesson
 when Megapowers itself caused the issue; report the proposed local change to the user. Audit memory with
-[memory hygiene](memory-hygiene.md).
+[memory hygiene](../../../../plugins/megapowers/skills/writing-agent-instructions/references/memory-hygiene.md).
 
 Record each candidate's ID, class, lesson, surface, target, evidence type,
 and timestamped sources. Distinguish direct-statement, direct-observation,

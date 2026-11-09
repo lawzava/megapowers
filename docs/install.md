@@ -13,6 +13,10 @@ unreleased `main`.
 - No Go runtime is needed for the shipped skill guidance. Repository-only
   helpers in `extras/` need Go 1.25 or newer.
 
+Global instruction templates, session-mining guidance, and the learning loop
+are repository-only [extras](../extras/README.md#instruction-references-and-templates),
+not installed plugin content.
+
 ## Claude Code
 
 ```bash

@@ -5,18 +5,11 @@ badly or slowly. The output is a ranked list of changes to the agent's
 environment: instruction files, skills, checks, and tools. Present the list;
 apply a change only when the user asks.
 
-Read the primary record first: the session transcript, the diff, and command
-output. Use the current session when the user names none. Cite the moment in
-the session that motivates each candidate.
-
-When the user asks about a period or a pattern rather than one session, run
-[session mining](session-mining.md) first. It lists the turns where the user
-corrected the agent, grouped into candidate classes across sessions. Read each
-example before counting it, and cite sessions by file and time. For one
-project, also read its scorecard from the [learning loop](learning-loop.md):
-count directly observed corrections, verification reports, and recorded run
-outcomes. Treat wait estimates and skill-load associations as best-effort;
-state coverage limits rather than inferring where unrecorded time went.
+Use the current conversation, the diff, command output, and records the user
+supplies. Cite the observation that motivates each candidate. When the user
+asks about a period or a pattern beyond that evidence, ask for the relevant
+examples and state coverage limits. Count only directly observed corrections,
+verification reports, and recorded outcomes; do not reconstruct missing history.
 
 Look for candidates in these categories:
 
@@ -50,5 +43,4 @@ Order candidates by how much time or risk each would have saved. For each one,
 name the target file or tool, the change, and the observed failure it
 addresses. Validate an instruction change as the parent skill describes before
 keeping it. Record each accepted candidate's ID, class, lesson, surface, target and
-timestamped evidence. Follow the [learning loop](learning-loop.md) for proof,
-promotion and later review.
+timestamped evidence. Keep only changes supported by the available evidence.
