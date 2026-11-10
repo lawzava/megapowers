@@ -317,8 +317,8 @@ func TestSkillContracts(t *testing.T) {
 
 func TestGlobalInstructionTemplates(t *testing.T) {
 	root := repoRoot(t)
-	const skill = "plugins/megapowers/skills/writing-agent-instructions/"
-	requireContains(t, read(t, root, skill+"SKILL.md"), "(references/global-instructions.md)", "skill link to global guidance")
+	const skill = "extras/skills/writing-agent-instructions/"
+	requireContains(t, read(t, root, "extras/README.md"), "(skills/writing-agent-instructions/references/global-instructions.md)", "extras link to global guidance")
 	reference := read(t, root, skill+"references/global-instructions.md")
 	for _, marker := range []string{"(../assets/global-CLAUDE.md)", "(../assets/global-AGENTS.md)", "`~/.claude/CLAUDE.md`", "`~/.codex/AGENTS.md`", "project_doc_max_bytes", "Sources reviewed"} {
 		requireContains(t, reference, marker, "global instructions reference")
@@ -377,7 +377,7 @@ func TestGlobalInstructionTemplates(t *testing.T) {
 			}
 		}
 	}
-	repository := read(t, root, skill+"references/repository-instructions.md")
+	repository := read(t, root, "plugins/megapowers/skills/writing-agent-instructions/references/repository-instructions.md")
 	requireAbsent(t, repository, "does not treat `AGENTS.md` as its native", "stale Claude AGENTS.md claim")
 	requireContains(t, repository, "2.1.277", "Claude AGENTS.md version floor")
 }

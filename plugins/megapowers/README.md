@@ -12,7 +12,7 @@ orchestration daemon, or vendor choice.
   research, design, implementation with language-specific code judgment,
   debugging, verification, actions with real-world side effects, long
   unattended runs, independent review, prose, and writing agent instructions
-  (including retrospectives, session recall, and memory hygiene).
+  (including current-session retrospectives and memory hygiene).
   `skills/catalog.json` records whether each skill is stable or experimental,
   since portable skill frontmatter has no field for that.
 - `skills/index.json`: the OpenCode HTTP catalog for all 13 skills and their files.

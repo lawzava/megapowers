@@ -16,8 +16,11 @@ scheduler.
 
 ## Repository-only extras
 
-The optional helpers and Claude Code output style in [extras/](./extras/README.md)
-do not ship with the plugin. The style is passive instruction text, installed
+The optional helpers, global instruction templates, session-mining and
+learning-loop guidance, and Claude Code output style in
+[extras/](./extras/README.md) do not ship with the plugin. Shipped skills do not
+instruct agents to mine session transcripts or name harness home directories.
+The style is passive instruction text, installed
 manually into `~/.claude/output-styles/`. Helper boundaries follow.
 
 | Component | Reads | Writes | Network |

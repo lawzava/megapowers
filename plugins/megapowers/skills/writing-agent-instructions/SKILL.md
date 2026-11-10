@@ -1,6 +1,6 @@
 ---
 name: writing-agent-instructions
-description: "Use when creating, revising, or auditing skills, AGENTS.md, CLAUDE.md, nested project instructions, or native harness memory. Covers skill triggers, progressive disclosure, harness-aware scope, behavioral validation, session retrospectives, recalling earlier sessions, auditing or pruning stale memory, and turning repeated agent mistakes into instruction or tooling changes. Includes assessing what Megapowers does for a project, learning from past sessions, scoring skill outcomes, and reviewing, promoting, or retiring lessons."
+description: "Use when creating, revising, or auditing skills, AGENTS.md, CLAUDE.md, nested project instructions, or native harness memory. Covers skill triggers, progressive disclosure, harness-aware scope, behavioral validation, session retrospectives, auditing or pruning stale memory, and turning repeated agent mistakes into instruction or tooling changes."
 ---
 
 # Writing Agent Instructions
@@ -30,14 +30,9 @@ it caused an observed failure or creates a concrete risk.
 
 For a skill, read [skill authoring](references/skills.md). For project or
 subfolder guidance, read
-[repository instructions](references/repository-instructions.md). For global
-instructions, read
-[global instructions](references/global-instructions.md), which links the
-maintained templates. For a retrospective, read
-[retrospective](references/retrospective.md); to recall past sessions or mine
-corrections, [session mining](references/session-mining.md); to audit native
-memory, [memory hygiene](references/memory-hygiene.md); to score a project's
-skill outcomes or manage lessons, [learning loop](references/learning-loop.md).
+[repository instructions](references/repository-instructions.md). For a
+retrospective, read [retrospective](references/retrospective.md); to audit native
+memory, [memory hygiene](references/memory-hygiene.md).
 Read multiple references only when the task spans more than one surface.
 
 Validate new skills or material behavior changes at two boundaries: harness

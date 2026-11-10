@@ -5,6 +5,22 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.56.1 - 2026-11-10
+
+### Changed
+
+- Address Anthropic's directory policy hold, "Uses a credential from the user's
+  machine": move session-mining, learning-loop, and global-instruction guidance,
+  plus both global instruction templates, to repository-only
+  `extras/skills/writing-agent-instructions/`. Preserve their content and remove
+  shipped links and triggers for the moved procedures. Retrospectives now use
+  the current conversation and user-supplied evidence.
+- The hypothesis is that local transcript-reading guidance or harness home
+  directory names trigger the scanner. The cause is not confirmed, and this
+  change does not establish directory approval.
+- Add a contract rejecting harness home and credential-file references in
+  shipped files, and regenerate the OpenCode catalog at 0.56.1.
+
 ## 0.56.0 - 2026-11-08
 
 ### Changed

@@ -20,8 +20,8 @@ something blocks, report the exact blocker and what it needs, skip steps 2 to
 
 Write what this session taught that a later session needs into the learning
 surface the project defines: its instruction files, learning log, or native
-memory. Choose the target and evidence as in the
-[learning loop](../writing-agent-instructions/references/learning-loop.md).
+memory. Choose the narrowest existing target and cite direct observations
+from this session. Revalidate facts that can change before recording them.
 Invoking this skill approves lesson entries there, not a commit or push. Edit
 only lesson entries, and keep only durable, evidenced lessons, not session
 history. If the session taught none, or the project defines no surface, skip

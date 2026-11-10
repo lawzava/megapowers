@@ -29,7 +29,7 @@ var requiredSkillFacts = map[string][]string{
 		"references/pr-babysit.md",
 	},
 	"close-off": {
-		"verify-and-finish", "references/learning-loop.md", "did not create", "uncommitted work",
+		"verify-and-finish", "direct observations", "did not create", "uncommitted work",
 		"ask about first", "never archive", "it's ready for archiving.",
 	},
 	"design-and-plan": {
@@ -140,7 +140,6 @@ var requiredSkillFacts = map[string][]string{
 		"references/repository-instructions.md",
 		"references/retrospective.md",
 		"references/memory-hygiene.md",
-		"references/session-mining.md",
 	},
 }
 
