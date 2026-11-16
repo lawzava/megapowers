@@ -104,6 +104,10 @@ type directoryInterface struct {
 	ComposerIcon     string   `json:"composerIcon"`
 	Logo             string   `json:"logo"`
 	WebsiteURL       string   `json:"websiteURL"`
+	// Listing URLs come from the source Codex manifest; unset ones are omitted.
+	PrivacyPolicyURL  string `json:"privacyPolicyURL,omitempty"`
+	TermsOfServiceURL string `json:"termsOfServiceURL,omitempty"`
+	SupportURL        string `json:"supportURL,omitempty"`
 }
 
 type sourceManifest struct {
@@ -114,7 +118,10 @@ type sourceManifest struct {
 	License    string   `json:"license"`
 	Keywords   []string `json:"keywords"`
 	Interface  struct {
-		ShortDescription string `json:"shortDescription"`
+		ShortDescription  string `json:"shortDescription"`
+		PrivacyPolicyURL  string `json:"privacyPolicyURL"`
+		TermsOfServiceURL string `json:"termsOfServiceURL"`
+		SupportURL        string `json:"supportURL"`
 	} `json:"interface"`
 }
 
@@ -232,17 +239,20 @@ func buildDirectoryFiles(root string) ([]dirFile, error) {
 		License:     codex.License,
 		Skills:      "./skills/",
 		Interface: directoryInterface{
-			DisplayName:      codex.Name,
-			ShortDescription: "Agent workflow skills",
-			LongDescription:  directoryLongDescription,
-			DeveloperName:    "lawzava",
-			Category:         "Developer Tools",
-			Capabilities:     directoryCapabilities,
-			DefaultPrompt:    directoryDefaultPrompts,
-			BrandColor:       "#1F6FEB",
-			ComposerIcon:     "./" + directoryIconDst,
-			Logo:             "./" + directoryIconDst,
-			WebsiteURL:       "https://github.com/lawzava/megapowers",
+			DisplayName:       codex.Name,
+			ShortDescription:  "Agent workflow skills",
+			LongDescription:   directoryLongDescription,
+			DeveloperName:     "lawzava",
+			Category:          "Developer Tools",
+			Capabilities:      directoryCapabilities,
+			DefaultPrompt:     directoryDefaultPrompts,
+			BrandColor:        "#1F6FEB",
+			ComposerIcon:      "./" + directoryIconDst,
+			Logo:              "./" + directoryIconDst,
+			WebsiteURL:        "https://github.com/lawzava/megapowers",
+			PrivacyPolicyURL:  codex.Interface.PrivacyPolicyURL,
+			TermsOfServiceURL: codex.Interface.TermsOfServiceURL,
+			SupportURL:        codex.Interface.SupportURL,
 		},
 	}
 	for _, keyword := range codex.Keywords {

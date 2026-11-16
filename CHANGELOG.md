@@ -5,6 +5,18 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Added
+
+- Support, privacy policy, and terms of service pages:
+  [SUPPORT.md](./SUPPORT.md), [docs/privacy.md](./docs/privacy.md), and
+  [docs/terms.md](./docs/terms.md). OpenAI's plugin directory requires all
+  three.
+- The Codex manifest declares `interface.supportURL`,
+  `interface.privacyPolicyURL`, and `interface.termsOfServiceURL` for these
+  pages. The directory edition copies them into its packaged manifest.
+
 ## 0.57.1 - 2026-11-16
 
 ### Fixed

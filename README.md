@@ -359,6 +359,8 @@ and summarize it. For optional local diagnostics, see
 - [Evaluation and release evidence](./docs/advanced/evals.md)
 - [Security policy](./SECURITY.md), [Contributing](./CONTRIBUTING.md),
   [Changelog](./CHANGELOG.md)
+- [Support](./SUPPORT.md), [Privacy policy](./docs/privacy.md),
+  [Terms of service](./docs/terms.md)
 
 ## Develop
 
