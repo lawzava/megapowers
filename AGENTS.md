@@ -7,7 +7,9 @@ This repository publishes harness-neutral Agent Skills in one optional
 the skills and their supporting files may be copied into other skill-loading
 harnesses. Harness-specific bindings and hooks belong in the user's local
 setup, not in the shared skill bodies. The read-only `session-mine` tool reads only
-local Claude Code and Codex transcript files. Keep every shipped artifact public-safe: no
+local Claude Code and Codex transcript files; the repository-only
+`scripts/cmd/opencode-export` and `scripts/cmd/opencode-mine` tools export and
+mine OpenCode sessions outside the shipped plugin. Keep every shipped artifact public-safe: no
 personal secrets, machine-specific paths, or undeclared private services.
 
 ## Authority

@@ -1,10 +1,34 @@
 # Session mining
 
+Mine sessions only when the user asks for it.
+
 Use the harness's normal read-only search and file tools to inspect local
 Claude Code and Codex transcripts. Default to this workspace and the last
 14 days for recall. Widen only when the user asks and state the scope.
 Without accessible transcripts, ask for the relevant corrections or sessions;
 do not reconstruct them from memory.
+
+OpenCode keeps sessions behind its local service, not in transcript files.
+From a checkout of this repository, export them into a new directory under
+`$TMPDIR`, then mine that directory:
+
+```sh
+project=/absolute/path/to/the/workspace
+export_dir="$(mktemp -d "${TMPDIR:?set TMPDIR to a disk-backed directory}/opencode-export-XXXXXX")"
+go run ./scripts/cmd/opencode-export --workspace "$project" --output "$export_dir"
+go run ./scripts/cmd/opencode-mine scorecard --workspace "$project" --opencode-export "$export_dir"
+go run ./scripts/cmd/opencode-mine corrections --workspace "$project" --opencode-export "$export_dir"
+```
+
+Set `project` to the workspace to mine. If the exporter exits 2, fix the
+options and rerun before mining. Exit 1 is a partial export: mine it and
+report the coverage as partial. The export holds unredacted transcripts and
+the mining reports stay local. Delete the export directory after the last
+report, and also when a run is interrupted; nothing removes it for you.
+Report skills the harness attached to a user message apart from model skill
+loads. The
+[OpenCode export guide](../../../../docs/advanced/opencode-export.md) lists
+the options and the exit codes.
 
 For recall, locate messages containing the topic words, most recent first.
 Read decisions, open questions and last state. Check live repository and forge

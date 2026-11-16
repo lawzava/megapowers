@@ -627,3 +627,22 @@ func TestBarGuardRustContextTest(t *testing.T) {
 		t.Errorf("rust context test findings = %+v", got)
 	}
 }
+
+// A 2026-11-16 audit saw a builder in a shared checkout flag test removals
+// from another lane's files, and a denied guard run go unreported.
+func TestBarGuardReferenceSharedCheckout(t *testing.T) {
+	root := repoRoot(t)
+	text := normalized(read(t, root, "plugins/megapowers/skills/verify-and-finish/references/bar-guard.md"))
+	for _, fact := range []string{
+		"shared with other lanes",
+		"paths this lane owns or changed",
+		"another lane's change",
+		"if inspection cannot run, report that gap",
+		"a denied or failed guard run is such a gap",
+		"final report",
+	} {
+		if !strings.Contains(text, fact) {
+			t.Errorf("bar-guard reference lacks %q", fact)
+		}
+	}
+}
