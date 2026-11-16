@@ -46,6 +46,41 @@ func TestSessionMineLocalBoundary(t *testing.T) {
 	}
 }
 
+const openCodeExportDoc = "docs/advanced/opencode-export.md"
+
+// The OpenCode exporter calls the local OpenCode CLI, so it and its miner stay
+// repository tools: the shipped plugin neither contains nor names them.
+func TestOpenCodeToolsStayOutsidePlugin(t *testing.T) {
+	root := repoRoot(t)
+	for _, rel := range []string{"scripts/cmd/opencode-export/main.go", "scripts/cmd/opencode-mine/main.go", "scripts/opencode-export.sh", openCodeExportDoc} {
+		read(t, root, rel)
+	}
+	err := filepath.WalkDir(filepath.Join(root, "plugins/megapowers"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		for _, name := range []string{"opencode-export", "opencode-mine", "opencode_export", "opencode_mine"} {
+			if strings.Contains(strings.ToLower(rel), name) {
+				t.Errorf("shipped plugin contains %s", rel)
+			}
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		body := strings.ToLower(read(t, root, rel))
+		for _, name := range []string{"opencode-export", "opencode-mine", "--opencode-export", "export-status"} {
+			if strings.Contains(body, name) {
+				t.Errorf("%s names repository tool text %q", rel, name)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestShippedDocsNoLoginCLIInstructions(t *testing.T) {
 	root := repoRoot(t)
 	for _, dir := range []string{"plugins/megapowers", "docs"} {
@@ -54,6 +89,11 @@ func TestShippedDocsNoLoginCLIInstructions(t *testing.T) {
 				return err
 			}
 			if entry.IsDir() || !strings.HasSuffix(path, ".md") {
+				return nil
+			}
+			// The repository-only OpenCode exporter documents its own flags.
+			// TestOpenCodeToolsStayOutsidePlugin keeps them out of the plugin.
+			if rel, _ := filepath.Rel(root, path); filepath.ToSlash(rel) == openCodeExportDoc {
 				return nil
 			}
 			data, err := os.ReadFile(path)

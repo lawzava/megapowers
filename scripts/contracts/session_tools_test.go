@@ -38,6 +38,11 @@ func TestLearningGuidanceStaysLocal(t *testing.T) {
 	loop := normalized(read(t, root, base+"references/learning-loop.md"))
 	mining := normalized(read(t, root, base+"references/session-mining.md"))
 	requireContains(t, mining, "keep transcripts and excerpts out of review packages, issues, commits, and other public text", "local transcript boundary")
+	// OpenCode sessions are read through a repository export, which holds
+	// unredacted transcripts; mining stays opt-in and the export is temporary.
+	for _, fact := range []string{"only when the user asks", "go run ./scripts/cmd/opencode-export", "new directory under `$tmpdir`", "go run ./scripts/cmd/opencode-mine", "delete the export directory after the last", "${tmpdir:?", "exit 1 is a partial export", "apart from model skill loads"} {
+		requireContains(t, mining, fact, "OpenCode session mining")
+	}
 	requireContains(t, loop, "megapowers itself", "local plugin lessons")
 	requireContains(t, loop, "report the proposed local change to the user", "local plugin lessons")
 	tool := normalized(read(t, root, "extras/scripts/writing-agent-instructions/lessons.go"))
