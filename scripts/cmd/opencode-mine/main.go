@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 const usageText = `usage: go run ./scripts/cmd/opencode-mine [corrections|recall|scorecard] (--workspace DIR | --all-workspaces)
@@ -58,6 +60,11 @@ type message struct {
 	text string
 	ts   time.Time
 	cwd  string
+	// followUp marks a human turn after the first human turn of an OpenCode
+	// root session. closeOffAttached marks a turn that carried an attached
+	// close-off skill.
+	followUp         bool
+	closeOffAttached bool
 }
 
 type session struct {
@@ -671,6 +678,13 @@ func loadOpenCode(opt options, stats *scanStats) []session {
 		}
 		s := session{harness: "opencode", base: info.ID, cwd: filepath.Clean(info.Location.Directory)}
 		ids := map[string]bool{}
+		child := info.ParentID != ""
+		// A follow-up is a human turn after an earlier prompt turn: a human
+		// turn or a scheduled or unattended prompt, marked or not.
+		// Notifications and synthetic messages are never prompt turns.
+		// Prompt turns are tracked before the --since filter, so a session
+		// opened before the window still counts its in-window follow-ups.
+		seenPrompt := false
 		for _, raw := range *snapshot.Messages {
 			var msg openCodeMessage
 			if json.Unmarshal(raw, &msg) != nil || msg.Type == "" {
@@ -690,12 +704,25 @@ func loadOpenCode(opt options, stats *scanStats) []session {
 			if msg.Time.Created > 0 {
 				ts = time.UnixMilli(msg.Time.Created).UTC()
 			}
+			msgs, events := parseOpenCode(msg, child, ts)
+			followUp := false
+			if !child && msg.Type == "user" && !openCodeNotice(msg.Text) && len(msgs) == 1 {
+				// Root user text that is not a notification is human or a
+				// machine-anchored scheduled prompt; both are prompt turns.
+				followUp = seenPrompt && msgs[0].role == "human"
+				seenPrompt = true
+			}
 			if opt.hasSince && (ts.IsZero() || ts.Before(opt.since)) {
 				continue
 			}
-			msgs, events := parseOpenCode(msg, info.ParentID != "", ts)
 			for _, m := range msgs {
 				m.cwd = s.cwd
+				if followUp && m.role == "human" {
+					m.followUp = true
+					for _, skill := range msg.Skills {
+						m.closeOffAttached = m.closeOffAttached || skill.ID == "close-off"
+					}
+				}
 				s.msgs = append(s.msgs, m)
 			}
 			for _, ev := range events {
@@ -1691,6 +1718,80 @@ type workspaceScore struct {
 	Verified    int    `json:"verified"`
 	NotVerified int    `json:"not_verified"`
 	SleepCalls  int    `json:"sleep_calls"`
+	followUpScore
+}
+
+// followUpScore counts OpenCode operator follow-ups: human turns after the
+// first human turn of a root session. Rates are per 100 follow-ups, rounded
+// to one decimal, and null when there are no follow-ups.
+type followUpScore struct {
+	FollowUps        int      `json:"follow_ups"`
+	Nudges           int      `json:"nudges"`
+	CloseOffRequests int      `json:"close_off_requests"`
+	NudgeRate        *float64 `json:"nudges_per_100_follow_ups"`
+	CloseOffRate     *float64 `json:"close_off_requests_per_100_follow_ups"`
+}
+
+func (f *followUpScore) add(msg message) {
+	if !msg.followUp {
+		return
+	}
+	f.FollowUps++
+	if nudgeText(msg.text) {
+		f.Nudges++
+	}
+	if msg.closeOffAttached || closeOffText(msg.text) {
+		f.CloseOffRequests++
+	}
+}
+
+func (f *followUpScore) finish() {
+	f.NudgeRate, f.CloseOffRate = per100(f.Nudges, f.FollowUps), per100(f.CloseOffRequests, f.FollowUps)
+}
+
+func per100(count, total int) *float64 {
+	if total == 0 {
+		return nil
+	}
+	rate := math.Round(float64(count)*1000/float64(total)) / 10
+	return &rate
+}
+
+func formatRate(rate *float64) string {
+	if rate == nil {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.1f", *rate)
+}
+
+const maxNudgeChars = 60
+
+var (
+	// reNudge matches a status check or a bare push to go on anywhere in a
+	// short follow-up. It cannot tell "are you stuck?" from a short request
+	// that mentions being stuck; the docs list this limit.
+	reNudge = regexp.MustCompile(`(?i)\b(?:stuck|still (?:at it|running|doing|going)|how'?s it going|how is it going|are you (?:there|alive)|keep going|go on|try (?:now|again)|any (?:update|progress))\b|\b(?:done|status)\?`)
+	// reShortNudge words count only in a follow-up of at most three words, so
+	// "ok continue" counts and "continue with the migration ..." does not.
+	reShortNudge = regexp.MustCompile(`(?i)\b(?:continue|retry)\b`)
+	reCloseOff   = regexp.MustCompile(`(?i)\bclose[- ]off\b`)
+)
+
+// nudgeText reports whether a follow-up is a status check or nudge.
+func nudgeText(text string) bool {
+	trimmed := strings.ReplaceAll(strings.TrimSpace(text), "’", "'")
+	if trimmed == "" || utf8.RuneCountInString(trimmed) > maxNudgeChars {
+		return false
+	}
+	if reNudge.MatchString(trimmed) {
+		return true
+	}
+	return len(strings.Fields(trimmed)) <= 3 && reShortNudge.MatchString(trimmed)
+}
+
+// closeOffText reports whether a follow-up asks to close off the session.
+func closeOffText(text string) bool {
+	return reCloseOff.MatchString(text)
 }
 
 type scorecardReport struct {
@@ -1715,6 +1816,7 @@ type scorecardReport struct {
 	SkippedLines    int              `json:"skipped_lines"`
 	SkippedFiles    int              `json:"skipped_files"`
 	UnreadableFiles int              `json:"unreadable_files"`
+	followUpScore
 }
 
 // scorecard summarizes outcome signals. Counts are candidates for a
@@ -1816,6 +1918,8 @@ func scorecard(opt options, sessions []session, stats scanStats) scorecardReport
 			case "human":
 				report.HumanTurns++
 				ws.HumanTurns++
+				report.followUpScore.add(msg)
+				ws.followUpScore.add(msg)
 				if class := classify(msg.text); class != "other" {
 					report.Corrections[class]++
 					ws.Corrections++
@@ -1854,8 +1958,10 @@ func scorecard(opt options, sessions []session, stats scanStats) scorecardReport
 		}
 		return report.AttachedSkills[i].Name < report.AttachedSkills[j].Name
 	})
+	report.followUpScore.finish()
 	if opt.all {
 		for _, ws := range workspaces {
+			ws.followUpScore.finish()
 			report.ByWorkspace = append(report.ByWorkspace, *ws)
 		}
 		sort.Slice(report.ByWorkspace, func(i, j int) bool { return report.ByWorkspace[i].Workspace < report.ByWorkspace[j].Workspace })
@@ -1980,6 +2086,11 @@ func printScorecard(w io.Writer, r scorecardReport) {
 	fmt.Fprintf(w, "gates: %s\n", joinCounts(r.Gates))
 	fmt.Fprintf(w, "reports: %d verified, %d not verified\n", r.Reports.Verified, r.Reports.NotVerified)
 	fmt.Fprintf(w, "sleep calls: %d\n", r.SleepCalls)
+	openCode := r.BySource["opencode"] != nil
+	if openCode {
+		fmt.Fprintf(w, "opencode follow-ups: %d, nudges: %d (%s per 100 follow-ups), close-off requests: %d (%s per 100 follow-ups)\n",
+			r.FollowUps, r.Nudges, formatRate(r.NudgeRate), r.CloseOffRequests, formatRate(r.CloseOffRate))
+	}
 	for _, run := range r.Runs {
 		fmt.Fprintf(w, "run %s: %d records, %d oracle, %d continuations, %d blocked, %d holdout registrations, %d rebaselines, %d high-risk decisions\n",
 			run.ID, run.Records, run.Oracle, run.Continuations, run.Blocked, run.HoldoutRegistrations, run.Rebaselines, run.HighRiskDecisions)
@@ -1988,6 +2099,12 @@ func printScorecard(w io.Writer, r scorecardReport) {
 		fmt.Fprintln(w, "by workspace (sessions / human turns / corrections / skill loads / gate blocks / verified / not verified / sleep calls):")
 		for _, ws := range r.ByWorkspace {
 			fmt.Fprintf(w, "- %s: %d / %d / %d / %d / %d / %d / %d / %d\n", ws.Workspace, ws.Sessions, ws.HumanTurns, ws.Corrections, ws.SkillLoads, ws.GateBlocks, ws.Verified, ws.NotVerified, ws.SleepCalls)
+		}
+		if openCode {
+			fmt.Fprintln(w, "by workspace, opencode follow-ups (follow-ups / nudges / close-off requests / nudges per 100 / close-off requests per 100):")
+			for _, ws := range r.ByWorkspace {
+				fmt.Fprintf(w, "- %s: %d / %d / %d / %s / %s\n", ws.Workspace, ws.FollowUps, ws.Nudges, ws.CloseOffRequests, formatRate(ws.NudgeRate), formatRate(ws.CloseOffRate))
+			}
 		}
 	}
 	fmt.Fprintf(w, "summary: skipped lines %d, skipped files %d, unreadable files %d\n", r.SkippedLines, r.SkippedFiles, r.UnreadableFiles)
