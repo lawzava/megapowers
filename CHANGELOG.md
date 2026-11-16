@@ -30,6 +30,13 @@ semver.
   shipped plugin neither contains nor names these tools.
 - The repository session-mining reference covers OpenCode: export to a new
   `$TMPDIR` directory, mine it locally, and delete it after the last report.
+- Evaluation only, not shipped: 31 synthetic `installed-ab` cases built from
+  the correction classes of the 2026-11-16 session review (21 in
+  `cases.json`, 10 in `holdout.json`). They grade outcomes and carry no
+  `required_skill_order`; 14 need the blind judge. The runner accepts a
+  workflow case without a skill order.
+- Evaluation only, not shipped: `evals/tools/descriptions-pack` writes a
+  descriptions-only copy of the skills as a comparison arm.
 
 ## 0.56.1 - 2026-11-10
 
