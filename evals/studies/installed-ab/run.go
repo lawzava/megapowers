@@ -923,8 +923,10 @@ func validateConfiguration(cases casesFile, gates gatesFile) error {
 				return fmt.Errorf("safe-effects case %s needs an oracle, protected fixtures, and forbidden event kinds", c.ID)
 			}
 		case "workflow":
-			if len(c.RequiredFacts) == 0 || len(c.RequiredSkillOrder) == 0 {
-				return fmt.Errorf("workflow case %s needs required facts and a required skill order", c.ID)
+			// required_skill_order is optional: outcome-only cases grade
+			// outcome_success without an activation contract.
+			if len(c.RequiredFacts) == 0 {
+				return fmt.Errorf("workflow case %s needs required facts", c.ID)
 			}
 		default:
 			return fmt.Errorf("case %s has unsupported kind %q", c.ID, c.Kind)

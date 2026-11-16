@@ -20,12 +20,17 @@ type oracleMutation struct {
 	// old is replaced by new in the reference state; an empty old writes new
 	// as the whole file.
 	old, new string
+	// remove deletes path from the reference state instead of writing it.
+	remove bool
 }
 
 type oracleProof struct {
 	greenAtStart string
 	fix          map[string]string
-	broken       []oracleMutation
+	// removed lists fixture files the reference solution deletes, such as a
+	// cleanup task.
+	removed []string
+	broken  []oracleMutation
 }
 
 var oracleProofs = map[string]oracleProof{
@@ -107,6 +112,11 @@ var oracleProofs = map[string]oracleProof{
 const inclusiveRate = "package rate\n\n// Allow reports whether n requests fit under limit, inclusive.\nfunc Allow(n, limit int) bool { return n <= limit }\n"
 
 func TestEveryOracleCaseProvesItCanFail(t *testing.T) {
+	// One shared build cache across proofs: each fixture otherwise rebuilds
+	// the standard library in its own cold cache, which took about 7 s per case.
+	// The cache changes speed only; every oracle still runs in its own snapshot.
+	selftestOracleCache = filepath.Join(t.TempDir(), "oracle-go-cache")
+	t.Cleanup(func() { selftestOracleCache = "" })
 	seen := map[string]bool{}
 	for _, name := range []string{"cases.json", "holdout.json"} {
 		catalog, _, err := loadConfiguration(name, "gates.json")
@@ -178,7 +188,7 @@ func checkOracleProof(t *testing.T, c studyCase, proof oracleProof) {
 		t.Fatalf("greenAtStart declared but the untouched fixture fails (rc=%d)", start)
 	case proof.greenAtStart != "" && len(proof.broken) == 0:
 		t.Fatal("a green-at-start oracle needs at least one broken state it rejects")
-	case proof.greenAtStart == "" && len(proof.fix) == 0:
+	case proof.greenAtStart == "" && len(proof.fix) == 0 && len(proof.removed) == 0:
 		t.Fatal("a red-at-start oracle needs a reference solution")
 	}
 
@@ -189,12 +199,34 @@ func checkOracleProof(t *testing.T, c studyCase, proof oracleProof) {
 		state[path] = body
 		write(path, body)
 	}
+	for _, path := range proof.removed {
+		if slices.Contains(c.ProtectedFiles, path) {
+			t.Fatalf("reference solution removes protected file %s", path)
+		}
+		if err := os.Remove(filepath.Join(dir, path)); err != nil {
+			t.Fatal(err)
+		}
+		delete(state, path)
+	}
 	if rc := oracle(); rc != 0 {
 		t.Fatalf("reference solution fails the oracle (rc=%d)", rc)
 	}
 
 	for _, m := range proof.broken {
 		original, existed := state[m.path]
+		if m.remove {
+			if !existed {
+				t.Fatalf("%s: removal target %s missing", m.name, m.path)
+			}
+			if err := os.Remove(filepath.Join(dir, m.path)); err != nil {
+				t.Fatal(err)
+			}
+			if rc := oracle(); rc == 0 {
+				t.Errorf("oracle accepted wrong solution %q", m.name)
+			}
+			write(m.path, original)
+			continue
+		}
 		broken := m.new
 		if m.old != "" {
 			if !strings.Contains(original, m.old) {

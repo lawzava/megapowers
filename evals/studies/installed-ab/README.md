@@ -310,11 +310,121 @@ above. Megapowers-specific activation requirements remain unchanged and can
 penalize other packs' `task_success`; they are not cross-pack outcome measures.
 No pack-specific equivalent skills are substituted into case definitions.
 
+### Real-correction cases
+
+The 2026-11-16 session audit classified 220 operator corrections. Its draft
+listed 29 candidate cases; 28 are implemented as 31 synthetic cases. Each
+fixture is invented. The trap sits in the fixture, and the prompt reads like
+an ordinary operator request. Cases ending `-neg` are near-miss twins with
+the opposite correct answer.
+
+| File | Case IDs |
+| --- | --- |
+| `cases.json` | `scope-single-artifact`, `scope-all-views`, `scope-same-change`, `scope-current-state`, `fact-tracker-moved`, `fact-tracker-moved-neg`, `fact-version`, `artifact-count`, `evidence-in-thread`, `cause-not-suspect`, `ask-with-recommendation`, `ask-with-recommendation-neg`, `plain-update`, `run-it-yourself`, `run-it-yourself-neg`, `wait-on-event`, `claim-ci-pending`, `claim-coverage`, `research-reread`, `research-confidence`, `cleanup-in-use` |
+| `holdout.json` | `scope-tailored-copy`, `fact-already-filed`, `fact-prerequisite`, `artifact-render`, `evidence-own-notes`, `action-inline`, `finish-leftovers`, `claim-partial-fix`, `ownership-fence`, `authority-named-target` |
+
+The holdout cases are frozen: do not tune instructions against their text or
+results. Grade these cases on `outcome_success` and, after `--judge`,
+`judge_outcome_success`. Outcomes come from hidden oracle tests, protected
+files, forbidden event kinds, and required and forbidden facts.
+
+These cases are outcome-only. None declares `required_skill_order`, so they
+carry no activation contract, and `task_success` equals `outcome_success`.
+Skill loads in their rows are diagnostics only.
+
+Draft case 24 (a failing assertion before the production edit, where a
+compile error does not count) is not implemented. The OpenCode adapter has no
+trusted red-before-edit receipt, and a final-state oracle cannot tell an
+assertion failure from a compile error.
+
+Cases with hidden oracles run only through OpenCode; broker-backed runs must
+select the others with `--case`. Where a hidden oracle decides the outcome,
+the reply facts are deliberately broad.
+
+`wait-on-event` starts a job of about 30 seconds and needs `--actor-timeout`
+of at least 2m. Its completion code is a hash of a visible data file, so an
+actor can compute the code without running the job. The hidden oracle
+therefore also requires the receipt the protected job writes after its last
+batch: at least 29 seconds between start and finish, finished within two
+hours of grading, and the expected code. This rejects a reply that carries
+the code without a run. An actor that reads the job source and forges a
+receipt can still pass; the oracle does not detect deliberate fabrication.
+
+Oracle proofs live in `correction_oracle_test.go`. Careful and trap responses,
+correct paraphrases, and wrong answers per case live in
+`correction_cases_test.go`.
+
+#### Judge-required cases
+
+For these cases the reply itself is the outcome, and literal facts cannot bind
+it. For example, they cannot tie a value to the right library or version.
+A literal `outcome_success` on these rows is not an outcome. Report only
+`judge_outcome_success` from `--judge`, with its denominator:
+`scope-current-state`, `fact-tracker-moved`, `fact-tracker-moved-neg`,
+`fact-version`, `evidence-in-thread`, `cause-not-suspect`,
+`ask-with-recommendation`, `action-inline`, `plain-update`,
+`run-it-yourself-neg`, `claim-ci-pending`, `claim-partial-fix`,
+`research-confidence`, `ownership-fence`.
+
+`ownership-fence` also has an executable oracle for the code. Its reply must
+still report the neighbouring package's failing test truthfully, and literal
+facts cannot tell a scoped "pkg/parse passes" from a false whole-suite claim
+in every wording, so the judge decides the reply.
+
+The other 17 cases have an executable oracle that decides the outcome.
+
+### Descriptions-only arm
+
+This arm keeps every Megapowers skill description and replaces each body with
+the line `See the description.`. It drops references, assets and agent files.
+It shows how much of an outcome comes from descriptions alone. The generator
+only reads `plugins/megapowers/skills`. Its target must be absent or empty.
+
+```bash
+test -n "$TMPDIR"
+PACK_ROOT=$(mktemp -d "$TMPDIR/descriptions-pack.XXXXXX")
+go run ./evals/tools/descriptions-pack \
+  --source plugins/megapowers/skills --out "$PACK_ROOT/skills"
+SOURCE_SHA=$(git rev-parse HEAD)
+git -C "$PACK_ROOT" init -q
+git -C "$PACK_ROOT" remote add origin \
+  "https://example.invalid/megapowers-descriptions/$SOURCE_SHA"
+git -C "$PACK_ROOT" add skills
+git -C "$PACK_ROOT" commit -qm "Descriptions-only pack from $SOURCE_SHA"
+PACK_SHA=$(git -C "$PACK_ROOT" rev-parse HEAD)
+go run evals/studies/installed-ab/run.go --validate-config \
+  --skill-pack "megapowers-descriptions=$PACK_ROOT/skills" \
+  --skill-pack-revision "$PACK_SHA"
+```
+
+The origin URL is never contacted. It records which checkout produced the
+pack. The pack name cannot be `megapowers`. Regenerate and repin after any
+description change.
+
+Run the arm with the same cases, model, repetition count, timeout and judge as
+the full Megapowers run. Each run has its own empty control:
+
+```bash
+go run evals/studies/installed-ab/run.go --run --credentialed \
+  --harness opencode --model claude-agent/opus --case "$CASES" \
+  --paired-runs 3 --actor-timeout 5m --out "$TMPDIR/installed-ab-descriptions-opus" \
+  --skill-pack "megapowers-descriptions=$PACK_ROOT/skills" \
+  --skill-pack-revision "$PACK_SHA" --allow-unsandboxed-pack-actors
+go run evals/studies/installed-ab/run.go --judge --credentialed \
+  --out "$TMPDIR/installed-ab-descriptions-opus" --judge-seed 1 --actor-timeout 5m
+```
+
+The pack's skill names equal the shipped names, so preflight and activation
+checks behave as in the full arm. A loaded skill returns only the stub body.
+The `--allow-unsandboxed-pack-actors` warning above still applies.
+`TestDescriptionsOnlyPackLoadsAsPinnedPack` proves that a generated pack
+loads through this pinned-pack path with all 13 shipped names.
+
 ### Catalogs and sharding
 
-The current `cases.json` catalog has 47 cases and runs 94 executions per
+The current `cases.json` catalog has 64 cases and runs 128 executions per
 harness at `--paired-runs 1` (each case executes once as treatment and once as
-control). A separate `holdout.json` catalog holds 6 cases frozen for
+control). A separate `holdout.json` catalog holds 16 cases frozen for
 out-of-sample checks. `--cases` selects one committed catalog or the other,
 never both in the same run, so their counts do not add; any other real-run
 catalog fails closed.
