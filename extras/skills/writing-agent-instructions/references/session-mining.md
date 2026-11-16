@@ -26,7 +26,12 @@ report the coverage as partial. The export holds unredacted transcripts and
 the mining reports stay local. Delete the export directory after the last
 report, and also when a run is interrupted; nothing removes it for you.
 Report skills the harness attached to a user message apart from model skill
-loads. The
+loads. If service status reports stopped while the local server answers, pass
+its loopback URL with `--opencode-server URL`, and set `OPENCODE_PASSWORD`
+for that command if the server needs one. The scorecard also counts
+operator follow-ups in root sessions, nudges, and close-off requests, with
+rates per 100 follow-ups; read the guide's known limits before comparing them
+week over week. The
 [OpenCode export guide](../../../../docs/advanced/opencode-export.md) lists
 the options and the exit codes.
 
