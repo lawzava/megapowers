@@ -24,17 +24,21 @@ func main() {
  exe, _ := os.Executable(); dir := filepath.Dir(exe)
  dataFlags, _ := os.ReadFile(filepath.Join(dir,"flags.json")); var flags map[string]string; json.Unmarshal(dataFlags,&flags)
  envLog, _ := os.OpenFile(filepath.Join(dir,"environment"), os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600); json.NewEncoder(envLog).Encode(os.Environ()); envLog.Close()
+ argvLog, _ := os.OpenFile(filepath.Join(dir,"argv"), os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600); json.NewEncoder(argvLog).Encode(os.Args[1:]); argvLog.Close()
+ args := os.Args[1:]
+ if len(args)>=2 && args[0]=="--server" { args = args[2:] }
  log, _ := os.OpenFile(filepath.Join(dir,"calls"), os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600)
  defer log.Close()
- if len(os.Args)==3 && os.Args[1]=="service" && os.Args[2]=="status" {
+ if len(args)==2 && args[0]=="service" && args[1]=="status" {
   fmt.Fprintln(log,"status")
   if flags["MINE_STATUS_DELAY"]=="1" { time.Sleep(30*time.Second) }
   if flags["MINE_REQUIRE_DEFAULT_STATE"]=="1" && os.Getenv("XDG_STATE_HOME")!="" { fmt.Println("stopped"); return }
   if flags["MINE_LINGER_STATUS"]=="1" { child:=exec.Command(os.Args[0],"linger"); child.Stdout=os.Stdout; child.Start() }
   fmt.Println("http://localhost:1234"); return
  }
- if len(os.Args)!=4 || os.Args[1]!="api" || os.Args[2]!="get" { os.Exit(3) }
- key := os.Args[3]; fmt.Fprintln(log,key)
+ if len(args)!=3 || args[0]!="api" || args[1]!="get" { os.Exit(3) }
+ key := args[2]; fmt.Fprintln(log,key)
+ if want:=flags["MINE_REQUIRE_PASSWORD"]; want!="" && os.Getenv("OPENCODE_PASSWORD")!=want { fmt.Fprintln(os.Stderr,"Error: Server at http://127.0.0.1:4096 requires a password; set OPENCODE_PASSWORD FAKE-CLI-STDERR", os.Getenv("OPENCODE_PASSWORD")); os.Exit(1) }
  if flags["MINE_REQUIRE_DEFAULT_STATE"]=="1" && os.Getenv("XDG_STATE_HOME")!="" { os.Exit(5) }
  data,_ := os.ReadFile(filepath.Join(dir,"responses.json")); var responses map[string][]string; json.Unmarshal(data,&responses)
  seq,ok := responses[key]; if !ok || len(seq)==0 { os.Exit(4) }

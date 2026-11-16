@@ -30,6 +30,18 @@ semver.
   shipped plugin neither contains nor names these tools.
 - The repository session-mining reference covers OpenCode: export to a new
   `$TMPDIR` directory, mine it locally, and delete it after the last report.
+- Repository tool `opencode-export` accepts `--opencode-server URL` for a
+  server that is not the CLI-managed background service. It skips the
+  service-status check, passes `--server URL` on every CLI call, still never
+  starts a service, and accepts only http or https URLs on `127.0.0.1`, `::1`,
+  or `localhost` without credentials (other values exit 2). With that option
+  only, it forwards a set `OPENCODE_PASSWORD` to the CLI through the
+  environment and reports a missing password in fixed words.
+- Repository tool `opencode-mine scorecard` reports OpenCode operator
+  follow-ups (`follow_ups`: human turns in a root session after an earlier
+  human or scheduled prompt), `nudges`, and `close_off_requests`, with rates
+  per 100 follow-ups (`null` in JSON, `n/a` in text without follow-ups),
+  overall and per workspace. Existing fields and lines are unchanged.
 - Evaluation only, not shipped: 31 synthetic `installed-ab` cases built from
   the correction classes of the 2026-11-16 session review (21 in
   `cases.json`, 10 in `holdout.json`). They grade outcomes and carry no

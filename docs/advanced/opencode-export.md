@@ -49,6 +49,26 @@ deadline defaults to 5 minutes. Set `--opencode-timeout DURATION` or
 Timed-out attempts are not retried. Malformed and empty results are retried
 once; a valid empty snapshot survives a failed retry unless it times out.
 
+When the OpenCode server is not the CLI-managed background service, service
+status reports `stopped` and the exporter finds nothing. Pass
+`--opencode-server URL` to name the server: the exporter then skips the status
+check and passes `--server URL` on every CLI call. It still never starts a
+service. The URL must use http or https, carry no credentials, and name a
+loopback host (`127.0.0.1`, `[::1]`, or `localhost`); any other value exits 2,
+because exports hold private transcripts. Example:
+
+```sh
+go run ./scripts/cmd/opencode-export --workspace "$PWD" --opencode-server http://127.0.0.1:4096 --output "$export_dir"
+```
+
+If the server requires a password, export `OPENCODE_PASSWORD` for this one
+command only. With `--opencode-server`, the tool forwards that one variable,
+through the environment, to the CLI that talks to the loopback server it was
+given. It never puts the password in argv, output, or `export-status`, and
+without `--opencode-server` it does not forward it. When the password is
+missing or wrong, the skip reason reads "server requires a password; set
+OPENCODE_PASSWORD".
+
 `--opencode-cmd FILE` or `SESSION_MINE_OPENCODE_CMD` selects an executable;
 the flag wins. Children receive only set PATH, HOME, USERPROFILE, APPDATA,
 LOCALAPPDATA, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME, XDG_CACHE_HOME,
@@ -91,3 +111,36 @@ count as subagent prompts. Unmarked scripted root prompts cannot be distinguishe
 from typed prompts. Assistant text, skill loads, and shell/read/error tool events
 feed the reports; reasoning, system text, and tool outputs are not excerpts.
 Workspace matching uses location.directory; --since filters message timestamps.
+
+## Follow-up metrics
+
+The scorecard counts operator follow-ups in OpenCode root sessions (sessions
+without a parent), overall and per workspace with `--all-workspaces`:
+
+- `follow_ups`: human turns in a root session that come after at least one
+  earlier prompt turn. A prompt turn is a human turn or a scheduled or
+  unattended prompt, with or without a machine-text anchor, so the operator's
+  first reply to a scheduled run is a follow-up. Notifications
+  (`<paseo-system`, `<subagent`, `<shell`) and synthetic messages are never
+  prompt turns or follow-ups. Child sessions count nothing. Prompt turns are
+  tracked before the `--since` filter, so a session opened before the window
+  still counts its later turns.
+- `nudges`: follow-ups of at most 60 characters after trimming that contain a
+  status-check phrase: stuck, still at it/running/doing/going, how's it going,
+  how is it going, are you there, are you alive, keep going, go on, try now,
+  try again, done?, status?, any update, any progress. `continue` and `retry`
+  count only in a follow-up of at most three words, such as "ok continue".
+- `close_off_requests`: follow-ups whose text contains `close-off` or
+  `close off` as words, or that carry an attached skill with ID `close-off`.
+- `nudges_per_100_follow_ups` and `close_off_requests_per_100_follow_ups`: one
+  decimal. JSON reports `null` and text reports `n/a` when there are no
+  follow-ups.
+
+Text reports add one line, `opencode follow-ups: N, nudges: N (R per 100
+follow-ups), close-off requests: N (R per 100 follow-ups)`, and with
+`--all-workspaces` a `by workspace, opencode follow-ups` block. With
+`--sanitize` the counts stay.
+
+Known limits: the nudge match reads words, not intent. A short request such as
+"I got stuck on the form, can you fill it in for me please" counts as a nudge,
+and a long status check over 60 characters does not.

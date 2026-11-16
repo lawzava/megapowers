@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -21,10 +22,13 @@ import (
 type options struct {
 	opencodeCmd     string
 	opencodeTimeout time.Duration
-	output          string
-	workspace       string
-	all             bool
-	since           time.Time
+	// server, when set, is a loopback server URL passed as --server on every
+	// CLI call instead of discovering the CLI-managed background service.
+	server    string
+	output    string
+	workspace string
+	all       bool
+	since     time.Time
 }
 type scanStats struct {
 	opencodeStatus      string
@@ -57,17 +61,23 @@ func openCodeGET(parent context.Context, opt options, env []string, route string
 	defer file.Close()
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, opt.opencodeCmd, "api", "get", route)
+	cmd := exec.CommandContext(ctx, opt.opencodeCmd, opt.cliArgs("api", "get", route)...)
 	cmd.Env, cmd.WaitDelay = env, time.Second
 	cmd.Stdout = file
+	stderr := &boundedBuffer{}
+	cmd.Stderr = stderr
 	// CLI diagnostics can include unredacted content. Report the failed
-	// operation, not raw stdout/stderr, and leave diagnosis to a separate run.
+	// operation in fixed words, never raw stdout/stderr, and leave other
+	// diagnosis to a separate run.
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
 			return fmt.Errorf("API GET timed out: %w", ctx.Err())
 		}
 		if errors.Is(err, exec.ErrWaitDelay) {
 			return fmt.Errorf("API GET pipe wait timed out: %w", exec.ErrWaitDelay)
+		}
+		if bytes.Contains(stderr.data, []byte("requires a password")) {
+			return fmt.Errorf("server requires a password; set OPENCODE_PASSWORD")
 		}
 		return fmt.Errorf("API GET failed (check service status and command environment)")
 	}
@@ -91,6 +101,17 @@ func openCodeGET(parent context.Context, opt options, env []string, route string
 	return nil
 }
 
+// boundedBuffer keeps the first 64 KiB of CLI stderr for fixed-word cause
+// matching. Its content is never printed or written.
+type boundedBuffer struct{ data []byte }
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if room := 64<<10 - len(b.data); room > 0 {
+		b.data = append(b.data, p[:min(len(p), room)]...)
+	}
+	return len(p), nil
+}
+
 type openCodeReader struct {
 	ctx    context.Context
 	reader io.Reader
@@ -101,6 +122,42 @@ func (r openCodeReader) Read(p []byte) (int, error) {
 		return 0, err
 	}
 	return r.reader.Read(p)
+}
+
+// cliArgs prefixes the CLI's global --server flag when a server URL is set.
+func (opt options) cliArgs(args ...string) []string {
+	if opt.server == "" {
+		return args
+	}
+	return append([]string{"--server", opt.server}, args...)
+}
+
+// validateServer accepts only an http or https URL on a loopback host.
+// Exports hold private transcripts, so a remote host is refused rather than
+// trusted by accident. A URL with credentials would expose them in argv.
+func validateServer(raw string) error {
+	server, err := url.Parse(raw)
+	if err != nil || (server.Scheme != "http" && server.Scheme != "https") || server.Opaque != "" {
+		return fmt.Errorf("--opencode-server must be an http or https URL")
+	}
+	if server.User != nil {
+		return fmt.Errorf("--opencode-server must not contain credentials")
+	}
+	// Match the written authority, not Hostname(): the URL parser accepts
+	// malformed forms such as an unbracketed IPv6 address.
+	host := strings.ToLower(server.Host)
+	if i := strings.LastIndexByte(host, ':'); i >= 0 && !strings.HasSuffix(host, "]") {
+		port := host[i+1:]
+		if port == "" || strings.Trim(port, "0123456789") != "" {
+			return fmt.Errorf("--opencode-server host must be 127.0.0.1, [::1], or localhost")
+		}
+		host = host[:i]
+	}
+	switch host {
+	case "127.0.0.1", "[::1]", "localhost":
+		return nil
+	}
+	return fmt.Errorf("--opencode-server host must be 127.0.0.1, [::1], or localhost")
 }
 
 func openCodeTimedOut(err error) bool {
@@ -218,7 +275,19 @@ func exportOpenCode(opt options, stats *scanStats) int {
 			env = append(env, name+"="+value)
 		}
 	}
-	running, err := openCodeStatus(ctx, opt, env)
+	// A password-protected server reads OPENCODE_PASSWORD. Forward it only to
+	// the loopback server the caller named, only through the environment.
+	if opt.server != "" {
+		if password := os.Getenv("OPENCODE_PASSWORD"); password != "" {
+			env = append(env, "OPENCODE_PASSWORD="+password)
+		}
+	}
+	// An explicit server URL replaces service discovery; the CLI connects to
+	// it with --server and starts nothing.
+	running, err := opt.server != "", error(nil)
+	if !running {
+		running, err = openCodeStatus(ctx, opt, env)
+	}
 	if !running && err == nil && os.Getenv("XDG_STATE_HOME") != "" {
 		fallback := make([]string, 0, len(env))
 		for _, value := range env {
@@ -330,6 +399,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	fs.StringVar(&opt.opencodeCmd, "opencode-cmd", command, "OpenCode executable")
 	fs.StringVar(&timeout, "opencode-timeout", timeout, "overall deadline (positive Go duration)")
+	fs.StringVar(&opt.server, "opencode-server", "", "loopback OpenCode server URL; skips service discovery")
 	fs.StringVar(&opt.output, "output", "", "new or empty export directory (required)")
 	fs.StringVar(&opt.workspace, "workspace", "", "session directory to export")
 	fs.BoolVar(&opt.all, "all-workspaces", false, "export all directories")
@@ -345,8 +415,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if opt.output == "" || strings.TrimSpace(opt.opencodeCmd) == "" || fs.NArg() != 0 {
-		fmt.Fprintln(stderr, "usage: opencode-export --output DIR (--workspace DIR | --all-workspaces) [--since YYYY-MM-DD] [--opencode-cmd FILE] [--opencode-timeout 5m]")
+		fmt.Fprintln(stderr, "usage: opencode-export --output DIR (--workspace DIR | --all-workspaces) [--since YYYY-MM-DD] [--opencode-cmd FILE] [--opencode-timeout 5m] [--opencode-server URL]")
 		return 2
+	}
+	serverSet := false
+	fs.Visit(func(f *flag.Flag) { serverSet = serverSet || f.Name == "opencode-server" })
+	if serverSet {
+		if err := validateServer(opt.server); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
 	}
 	if (opt.workspace == "" && !opt.all) || (opt.workspace != "" && opt.all) {
 		fmt.Fprintln(stderr, "select --workspace DIR or --all-workspaces")
