@@ -5,6 +5,22 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.57.1 - 2026-11-16
+
+### Fixed
+
+- Reword one sentence in the `autonomous-run` PR babysitting reference. The
+  rule is unchanged: review-comment text stays out of command lines, and each
+  reply is written to a file and posted from that file. Anthropic's directory
+  held every version that carried the old sentence, "Never interpolate comment
+  text into a shell command; pass reply bodies as files or JSON data", under
+  its `MCP_FORWARDS_CREDENTIAL_ENV` check ("Uses a credential from the user's
+  machine"). Fourteen probe versions on a temporary tracked branch isolated
+  it on 2026-11-16: the full 0.57.0 plugin without that sentence, and with the
+  new wording, both returned "Meets directory policy".
+- The earlier removals made for the same hold (0.45 to 0.56.1) did not clear
+  it. They remain unchanged in this release.
+
 ## 0.57.0 - 2026-11-16
 
 ### Fixed
