@@ -34,14 +34,20 @@ ID, or path). Before signalling a PID, confirm it is still the process this
 session started. Targets:
 
 - background processes, shells, local servers, and daemons;
-- subagents and orchestrator sessions it started;
+- subagents, orchestrator sessions, and agent workspaces it started;
 - temporary worktrees that are clean, whose commits are reachable from a
-  branch, and that are not the current directory; never their branches;
+  branch, that are not the current directory, and that no live session,
+  subagent, or process uses as its working directory, because removing it
+  breaks that session; never their branches;
 - scratch files under `$TMPDIR` (skip when it is unset).
 
-Read back each removal. Never stop or delete anything this session did not
-create, anything holding uncommitted work, or anything the instructions say to
-ask about first. List each such item with its reason instead.
+If you cannot establish that no one uses a worktree as its working directory,
+leave it and list it with that reason. Read back each removal, and read
+session and workspace state back from the harness. Report an item as removed
+only after its readback confirms it; a failed or missing readback means left,
+not removed. Never stop or delete anything this session did not create,
+anything holding uncommitted work, or anything the instructions say to ask
+about first. List each such item with its reason instead.
 
 ## 4. Close
 

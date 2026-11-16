@@ -31,6 +31,10 @@ var requiredSkillFacts = map[string][]string{
 	"close-off": {
 		"verify-and-finish", "direct observations", "did not create", "uncommitted work",
 		"ask about first", "never archive", "it's ready for archiving.",
+		// 2026-11-16 audit: a removed worktree broke a live child session, and
+		// an agent workspace was reported closed while it stayed open.
+		"uses as its working directory", "cannot establish", "agent workspaces",
+		"state back from the harness", "means left, not removed",
 	},
 	"design-and-plan": {
 		"acceptance oracle",
