@@ -18,8 +18,8 @@ semver.
   machine"). Fourteen probe versions on a temporary tracked branch isolated
   it on 2026-11-16: the full 0.57.0 plugin without that sentence, and with the
   new wording, both returned "Meets directory policy".
-- The earlier removals made for the same hold (0.45 to 0.56.1) did not address
-  its cause. They stay as they are in this release.
+- The earlier removals made for the same hold (0.45 to 0.56.1) did not clear
+  it. They remain unchanged in this release.
 
 ## 0.57.0 - 2026-11-16
 
