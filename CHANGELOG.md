@@ -5,6 +5,32 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Fixed
+
+- `close-off` removes a temporary worktree only when no live session,
+  subagent, or process uses it as its working directory, names agent
+  workspaces as a cleanup target, and reports an item as removed only after a
+  readback confirms it.
+- The bar guard reference limits a shared checkout's comparison to the paths
+  the lane owns or changed, and lists a denied or failed guard run as a gap in
+  the final report.
+
+### Added
+
+- Restore the repository-only OpenCode tools that 0.47.0 removed:
+  `scripts/cmd/opencode-export`, `scripts/cmd/opencode-mine`,
+  `scripts/opencode-export.sh`, and `docs/advanced/opencode-export.md`. Since
+  0.50.0 removed OpenCode reading from the shipped miner, these tools are the
+  only OpenCode mining path. The
+  miner now reads the unwrapped `{info, messages}` export shape, counts
+  harness-attached skills apart from model skill loads, and counts
+  `<paseo-system`, `<subagent`, and `<shell` user text as machine turns. The
+  shipped plugin neither contains nor names these tools.
+- The repository session-mining reference covers OpenCode: export to a new
+  `$TMPDIR` directory, mine it locally, and delete it after the last report.
+
 ## 0.56.1 - 2026-11-10
 
 ### Changed
