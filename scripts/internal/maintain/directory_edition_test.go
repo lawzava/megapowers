@@ -138,6 +138,87 @@ func TestDirectoryBuildManifest(t *testing.T) {
 	}
 }
 
+// The directory listing requires privacy, terms and support URLs. The build
+// copies them from the source Codex manifest and omits any that are unset.
+func TestDirectoryBuildCopiesListingURLs(t *testing.T) {
+	urls := map[string]string{
+		"privacyPolicyURL":  "https://example.com/privacy",
+		"termsOfServiceURL": "https://example.com/terms",
+		"supportURL":        "https://example.com/support",
+	}
+	repo := newDirectorySource(t)
+	codexPath := filepath.Join(repo, "plugins", "megapowers", ".codex-plugin", "plugin.json")
+	var source map[string]any
+	data, err := os.ReadFile(codexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &source); err != nil {
+		t.Fatal(err)
+	}
+	ui := source["interface"].(map[string]any)
+	for k, v := range urls {
+		ui[k] = v
+	}
+	data, err = json.Marshal(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(codexPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := buildDirectoryFiles(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(newDirPackage(files)[".codex-plugin/plugin.json"].Data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	got := manifest["interface"].(map[string]any)
+	for k, v := range urls {
+		if got[k] != v {
+			t.Errorf("%s = %v, want %s", k, got[k], v)
+		}
+	}
+
+	var bare map[string]any
+	if err := json.Unmarshal(fixturePackage(t)[".codex-plugin/plugin.json"].Data, &bare); err != nil {
+		t.Fatal(err)
+	}
+	for k := range urls {
+		if _, ok := bare["interface"].(map[string]any)[k]; ok {
+			t.Errorf("%s present although the source manifest leaves it unset", k)
+		}
+	}
+}
+
+// The real Codex manifest must carry the listing URLs the directory requires.
+func TestRealCodexManifestDeclaresListingURLs(t *testing.T) {
+	root := realRepoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "plugins", "megapowers", ".codex-plugin", "plugin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	ui := manifest["interface"].(map[string]any)
+	for _, key := range []string{"privacyPolicyURL", "termsOfServiceURL", "supportURL"} {
+		value, _ := ui[key].(string)
+		prefix := "https://github.com/lawzava/megapowers/blob/main/"
+		if !strings.HasPrefix(value, prefix) {
+			t.Errorf("%s = %q, want a %s URL", key, value, prefix)
+			continue
+		}
+		page := strings.TrimPrefix(value, prefix)
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(page))); err != nil {
+			t.Errorf("%s points to a missing page: %v", key, err)
+		}
+	}
+}
+
 func toStrings(v any) []string {
 	var out []string
 	for _, item := range v.([]any) {

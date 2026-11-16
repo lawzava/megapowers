@@ -1,6 +1,6 @@
 {
   "name": "megapowers",
-  "version": "0.57.1",
+  "version": "0.57.2",
   "description": "Native-first workflow plugin for Claude Code and Codex: task skills for planning, test-first implementation, debugging, verification, safe effects, independent model review, and orchestration.",
   "author": {
     "name": "lawzava"
@@ -37,7 +37,10 @@
     "brandColor": "#1F6FEB",
     "composerIcon": "./.claude-plugin/icon.svg",
     "logo": "./.claude-plugin/icon.svg",
-    "websiteURL": "https://github.com/lawzava/megapowers"
+    "websiteURL": "https://github.com/lawzava/megapowers",
+    "privacyPolicyURL": "https://github.com/lawzava/megapowers/blob/main/docs/privacy.md",
+    "termsOfServiceURL": "https://github.com/lawzava/megapowers/blob/main/docs/terms.md",
+    "supportURL": "https://github.com/lawzava/megapowers/blob/main/SUPPORT.md"
   },
   "homepage": "https://github.com/lawzava/megapowers"
 }
