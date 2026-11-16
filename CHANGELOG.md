@@ -5,6 +5,15 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## Unreleased
+
+### Added
+
+- A contract test rejects the sentence that Anthropic's directory held under
+  its `MCP_FORWARDS_CREDENTIAL_ENV` check (fixed in 0.57.1) in every shipped
+  file, and requires the reworded reply rule in the PR babysitting reference.
+  Repository only; the plugin is unchanged.
+
 ## 0.57.2 - 2026-11-16
 
 ### Added
