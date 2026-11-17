@@ -12,8 +12,9 @@ the user, never approved.
 Every round returns `verdict`, `scope.creep`, `scope.shrink`, and findings with
 severity (`blocker`, `major`, `nit`), file, line, claim, and evidence. Creep is
 unrequested work, including drive-by refactors and new dependencies. Shrink is
-stubs, TODOs, weakened/skipped/deleted tests, loosened assertions, or unconfirmed
-acceptance items. The lead computes fail when any blocker, major, scope.creep or
+stubs, TODOs, weakened/skipped/deleted tests, loosened assertions, unconfirmed
+acceptance items, or text that justifies a workaround in place of fixing the
+cause. The lead computes fail when any blocker, major, scope.creep or
 scope.shrink exists, regardless of the stated verdict. Nits never fail.
 
 Identify the previously reviewed artifact, provide only

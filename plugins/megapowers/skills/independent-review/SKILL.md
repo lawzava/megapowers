@@ -37,7 +37,9 @@ permission or provider stalls.
 
 Require `verdict`, `scope.creep` (unrequested changes, drive-by refactors, new
 dependencies), `scope.shrink` (stubs, TODOs, weakened, skipped or deleted tests,
-loosened assertions, unconfirmed acceptance items), and `findings`. Each finding
+loosened assertions, unconfirmed acceptance items, and any comment, doc line or
+instruction that justifies a workaround, a skipped check or a known-wrong
+pattern in place of fixing the cause), and `findings`. Each finding
 has severity (`blocker`, `major`, or `nit`), file, line, claim, and evidence.
 Use explicit empty lists and state verification limits.
 

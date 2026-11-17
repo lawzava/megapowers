@@ -13,6 +13,12 @@ Choose the smallest instruction surface for the work:
 - Put rules that must execute or block an action in tests, hooks, settings, or
   a deterministic tool. Prose can guide a model but cannot enforce behavior.
 
+Each time you correct an agent, first ask whether a check, type, lint rule,
+hook, or API change can make the mistake impossible. Add prose only when none
+fits, and say why. A check's failure message is itself an instruction: name
+the root-cause fix, not only the violation, so the agent does not patch
+around the check.
+
 Read applicable repository instructions, nearby instructions, code, tests, and
 configured tools before drafting. Attribute load-bearing statements to direct
 observation, repository policy, upstream documentation, or explicit author

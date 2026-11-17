@@ -37,7 +37,8 @@ review packages and evidence under `$TMPDIR` unless asked otherwise. Report
 review provenance. Confirm target branch and authority before commits,
 publication, merges, or branch/worktree deletion. For cross-session resumption,
 use the [handoff guide](references/handoff.md); for PRs, the
-[PR body guide](references/pr-body.md).
+[PR body guide](references/pr-body.md). Its verification artifacts for a
+user-interface or stateful change apply to any handoff.
 
 Open with `VERIFIED: <claim>` only when every required criterion has fresh oracle
 evidence; state what that evidence does not cover. Otherwise use
