@@ -13,6 +13,16 @@ semver.
   its `MCP_FORWARDS_CREDENTIAL_ENV` check (fixed in 0.57.1) in every shipped
   file, and requires the reworded reply rule in the PR babysitting reference.
   Repository only; the plugin is unchanged.
+- `writing-agent-instructions`: after each correction of an agent, first ask
+  whether a check, type, lint rule, hook, or API change can make the mistake
+  impossible; a check's failure message names the root-cause fix.
+- `verify-and-finish`: a user-interface or stateful change carries
+  verification artifacts (a screenshot or recording of the driven journey; a
+  state diagram or transition table for a state change) in the PR or handoff.
+  The verification driver's feature map uses the names agreed with the user.
+- `independent-review`: `scope.shrink` includes a comment, doc line or
+  instruction that justifies a workaround, a skipped check or a known-wrong
+  pattern in place of fixing the cause.
 
 ## 0.57.2 - 2026-11-16
 

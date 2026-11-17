@@ -48,7 +48,10 @@ each section real commands and selectors from this repository:
   evidence in a named location that cleanup does not remove.
 
 Map the top user-facing features with how to reach each one, how to drive it,
-and the observable end state that proves it works.
+and the observable end state that proves it works. Keep this feature map
+short and name each feature as agreed with the user: a site map from the
+user's view. Agent and user then share one vocabulary, so a loose phrase such
+as "the left sidebar thing" resolves to one name.
 
 ## Prove it
 

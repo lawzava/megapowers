@@ -19,6 +19,11 @@ Show before and after for each behavior the change claims:
 - what the evidence does not cover, such as deployment, other platforms, or
   load.
 
+For a change to a user interface or to stateful behavior, attach verification
+artifacts a reviewer can judge without reading the diff: a screenshot or
+recording of the driven journey, and for a state change a small state diagram
+or transition table from the user's point of view.
+
 Link saved logs or screenshots instead of pasting long output. Keep secrets,
 private hosts, and raw agent transcripts out of the body.
 
