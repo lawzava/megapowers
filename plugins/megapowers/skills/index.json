@@ -39,8 +39,7 @@
       "version": "0.58.0",
       "files": [
         "SKILL.md",
-        "agents/openai.yaml",
-        "references/terminology.md"
+        "agents/openai.yaml"
       ]
     },
     {
