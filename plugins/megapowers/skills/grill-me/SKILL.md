@@ -13,7 +13,9 @@ shared understanding.
 
 Model the topic as a tree of decisions. Each answer can open new decisions
 under it. Track each decision as settled, open, or blocked by an open
-decision.
+decision. Settle
+[loose or conflicting names](references/terminology.md) as decisions of their
+own.
 
 ## Ask in rounds
 
