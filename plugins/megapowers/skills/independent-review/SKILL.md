@@ -21,6 +21,9 @@ review without silently replacing the user's choice.
 This skill supplies guidance only. Use the selected system's existing review
 interface and permissions. Give the reviewer artifact identity, requirements,
 acceptance boundary, scope, and check evidence. Keep review access read-only.
+State what the review covered;
+[split a diff too large for one pass](references/large-diffs.md) and report
+unreviewed parts as gaps.
 
 ## Dispatch authority
 

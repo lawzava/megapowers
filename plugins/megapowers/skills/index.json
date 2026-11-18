@@ -55,7 +55,8 @@
       "version": "0.58.0",
       "files": [
         "SKILL.md",
-        "references/correction-rounds.md"
+        "references/correction-rounds.md",
+        "references/large-diffs.md"
       ]
     },
     {
