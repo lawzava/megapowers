@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,6 +55,11 @@ func run(t *testing.T, root string, env []string, name string, args ...string) (
 	cmd := exec.Command(name, args...)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), env...)
+	// session-mine reads Paseo records under the home directory. Keep the
+	// caller's own records out of a case that sets no home.
+	if filepath.Base(name) == "session-mine" && !slices.ContainsFunc(env, func(v string) bool { return strings.HasPrefix(v, "HOME=") }) {
+		cmd.Env = append(cmd.Env, "HOME="+t.TempDir())
+	}
 	var output bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &output, &output
 	err := cmd.Run()

@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -125,7 +126,15 @@ func TestSessionMineInstalledSingleFile(t *testing.T) {
 	if err := os.WriteFile(installed, source, 0600); err != nil {
 		t.Fatal(err)
 	}
-	output, code := run(t, dir, nil, "go", "run", installed, "corrections", "--harness", "both", "--all-workspaces", "--claude-root", dir, "--codex-root", dir, "--format", "json")
+	// A test-owned home keeps the caller's Paseo records out of the run.
+	// The Go caches stay where the caller's home put them.
+	env := []string{"HOME=" + t.TempDir()}
+	for _, name := range []string{"GOCACHE", "GOMODCACHE", "GOPATH"} {
+		if value, err := exec.Command("go", "env", name).Output(); err == nil {
+			env = append(env, name+"="+strings.TrimSpace(string(value)))
+		}
+	}
+	output, code := run(t, dir, env, "go", "run", installed, "corrections", "--harness", "both", "--all-workspaces", "--claude-root", dir, "--codex-root", dir, "--format", "json")
 	var report sessionMineCorrections
 	if code != 0 || json.Unmarshal([]byte(output), &report) != nil || report.SessionsScanned != 0 {
 		t.Fatalf("standalone installed copy (%d): %s", code, output)
