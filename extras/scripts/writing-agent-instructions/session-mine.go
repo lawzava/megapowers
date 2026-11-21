@@ -1,7 +1,9 @@
 // session-mine reads local Claude Code and Codex transcripts, read-only, and
 // reports where the human corrected the agent (corrections), which earlier
 // sessions discussed a topic (recall), or per-project outcome signals
-// (scorecard). Every excerpt is redacted.
+// (scorecard). Every excerpt is redacted. It also reads local Paseo agent and
+// schedule records, read-only, to count the first prompt of a scheduled or
+// agent-created session as a machine prompt.
 package main
 
 import (
@@ -50,13 +52,15 @@ type options struct {
 }
 
 // A message is one kept text record. Role is "human" (a person typed it),
-// "machine" (a harness or scheduler wrote the user turn), "prompt" (a lead
-// agent prompted a subagent), or "assistant".
+// "machine" (a harness wrote the user turn), "prompt" (a scheduler or lead
+// agent supplied a task prompt), or "assistant".
 type message struct {
 	role string
 	text string
 	ts   time.Time
 	cwd  string
+	// The initial task prompt of a machine-created session.
+	task bool
 }
 
 type session struct {
@@ -65,6 +69,8 @@ type session struct {
 	cwd     string
 	msgs    []message
 	events  []event
+	// True even when the initial task prompt predates --since.
+	machineCreated bool
 }
 
 // An event is a tool action the scorecard counts: a skill load, a megapowers
@@ -80,17 +86,28 @@ type event struct {
 }
 
 type scanStats struct {
-	skippedLines    int
-	skippedFiles    int
-	unreadableFiles int
+	skippedLines     int
+	skippedFiles     int
+	unreadableFiles  int
+	machinePromptIDs map[string]bool
+	paseoProvenance  paseoProvenance
 }
 
 type sourceCounts struct {
-	SessionsScanned int `json:"sessions_scanned"`
-	HumanTurns      int `json:"human_turns"`
-	MachineTurns    int `json:"machine_turns"`
-	PromptTurns     int `json:"prompt_turns"`
+	SessionsScanned                    int `json:"sessions_scanned"`
+	HumanTurns                         int `json:"human_turns"`
+	MachineTurns                       int `json:"machine_turns"`
+	PromptTurns                        int `json:"prompt_turns"`
+	HumanTurnsInMachineCreatedSessions int `json:"human_turns_in_machine_created_sessions"`
 }
+
+type paseoProvenance struct {
+	Records    int    `json:"records"`    // Agent records examined, including unreadable ones.
+	Linked     int    `json:"linked"`     // Unique provider-qualified sessions for selected sources.
+	Unreadable int    `json:"unreadable"` // Agent or schedule records that could not be read or decoded.
+	Note       string `json:"note,omitempty"`
+}
+
 type sourceSummary struct {
 	BySource map[string]*sourceCounts `json:"by_source"`
 	// Retain the aggregate fields for existing Claude/Codex report consumers.
@@ -98,14 +115,18 @@ type sourceSummary struct {
 	PartialSources       int `json:"partial_sources"`
 	SkippedSessions      int `json:"skipped_sessions"`
 	DeduplicatedSessions int `json:"deduplicated_sessions"`
+	// Every prompt-role turn: Paseo-created first prompts and native subagent prompts.
+	MachinePromptTurns                 int             `json:"machine_prompt_turns"`
+	PaseoProvenance                    paseoProvenance `json:"paseo_provenance"`
+	HumanTurnsInMachineCreatedSessions int             `json:"human_turns_in_machine_created_sessions"`
 }
 
 func (opt options) includes(harness string) bool {
 	return opt.harness == harness || opt.harness == "both"
 }
 
-func summarizeSources(opt options, sessions []session) sourceSummary {
-	r := sourceSummary{BySource: map[string]*sourceCounts{}}
+func summarizeSources(opt options, sessions []session, stats scanStats) sourceSummary {
+	r := sourceSummary{BySource: map[string]*sourceCounts{}, PaseoProvenance: stats.paseoProvenance}
 	for _, name := range []string{"claude", "codex"} {
 		if opt.includes(name) {
 			r.BySource[name] = &sourceCounts{}
@@ -121,10 +142,15 @@ func summarizeSources(opt options, sessions []session) sourceSummary {
 			switch msg.role {
 			case "human":
 				c.HumanTurns++
+				if s.machineCreated {
+					c.HumanTurnsInMachineCreatedSessions++
+					r.HumanTurnsInMachineCreatedSessions++
+				}
 			case "machine":
 				c.MachineTurns++
 			case "prompt":
 				c.PromptTurns++
+				r.MachinePromptTurns++
 			}
 		}
 	}
@@ -139,6 +165,14 @@ func printSources(w io.Writer, r sourceSummary) {
 		}
 	}
 	fmt.Fprintf(w, "sources: skipped %d, partial %d, skipped sessions %d, deduplicated sessions %d\n", r.SkippedSources, r.PartialSources, r.SkippedSessions, r.DeduplicatedSessions)
+	// Append diagnostics after the existing lines so scalar positions stay stable.
+	fmt.Fprintf(w, "machine prompt turns: %d\n", r.MachinePromptTurns)
+	p := r.PaseoProvenance
+	fmt.Fprintf(w, "Paseo prompt provenance: records %d, linked %d, unreadable %d\n", p.Records, p.Linked, p.Unreadable)
+	if p.Note != "" {
+		fmt.Fprintln(w, p.Note)
+	}
+	fmt.Fprintf(w, "human turns in machine-created sessions: %d\n", r.HumanTurnsInMachineCreatedSessions)
 }
 
 type example struct {
@@ -434,6 +468,7 @@ func within(path, dir string) bool {
 
 func loadSessions(opt options, stats *scanStats) []session {
 	var sessions []session
+	stats.machinePromptIDs = paseoMachinePrompts(opt, stats)
 	if opt.includes("claude") && opt.claudeRoot != "" {
 		if root, err := filepath.EvalSymlinks(opt.claudeRoot); err == nil {
 			var dirs []string
@@ -480,6 +515,90 @@ func loadSessions(opt options, stats *scanStats) []session {
 	return sessions
 }
 
+// Paseo labels and retained schedule runs prove who supplied the initial task,
+// not later replies. Provider-qualified session IDs prevent cross-store matches.
+// Missing records leave transcript classification unchanged.
+func paseoMachinePrompts(opt options, stats *scanStats) map[string]bool {
+	ids := map[string]bool{}
+	p := &stats.paseoProvenance
+	defer func() {
+		p.Linked = len(ids)
+		if p.Records == 0 {
+			p.Note = "Paseo prompt provenance: no agent records found; initial prompts keep transcript classification"
+		} else if p.Unreadable > 0 {
+			p.Note = "Paseo prompt provenance: unreadable or invalid records; unlinked prompts keep transcript classification"
+		}
+	}()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ids
+	}
+	root, err := filepath.EvalSymlinks(filepath.Join(home, ".paseo"))
+	if err != nil {
+		return ids
+	}
+	read := func(name, subtree string, value any) bool {
+		real, err := filepath.EvalSymlinks(name)
+		if err != nil || !within(real, filepath.Join(root, subtree)) {
+			p.Unreadable++
+			return false
+		}
+		info, err := os.Stat(real)
+		if err != nil || !info.Mode().IsRegular() {
+			p.Unreadable++
+			return false
+		}
+		data, err := os.ReadFile(real)
+		if err != nil || json.Unmarshal(data, value) != nil {
+			p.Unreadable++
+			return false
+		}
+		return true
+	}
+	scheduledAgents := map[string]bool{}
+	paths, _ := filepath.Glob(filepath.Join(root, "schedules", "*.json"))
+	for _, name := range paths {
+		var schedule struct {
+			Target struct {
+				Type string `json:"type"`
+			} `json:"target"`
+			Runs []struct {
+				AgentID string `json:"agentId"`
+			} `json:"runs"`
+		}
+		if read(name, "schedules", &schedule) && schedule.Target.Type == "new-agent" {
+			for _, run := range schedule.Runs {
+				if run.AgentID != "" {
+					scheduledAgents[run.AgentID] = true
+				}
+			}
+		}
+	}
+	paths, _ = filepath.Glob(filepath.Join(root, "agents", "*", "*.json"))
+	for _, name := range paths {
+		p.Records++
+		var agent struct {
+			ID          string            `json:"id"`
+			Provider    string            `json:"provider"`
+			Labels      map[string]string `json:"labels"`
+			Persistence struct {
+				SessionID string `json:"sessionId"`
+			} `json:"persistence"`
+		}
+		if !read(name, "agents", &agent) || agent.Persistence.SessionID == "" {
+			continue
+		}
+		provider := agent.Provider
+		if (provider != "claude" && provider != "codex") || !opt.includes(provider) {
+			continue
+		}
+		if scheduledAgents[agent.ID] || agent.Labels["paseo.schedule-id"] != "" || agent.Labels["paseo.parent-agent-id"] != "" {
+			ids[provider+":"+agent.Persistence.SessionID] = true
+		}
+	}
+	return ids
+}
+
 // readFile returns a session with at least one in-range message. A file whose
 // real path leaves the resolved store root, or is not a regular file, is
 // skipped and counted.
@@ -507,10 +626,25 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 	reader := bufio.NewReaderSize(file, 1<<20)
 	codexScoped, codexSubagent, codexExec := false, false, false
 	origin := ""
+	firstPrompt, sessionID := true, ""
 	for {
 		line, readErr := reader.ReadBytes('\n')
 		line = bytes.TrimSpace(line)
 		if len(line) > 0 {
+			var provenance struct {
+				Type      string `json:"type"`
+				SessionID string `json:"sessionId"`
+				IsMeta    bool   `json:"isMeta"`
+				Payload   struct {
+					ID string `json:"id"`
+				} `json:"payload"`
+			}
+			_ = json.Unmarshal(line, &provenance)
+			if harness == "claude" && provenance.SessionID != "" {
+				sessionID = provenance.SessionID
+			} else if harness == "codex" && provenance.Type == "session_meta" && provenance.Payload.ID != "" {
+				sessionID = provenance.Payload.ID
+			}
 			var msgs []message
 			var events []event
 			var ok bool
@@ -540,6 +674,18 @@ func readFile(path, root, harness string, opt options, stats *scanStats) (sessio
 				stats.skippedLines++
 			}
 			for _, msg := range msgs {
+				// Only a kept root prompt consumes the slot. Injections and
+				// native subagent prompts do not. Consume before date filtering,
+				// so a later human reply never inherits the initial task's origin.
+				// A meta record kept as a machine turn is still an injection.
+				if firstPrompt && !provenance.IsMeta && (msg.role == "human" || msg.role == "machine") {
+					firstPrompt = false
+					if stats.machinePromptIDs[harness+":"+sessionID] {
+						s.machineCreated = true
+						msg.role = "prompt"
+						msg.task = true
+					}
+				}
 				if opt.hasSince && (msg.ts.IsZero() || msg.ts.Before(opt.since)) {
 					continue
 				}
@@ -1118,7 +1264,7 @@ type turn struct {
 
 func corrections(opt options, sessions []session, stats scanStats) correctionsReport {
 	report := correctionsReport{
-		sourceSummary:   summarizeSources(opt, sessions),
+		sourceSummary:   summarizeSources(opt, sessions, stats),
 		Note:            "keyword classes are candidates; read each turn before treating it as a finding",
 		SessionsScanned: len(sessions),
 		SkippedLines:    stats.skippedLines,
@@ -1180,7 +1326,7 @@ func corrections(opt options, sessions []session, stats scanStats) correctionsRe
 }
 
 func recall(opt options, sessions []session, stats scanStats) recallReport {
-	report := recallReport{sourceSummary: summarizeSources(opt, sessions), Topic: redact(strings.Join(opt.topic, " ")), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, SkippedFiles: stats.skippedFiles, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
+	report := recallReport{sourceSummary: summarizeSources(opt, sessions, stats), Topic: redact(strings.Join(opt.topic, " ")), SessionsScanned: len(sessions), SkippedLines: stats.skippedLines, SkippedFiles: stats.skippedFiles, UnreadableFiles: stats.unreadableFiles, Sessions: []recallItem{}}
 	for _, s := range sessions {
 		matched := false
 		for _, msg := range s.msgs {
@@ -1214,7 +1360,13 @@ func recall(opt options, sessions []session, stats scanStats) recallReport {
 			}
 		}
 		// A scripted run has no typed turn; its first machine prompt still
-		// says what the session was for.
+		// says what the session was for. So does the initial task prompt of
+		// a machine-created session, even when a person replied later.
+		for _, msg := range s.msgs {
+			if msg.task {
+				firstHuman = msg.text
+			}
+		}
 		if firstHuman == "" {
 			firstHuman = firstPrompt
 		}
@@ -1313,15 +1465,16 @@ type runScore struct {
 }
 
 type workspaceScore struct {
-	Workspace   string `json:"workspace"`
-	Sessions    int    `json:"sessions"`
-	HumanTurns  int    `json:"human_turns"`
-	Corrections int    `json:"corrections"`
-	SkillLoads  int    `json:"skill_loads"`
-	GateBlocks  int    `json:"gate_blocks"`
-	Verified    int    `json:"verified"`
-	NotVerified int    `json:"not_verified"`
-	SleepCalls  int    `json:"sleep_calls"`
+	Workspace          string `json:"workspace"`
+	Sessions           int    `json:"sessions"`
+	HumanTurns         int    `json:"human_turns"`
+	Corrections        int    `json:"corrections"`
+	SkillLoads         int    `json:"skill_loads"`
+	GateBlocks         int    `json:"gate_blocks"`
+	Verified           int    `json:"verified"`
+	NotVerified        int    `json:"not_verified"`
+	SleepCalls         int    `json:"sleep_calls"`
+	MachinePromptTurns int    `json:"machine_prompt_turns"`
 }
 
 type scorecardReport struct {
@@ -1352,7 +1505,7 @@ type scorecardReport struct {
 // the skill caused it.
 func scorecard(opt options, sessions []session, stats scanStats) scorecardReport {
 	report := scorecardReport{
-		sourceSummary:   summarizeSources(opt, sessions),
+		sourceSummary:   summarizeSources(opt, sessions, stats),
 		Note:            "counts are candidates; read the sessions behind a number before acting on it",
 		Scope:           opt.workspace,
 		SessionsScanned: len(sessions),
@@ -1428,6 +1581,8 @@ func scorecard(opt options, sessions []session, stats scanStats) scorecardReport
 				}
 			case "machine":
 				report.MachineTurns++
+			case "prompt":
+				ws.MachinePromptTurns++
 			case "human":
 				report.HumanTurns++
 				ws.HumanTurns++
