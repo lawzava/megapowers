@@ -28,8 +28,9 @@ Keep bulky payloads in artifacts. For verbose checks use
 Preflight tools, authentication, permissions, and write authority. Brief the
 outcome, disjoint ownership, constraints, oracle, prohibited scope, return
 condition, nested-delegation limit, and an advisory time budget; keep a hard
-timeout where needed. Shared guidance has one writer; shared writes and Git
-stay lead-owned.
+timeout where needed. When a lane passes that budget, tell it once to stop
+and report; then follow the lane lifecycle. Shared guidance has one writer;
+shared writes and Git stay lead-owned.
 
 Give each writer a repo-relative fence and an out-of-scope line. Run the
 [fence and lead-leak checks](references/fences.md) on the actual worker checkout

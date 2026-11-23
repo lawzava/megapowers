@@ -68,6 +68,16 @@ needs the lead's effort.
 - Before reporting a lane as running, confirm it is alive from the harness's
   task list, its output, or its process. A lane whose last output is hours old
   is stalled until shown otherwise.
+- When a lane passes its time budget, do not wait again for the work to
+  finish. Tell it once to stop and report what is done, what failed, and what
+  it was attempting. A stop request is not a confirmed stop. On the first
+  overrun, start a fresh lane with a smaller task and the missing fact or
+  narrower scope in its brief, but on the same files only after the overrun
+  lane and every lane it started are confirmed stopped, by terminal report or
+  confirmed cancellation. Until then neither the lead nor any other lane
+  writes those files, in any worktree. The same error twice means a missing
+  fact, not a missing attempt. If the replacement also overruns, dispatch no
+  third lane: the lead takes the work over or escalates to the operator.
 - Give each parallel writing lane its own worktree. Use the harness's native
   isolation when it works. When it is missing or refuses the repository, use
   normal Git worktree tools. Record the immutable base and worker root in
