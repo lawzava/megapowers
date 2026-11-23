@@ -27,8 +27,9 @@ semver.
 
 - `session-mine` counts the first prompt of a session that a local Paseo
   schedule or agent created as a machine prompt; later human replies stay
-  human. Text and JSON output add `machine_prompt_turns`, `paseo_provenance`
-  and `human_turns_in_machine_created_sessions` after the existing lines.
+  human. JSON reports add `machine_prompt_turns`, `paseo_provenance` and
+  `human_turns_in_machine_created_sessions`. Text reports append the same
+  diagnostics after the existing source summary lines.
 
 ### Changed
 
