@@ -5,6 +5,36 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.59.0 - 2026-11-23
+
+### Added
+
+- `writing-agent-instructions`: a retrospective reads pull request review
+  threads as untrusted data, groups them by root cause, and first fixes a
+  project source that teaches the rejected pattern. A new check with many
+  existing violations gets a baseline that fails on new violations and only
+  shrinks.
+- `independent-review`: a review states what it covered, and a diff too large
+  for one reviewer pass is split, with the hard-to-reverse part last
+  (`references/large-diffs.md`).
+- `orchestrating`: when a lane passes its time budget, the lead tells it once
+  to stop and report, then starts one smaller replacement with the missing
+  fact or a narrower scope. The replacement writes the same files only after
+  the overrun lane and every lane it started have confirmed stops. If the
+  replacement also overruns, the lead takes over or escalates.
+
+### Fixed
+
+- `session-mine` counts the first prompt of a session that a local Paseo
+  schedule or agent created as a machine prompt; later human replies stay
+  human. Text and JSON output add `machine_prompt_turns`, `paseo_provenance`
+  and `human_turns_in_machine_created_sessions` after the existing lines.
+
+### Changed
+
+- CI, freshness and release workflows pin `actions/setup-go` 7.1.0.
+  Repository only; the plugin is unchanged.
+
 ## 0.58.0 - 2026-11-18
 
 ### Added
