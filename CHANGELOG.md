@@ -5,6 +5,16 @@ manifest (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) matches
 the repo release. Format: [Keep a Changelog](https://keepachangelog.com),
 semver.
 
+## 0.59.1 - 2026-11-25
+
+### Changed
+
+- `independent-review`: every correction brief, from the first round, asks for
+  the smallest change that closes each finding and for no new mechanism beyond
+  what the finding needs. A finding that only a new mechanism can close becomes
+  its own follow-up change with its own review
+  (`references/correction-rounds.md`).
+
 ## 0.59.0 - 2026-11-23
 
 ### Added
