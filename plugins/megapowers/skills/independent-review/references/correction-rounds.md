@@ -9,6 +9,11 @@ later directive. Keep the correction-round cap set before the first dispatch;
 new agents do not reset it. A spent budget leaves unresolved findings open for
 the user, never approved.
 
+Every correction brief, from the first round, asks for the smallest change that
+closes each finding and for no new mechanism beyond what the finding needs. When
+only a new mechanism can close a finding, the lead splits it into its own
+follow-up change with its own review instead of adding it to the round.
+
 Every round returns `verdict`, `scope.creep`, `scope.shrink`, and findings with
 severity (`blocker`, `major`, `nit`), file, line, claim, and evidence. Creep is
 unrequested work, including drive-by refactors and new dependencies. Shrink is
