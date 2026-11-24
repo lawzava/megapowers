@@ -15,6 +15,14 @@ semver.
   its own follow-up change with its own review
   (`references/correction-rounds.md`).
 
+### Fixed
+
+- The sandbox broker selftest no longer fails intermittently with "failed
+  app-server traces were not persisted for diagnostics". Its fake app-server
+  exited right after its first reply, so a later broker write could fail before
+  the broker read the fake's event. The fake now reads the broker's next two
+  frames before it exits. Repository only; the plugin is unchanged.
+
 ## 0.59.0 - 2026-11-23
 
 ### Added

@@ -5175,7 +5175,10 @@ sleep 2
 	}
 
 	diagnosticFake := filepath.Join(paths.root, "fake-codex-diagnostic")
-	diagnosticScript := "#!/bin/sh\nread -r initialize\ncase \"$initialize\" in *'\"method\":\"initialize\"'*) ;; *) exit 41;; esac\nprintf '%s\\n' '{\"id\":1,\"result\":{}}'\nprintf '%s\\n' '{\"method\":\"item/completed\",\"params\":{\"threadId\":\"thread-diag\",\"turnId\":\"turn-diag\",\"item\":{\"id\":\"message-diag\",\"type\":\"agentMessage\",\"text\":\"diagnostic\"}}}'\necho APP_SERVER_DIAGNOSTIC_MARKER >&2\nexit 47\n"
+	// The fake reads the broker's next two frames before it exits. If it exited
+	// earlier, a broker write could fail before the broker read the event, and
+	// the trace would be empty.
+	diagnosticScript := "#!/bin/sh\nread -r initialize\ncase \"$initialize\" in *'\"method\":\"initialize\"'*) ;; *) exit 41;; esac\nprintf '%s\\n' '{\"id\":1,\"result\":{}}'\nread -r initialized\nread -r login\nprintf '%s\\n' '{\"method\":\"item/completed\",\"params\":{\"threadId\":\"thread-diag\",\"turnId\":\"turn-diag\",\"item\":{\"id\":\"message-diag\",\"type\":\"agentMessage\",\"text\":\"diagnostic\"}}}'\necho APP_SERVER_DIAGNOSTIC_MARKER >&2\nexit 47\n"
 	if err := os.WriteFile(diagnosticFake, []byte(diagnosticScript), 0o700); err != nil {
 		return err
 	}
